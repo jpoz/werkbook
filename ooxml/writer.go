@@ -165,6 +165,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData) error {
 			c := xlsxC{
 				R: cd.Ref,
 				T: cd.Type,
+				F: cd.Formula,
 				V: cd.Value,
 			}
 			row.Cells = append(row.Cells, c)

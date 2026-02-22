@@ -18,10 +18,10 @@ type xlsxRow struct {
 }
 
 type xlsxC struct {
-	R string `xml:"r,attr"`
-	T string `xml:"t,attr,omitempty"`
-	V string `xml:"v,omitempty"`
-	// For inline strings
+	R  string  `xml:"r,attr"`
+	T  string  `xml:"t,attr,omitempty"`
+	F  string  `xml:"f,omitempty"`
+	V  string  `xml:"v,omitempty"`
 	IS *xlsxIS `xml:"is,omitempty"`
 }
 

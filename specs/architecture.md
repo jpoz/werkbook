@@ -700,38 +700,44 @@ sheet.SetStyle("A1:D1", id)
 
 ## Implementation Phases
 
-### Phase 1: Core Read/Write
-- OOXML reader/writer (workbook, worksheets, shared strings, styles)
-- Cell value get/set (numbers, strings, bools, dates)
-- Sheet operations (create, delete, rename, list)
-- Row/column operations
-- Basic streaming reader/writer
+### Phase 1: Core Read/Write ✅
+- [x] OOXML reader/writer (workbook, worksheets, shared strings, styles)
+- [x] Cell value get/set (numbers, strings, bools, dates)
+- [x] Sheet operations (create, delete, rename, list)
+- [x] Row/column operations
+- [ ] Basic streaming reader/writer
 
-### Phase 2: Formula Engine
-- Lexer and parser
-- Compiler (AST -> bytecode)
-- VM evaluator
-- Core function set (~50 most common: SUM, IF, VLOOKUP, INDEX, MATCH, AVERAGE, COUNT, MIN, MAX, CONCATENATE, LEFT, RIGHT, MID, DATE, TODAY, NOW, AND, OR, NOT, IFERROR, ROUND, ABS, SUMIF, COUNTIF, SUMPRODUCT, TRIM, LEN, SUBSTITUTE, TEXT, VALUE, LARGE, SMALL, RANK, OFFSET, INDIRECT)
-- Cell reference resolution (single cell, ranges, cross-sheet)
-- Dependency graph and incremental invalidation
-- Circular reference detection and iterative evaluation
+### Phase 2: Formula Engine (in progress)
+- [x] Lexer (`formula/lexer.go`) — tokenizer with 32 tests
+- [x] Parser (`formula/parser.go`) — Pratt parser producing AST, with comprehensive tests
+  - [x] AST node types (`formula/ast.go`): `NumberLit`, `StringLit`, `BoolLit`, `ErrorLit`, `CellRef`, `RangeRef`, `UnaryExpr`, `BinaryExpr`, `PostfixExpr`, `FuncCall`, `ArrayLit`
+  - [x] `ErrorCode` type and constants (`formula/ast.go`)
+  - [x] Cell reference parsing (`formula/cellref.go`): bare, absolute, mixed, sheet-qualified, quoted sheets with escape handling
+  - [x] Operator precedence matching Excel: `^` right-associative, unary `-`/`+` so `-2^3 = -(2^3)`, greedy postfix `%`
+  - [x] S-expression `String()` on all nodes for debugging and test output
+- [ ] Compiler (AST -> bytecode)
+- [ ] VM evaluator
+- [ ] Core function set (~50 most common: SUM, IF, VLOOKUP, INDEX, MATCH, AVERAGE, COUNT, MIN, MAX, CONCATENATE, LEFT, RIGHT, MID, DATE, TODAY, NOW, AND, OR, NOT, IFERROR, ROUND, ABS, SUMIF, COUNTIF, SUMPRODUCT, TRIM, LEN, SUBSTITUTE, TEXT, VALUE, LARGE, SMALL, RANK, OFFSET, INDIRECT)
+- [ ] Cell reference resolution (single cell, ranges, cross-sheet)
+- [ ] Dependency graph and incremental invalidation
+- [ ] Circular reference detection and iterative evaluation
 
 ### Phase 3: Extended Functions & Features
-- Remaining ~450 formula functions
-- Array formulas and dynamic arrays
-- Defined names / named ranges
-- Data validation
-- Conditional formatting
-- Merged cells
-- Auto-filters and tables
+- [ ] Remaining ~450 formula functions
+- [ ] Array formulas and dynamic arrays
+- [ ] Defined names / named ranges
+- [ ] Data validation
+- [ ] Conditional formatting
+- [ ] Merged cells
+- [ ] Auto-filters and tables
 
 ### Phase 4: Advanced Features
-- Charts (read/write, not render)
-- Pivot tables
-- Sparklines
-- Comments / notes
-- Images
-- File encryption/decryption
+- [ ] Charts (read/write, not render)
+- [ ] Pivot tables
+- [ ] Sparklines
+- [ ] Comments / notes
+- [ ] Images
+- [ ] File encryption/decryption
 
 ---
 
