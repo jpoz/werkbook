@@ -1,0 +1,146 @@
+package formula
+
+import "sort"
+
+func fnIF(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if isTruthy(args[0]) {
+		return args[1], nil
+	}
+	if len(args) == 3 {
+		return args[2], nil
+	}
+	return BoolVal(false), nil
+}
+
+func fnIFERROR(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[1], nil
+	}
+	return args[0], nil
+}
+
+func fnAND(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if !isTruthy(arg) {
+			return BoolVal(false), nil
+		}
+	}
+	return BoolVal(true), nil
+}
+
+func fnOR(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if isTruthy(arg) {
+			return BoolVal(true), nil
+		}
+	}
+	return BoolVal(false), nil
+}
+
+func fnNOT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	return BoolVal(!isTruthy(args[0])), nil
+}
+
+func fnXOR(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	count := 0
+	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					if isTruthy(cell) {
+						count++
+					}
+				}
+			}
+		} else if isTruthy(arg) {
+			count++
+		}
+	}
+	return BoolVal(count%2 == 1), nil
+}
+
+func fnSORT(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	arr := args[0]
+	if arr.Type != ValueArray || len(arr.Array) == 0 {
+		return arr, nil
+	}
+
+	sortIndex := 1
+	if len(args) >= 2 {
+		si, e := coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		sortIndex = int(si)
+	}
+
+	sortOrder := 1 // 1 = ascending, -1 = descending
+	if len(args) >= 3 {
+		so, e := coerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		sortOrder = int(so)
+	}
+
+	// Make a copy of the array
+	rows := make([][]Value, len(arr.Array))
+	for i, row := range arr.Array {
+		rows[i] = make([]Value, len(row))
+		copy(rows[i], row)
+	}
+
+	si := sortIndex - 1
+	sort.SliceStable(rows, func(i, j int) bool {
+		var vi, vj Value
+		if si >= 0 && si < len(rows[i]) {
+			vi = rows[i][si]
+		}
+		if si >= 0 && si < len(rows[j]) {
+			vj = rows[j][si]
+		}
+		cmp := compareValues(vi, vj)
+		if sortOrder < 0 {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	return Value{Type: ValueArray, Array: rows}, nil
+}

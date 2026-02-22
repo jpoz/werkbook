@@ -5,7 +5,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // CellResolver abstracts cell/range lookups so the VM has no dependency on Sheet.
@@ -14,8 +13,15 @@ type CellResolver interface {
 	GetRangeValues(addr RangeAddr) [][]Value
 }
 
+// EvalContext provides context about the current evaluation environment.
+type EvalContext struct {
+	CurrentCol   int
+	CurrentRow   int
+	CurrentSheet string
+}
+
 // Eval executes a compiled formula and returns the result.
-func Eval(cf *CompiledFormula, resolver CellResolver) (Value, error) {
+func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
 
 	push := func(v Value) { stack = append(stack, v) }
@@ -258,7 +264,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver) (Value, error) {
 			copy(args, stack[len(stack)-argc:])
 			stack = stack[:len(stack)-argc]
 
-			result, err := callFunction(funcID, args)
+			result, err := callFunction(funcID, args, ctx)
 			if err != nil {
 				return Value{}, err
 			}
@@ -369,10 +375,7 @@ func errorValueToString(e ErrorValue) string {
 }
 
 // compareValues compares two values for ordering. Returns -1, 0, or 1.
-// Excel ordering: errors < empty/numbers < strings < booleans (approximately).
-// For simplicity: compare same-type values naturally, different types by type rank.
 func compareValues(a, b Value) int {
-	// Coerce empty to number 0 for comparison
 	if a.Type == ValueEmpty {
 		a = NumberVal(0)
 	}
@@ -397,7 +400,6 @@ func compareValues(a, b Value) int {
 		}
 	}
 
-	// Different types: numbers < strings < booleans
 	return typeRank(a.Type) - typeRank(b.Type)
 }
 
@@ -440,67 +442,222 @@ func isTruthy(v Value) bool {
 }
 
 // callFunction dispatches a function call by function ID.
-func callFunction(funcID int, args []Value) (Value, error) {
+func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	if funcID < 0 || funcID >= len(knownFunctions) {
 		return Value{}, fmt.Errorf("unknown function ID %d", funcID)
 	}
 	name := knownFunctions[funcID]
 
 	switch name {
-	case "SUM":
-		return fnSUM(args)
+	// Math
+	case "ABS":
+		return fnABS(args)
+	case "ACOS":
+		return fnACOS(args)
+	case "ASIN":
+		return fnASIN(args)
+	case "ATAN":
+		return fnATAN(args)
+	case "ATAN2":
+		return fnATAN2(args)
+	case "CEILING":
+		return fnCEILING(args)
+	case "COS":
+		return fnCOS(args)
+	case "EXP":
+		return fnEXP(args)
+	case "FLOOR":
+		return fnFLOOR(args)
+	case "INT":
+		return fnINT(args)
+	case "LN":
+		return fnLN(args)
+	case "LOG":
+		return fnLOG(args)
+	case "LOG10":
+		return fnLOG10(args)
+	case "MOD":
+		return fnMOD(args)
+	case "PI":
+		return fnPI(args)
+	case "POWER":
+		return fnPOWER(args)
+	case "PRODUCT":
+		return fnPRODUCT(args)
+	case "RAND":
+		return fnRAND(args)
+	case "RANDBETWEEN":
+		return fnRANDBETWEEN(args)
+	case "ROUND":
+		return fnROUND(args)
+	case "ROUNDDOWN":
+		return fnROUNDDOWN(args)
+	case "ROUNDUP":
+		return fnROUNDUP(args)
+	case "SIN":
+		return fnSIN(args)
+	case "SQRT":
+		return fnSQRT(args)
+	case "TAN":
+		return fnTAN(args)
+
+	// Statistics
 	case "AVERAGE":
 		return fnAVERAGE(args)
-	case "IF":
-		return fnIF(args)
+	case "AVERAGEIF":
+		return fnAVERAGEIF(args)
+	case "AVERAGEIFS":
+		return fnAVERAGEIFS(args)
 	case "COUNT":
 		return fnCOUNT(args)
 	case "COUNTA":
 		return fnCOUNTA(args)
-	case "MIN":
-		return fnMIN(args)
+	case "COUNTBLANK":
+		return fnCOUNTBLANK(args)
+	case "COUNTIF":
+		return fnCOUNTIF(args)
+	case "COUNTIFS":
+		return fnCOUNTIFS(args)
+	case "LARGE":
+		return fnLARGE(args)
 	case "MAX":
 		return fnMAX(args)
-	case "AND":
-		return fnAND(args)
-	case "OR":
-		return fnOR(args)
-	case "NOT":
-		return fnNOT(args)
-	case "ABS":
-		return fnABS(args)
-	case "INT":
-		return fnINT(args)
-	case "MOD":
-		return fnMOD(args)
-	case "ROUND":
-		return fnROUND(args)
+	case "MEDIAN":
+		return fnMEDIAN(args)
+	case "MIN":
+		return fnMIN(args)
+	case "SMALL":
+		return fnSMALL(args)
+	case "SUM":
+		return fnSUM(args)
+	case "SUMIF":
+		return fnSUMIF(args)
+	case "SUMIFS":
+		return fnSUMIFS(args)
+	case "SUMPRODUCT":
+		return fnSUMPRODUCT(args)
+
+	// Text
+	case "CHAR":
+		return fnCHAR(args)
+	case "CHOOSE":
+		return fnCHOOSE(args)
+	case "CLEAN":
+		return fnCLEAN(args)
+	case "CODE":
+		return fnCODE(args)
 	case "CONCAT", "CONCATENATE":
 		return fnCONCATENATE(args)
+	case "EXACT":
+		return fnEXACT(args)
+	case "FIND":
+		return fnFIND(args)
+	case "LEFT":
+		return fnLEFT(args)
+	case "LEN":
+		return fnLEN(args)
+	case "LOWER":
+		return fnLOWER(args)
+	case "MID":
+		return fnMID(args)
+	case "PROPER":
+		return fnPROPER(args)
+	case "REPLACE":
+		return fnREPLACE(args)
+	case "REPT":
+		return fnREPT(args)
+	case "RIGHT":
+		return fnRIGHT(args)
+	case "SEARCH":
+		return fnSEARCH(args)
+	case "SUBSTITUTE":
+		return fnSUBSTITUTE(args)
+	case "TEXT":
+		return fnTEXT(args)
+	case "TRIM":
+		return fnTRIM(args)
+	case "UPPER":
+		return fnUPPER(args)
+	case "VALUE":
+		return fnVALUEFn(args)
+
+	// Logic
+	case "AND":
+		return fnAND(args)
+	case "IF":
+		return fnIF(args)
 	case "IFERROR":
 		return fnIFERROR(args)
+	case "NOT":
+		return fnNOT(args)
+	case "OR":
+		return fnOR(args)
+	case "SORT":
+		return fnSORT(args)
+	case "XOR":
+		return fnXOR(args)
+
+	// Info
+	case "COLUMN":
+		return fnCOLUMN(args, ctx)
+	case "COLUMNS":
+		return fnCOLUMNS(args)
+	case "IFNA":
+		return fnIFNA(args)
 	case "ISBLANK":
 		return fnISBLANK(args)
 	case "ISERR", "ISERROR":
 		return fnISERROR(args)
+	case "ISNA":
+		return fnISNA(args)
 	case "ISNUMBER":
 		return fnISNUMBER(args)
 	case "ISTEXT":
 		return fnISTEXT(args)
-	case "LEN":
-		return fnLEN(args)
-	case "LEFT":
-		return fnLEFT(args)
-	case "RIGHT":
-		return fnRIGHT(args)
-	case "MID":
-		return fnMID(args)
-	case "UPPER":
-		return fnUPPER(args)
-	case "LOWER":
-		return fnLOWER(args)
-	case "TRIM":
-		return fnTRIM(args)
+	case "ROW":
+		return fnROW(args, ctx)
+	case "ROWS":
+		return fnROWS(args)
+
+	// Date/Time
+	case "DATE":
+		return fnDATE(args)
+	case "DAY":
+		return fnDAY(args)
+	case "HOUR":
+		return fnHOUR(args)
+	case "MINUTE":
+		return fnMINUTE(args)
+	case "MONTH":
+		return fnMONTH(args)
+	case "NOW":
+		return fnNOW(args)
+	case "SECOND":
+		return fnSECOND(args)
+	case "TIME":
+		return fnTIME(args)
+	case "TODAY":
+		return fnTODAY(args)
+	case "YEAR":
+		return fnYEAR(args)
+
+	// Lookup
+	case "HLOOKUP":
+		return fnHLOOKUP(args)
+	case "INDEX":
+		return fnINDEX(args)
+	case "INDIRECT":
+		// TODO: requires dynamic reference resolution
+		return ErrorVal(ErrValREF), nil
+	case "LOOKUP":
+		return fnLOOKUP(args)
+	case "MATCH":
+		return fnMATCH(args)
+	case "VLOOKUP":
+		return fnVLOOKUP(args)
+	case "XLOOKUP":
+		return fnXLOOKUP(args)
+
 	default:
 		return Value{}, fmt.Errorf("unimplemented function: %s", name)
 	}
@@ -519,7 +676,6 @@ func iterateNumeric(args []Value, fn func(float64)) *Value {
 					if cell.Type == ValueNumber {
 						fn(cell.Num)
 					}
-					// skip text/empty/bool in ranges
 				}
 			}
 		} else {
@@ -534,362 +690,4 @@ func iterateNumeric(args []Value, fn func(float64)) *Value {
 		}
 	}
 	return nil
-}
-
-func fnSUM(args []Value) (Value, error) {
-	sum := 0.0
-	if e := iterateNumeric(args, func(n float64) { sum += n }); e != nil {
-		return *e, nil
-	}
-	return NumberVal(sum), nil
-}
-
-func fnAVERAGE(args []Value) (Value, error) {
-	sum := 0.0
-	count := 0
-	if e := iterateNumeric(args, func(n float64) { sum += n; count++ }); e != nil {
-		return *e, nil
-	}
-	if count == 0 {
-		return ErrorVal(ErrValDIV0), nil
-	}
-	return NumberVal(sum / float64(count)), nil
-}
-
-func fnIF(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	if isTruthy(args[0]) {
-		return args[1], nil
-	}
-	if len(args) == 3 {
-		return args[2], nil
-	}
-	return BoolVal(false), nil
-}
-
-func fnCOUNT(args []Value) (Value, error) {
-	count := 0
-	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueNumber {
-						count++
-					}
-				}
-			}
-		} else if arg.Type == ValueNumber {
-			count++
-		} else if arg.Type == ValueString {
-			if _, err := strconv.ParseFloat(arg.Str, 64); err == nil {
-				count++
-			}
-		}
-	}
-	return NumberVal(float64(count)), nil
-}
-
-func fnCOUNTA(args []Value) (Value, error) {
-	count := 0
-	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type != ValueEmpty {
-						count++
-					}
-				}
-			}
-		} else if arg.Type != ValueEmpty {
-			count++
-		}
-	}
-	return NumberVal(float64(count)), nil
-}
-
-func fnMIN(args []Value) (Value, error) {
-	min := math.MaxFloat64
-	found := false
-	if e := iterateNumeric(args, func(n float64) {
-		if !found || n < min {
-			min = n
-			found = true
-		}
-	}); e != nil {
-		return *e, nil
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(min), nil
-}
-
-func fnMAX(args []Value) (Value, error) {
-	max := -math.MaxFloat64
-	found := false
-	if e := iterateNumeric(args, func(n float64) {
-		if !found || n > max {
-			max = n
-			found = true
-		}
-	}); e != nil {
-		return *e, nil
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(max), nil
-}
-
-func fnAND(args []Value) (Value, error) {
-	if len(args) == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	for _, arg := range args {
-		if arg.Type == ValueError {
-			return arg, nil
-		}
-		if !isTruthy(arg) {
-			return BoolVal(false), nil
-		}
-	}
-	return BoolVal(true), nil
-}
-
-func fnOR(args []Value) (Value, error) {
-	if len(args) == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	for _, arg := range args {
-		if arg.Type == ValueError {
-			return arg, nil
-		}
-		if isTruthy(arg) {
-			return BoolVal(true), nil
-		}
-	}
-	return BoolVal(false), nil
-}
-
-func fnNOT(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	if args[0].Type == ValueError {
-		return args[0], nil
-	}
-	return BoolVal(!isTruthy(args[0])), nil
-}
-
-func fnABS(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	n, e := coerceNum(args[0])
-	if e != nil {
-		return *e, nil
-	}
-	return NumberVal(math.Abs(n)), nil
-}
-
-func fnINT(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	n, e := coerceNum(args[0])
-	if e != nil {
-		return *e, nil
-	}
-	return NumberVal(math.Floor(n)), nil
-}
-
-func fnMOD(args []Value) (Value, error) {
-	if len(args) != 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	n, e := coerceNum(args[0])
-	if e != nil {
-		return *e, nil
-	}
-	d, e := coerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	if d == 0 {
-		return ErrorVal(ErrValDIV0), nil
-	}
-	// Excel MOD: result has the sign of the divisor
-	result := n - d*math.Floor(n/d)
-	return NumberVal(result), nil
-}
-
-func fnROUND(args []Value) (Value, error) {
-	if len(args) != 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	n, e := coerceNum(args[0])
-	if e != nil {
-		return *e, nil
-	}
-	digits, e := coerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	pow := math.Pow(10, math.Floor(digits))
-	return NumberVal(math.Round(n*pow) / pow), nil
-}
-
-func fnCONCATENATE(args []Value) (Value, error) {
-	var b strings.Builder
-	for _, arg := range args {
-		b.WriteString(valueToString(arg))
-	}
-	return StringVal(b.String()), nil
-}
-
-func fnIFERROR(args []Value) (Value, error) {
-	if len(args) != 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	if args[0].Type == ValueError {
-		return args[1], nil
-	}
-	return args[0], nil
-}
-
-func fnISBLANK(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return BoolVal(args[0].Type == ValueEmpty), nil
-}
-
-func fnISERROR(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return BoolVal(args[0].Type == ValueError), nil
-}
-
-func fnISNUMBER(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return BoolVal(args[0].Type == ValueNumber), nil
-}
-
-func fnISTEXT(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return BoolVal(args[0].Type == ValueString), nil
-}
-
-func fnLEN(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	s := valueToString(args[0])
-	return NumberVal(float64(utf8.RuneCountInString(s))), nil
-}
-
-func fnLEFT(args []Value) (Value, error) {
-	if len(args) < 1 || len(args) > 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	s := valueToString(args[0])
-	n := 1
-	if len(args) == 2 {
-		num, e := coerceNum(args[1])
-		if e != nil {
-			return *e, nil
-		}
-		n = int(num)
-	}
-	runes := []rune(s)
-	if n > len(runes) {
-		n = len(runes)
-	}
-	if n < 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return StringVal(string(runes[:n])), nil
-}
-
-func fnRIGHT(args []Value) (Value, error) {
-	if len(args) < 1 || len(args) > 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	s := valueToString(args[0])
-	n := 1
-	if len(args) == 2 {
-		num, e := coerceNum(args[1])
-		if e != nil {
-			return *e, nil
-		}
-		n = int(num)
-	}
-	runes := []rune(s)
-	if n > len(runes) {
-		n = len(runes)
-	}
-	if n < 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return StringVal(string(runes[len(runes)-n:])), nil
-}
-
-func fnMID(args []Value) (Value, error) {
-	if len(args) != 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	s := valueToString(args[0])
-	startNum, e := coerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	numChars, e := coerceNum(args[2])
-	if e != nil {
-		return *e, nil
-	}
-	start := int(startNum) - 1 // Excel MID is 1-based
-	length := int(numChars)
-	if start < 0 || length < 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	runes := []rune(s)
-	if start >= len(runes) {
-		return StringVal(""), nil
-	}
-	end := start + length
-	if end > len(runes) {
-		end = len(runes)
-	}
-	return StringVal(string(runes[start:end])), nil
-}
-
-func fnUPPER(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return StringVal(strings.ToUpper(valueToString(args[0]))), nil
-}
-
-func fnLOWER(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	return StringVal(strings.ToLower(valueToString(args[0]))), nil
-}
-
-func fnTRIM(args []Value) (Value, error) {
-	if len(args) != 1 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	s := valueToString(args[0])
-	// Excel TRIM removes leading/trailing spaces and collapses internal runs to single space
-	fields := strings.Fields(s)
-	return StringVal(strings.Join(fields, " ")), nil
 }

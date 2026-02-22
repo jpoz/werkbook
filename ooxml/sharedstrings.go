@@ -11,8 +11,8 @@ type xlsxSST struct {
 }
 
 type xlsxSI struct {
-	T *string  `xml:"t,omitempty"`
-	R []xlsxR  `xml:"r,omitempty"`
+	T *string `xml:"t,omitempty"`
+	R []xlsxR `xml:"r,omitempty"`
 }
 
 type xlsxR struct {

@@ -3,10 +3,10 @@ package ooxml
 import "encoding/xml"
 
 type xlsxTypes struct {
-	XMLName   xml.Name        `xml:"Types"`
-	Xmlns     string          `xml:"xmlns,attr"`
-	Defaults  []xlsxDefault   `xml:"Default"`
-	Overrides []xlsxOverride  `xml:"Override"`
+	XMLName   xml.Name       `xml:"Types"`
+	Xmlns     string         `xml:"xmlns,attr"`
+	Defaults  []xlsxDefault  `xml:"Default"`
+	Overrides []xlsxOverride `xml:"Override"`
 }
 
 type xlsxDefault struct {

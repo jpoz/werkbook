@@ -7,7 +7,7 @@ import (
 
 // parseCellRefToken parses a TokCellRef value string into a CellRef node.
 // It handles bare refs (A1, $A$1), unquoted sheet refs (Sheet1!A1),
-// and quoted sheet refs ('Sheet Name'!A1, 'It''s a sheet'!B2).
+// and quoted sheet refs ('Sheet Name'!A1, 'It”s a sheet'!B2).
 func parseCellRefToken(raw string) (*CellRef, error) {
 	ref := &CellRef{}
 	s := raw

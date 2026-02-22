@@ -78,10 +78,10 @@ func readFODSCellValues(t *testing.T, fodsPath string, sheetName string) map[str
 
 	// FODS uses ODF namespaces. We parse with a minimal struct.
 	type fodsCell struct {
-		ValueType  string `xml:"value-type,attr"`
-		Value      string `xml:"value,attr"`
-		TextP      string `xml:"p"`
-		ColRepeat  int    `xml:"number-columns-repeated,attr"`
+		ValueType string `xml:"value-type,attr"`
+		Value     string `xml:"value,attr"`
+		TextP     string `xml:"p"`
+		ColRepeat int    `xml:"number-columns-repeated,attr"`
 	}
 	type fodsRow struct {
 		Cells     []fodsCell `xml:"table-cell"`

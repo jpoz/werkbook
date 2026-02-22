@@ -346,10 +346,13 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 
 	if hasDigits && len(alpha) > 0 {
 		// Verify it's not followed by alphanumeric (which would mean it's an identifier, not a cell ref).
+		// Also skip if followed by '(' — that makes it a function call (e.g. LOG10()).
 		if l.pos >= len(l.src) || !isIdentContinue(l.src[l.pos]) {
-			val := string(l.src[start:l.pos])
-			if looksLikeCellRef(val) {
-				return Token{Type: TokCellRef, Value: val, Pos: start}, nil
+			if l.pos >= len(l.src) || l.src[l.pos] != '(' {
+				val := string(l.src[start:l.pos])
+				if looksLikeCellRef(val) {
+					return Token{Type: TokCellRef, Value: val, Pos: start}, nil
+				}
 			}
 		}
 	}
@@ -483,4 +486,3 @@ func isExcelError(s string) bool {
 	}
 	return false
 }
-

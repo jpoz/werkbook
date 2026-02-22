@@ -10,7 +10,7 @@ import (
 type ValueType int
 
 const (
-	TypeEmpty  ValueType = iota
+	TypeEmpty ValueType = iota
 	TypeNumber
 	TypeString
 	TypeBool

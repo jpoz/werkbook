@@ -49,14 +49,18 @@ func (s *Sheet) SetValue(cell string, v any) error {
 
 // SetFormula sets a formula on a cell by reference (e.g. "A1").
 // The formula should not include the leading '=' sign.
-func (s *Sheet) SetFormula(cell string, formula string) error {
+func (s *Sheet) SetFormula(cell string, f string) error {
 	col, row, err := CellNameToCoordinates(cell)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
-	c.formula = formula
+	if c.formula != "" {
+		c.value = Value{}
+	}
+	c.formula = f
+	c.compiled = nil
 	return nil
 }
 
@@ -217,17 +221,27 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	s.evaluating[key] = true
 	defer delete(s.evaluating, key)
 
-	node, err := formula.Parse(c.formula)
-	if err != nil {
-		return Value{Type: TypeError, String: "#NAME?"}
-	}
-	cf, err := formula.Compile(c.formula, node)
-	if err != nil {
-		return Value{Type: TypeError, String: "#NAME?"}
+	cf := c.compiled
+	if cf == nil {
+		node, err := formula.Parse(c.formula)
+		if err != nil {
+			return Value{Type: TypeError, String: "#NAME?"}
+		}
+		compiled, err := formula.Compile(c.formula, node)
+		if err != nil {
+			return Value{Type: TypeError, String: "#NAME?"}
+		}
+		c.compiled = compiled
+		cf = compiled
 	}
 
 	resolver := &sheetResolver{sheet: s}
-	result, err := formula.Eval(cf, resolver)
+	ctx := &formula.EvalContext{
+		CurrentCol:   col,
+		CurrentRow:   row,
+		CurrentSheet: s.name,
+	}
+	result, err := formula.Eval(cf, resolver, ctx)
 	if err != nil {
 		return Value{Type: TypeError, String: err.Error()}
 	}

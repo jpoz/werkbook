@@ -64,7 +64,7 @@ func TestEvalArithmetic(t *testing.T) {
 
 	for _, tt := range tests {
 		cf := evalCompile(t, tt.formula)
-		got, err := Eval(cf, resolver)
+		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Errorf("Eval(%q): %v", tt.formula, err)
 			continue
@@ -83,7 +83,7 @@ func TestEvalCellReference(t *testing.T) {
 	}
 
 	cf := evalCompile(t, "A1*2")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestEvalSUMRange(t *testing.T) {
 	}
 
 	cf := evalCompile(t, "SUM(A1:A3)")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestEvalStringConcat(t *testing.T) {
 	}
 
 	cf := evalCompile(t, `A1&" items"`)
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestEvalIF(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, `IF(TRUE,"yes","no")`)
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestEvalIF(t *testing.T) {
 	}
 
 	cf = evalCompile(t, `IF(FALSE,"yes","no")`)
-	got, err = Eval(cf, resolver)
+	got, err = Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestEvalComparison(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, "10>5")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestEvalDivByZero(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, "1/0")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestEvalAVERAGE(t *testing.T) {
 	}
 
 	cf := evalCompile(t, "AVERAGE(A1:A2)")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestEvalMINMAX(t *testing.T) {
 	}
 
 	cf := evalCompile(t, "MIN(A1:A3)")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestEvalMINMAX(t *testing.T) {
 	}
 
 	cf = evalCompile(t, "MAX(A1:A3)")
-	got, err = Eval(cf, resolver)
+	got, err = Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestEvalCOUNT(t *testing.T) {
 	}
 
 	cf := evalCompile(t, "COUNT(A1:A3)")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestEvalROUND(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, "ROUND(3.14159,2)")
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestEvalStringFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		cf := evalCompile(t, tt.formula)
-		got, err := Eval(cf, resolver)
+		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Errorf("Eval(%q): %v", tt.formula, err)
 			continue
@@ -286,7 +286,7 @@ func TestEvalLEN(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, `LEN("hello")`)
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestEvalLogical(t *testing.T) {
 
 	for _, tt := range tests {
 		cf := evalCompile(t, tt.formula)
-		got, err := Eval(cf, resolver)
+		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Errorf("Eval(%q): %v", tt.formula, err)
 			continue
@@ -346,7 +346,7 @@ func TestEvalISFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		cf := evalCompile(t, tt.formula)
-		got, err := Eval(cf, resolver)
+		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Errorf("Eval(%q): %v", tt.formula, err)
 			continue
@@ -361,7 +361,7 @@ func TestEvalIFERROR(t *testing.T) {
 	resolver := &mockResolver{}
 
 	cf := evalCompile(t, `IFERROR(1/0,"err")`)
-	got, err := Eval(cf, resolver)
+	got, err := Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestEvalIFERROR(t *testing.T) {
 	}
 
 	cf = evalCompile(t, `IFERROR(42,"err")`)
-	got, err = Eval(cf, resolver)
+	got, err = Eval(cf, resolver, nil)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}

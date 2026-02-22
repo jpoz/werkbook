@@ -1,10 +1,13 @@
 package werkbook
 
+import "github.com/jpoz/werkbook/formula"
+
 // Cell represents a single cell in a worksheet.
 type Cell struct {
-	col     int
-	value   Value
-	formula string
+	col      int
+	value    Value
+	formula  string
+	compiled *formula.CompiledFormula
 }
 
 // Col returns the 1-based column number.

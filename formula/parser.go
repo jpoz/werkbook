@@ -263,16 +263,18 @@ func (p *Parser) parseArray() (Node, error) {
 	}
 	currentRow = append(currentRow, elem)
 
+loop:
 	for {
 		tok := p.peek()
-		if tok.Type == TokComma {
+		switch tok.Type {
+		case TokComma:
 			p.advance()
 			elem, err := p.parseExpression(0)
 			if err != nil {
 				return nil, err
 			}
 			currentRow = append(currentRow, elem)
-		} else if tok.Type == TokSemicolon {
+		case TokSemicolon:
 			p.advance()
 			rows = append(rows, currentRow)
 			currentRow = nil
@@ -281,8 +283,8 @@ func (p *Parser) parseArray() (Node, error) {
 				return nil, err
 			}
 			currentRow = append(currentRow, elem)
-		} else {
-			break
+		default:
+			break loop
 		}
 	}
 	rows = append(rows, currentRow)

@@ -3,9 +3,9 @@ package ooxml
 import "encoding/xml"
 
 type xlsxWorksheet struct {
-	XMLName   xml.Name       `xml:"worksheet"`
-	Xmlns     string         `xml:"xmlns,attr"`
-	SheetData xlsxSheetData  `xml:"sheetData"`
+	XMLName   xml.Name      `xml:"worksheet"`
+	Xmlns     string        `xml:"xmlns,attr"`
+	SheetData xlsxSheetData `xml:"sheetData"`
 }
 
 type xlsxSheetData struct {
