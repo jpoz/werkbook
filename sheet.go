@@ -2,6 +2,7 @@ package werkbook
 
 import (
 	"fmt"
+	"io"
 	"iter"
 	"sort"
 
@@ -165,6 +166,60 @@ func (s *Sheet) MaxCol() int {
 		}
 	}
 	return max
+}
+
+// PrintTo writes a human-readable table of all cell values to w.
+func (s *Sheet) PrintTo(w io.Writer) {
+	maxCol := s.MaxCol()
+	if maxCol == 0 {
+		return
+	}
+
+	colWidths := make([]int, maxCol)
+	var grid [][]string
+
+	for row := range s.Rows() {
+		vals := make([]string, maxCol)
+		for _, c := range row.Cells() {
+			ref, _ := CoordinatesToCellName(c.Col(), row.Num())
+			v, _ := s.GetValue(ref)
+			var text string
+			switch v.Type {
+			case TypeNumber:
+				if v.Number == float64(int64(v.Number)) {
+					text = fmt.Sprintf("%d", int64(v.Number))
+				} else {
+					text = fmt.Sprintf("%.2f", v.Number)
+				}
+			case TypeString:
+				text = v.String
+			case TypeBool:
+				if v.Bool {
+					text = "TRUE"
+				} else {
+					text = "FALSE"
+				}
+			case TypeError:
+				text = v.String
+			}
+			idx := c.Col() - 1
+			vals[idx] = text
+			if len(text) > colWidths[idx] {
+				colWidths[idx] = len(text)
+			}
+		}
+		grid = append(grid, vals)
+	}
+
+	for _, vals := range grid {
+		for c, text := range vals {
+			if c > 0 {
+				fmt.Fprint(w, "  ")
+			}
+			fmt.Fprintf(w, "%-*s", colWidths[c], text)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 // toSheetData converts the sheet to the ooxml intermediate representation.

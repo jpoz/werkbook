@@ -14,10 +14,29 @@ type File struct {
 	sheetNames []string
 }
 
-// New creates a new workbook with one empty sheet named "Sheet1".
-func New() *File {
+// Option configures a new workbook created by New.
+type Option func(*options)
+
+type options struct {
+	firstSheet string
+}
+
+// FirstSheet sets the name of the initial sheet (default "Sheet1").
+func FirstSheet(name string) Option {
+	return func(o *options) {
+		o.firstSheet = name
+	}
+}
+
+// New creates a new workbook with one empty sheet.
+// By default the sheet is named "Sheet1"; use FirstSheet to override.
+func New(opts ...Option) *File {
+	o := options{firstSheet: "Sheet1"}
+	for _, fn := range opts {
+		fn(&o)
+	}
 	f := &File{}
-	f.addSheet("Sheet1")
+	f.addSheet(o.firstSheet)
 	return f
 }
 

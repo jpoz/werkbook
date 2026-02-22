@@ -17,43 +17,60 @@ Werkbook is a Go library for reading, writing, and recalculating Excel XLSX file
 
 ```
 werkbook/
-  werkbook.go          # File struct, Open, New, Save
+  werkbook.go          # File struct, Open, New, SaveAs
   sheet.go             # Sheet type and operations
   cell.go              # Cell type, getting/setting values
   row.go               # Row iteration and access
-  style.go             # Style definitions and application
+  value.go             # Value tagged union (TypeEmpty, TypeNumber, TypeString, TypeBool, TypeError)
+  coords.go            # A1-style coordinate system (CellNameToCoordinates, etc.)
+  date.go              # Date handling, Excel serial number conversion
+  errors.go            # Error type definitions
   formula/
     lexer.go           # Formula tokenizer
-    parser.go          # Token stream -> AST
+    token.go           # Token types
+    parser.go          # Token stream -> AST (Pratt parser)
+    ast.go             # AST node types
+    cellref.go         # Cell/range reference parsing
     compiler.go        # AST -> bytecode
-    vm.go              # Bytecode evaluator (the calc VM)
-    functions.go       # Built-in function registry
-    functions_math.go  # Math function implementations
-    functions_text.go  # Text function implementations
-    functions_stat.go  # Statistical function implementations
-    functions_date.go  # Date/time function implementations
-    functions_lookup.go # Lookup function implementations
-    functions_logic.go # Logical function implementations
-    functions_fin.go   # Financial function implementations
-    functions_eng.go   # Engineering function implementations
-    functions_info.go  # Information function implementations
-    depgraph.go        # Cell dependency graph
-    reference.go       # Cell/range reference parsing and resolution
-    types.go           # Value types (Number, String, Bool, Error, Array)
+    opcodes.go         # Bytecode instruction set
+    eval.go            # Stack-based VM evaluator
+    types.go           # Value types for formula engine (Number, String, Bool, Error, Array)
+    functions_math.go  # Math function implementations (27 functions)
+    functions_text.go  # Text function implementations (22 functions)
+    functions_stat.go  # Statistical function implementations (15 functions)
+    functions_date.go  # Date/time function implementations (11 functions)
+    functions_lookup.go # Lookup function implementations (7 functions)
+    functions_logic.go # Logical function implementations (7 functions)
+    functions_info.go  # Information function implementations (10 functions)
   ooxml/
     reader.go          # ZIP/XML reading
     writer.go          # ZIP/XML writing
-    workbook.go        # xlsxWorkbook structs
-    worksheet.go       # xlsxWorksheet structs
-    styles.go          # xlsxStyleSheet structs
+    workbook.go        # Intermediate data structures (WorkbookData, SheetData, etc.)
+    worksheet.go       # Worksheet XML handling
+    styles.go          # Style definitions
     sharedstrings.go   # Shared string table
     relationships.go   # Package relationships
     contenttypes.go    # Content type mappings
-    calcchain.go       # Calculation chain XML (for Excel compat)
-  stream/
-    writer.go          # Streaming row writer for large files
-    reader.go          # Streaming row reader for large files
 ```
+
+**Not yet implemented** (planned for future phases):
+- `style.go` — Style definitions and application
+- `formula/depgraph.go` — Cell dependency graph
+- `formula/functions_fin.go` — Financial function implementations
+- `formula/functions_eng.go` — Engineering function implementations
+- `ooxml/calcchain.go` — Calculation chain XML
+- `stream/` — Streaming reader/writer for large files
+
+---
+
+## Test Coverage Summary
+
+| Package | Coverage | Test Files | Notes |
+|---------|----------|------------|-------|
+| `werkbook` (root) | 84.0% | 11 | Round-trip, iteration, formulas, multi-sheet, values |
+| `werkbook/formula` | 83.0% | 11 | Lexer, parser, compiler, eval, all 7 function categories |
+| `werkbook/ooxml` | 0.0% | 0 | Exercised indirectly via integration tests |
+| **Overall** | **78.1%** | **22** | No benchmarks yet |
 
 ---
 
@@ -707,6 +724,10 @@ sheet.SetStyle("A1:D1", id)
 - [x] Row/column operations
 - [ ] Basic streaming reader/writer
 
+#### Test Coverage (root package): 84.0%
+
+Tests cover: round-trip read/write, shared string deduplication, sparse data, multi-sheet operations, sheet deletion, duplicate sheet names, formula evaluation and round-trip, row/cell iteration, MaxRow/MaxCol, SetValue/GetValue, date values, ZIP validity. The `ooxml/` internal package currently has 0% direct test coverage (exercised indirectly through integration tests).
+
 ### Phase 2: Formula Engine (in progress)
 - [x] Lexer (`formula/lexer.go`) — tokenizer with 32 tests
 - [x] Parser (`formula/parser.go`) — Pratt parser producing AST, with comprehensive tests
@@ -715,12 +736,36 @@ sheet.SetStyle("A1:D1", id)
   - [x] Cell reference parsing (`formula/cellref.go`): bare, absolute, mixed, sheet-qualified, quoted sheets with escape handling
   - [x] Operator precedence matching Excel: `^` right-associative, unary `-`/`+` so `-2^3 = -(2^3)`, greedy postfix `%`
   - [x] S-expression `String()` on all nodes for debugging and test output
-- [ ] Compiler (AST -> bytecode)
-- [ ] VM evaluator
-- [ ] Core function set (~50 most common: SUM, IF, VLOOKUP, INDEX, MATCH, AVERAGE, COUNT, MIN, MAX, CONCATENATE, LEFT, RIGHT, MID, DATE, TODAY, NOW, AND, OR, NOT, IFERROR, ROUND, ABS, SUMIF, COUNTIF, SUMPRODUCT, TRIM, LEN, SUBSTITUTE, TEXT, VALUE, LARGE, SMALL, RANK, OFFSET, INDIRECT)
-- [ ] Cell reference resolution (single cell, ranges, cross-sheet)
+- [x] Compiler (`formula/compiler.go`) — AST to bytecode with constant/ref deduplication
+- [x] VM evaluator (`formula/eval.go`) — stack-based VM, `CellResolver` interface for cell/range lookup
+- [x] Core function set (70+ functions implemented across 7 files):
+  - [x] Math (27): SUM, ABS, ACOS, ASIN, ATAN, ATAN2, CEILING, COS, EXP, FLOOR, INT, LN, LOG, LOG10, MOD, PI, POWER, PRODUCT, RAND, RANDBETWEEN, ROUND, ROUNDDOWN, ROUNDUP, SIN, SQRT, TAN
+  - [x] Statistics (15): AVERAGE, AVERAGEIF, AVERAGEIFS, COUNT, COUNTA, COUNTBLANK, COUNTIF, COUNTIFS, LARGE, MAX, MEDIAN, MIN, SMALL, SUMIF, SUMIFS, SUMPRODUCT
+  - [x] Text (22): CHAR, CHOOSE, CLEAN, CODE, CONCATENATE/CONCAT, EXACT, FIND, LEFT, LEN, LOWER, MID, PROPER, REPLACE, REPT, RIGHT, SEARCH, SUBSTITUTE, TEXT, TRIM, UPPER, VALUE
+  - [x] Logic (7): IF, IFERROR, AND, OR, NOT, XOR, SORT
+  - [x] Lookup (7): VLOOKUP, HLOOKUP, INDEX, MATCH, LOOKUP, XLOOKUP, INDIRECT (stub)
+  - [x] Info (10): ISBLANK, ISERROR, ISNA, ISNUMBER, ISTEXT, IFNA, COLUMN, ROW, COLUMNS, ROWS
+  - [x] Date (11): DATE, DAY, HOUR, MINUTE, MONTH, NOW, SECOND, TIME, TODAY, YEAR
+- [x] Cell reference resolution (single cell, ranges, cross-sheet via `CellResolver` interface)
 - [ ] Dependency graph and incremental invalidation
 - [ ] Circular reference detection and iterative evaluation
+
+#### Test Coverage (formula package): 83.0%
+
+The formula engine has comprehensive test coverage across 22 test files:
+
+- **Lexer tests** (`lexer_test.go`): 32+ tests covering all token types, edge cases
+- **Parser tests** (`parser_test.go`): AST construction for all node types
+- **Cell ref tests** (`cellref_test.go`): absolute, relative, mixed, sheet-qualified, quoted sheet names
+- **Compiler tests** (`compiler_test.go`): bytecode generation for literals, refs, ranges, operators, functions, arrays, constant deduplication
+- **Eval tests** (`eval_test.go`): arithmetic, cell references, ranges, string concat, comparisons, division edge cases, type coercion (`coerceNum` with empty/string/bool/error), `compareValues` (same-type and cross-type ordering), `isTruthy` (all value types), `valueToString`/`errorValueToString` (all error codes), error propagation through all operators, unary/percent edge cases, large number arithmetic, empty cell handling, array literals, ROW/COLUMN/ROWS/COLUMNS, IFNA
+- **Math function tests** (`functions_math_test.go`): basic correctness for trig, rounding, log, power functions
+- **Stat function tests** (`functions_stat_test.go`): MEDIAN, LARGE/SMALL (including k out of range), COUNTBLANK, SUMIF/COUNTIF (with operator and wildcard criteria), SUMPRODUCT, COUNTA, SUMIFS/COUNTIFS/AVERAGEIF/AVERAGEIFS (multiple criteria, no-match DIV/0), SUM with mixed types, MIN/MAX with negatives/empty, error propagation in ranges, extended `matchesCriteria` (wildcards, case-insensitive, numeric operators)
+- **Text function tests** (`functions_text_test.go`): CHAR/CODE (bounds), CLEAN, PROPER, REPLACE (insert/delete/boundary), REPT (zero/negative), FIND/SEARCH (case sensitivity, start position, not found), LEFT/RIGHT/MID (default args, zero, exceeds length, negative), SUBSTITUTE (all occurrences, specific instance, no match, case sensitive), TEXT format codes (decimals, percent, commas, negative), VALUE (commas, dollar, percent, whitespace, non-numeric), EXACT (case-sensitive), CHOOSE (out of range), CONCATENATE with mixed types, LEN with Unicode
+- **Lookup function tests** (`functions_lookup_test.go`): VLOOKUP (exact, approximate, not found, col index out of range, string keys, case-insensitive), HLOOKUP (approximate, not found, row index out of range), MATCH (exact/ascending/descending, not found), INDEX (row/col out of range, 2-arg form), INDEX+MATCH combo, LOOKUP (3-arg vector form, approximate, too small), XLOOKUP (exact, next smaller, next larger, if_not_found, default #N/A)
+- **Logic function tests** (`functions_logic_test.go`): AND/OR/NOT, XOR (odd/even true count), IF (2-arg missing else)
+- **Info function tests** (`functions_info_test.go`): ISBLANK/ISNUMBER/ISTEXT, ISERROR (div/0, #N/A, #VALUE!, non-error)
+- **Date function tests** (`functions_date_test.go`): DATE, DAY, MONTH, YEAR, TODAY, NOW
 
 ### Phase 3: Extended Functions & Features
 - [ ] Remaining ~450 formula functions

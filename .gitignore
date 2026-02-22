@@ -5,6 +5,7 @@ werkbook
 *.dll
 *.so
 *.dylib
+*.xlsx
 
 # Test binary
 *.test
