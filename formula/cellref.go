@@ -1,0 +1,94 @@
+package formula
+
+import (
+	"fmt"
+	"strings"
+)
+
+// parseCellRefToken parses a TokCellRef value string into a CellRef node.
+// It handles bare refs (A1, $A$1), unquoted sheet refs (Sheet1!A1),
+// and quoted sheet refs ('Sheet Name'!A1, 'It''s a sheet'!B2).
+func parseCellRefToken(raw string) (*CellRef, error) {
+	ref := &CellRef{}
+	s := raw
+
+	// Check for quoted sheet: 'Sheet Name'!...
+	if len(s) > 0 && s[0] == '\'' {
+		i := 1
+		for i < len(s) {
+			if s[i] == '\'' {
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i += 2 // skip escaped quote
+					continue
+				}
+				break // end of quoted name
+			}
+			i++
+		}
+		if i >= len(s) || s[i] != '\'' {
+			return nil, fmt.Errorf("unterminated quoted sheet name in %q", raw)
+		}
+		// Extract sheet name, un-escaping doubled quotes.
+		ref.Sheet = strings.ReplaceAll(s[1:i], "''", "'")
+		if i+1 >= len(s) || s[i+1] != '!' {
+			return nil, fmt.Errorf("expected '!' after quoted sheet name in %q", raw)
+		}
+		s = s[i+2:] // skip past closing quote and !
+	} else if idx := strings.IndexByte(s, '!'); idx > 0 {
+		// Unquoted sheet: Sheet1!A1
+		ref.Sheet = s[:idx]
+		s = s[idx+1:]
+	} else if len(s) > 0 && s[0] == '!' {
+		return nil, fmt.Errorf("empty sheet name in %q", raw)
+	}
+
+	// Parse the cell part: optional $, letters, optional $, digits.
+	i := 0
+
+	if i < len(s) && s[i] == '$' {
+		ref.AbsCol = true
+		i++
+	}
+
+	colStart := i
+	for i < len(s) && ((s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z')) {
+		i++
+	}
+	if i == colStart {
+		return nil, fmt.Errorf("expected column letters in %q", raw)
+	}
+	ref.Col = colLettersToNumber(s[colStart:i])
+
+	if i < len(s) && s[i] == '$' {
+		ref.AbsRow = true
+		i++
+	}
+
+	rowStart := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == rowStart {
+		return nil, fmt.Errorf("expected row number in %q", raw)
+	}
+	row := 0
+	for _, c := range s[rowStart:i] {
+		row = row*10 + int(c-'0')
+	}
+	ref.Row = row
+
+	if i != len(s) {
+		return nil, fmt.Errorf("unexpected trailing characters in cell ref %q", raw)
+	}
+
+	return ref, nil
+}
+
+// colLettersToNumber converts column letters (e.g. "A", "AA", "XFD") to a 1-based column number.
+func colLettersToNumber(s string) int {
+	col := 0
+	for _, c := range strings.ToUpper(s) {
+		col = col*26 + int(c-'A') + 1
+	}
+	return col
+}

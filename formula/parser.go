@@ -1,0 +1,295 @@
+package formula
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// Parser is a Pratt parser that transforms a token stream into an AST.
+type Parser struct {
+	tokens []Token
+	pos    int
+}
+
+// Parse tokenizes and parses a formula string into an AST.
+// The formula should not include the leading '=' sign.
+func Parse(formula string) (Node, error) {
+	tokens, err := Tokenize(formula)
+	if err != nil {
+		return nil, err
+	}
+	p := &Parser{tokens: tokens}
+	node, err := p.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().Type != TokEOF {
+		return nil, fmt.Errorf("unexpected token %s at position %d", p.peek(), p.peek().Pos)
+	}
+	return node, nil
+}
+
+func (p *Parser) peek() Token {
+	if p.pos >= len(p.tokens) {
+		return Token{Type: TokEOF}
+	}
+	return p.tokens[p.pos]
+}
+
+func (p *Parser) advance() Token {
+	tok := p.peek()
+	if p.pos < len(p.tokens) {
+		p.pos++
+	}
+	return tok
+}
+
+func (p *Parser) expect(typ TokenType) (Token, error) {
+	tok := p.advance()
+	if tok.Type != typ {
+		return tok, fmt.Errorf("expected %s but got %s at position %d", typ, tok.Type, tok.Pos)
+	}
+	return tok, nil
+}
+
+// Binding power definitions for infix operators.
+// Left BP is compared against minBP; Right BP is passed to the recursive call.
+// Left-associative: rightBP = leftBP + 1. Right-associative: rightBP = leftBP.
+type bindingPower struct {
+	left  int
+	right int
+}
+
+var infixBP = map[string]bindingPower{
+	"=":  {2, 3},
+	"<>": {2, 3},
+	"<":  {2, 3},
+	">":  {2, 3},
+	"<=": {2, 3},
+	">=": {2, 3},
+	"&":  {4, 5},
+	"+":  {6, 7},
+	"-":  {6, 7},
+	"*":  {8, 9},
+	"/":  {8, 9},
+	"^":  {10, 10}, // right-associative
+}
+
+const (
+	colonLeftBP  = 14
+	colonRightBP = 15
+	prefixRBP    = 9 // unary - and + bind tighter than * but looser than ^
+)
+
+// parseExpression is the core Pratt parsing loop.
+func (p *Parser) parseExpression(minBP int) (Node, error) {
+	left, err := p.parseNud()
+	if err != nil {
+		return nil, err
+	}
+
+	// Greedy postfix % — consumed immediately, not in the BP table.
+	for p.peek().Type == TokPercent {
+		p.advance()
+		left = &PostfixExpr{Op: "%", Operand: left}
+	}
+
+	for {
+		tok := p.peek()
+
+		if tok.Type == TokOp {
+			bp, ok := infixBP[tok.Value]
+			if !ok || bp.left < minBP {
+				break
+			}
+			p.advance()
+			right, err := p.parseExpression(bp.right)
+			if err != nil {
+				return nil, err
+			}
+			left = &BinaryExpr{Op: tok.Value, Left: left, Right: right}
+			for p.peek().Type == TokPercent {
+				p.advance()
+				left = &PostfixExpr{Op: "%", Operand: left}
+			}
+			continue
+		}
+
+		if tok.Type == TokColon {
+			if colonLeftBP < minBP {
+				break
+			}
+			p.advance()
+			right, err := p.parseExpression(colonRightBP)
+			if err != nil {
+				return nil, err
+			}
+			fromRef, ok := left.(*CellRef)
+			if !ok {
+				return nil, fmt.Errorf("left side of ':' must be a cell reference, got %s", left)
+			}
+			toRef, ok := right.(*CellRef)
+			if !ok {
+				return nil, fmt.Errorf("right side of ':' must be a cell reference, got %s", right)
+			}
+			left = &RangeRef{From: fromRef, To: toRef}
+			for p.peek().Type == TokPercent {
+				p.advance()
+				left = &PostfixExpr{Op: "%", Operand: left}
+			}
+			continue
+		}
+
+		break
+	}
+
+	return left, nil
+}
+
+// parseNud handles prefix parselets (atoms and prefix operators).
+func (p *Parser) parseNud() (Node, error) {
+	tok := p.peek()
+
+	switch tok.Type {
+	case TokNumber:
+		p.advance()
+		val, err := strconv.ParseFloat(tok.Value, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid number %q at position %d: %w", tok.Value, tok.Pos, err)
+		}
+		return &NumberLit{Value: val, Raw: tok.Value}, nil
+
+	case TokString:
+		p.advance()
+		return &StringLit{Value: tok.Value}, nil
+
+	case TokBool:
+		p.advance()
+		return &BoolLit{Value: strings.ToUpper(tok.Value) == "TRUE"}, nil
+
+	case TokError:
+		p.advance()
+		return &ErrorLit{Code: ErrorCode(strings.ToUpper(tok.Value))}, nil
+
+	case TokCellRef:
+		p.advance()
+		ref, err := parseCellRefToken(tok.Value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cell reference %q at position %d: %w", tok.Value, tok.Pos, err)
+		}
+		return ref, nil
+
+	case TokFunc:
+		return p.parseFunc()
+
+	case TokLParen:
+		p.advance()
+		expr, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokRParen); err != nil {
+			return nil, fmt.Errorf("unmatched '(' at position %d", tok.Pos)
+		}
+		return expr, nil
+
+	case TokArrayOpen:
+		return p.parseArray()
+
+	case TokOp:
+		if tok.Value == "-" || tok.Value == "+" {
+			p.advance()
+			operand, err := p.parseExpression(prefixRBP)
+			if err != nil {
+				return nil, err
+			}
+			return &UnaryExpr{Op: tok.Value, Operand: operand}, nil
+		}
+		return nil, fmt.Errorf("unexpected operator %q at position %d", tok.Value, tok.Pos)
+
+	case TokEOF:
+		return nil, fmt.Errorf("unexpected end of formula")
+
+	default:
+		return nil, fmt.Errorf("unexpected token %s at position %d", tok, tok.Pos)
+	}
+}
+
+// parseFunc parses a function call: NAME( arg, arg, ... )
+func (p *Parser) parseFunc() (Node, error) {
+	tok := p.advance()
+	name := strings.TrimSuffix(tok.Value, "(")
+
+	// Zero-arg function: immediately followed by ).
+	if p.peek().Type == TokRParen {
+		p.advance()
+		return &FuncCall{Name: name}, nil
+	}
+
+	var args []Node
+	arg, err := p.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, arg)
+
+	for p.peek().Type == TokComma {
+		p.advance()
+		arg, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	if _, err := p.expect(TokRParen); err != nil {
+		return nil, fmt.Errorf("expected ')' to close function %s at position %d", name, tok.Pos)
+	}
+
+	return &FuncCall{Name: name, Args: args}, nil
+}
+
+// parseArray parses an array literal: { expr, expr ; expr, expr }
+func (p *Parser) parseArray() (Node, error) {
+	p.advance() // consume {
+
+	var rows [][]Node
+	var currentRow []Node
+
+	elem, err := p.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+	currentRow = append(currentRow, elem)
+
+	for {
+		tok := p.peek()
+		if tok.Type == TokComma {
+			p.advance()
+			elem, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			currentRow = append(currentRow, elem)
+		} else if tok.Type == TokSemicolon {
+			p.advance()
+			rows = append(rows, currentRow)
+			currentRow = nil
+			elem, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			currentRow = append(currentRow, elem)
+		} else {
+			break
+		}
+	}
+	rows = append(rows, currentRow)
+
+	if _, err := p.expect(TokArrayClose); err != nil {
+		return nil, fmt.Errorf("expected '}' to close array literal")
+	}
+
+	return &ArrayLit{Rows: rows}, nil
+}
