@@ -119,6 +119,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				r := s.ensureRow(row)
 				c := r.ensureCell(col)
 				c.value = v
+				c.formula = cd.Formula
 			}
 		}
 	}

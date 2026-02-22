@@ -72,7 +72,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 }
 
 func parseCellData(xc xlsxC, sst []string) CellData {
-	cd := CellData{Ref: xc.R}
+	cd := CellData{Ref: xc.R, Formula: xc.F}
 
 	switch xc.T {
 	case "s":

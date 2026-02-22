@@ -84,12 +84,12 @@ deps: ## Download and tidy Go dependencies
 .PHONY: test
 test: ## Run all unit tests
 	$(call print_stage,Running tests)
-	go test -v ./...
+	gotestsum -f dots ./...
 
 .PHONY: test-integration
 test-integration: ## Run integration tests (requires LibreOffice)
 	$(call print_stage,Running integration tests)
-	go test -tags=integration -v ./...
+	gotestsum -f dots -- -tags=integration ./...
 
 .PHONY: bench
 bench: ## Run benchmarks

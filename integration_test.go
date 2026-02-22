@@ -3,6 +3,9 @@
 package werkbook_test
 
 import (
+	"encoding/csv"
+	"encoding/xml"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,13 +15,135 @@ import (
 	"github.com/jpoz/werkbook"
 )
 
-func TestLibreOfficeConvert(t *testing.T) {
-	// Check if LibreOffice is available.
-	lofficePath, err := exec.LookPath("libreoffice")
+// requireLibreOffice returns the soffice path or skips the test.
+func requireLibreOffice(t *testing.T) string {
+	t.Helper()
+	path, err := exec.LookPath("libreoffice")
 	if err != nil {
 		t.Skip("LibreOffice not found, skipping integration test")
 	}
-	_ = lofficePath
+	return path
+}
+
+// libreOfficeToCSV converts an XLSX file to CSV and returns the CSV path.
+func libreOfficeToCSV(t *testing.T, soffice, xlsxPath string) string {
+	t.Helper()
+	dir := filepath.Dir(xlsxPath)
+	cmd := exec.Command(soffice, "--headless", "--convert-to", "csv", "--outdir", dir, xlsxPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("libreoffice convert to csv: %v\noutput: %s", err, output)
+	}
+	base := strings.TrimSuffix(filepath.Base(xlsxPath), filepath.Ext(xlsxPath))
+	return filepath.Join(dir, base+".csv")
+}
+
+// libreOfficeToFODS converts an XLSX file to Flat ODS XML and returns the FODS path.
+func libreOfficeToFODS(t *testing.T, soffice, xlsxPath string) string {
+	t.Helper()
+	dir := filepath.Dir(xlsxPath)
+	cmd := exec.Command(soffice, "--headless", "--convert-to", "fods", "--outdir", dir, xlsxPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("libreoffice convert to fods: %v\noutput: %s", err, output)
+	}
+	base := strings.TrimSuffix(filepath.Base(xlsxPath), filepath.Ext(xlsxPath))
+	return filepath.Join(dir, base+".fods")
+}
+
+// readCSV reads a CSV file and returns all records.
+func readCSV(t *testing.T, path string) [][]string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open csv: %v", err)
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	return records
+}
+
+// readFODSCellValues parses a Flat ODS file and returns a map of cell ref -> text value
+// for the given sheet name. Cell refs are in A1 style derived from row/col position.
+func readFODSCellValues(t *testing.T, fodsPath string, sheetName string) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile(fodsPath)
+	if err != nil {
+		t.Fatalf("read fods: %v", err)
+	}
+
+	// FODS uses ODF namespaces. We parse with a minimal struct.
+	type fodsCell struct {
+		ValueType  string `xml:"value-type,attr"`
+		Value      string `xml:"value,attr"`
+		TextP      string `xml:"p"`
+		ColRepeat  int    `xml:"number-columns-repeated,attr"`
+	}
+	type fodsRow struct {
+		Cells     []fodsCell `xml:"table-cell"`
+		RowRepeat int        `xml:"number-rows-repeated,attr"`
+	}
+	type fodsTable struct {
+		Name string    `xml:"name,attr"`
+		Rows []fodsRow `xml:"table-row"`
+	}
+	type fodsBody struct {
+		Spreadsheet struct {
+			Tables []fodsTable `xml:"table"`
+		} `xml:"body>spreadsheet"`
+	}
+
+	// Strip namespaces for easier parsing.
+	content := string(data)
+	content = strings.ReplaceAll(content, "office:", "")
+	content = strings.ReplaceAll(content, "table:", "")
+	content = strings.ReplaceAll(content, "text:", "")
+
+	var doc fodsBody
+	if err := xml.Unmarshal([]byte(content), &doc); err != nil {
+		t.Fatalf("unmarshal fods: %v", err)
+	}
+
+	result := make(map[string]string)
+	for _, table := range doc.Spreadsheet.Tables {
+		if table.Name != sheetName {
+			continue
+		}
+		for rowIdx, row := range table.Rows {
+			colIdx := 0
+			for _, cell := range row.Cells {
+				repeat := cell.ColRepeat
+				if repeat == 0 {
+					repeat = 1
+				}
+				if cell.TextP != "" {
+					ref := fmt.Sprintf("%s%d", colToLetter(colIdx+1), rowIdx+1)
+					result[ref] = cell.TextP
+				}
+				colIdx += repeat
+			}
+		}
+		break
+	}
+	return result
+}
+
+func colToLetter(col int) string {
+	s := ""
+	for col > 0 {
+		col--
+		s = string(rune('A'+col%26)) + s
+		col /= 26
+	}
+	return s
+}
+
+func TestLibreOfficeConvert(t *testing.T) {
+	soffice := requireLibreOffice(t)
 
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
@@ -33,33 +158,136 @@ func TestLibreOfficeConvert(t *testing.T) {
 		t.Fatalf("SaveAs: %v", err)
 	}
 
-	// Convert to CSV using LibreOffice headless.
-	cmd := exec.Command("libreoffice", "--headless", "--convert-to", "csv", "--outdir", dir, xlsxPath)
-	output, err := cmd.CombinedOutput()
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	if len(records) < 2 {
+		t.Fatalf("expected at least 2 rows, got %d", len(records))
+	}
+	if !strings.Contains(records[0][0], "hello") {
+		t.Errorf("row 0 col 0 missing 'hello': %q", records[0][0])
+	}
+	if !strings.Contains(records[0][1], "42") {
+		t.Errorf("row 0 col 1 missing '42': %q", records[0][1])
+	}
+	if !strings.Contains(records[1][0], "world") {
+		t.Errorf("row 1 col 0 missing 'world': %q", records[1][0])
+	}
+}
+
+func TestFormulaEvalWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set input values.
+	s.SetValue("A1", 10)
+	s.SetValue("A2", 20)
+	s.SetValue("A3", 30)
+
+	// Set formulas in B column.
+	s.SetFormula("B1", "SUM(A1:A3)")
+	s.SetFormula("B2", "A1*A2")
+	s.SetFormula("B3", `IF(A1>5,"yes","no")`)
+	s.SetFormula("B4", "AVERAGE(A1:A3)")
+	s.SetFormula("B5", `A1&" items"`)
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "formulas.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := map[int]string{
+		0: "60",
+		1: "200",
+		2: "yes",
+		3: "20",
+		4: "10 items",
+	}
+
+	for row, want := range expected {
+		if row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", row, len(records))
+			continue
+		}
+		if len(records[row]) < 2 {
+			t.Errorf("row %d: expected at least 2 columns, got %d", row, len(records[row]))
+			continue
+		}
+		got := records[row][1]
+		if got != want {
+			t.Errorf("B%d = %q, want %q", row+1, got, want)
+		}
+	}
+}
+
+func TestFormulaRoundTripWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", 10)
+	s.SetValue("A2", 20)
+	s.SetFormula("B1", "SUM(A1:A2)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "roundtrip.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	// Verify formulas preserved when re-read by werkbook.
+	f2, err := werkbook.Open(xlsxPath)
 	if err != nil {
-		t.Fatalf("libreoffice convert: %v\noutput: %s", err, output)
+		t.Fatalf("Open: %v", err)
+	}
+	s2 := f2.Sheet("Sheet1")
+	formula, _ := s2.GetFormula("B1")
+	if formula != "SUM(A1:A2)" {
+		t.Errorf("formula after re-read = %q, want %q", formula, "SUM(A1:A2)")
 	}
 
-	csvPath := filepath.Join(dir, "test.csv")
-	csvData, err := os.ReadFile(csvPath)
+	// Verify LibreOffice evaluates it correctly.
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+	if len(records) < 1 || len(records[0]) < 2 {
+		t.Fatalf("unexpected CSV shape: %v", records)
+	}
+	if records[0][1] != "30" {
+		t.Errorf("LibreOffice B1 = %q, want %q", records[0][1], "30")
+	}
+}
+
+func TestMultiSheetFormulaWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s1 := f.Sheet("Sheet1")
+	s1.SetValue("A1", 100)
+
+	s2, err := f.NewSheet("Sheet2")
 	if err != nil {
-		t.Fatalf("read csv: %v", err)
+		t.Fatalf("NewSheet: %v", err)
+	}
+	s2.SetFormula("A1", "Sheet1!A1*2")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "multisheet.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
 	}
 
-	csv := string(csvData)
-	lines := strings.Split(strings.TrimSpace(csv), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected at least 2 CSV lines, got %d: %q", len(lines), csv)
-	}
+	fodsPath := libreOfficeToFODS(t, soffice, xlsxPath)
+	cells := readFODSCellValues(t, fodsPath, "Sheet2")
 
-	// Verify first row contains our values.
-	if !strings.Contains(lines[0], "hello") {
-		t.Errorf("line 0 missing 'hello': %q", lines[0])
-	}
-	if !strings.Contains(lines[0], "42") {
-		t.Errorf("line 0 missing '42': %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "world") {
-		t.Errorf("line 1 missing 'world': %q", lines[1])
+	if val, ok := cells["A1"]; !ok {
+		t.Error("Sheet2 A1 not found in FODS output")
+	} else if val != "200" {
+		t.Errorf("Sheet2 A1 = %q, want %q", val, "200")
 	}
 }

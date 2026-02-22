@@ -45,6 +45,36 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	return nil
 }
 
+// SetFormula sets a formula on a cell by reference (e.g. "A1").
+// The formula should not include the leading '=' sign.
+func (s *Sheet) SetFormula(cell string, formula string) error {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	r := s.ensureRow(row)
+	c := r.ensureCell(col)
+	c.formula = formula
+	return nil
+}
+
+// GetFormula returns the formula for a cell, or "" if none.
+func (s *Sheet) GetFormula(cell string) (string, error) {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return "", nil
+	}
+	c, ok := r.cells[col]
+	if !ok {
+		return "", nil
+	}
+	return c.formula, nil
+}
+
 // GetValue returns the value of a cell by reference (e.g. "A1").
 func (s *Sheet) GetValue(cell string) (Value, error) {
 	col, row, err := CellNameToCoordinates(cell)
@@ -152,11 +182,11 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 
 		for _, cn := range colNums {
 			c := r.cells[cn]
-			if c.value.Type == TypeEmpty {
+			if c.value.Type == TypeEmpty && c.formula == "" {
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
-			cd := cellToData(ref, c.value)
+			cd := cellToData(ref, c.value, c.formula)
 			rd.Cells = append(rd.Cells, cd)
 		}
 		if len(rd.Cells) > 0 {
@@ -166,21 +196,22 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 	return sd
 }
 
-func cellToData(ref string, v Value) ooxml.CellData {
+func cellToData(ref string, v Value, formula string) ooxml.CellData {
+	var cd ooxml.CellData
 	switch v.Type {
 	case TypeString:
-		// Type "s" signals the writer to use the shared string table.
-		// The Value field holds the raw string; the writer replaces it with the SST index.
-		return ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
+		cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
 	case TypeNumber:
-		return ooxml.CellData{Ref: ref, Value: fmt.Sprintf("%g", v.Number)}
+		cd = ooxml.CellData{Ref: ref, Value: fmt.Sprintf("%g", v.Number)}
 	case TypeBool:
 		val := "0"
 		if v.Bool {
 			val = "1"
 		}
-		return ooxml.CellData{Ref: ref, Type: "b", Value: val}
+		cd = ooxml.CellData{Ref: ref, Type: "b", Value: val}
 	default:
-		return ooxml.CellData{Ref: ref}
+		cd = ooxml.CellData{Ref: ref}
 	}
+	cd.Formula = formula
+	return cd
 }
