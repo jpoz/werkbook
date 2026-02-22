@@ -5,13 +5,15 @@ import (
 	"iter"
 	"sort"
 
+	"github.com/jpoz/werkbook/formula"
 	"github.com/jpoz/werkbook/ooxml"
 )
 
 // Sheet represents a single worksheet in the workbook.
 type Sheet struct {
-	name string
-	rows map[int]*Row
+	name       string
+	rows       map[int]*Row
+	evaluating map[[2]int]bool // tracks cells currently being evaluated (circular ref detection)
 }
 
 func newSheet(name string) *Sheet {
@@ -90,6 +92,12 @@ func (s *Sheet) GetValue(cell string) (Value, error) {
 	if !ok {
 		return Value{Type: TypeEmpty}, nil
 	}
+
+	if c.formula != "" && c.value.Type == TypeEmpty {
+		v := s.evaluateFormula(c, col, row)
+		c.value = v
+	}
+
 	return c.value, nil
 }
 
@@ -194,6 +202,109 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 		}
 	}
 	return sd
+}
+
+// evaluateFormula parses, compiles, and executes the formula on the given cell.
+func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
+	if s.evaluating == nil {
+		s.evaluating = make(map[[2]int]bool)
+	}
+	key := [2]int{col, row}
+	if s.evaluating[key] {
+		// Circular reference
+		return Value{Type: TypeError, String: "#REF!"}
+	}
+	s.evaluating[key] = true
+	defer delete(s.evaluating, key)
+
+	node, err := formula.Parse(c.formula)
+	if err != nil {
+		return Value{Type: TypeError, String: "#NAME?"}
+	}
+	cf, err := formula.Compile(c.formula, node)
+	if err != nil {
+		return Value{Type: TypeError, String: "#NAME?"}
+	}
+
+	resolver := &sheetResolver{sheet: s}
+	result, err := formula.Eval(cf, resolver)
+	if err != nil {
+		return Value{Type: TypeError, String: err.Error()}
+	}
+
+	return formulaValueToValue(result)
+}
+
+// formulaValueToValue converts a formula.Value to a werkbook Value.
+func formulaValueToValue(fv formula.Value) Value {
+	switch fv.Type {
+	case formula.ValueNumber:
+		return Value{Type: TypeNumber, Number: fv.Num}
+	case formula.ValueString:
+		return Value{Type: TypeString, String: fv.Str}
+	case formula.ValueBool:
+		return Value{Type: TypeBool, Bool: fv.Bool}
+	case formula.ValueError:
+		return Value{Type: TypeError, String: fv.Str}
+	default:
+		return Value{Type: TypeEmpty}
+	}
+}
+
+// sheetResolver implements formula.CellResolver backed by a Sheet.
+type sheetResolver struct {
+	sheet *Sheet
+}
+
+func (sr *sheetResolver) GetCellValue(addr formula.CellAddr) formula.Value {
+	r, ok := sr.sheet.rows[addr.Row]
+	if !ok {
+		return formula.EmptyVal()
+	}
+	c, ok := r.cells[addr.Col]
+	if !ok {
+		return formula.EmptyVal()
+	}
+
+	// If this cell has a formula that hasn't been evaluated, evaluate it now.
+	if c.formula != "" && c.value.Type == TypeEmpty {
+		v := sr.sheet.evaluateFormula(c, addr.Col, addr.Row)
+		c.value = v
+	}
+
+	return valueToFormulaValue(c.value)
+}
+
+func (sr *sheetResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
+	rows := make([][]formula.Value, addr.ToRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= addr.ToRow; r++ {
+		row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
+		for col := addr.FromCol; col <= addr.ToCol; col++ {
+			row[col-addr.FromCol] = sr.GetCellValue(formula.CellAddr{
+				Sheet: addr.Sheet,
+				Col:   col,
+				Row:   r,
+			})
+		}
+		rows[r-addr.FromRow] = row
+	}
+	return rows
+}
+
+// valueToFormulaValue converts a werkbook Value to a formula.Value.
+func valueToFormulaValue(v Value) formula.Value {
+	switch v.Type {
+	case TypeNumber:
+		return formula.NumberVal(v.Number)
+	case TypeString:
+		return formula.StringVal(v.String)
+	case TypeBool:
+		return formula.BoolVal(v.Bool)
+	case TypeError:
+		return formula.ErrorVal(formula.ErrValVALUE)
+	default:
+		return formula.EmptyVal()
+	}
 }
 
 func cellToData(ref string, v Value, formula string) ooxml.CellData {
