@@ -45,11 +45,16 @@ func (s *Sheet) SetValue(cell string, v any) error {
 
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	// Unregister old formula if any.
+	if c.formula != "" {
+		s.file.deps.Unregister(formula.QualifiedCell{Sheet: s.name, Col: col, Row: row})
+	}
 	c.value = val
 	c.formula = ""
 	c.compiled = nil
 	c.cachedGen = 0
 	s.file.calcGen++
+	s.file.invalidateDependents(s.name, col, row)
 	return nil
 }
 
@@ -62,11 +67,27 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	// Unregister old formula if any.
+	qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
+	if c.formula != "" {
+		s.file.deps.Unregister(qc)
+	}
 	c.formula = f
 	c.compiled = nil
 	c.value = Value{}
 	c.cachedGen = 0
+	c.dirty = true
 	s.file.calcGen++
+	// Compile and register in dep graph.
+	node, parseErr := formula.Parse(f)
+	if parseErr == nil {
+		cf, compErr := formula.Compile(f, node)
+		if compErr == nil {
+			c.compiled = cf
+			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
+		}
+	}
+	s.file.invalidateDependents(s.name, col, row)
 	return nil
 }
 
@@ -264,11 +285,14 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 	return sd
 }
 
-// resolveCell evaluates the cell's formula if it is stale (cachedGen < calcGen).
+// resolveCell evaluates the cell's formula if it is dirty or stale.
+// dirty is the primary signal from the dep graph; cachedGen is a safety net
+// for formulas not yet registered in the dep graph.
 func (s *Sheet) resolveCell(c *Cell, col, row int) {
-	if c.formula != "" && c.cachedGen < s.file.calcGen {
+	if c.formula != "" && (c.dirty || c.cachedGen < s.file.calcGen) {
 		c.value = s.evaluateFormula(c, col, row)
 		c.cachedGen = s.file.calcGen
+		c.dirty = false
 	}
 }
 
@@ -298,6 +322,9 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 		}
 		c.compiled = compiled
 		cf = compiled
+		// Register in dep graph on first compilation.
+		qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
+		f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
 	}
 
 	resolver := &fileResolver{file: f, currentSheet: s.name}

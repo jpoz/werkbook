@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/jpoz/werkbook/formula"
 	"github.com/jpoz/werkbook/ooxml"
 )
 
@@ -12,8 +13,9 @@ import (
 type File struct {
 	sheets     []*Sheet
 	sheetNames []string
-	calcGen    uint64          // incremented on any cell mutation; starts at 1
-	evaluating map[cellKey]bool // tracks cells being evaluated (circular ref detection)
+	calcGen    uint64              // incremented on any cell mutation; starts at 1
+	evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
+	deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -44,7 +46,7 @@ func New(opts ...Option) *File {
 	for _, fn := range opts {
 		fn(&o)
 	}
-	f := &File{calcGen: 1}
+	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
 	f.addSheet(o.firstSheet)
 	return f
 }
@@ -85,6 +87,14 @@ func (f *File) DeleteSheet(name string) error {
 	}
 	for i, s := range f.sheets {
 		if s.name == name {
+			// Unregister all formulas on the deleted sheet.
+			for _, r := range s.rows {
+				for col, c := range r.cells {
+					if c.formula != "" {
+						f.deps.Unregister(formula.QualifiedCell{Sheet: name, Col: col, Row: r.num})
+					}
+				}
+			}
 			f.sheets = append(f.sheets[:i], f.sheets[i+1:]...)
 			f.sheetNames = append(f.sheetNames[:i], f.sheetNames[i+1:]...)
 			return nil
@@ -134,7 +144,7 @@ func Open(name string) (*File, error) {
 }
 
 func fileFromData(data *ooxml.WorkbookData) *File {
-	f := &File{calcGen: 1}
+	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
 		for _, rd := range sd.Rows {
@@ -155,6 +165,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 			}
 		}
 	}
+	f.registerAllFormulas()
 	return f
 }
 
@@ -186,4 +197,66 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 		data.Sheets = append(data.Sheets, s.toSheetData())
 	}
 	return data
+}
+
+// registerAllFormulas iterates all cells and registers compiled formulas in
+// the dependency graph. Called at the end of fileFromData.
+func (f *File) registerAllFormulas() {
+	for _, s := range f.sheets {
+		for _, r := range s.rows {
+			for col, c := range r.cells {
+				if c.formula == "" {
+					continue
+				}
+				node, err := formula.Parse(c.formula)
+				if err != nil {
+					continue
+				}
+				cf, err := formula.Compile(c.formula, node)
+				if err != nil {
+					continue
+				}
+				c.compiled = cf
+				qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: r.num}
+				f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
+			}
+		}
+	}
+}
+
+// invalidateDependents queries the dep graph for all transitive dependents
+// of the given cell and marks them dirty.
+func (f *File) invalidateDependents(sheet string, col, row int) {
+	changed := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
+	for _, dep := range f.deps.Dependents(changed) {
+		s := f.Sheet(dep.Sheet)
+		if s == nil {
+			continue
+		}
+		r, ok := s.rows[dep.Row]
+		if !ok {
+			continue
+		}
+		c, ok := r.cells[dep.Col]
+		if !ok {
+			continue
+		}
+		c.dirty = true
+	}
+}
+
+// Recalculate evaluates all dirty formula cells. Cells are evaluated lazily
+// via GetValue, but this method forces evaluation of every dirty cell.
+func (f *File) Recalculate() {
+	for _, s := range f.sheets {
+		for _, r := range s.rows {
+			for col, c := range r.cells {
+				if c.formula != "" && (c.dirty || c.cachedGen < f.calcGen) {
+					c.value = s.evaluateFormula(c, col, r.num)
+					c.cachedGen = f.calcGen
+					c.dirty = false
+				}
+			}
+		}
+	}
 }

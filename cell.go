@@ -9,6 +9,7 @@ type Cell struct {
 	formula   string
 	compiled  *formula.CompiledFormula
 	cachedGen uint64 // file.calcGen when value was last computed from formula
+	dirty     bool   // needs recalculation via dependency graph
 }
 
 // Col returns the 1-based column number.
