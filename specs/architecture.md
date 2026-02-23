@@ -8,7 +8,7 @@ Werkbook is a Go library for reading, writing, and recalculating Excel XLSX file
 
 1. **Fast recalculation** - Formulas are parsed once, compiled to bytecode, and evaluated via a stack-based VM. A dependency graph enables incremental recalculation.
 2. **Correct by default** - Match Excel behavior for formula evaluation, type coercion, and edge cases.
-3. **Memory efficient** - Stream large files; lazy-load sheets; spill to disk when needed.
+3. **Memory efficient** - Sparse cell storage; streaming and lazy-loading planned for future phases.
 4. **Simple API** - Provide a clean, idiomatic Go API that covers the common 90% of use cases without exposing OOXML internals.
 
 ---
@@ -17,7 +17,7 @@ Werkbook is a Go library for reading, writing, and recalculating Excel XLSX file
 
 ```
 werkbook/
-  werkbook.go          # File struct, Open, New, SaveAs
+  werkbook.go          # File struct, Open, New, SaveAs, Recalculate
   sheet.go             # Sheet type and operations
   cell.go              # Cell type, getting/setting values
   row.go               # Row iteration and access
@@ -31,31 +31,34 @@ werkbook/
     parser.go          # Token stream -> AST (Pratt parser)
     ast.go             # AST node types
     cellref.go         # Cell/range reference parsing
-    compiler.go        # AST -> bytecode
+    compiler.go        # AST -> bytecode (99 registered functions)
     opcodes.go         # Bytecode instruction set
     eval.go            # Stack-based VM evaluator
     types.go           # Value types for formula engine (Number, String, Bool, Error, Array)
+    depgraph.go        # Cell dependency graph for incremental recalculation
     functions_math.go  # Math function implementations (27 functions)
     functions_text.go  # Text function implementations (22 functions)
-    functions_stat.go  # Statistical function implementations (15 functions)
+    functions_stat.go  # Statistical function implementations (16 functions)
     functions_date.go  # Date/time function implementations (11 functions)
     functions_lookup.go # Lookup function implementations (7 functions)
     functions_logic.go # Logical function implementations (7 functions)
-    functions_info.go  # Information function implementations (10 functions)
+    functions_info.go  # Information function implementations (11 functions)
   ooxml/
     reader.go          # ZIP/XML reading
     writer.go          # ZIP/XML writing
     workbook.go        # Intermediate data structures (WorkbookData, SheetData, etc.)
     worksheet.go       # Worksheet XML handling
-    styles.go          # Style definitions
+    styles.go          # Style definitions (minimal default only)
     sharedstrings.go   # Shared string table
     relationships.go   # Package relationships
     contenttypes.go    # Content type mappings
+  _examples/
+    create/main.go     # Example: create workbook with formulas
+    calculate/main.go  # Example: formula engine demo (amortization, grades, etc.)
 ```
 
 **Not yet implemented** (planned for future phases):
-- `style.go` — Style definitions and application
-- `formula/depgraph.go` — Cell dependency graph
+- `style.go` — Style definitions and application (user-facing API)
 - `formula/functions_fin.go` — Financial function implementations
 - `formula/functions_eng.go` — Engineering function implementations
 - `ooxml/calcchain.go` — Calculation chain XML
@@ -67,10 +70,10 @@ werkbook/
 
 | Package | Coverage | Test Files | Notes |
 |---------|----------|------------|-------|
-| `werkbook` (root) | 84.0% | 11 | Round-trip, iteration, formulas, multi-sheet, values |
-| `werkbook/formula` | 83.0% | 11 | Lexer, parser, compiler, eval, all 7 function categories |
+| `werkbook` (root) | 77.2% | 12 | Round-trip, iteration, formulas, caching, dep graph, multi-sheet, values |
+| `werkbook/formula` | 82.9% | 13 | Lexer, parser, compiler, eval, dep graph, all 7 function categories |
 | `werkbook/ooxml` | 0.0% | 0 | Exercised indirectly via integration tests |
-| **Overall** | **78.1%** | **22** | No benchmarks yet |
+| **Overall** | ~**77%** | **25** | No benchmarks yet |
 
 ---
 
@@ -82,36 +85,30 @@ The root object representing an open workbook.
 
 ```go
 type File struct {
-    sheets    []*Sheet
-    sheetMap  map[string]*Sheet       // name -> sheet
-    styles    *StyleSheet
-    strings   *SharedStrings
-    depGraph  *formula.DepGraph       // global dependency graph
-    options   Options
+    sheets     []*Sheet
+    sheetNames []string
+    calcGen    uint64              // incremented on any cell mutation; starts at 1
+    evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
+    deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
 }
 
-type Options struct {
-    // Memory management
-    MaxMemoryMB       int  // spill to disk above this (default 256)
-
-    // Calculation
-    MaxIterations     int  // for circular refs (default 100)
-    IterationTolerance float64 // convergence threshold (default 0.001)
+// cellKey identifies a cell across the entire workbook for circular ref detection.
+type cellKey struct {
+    sheet string
+    col   int
+    row   int
 }
 ```
+
+`New()` accepts functional options (currently only `FirstSheet(name)` to set the initial sheet name). `Open()` reads an XLSX, parses all sheets eagerly, compiles all formulas, and registers them in the dependency graph.
 
 ### Sheet
 
 ```go
 type Sheet struct {
-    file     *File
-    name     string
-    index    int
-    rows     map[int]*Row   // sparse row storage, keyed by 1-based row number
-    cols     []ColDef       // column width/style defaults
-    merges   []CellRange
-    maxRow   int
-    maxCol   int
+    file *File
+    name string
+    rows map[int]*Row   // sparse row storage, keyed by 1-based row number
 }
 ```
 
@@ -122,39 +119,33 @@ type Row struct {
     sheet  *Sheet
     num    int             // 1-based row number
     cells  map[int]*Cell   // sparse cell storage, keyed by 1-based column
-    height float64
-    hidden bool
 }
 
 type Cell struct {
-    row      *Row
-    col      int            // 1-based column number
-
-    // Exactly one of these is set:
-    value    Value           // literal value (number, string, bool, error)
-    formula  *CompiledFormula // non-nil if this cell has a formula
-
-    style    int             // index into StyleSheet
-    cached   Value           // last calculated value (for formula cells)
-    dirty    bool            // needs recalculation
+    col       int                        // 1-based column number
+    value     Value                      // current value (literal or last computed)
+    formula   string                     // formula text (e.g., "SUM(A1:A10)"), "" if none
+    compiled  *formula.CompiledFormula   // cached compiled bytecode
+    cachedGen uint64                     // file.calcGen when value was last computed from formula
+    dirty     bool                       // flagged by dependency graph on upstream mutation
 }
 ```
 
-### Value
+Formula cells store both the formula text and its compiled bytecode. The `cachedGen` field enables lazy evaluation: when `GetValue` is called on a formula cell whose `cachedGen < file.calcGen` or whose `dirty` flag is set, the formula is re-evaluated via the VM.
 
-A tagged union for cell values. Used as operands throughout the formula engine.
+### Value (Public API — `value.go`)
+
+A tagged union for cell values in the public API. Error cells store the error string (e.g., `"#DIV/0!"`) in the `String` field with `Type: TypeError`.
 
 ```go
 type Value struct {
-    Type    ValueType
-    Num     float64
-    Str     string
-    Bool    bool
-    Err     ErrorCode
-    Array   [][]Value  // for array formulas / ranges
+    Type   ValueType
+    Number float64
+    String string
+    Bool   bool
 }
 
-type ValueType byte
+type ValueType int
 
 const (
     TypeEmpty ValueType = iota
@@ -162,23 +153,51 @@ const (
     TypeString
     TypeBool
     TypeError
-    TypeArray
-)
-
-type ErrorCode byte
-
-const (
-    ErrNone ErrorCode = iota
-    ErrDIV0     // #DIV/0!
-    ErrNA       // #N/A
-    ErrNAME     // #NAME?
-    ErrNULL     // #NULL!
-    ErrNUM      // #NUM!
-    ErrREF      // #REF!
-    ErrVALUE    // #VALUE!
-    ErrCALC     // #CALC!
 )
 ```
+
+### Value (Formula Engine — `formula/types.go`)
+
+The formula engine uses a separate `Value` type with a numeric error code and array support for range results.
+
+```go
+type Value struct {
+    Type  ValueType
+    Num   float64
+    Str   string
+    Bool  bool
+    Err   ErrorValue
+    Array [][]Value  // used by ValueArray for range results
+}
+
+type ValueType byte
+
+const (
+    ValueEmpty  ValueType = iota
+    ValueNumber
+    ValueString
+    ValueBool
+    ValueError
+    ValueArray  // for range results in VM
+)
+
+type ErrorValue byte
+
+const (
+    ErrValDIV0        ErrorValue = iota // #DIV/0!
+    ErrValNA                            // #N/A
+    ErrValNAME                          // #NAME?
+    ErrValNULL                          // #NULL!
+    ErrValNUM                           // #NUM!
+    ErrValREF                           // #REF!
+    ErrValVALUE                         // #VALUE!
+    ErrValSPILL                         // #SPILL!
+    ErrValCALC                          // #CALC!
+    ErrValGETTINGDATA                   // #GETTING_DATA
+)
+```
+
+Conversion between the two `Value` types happens at the boundary in `sheet.go` (`formulaValueToValue` / `valueToFormulaValue`).
 
 ---
 
@@ -353,211 +372,164 @@ type CompiledFormula struct {
 
 The `Refs` and `Ranges` fields are populated during compilation and are used to build the dependency graph without re-parsing.
 
-### Phase 4: VM (`formula/vm.go`)
+### Phase 4: VM (`formula/eval.go`)
 
-A stack-based virtual machine that evaluates compiled formulas. The hot loop is a switch over opcodes with no reflection.
+A stack-based evaluator that executes compiled formulas. Cell and range lookups are abstracted via the `CellResolver` interface, keeping the VM decoupled from `Sheet`/`File`.
 
 ```go
-type VM struct {
-    file     *File
-    stack    []Value    // operand stack, pre-allocated
-    sp       int        // stack pointer
-    ctx      *CalcContext
+// CellResolver abstracts cell/range lookups so the VM has no dependency on Sheet.
+type CellResolver interface {
+    GetCellValue(addr CellAddr) Value
+    GetRangeValues(addr RangeAddr) [][]Value
 }
 
-type CalcContext struct {
-    entry      CellAddr
-    iterations map[CellAddr]int
-    cache      map[CellAddr]Value
+// EvalContext provides context about the current evaluation environment.
+type EvalContext struct {
+    CurrentCol   int
+    CurrentRow   int
+    CurrentSheet string
 }
 
-func (vm *VM) Eval(f *CompiledFormula, sheet *Sheet, row, col int) (Value, error) {
-    vm.sp = 0
-    for _, instr := range f.Code {
-        switch instr.Op {
+// Eval executes a compiled formula and returns the result.
+func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
+    stack := make([]Value, 0, 16)
+    for _, inst := range cf.Code {
+        switch inst.Op {
         case OpPushNum:
-            vm.push(f.Consts[instr.Operand])
+            push(cf.Consts[inst.Operand])
         case OpLoadCell:
-            addr := f.Refs[instr.Operand]
-            vm.push(vm.resolveCell(addr))
+            push(resolver.GetCellValue(cf.Refs[inst.Operand]))
         case OpLoadRange:
-            rng := f.Ranges[instr.Operand]
-            vm.push(vm.resolveRange(rng))
+            rows := resolver.GetRangeValues(cf.Ranges[inst.Operand])
+            push(Value{Type: ValueArray, Array: rows})
         case OpAdd:
-            b, a := vm.pop(), vm.pop()
-            vm.push(addValues(a, b))
+            // ... type coercion + arithmetic
         case OpCall:
-            funcID := instr.Operand >> 8
-            argc := instr.Operand & 0xFF
-            args := vm.popN(int(argc))
-            vm.push(builtinFuncs[funcID](args))
+            funcID := inst.Operand >> 8
+            argc := inst.Operand & 0xFF
+            // dispatch via callFunction() with function pointer lookup
         // ... other opcodes
         }
     }
-    return vm.stack[0], nil
+    return stack[0], nil
 }
 ```
 
 Key performance properties:
-- **No allocations in the hot path** - the stack is pre-allocated, Values are passed by value
-- **No reflection** - function dispatch via a function pointer table indexed by function ID
-- **No re-parsing** - bytecode is compiled once per formula and reused across recalculations
+- **No reflection** - function dispatch via `callFunction()` with a switch over function IDs
+- **No re-parsing** - bytecode is compiled once per formula and cached in `Cell.compiled`
 - **Cache-friendly** - instructions are a compact byte stream; the operand stack is a contiguous slice
 
-### Function Registry (`formula/functions.go`)
+The `fileResolver` type in `sheet.go` implements `CellResolver`, providing cross-sheet cell lookups with lazy formula evaluation (triggering `resolveCell` on referenced formula cells).
 
-Functions are registered in a table at init time. No reflection.
+### Function Registry (`formula/compiler.go` + `formula/eval.go`)
+
+Functions are identified at compile time by index into a sorted `knownFunctions` array (99 entries). At eval time, `callFunction()` dispatches via a switch on function ID. No reflection.
 
 ```go
-type BuiltinFunc func(args []Value) Value
+// Compile-time: sorted array of known function names
+var knownFunctions = [...]string{"ABS", "ACOS", "AND", ..., "YEAR"} // 99 entries
+var funcNameToID map[string]int // populated at init
 
-var builtinFuncs []BuiltinFunc   // indexed by function ID
-var funcNameToID map[string]int  // "SUM" -> 0, "IF" -> 1, ...
-
-func init() {
-    register("SUM", fnSUM)
-    register("IF", fnIF)
-    register("VLOOKUP", fnVLOOKUP)
-    // ... 500+ functions
-}
-
-func register(name string, fn BuiltinFunc) {
-    id := len(builtinFuncs)
-    builtinFuncs = append(builtinFuncs, fn)
-    funcNameToID[name] = id
+// Eval-time: dispatch by function ID
+func callFunction(funcID int, args []Value, ctx *EvalContext) Value {
+    switch funcID {
+    case funcNameToID["SUM"]:
+        return fnSUM(args)
+    case funcNameToID["IF"]:
+        return fnIF(args)
+    // ...
+    }
 }
 ```
 
 ---
 
-## Dependency Graph (`formula/depgraph.go`)
+## Dependency Graph (`formula/depgraph.go`) ✅
 
-This is the core of fast recalculation. Werkbook tracks which cells depend on which other cells and only recalculates what is necessary, rather than clearing all caches on any mutation.
+Werkbook tracks which cells depend on which other cells and only recalculates what is necessary, rather than clearing all caches on any mutation.
 
 ### Data Structure
 
 ```go
-type CellAddr struct {
-    Sheet int // sheet index
+// QualifiedCell is a fully-qualified cell address (sheet name is never empty).
+type QualifiedCell struct {
+    Sheet string
     Col   int // 1-based
     Row   int // 1-based
 }
 
 type DepGraph struct {
-    mu         sync.RWMutex
+    // Forward edges: formula cell → set of cells it reads
+    dependsOn  map[QualifiedCell]map[QualifiedCell]bool
+    // Reverse edges: data cell → set of formula cells that read it
+    dependents map[QualifiedCell]map[QualifiedCell]bool
+    // Range subscriptions for containment checks
+    rangeSubs  []rangeSub
+}
 
-    // Forward edges: "cell X depends on cells Y, Z, ..."
-    // Used to invalidate: when Y changes, look up who depends on Y.
-    dependents map[CellAddr][]CellAddr  // Y -> [cells that reference Y]
-
-    // Reverse edges: "cell X references cells Y, Z, ..."
-    // Used during formula registration/removal.
-    references map[CellAddr][]CellAddr  // X -> [cells that X references]
-
-    // Range dependents: cells that depend on a range (e.g., SUM(A1:A100))
-    // Stored separately because a change to any cell in the range must
-    // trigger recalculation of the dependent.
-    rangeDeps  map[CellAddr][]RangeAddr
-    rangeSubs  map[rangeKey][]CellAddr   // range -> [cells that reference this range]
+type rangeSub struct {
+    formulaCell QualifiedCell
+    rng         RangeAddr // always fully qualified
 }
 ```
 
 ### Operations
 
 **Register a formula:**
-When `SetCellFormula` is called, the formula is compiled, and `Refs`/`Ranges` from the compiled formula are used to register edges in the dependency graph.
+When `SetFormula` is called, the formula is compiled, and `Refs`/`Ranges` from the `CompiledFormula` are used to register edges. Unqualified refs (same-sheet) are resolved to the owning sheet name.
 
 ```go
-func (dg *DepGraph) Register(cell CellAddr, compiled *CompiledFormula) {
-    // Remove old edges for this cell
-    dg.Unregister(cell)
-
-    // Add forward edges for cell refs
-    for _, ref := range compiled.Refs {
-        dg.dependents[ref] = append(dg.dependents[ref], cell)
-    }
-    // Add range subscriptions
-    for _, rng := range compiled.Ranges {
-        key := rangeKey{rng.Sheet, rng.FromCol, rng.FromRow, rng.ToCol, rng.ToRow}
-        dg.rangeSubs[key] = append(dg.rangeSubs[key], cell)
-    }
-    dg.references[cell] = compiled.Refs
-    dg.rangeDeps[cell] = compiled.Ranges
-}
+func (g *DepGraph) Register(formulaCell QualifiedCell, owningSheet string, refs []CellAddr, ranges []RangeAddr)
 ```
 
-**Invalidate on mutation:**
-When a cell value changes, walk the dependency graph to mark all transitive dependents as dirty.
+**Unregister a formula:**
+Removes all forward/reverse edges and range subscriptions for a cell. Called automatically before re-registering and when deleting sheets.
 
 ```go
-func (dg *DepGraph) Invalidate(changed CellAddr) []CellAddr {
-    var dirty []CellAddr
-    visited := make(map[CellAddr]bool)
-    queue := []CellAddr{changed}
-
-    for len(queue) > 0 {
-        cur := queue[0]
-        queue = queue[1:]
-        if visited[cur] { continue }
-        visited[cur] = true
-
-        // Direct cell dependents
-        for _, dep := range dg.dependents[cur] {
-            dirty = append(dirty, dep)
-            queue = append(queue, dep)
-        }
-
-        // Range dependents: any range that contains `cur`
-        for key, deps := range dg.rangeSubs {
-            if key.Contains(cur) {
-                for _, dep := range deps {
-                    if !visited[dep] {
-                        dirty = append(dirty, dep)
-                        queue = append(queue, dep)
-                    }
-                }
-            }
-        }
-    }
-    return dirty
-}
+func (g *DepGraph) Unregister(formulaCell QualifiedCell)
 ```
 
-**Topological sort for recalculation order:**
-After collecting dirty cells, sort them so that dependencies are evaluated before dependents.
+**Query dependents:**
+`DirectDependents` returns immediate dependents (point refs + range containment). `Dependents` performs a BFS to return all transitive dependents.
 
 ```go
-func (dg *DepGraph) CalcOrder(dirty []CellAddr) ([]CellAddr, error) {
-    // Kahn's algorithm for topological sort
-    // Returns ErrCircularRef if a cycle is detected (handled via iteration)
-}
+func (g *DepGraph) DirectDependents(cell QualifiedCell) []QualifiedCell
+func (g *DepGraph) Dependents(changed QualifiedCell) []QualifiedCell
 ```
 
 ### Recalculation Flow
 
 ```
-1. User calls SetCellValue(sheet, "A1", 42)
-2.   -> cell.value = 42, cell.cached = 42
-3.   -> depGraph.Invalidate(A1) returns [B1, C1, D5] (cells with formulas referencing A1)
-4.   -> depGraph.CalcOrder([B1, C1, D5]) returns [B1, C1, D5] (topo sorted)
-5.   -> for each cell in order:
-6.        cell.dirty = true
-7. User calls CalcCellValue("Sheet1", "D5") or Recalculate()
-8.   -> if cell.dirty:
-9.        vm.Eval(cell.formula, ...) -> new value
-10.       cell.cached = new value
-11.       cell.dirty = false
+1. User calls sheet.SetValue("A1", 42)
+2.   -> cell.value = 42
+3.   -> file.calcGen++ (global generation counter)
+4.   -> file.invalidateDependents("Sheet1", col, row)
+5.       -> deps.Dependents(A1) returns [B1, C1, D5] (BFS transitive closure)
+6.       -> for each dependent: cell.dirty = true
+7. User calls sheet.GetValue("D5") or file.Recalculate()
+8.   -> if cell.dirty || cell.cachedGen < file.calcGen:
+9.        vm.Eval(cell.compiled, ...) -> new value
+10.       cell.value = new value
+11.       cell.cachedGen = file.calcGen
+12.       cell.dirty = false
 ```
 
 This means:
-- Changing a cell value does NOT trigger recalculation (just marks dirty cells).
-- Reading a formula cell's value triggers lazy evaluation if dirty.
-- `Recalculate()` eagerly evaluates all dirty cells in dependency order.
+- Changing a cell value does NOT trigger recalculation (just marks dirty cells via BFS).
+- Reading a formula cell's value triggers lazy evaluation if dirty or stale.
+- `Recalculate()` eagerly evaluates all dirty cells.
 - Only the affected subgraph is recalculated, not the entire workbook.
 
 ### Circular Reference Handling
 
-Circular references are detected during topological sort. When detected, the involved cells are evaluated iteratively up to `Options.MaxIterations`, converging when successive values differ by less than `Options.IterationTolerance`.
+Circular references are detected at evaluation time via the `evaluating` map on `File`. When a cell attempts to evaluate itself recursively, the cycle is detected and an error value is returned. Iterative convergence (MaxIterations/IterationTolerance) is not yet implemented.
+
+### Not Yet Implemented
+
+- **Topological sort for recalc order** — `Recalculate()` currently iterates all cells rather than using Kahn's algorithm on the dirty set.
+- **Iterative circular ref resolution** — Cycles are detected but not iteratively converged.
+- **Thread safety** — No mutex; the graph is not safe for concurrent access.
 
 ---
 
@@ -565,23 +537,22 @@ Circular references are detected during topological sort. When detected, the inv
 
 ### Process
 
-1. Open ZIP archive, enumerate entries
-2. Parse `[Content_Types].xml` to discover part types
-3. Parse `_rels/.rels` for package relationships
-4. Parse `xl/workbook.xml` -> workbook metadata, sheet list
-5. For each sheet, parse `xl/worksheets/sheet{N}.xml` -> rows and cells
-6. Parse `xl/sharedStrings.xml` -> string table (lazy, on first string access)
-7. Parse `xl/styles.xml` -> style definitions
-8. Parse `xl/calcChain.xml` -> used only for initial dirty-marking
+1. Open ZIP archive via `zip.NewReader`
+2. Parse `_rels/.rels` for package relationships
+3. Parse `xl/workbook.xml` -> sheet list and ordering
+4. Resolve sheet file paths via `xl/_rels/workbook.xml.rels`
+5. Parse `xl/sharedStrings.xml` -> string table (supports rich text via `<r>` elements)
+6. For each sheet, parse `xl/worksheets/sheet{N}.xml` -> rows and cells
+7. Resolve SST indices (cells with `Type: "s"`) to actual strings
 
-### Lazy Sheet Loading
+All sheets are parsed eagerly during `Open()`. After `ReadWorkbook` returns a `WorkbookData`, `fileFromData()` converts it to the public `File`/`Sheet`/`Cell` structures, compiles all formulas, and registers them in the dependency graph.
 
-Sheets are not parsed until first access. The ZIP entry's byte content is held in memory (or temp file for large entries), and deserialization happens on `file.Sheet("Sheet1")`.
+### Not Yet Implemented
 
-### Large File Support
-
-- ZIP entries larger than `Options.MaxMemoryMB / sheetCount` are extracted to temp files
-- Streaming reader (`stream/reader.go`) provides a row iterator that parses XML incrementally without loading the full sheet
+- Lazy sheet loading (parse on first access)
+- Streaming reader for large files
+- Styles parsing (only default stylesheet written)
+- Calculation chain (`xl/calcChain.xml`) parsing
 
 ---
 
@@ -589,29 +560,22 @@ Sheets are not parsed until first access. The ZIP entry's byte content is held i
 
 ### Process
 
-1. Create ZIP writer
-2. Serialize workbook.xml from `File.sheets` metadata
-3. For each sheet, serialize worksheet XML from `Sheet.rows`
-4. Serialize shared strings (deduplicated during write)
-5. Serialize styles
-6. Serialize calculation chain (from depGraph for Excel compat)
-7. Write content types and relationships
-8. Close ZIP
+1. `File.buildWorkbookData()` converts `Sheet` -> `SheetData` (sorting rows/cells, converting values to OOXML format)
+2. `WriteWorkbook()` creates a ZIP writer and serializes:
+   - `[Content_Types].xml`
+   - `_rels/.rels` (package relationships)
+   - `xl/workbook.xml` (sheet list)
+   - `xl/_rels/workbook.xml.rels` (sheet relationships)
+   - `xl/styles.xml` (hardcoded default)
+   - `xl/worksheets/sheet{N}.xml` for each sheet
+   - `xl/sharedStrings.xml` (SST built during write, deduplicating strings; cells mutated to SST indices)
+3. Close ZIP
 
-### Streaming Writer (`stream/writer.go`)
+### Not Yet Implemented
 
-For writing large files without holding the full sheet in memory:
-
-```go
-sw, _ := file.NewStreamWriter("Sheet1")
-for i := 1; i <= 1_000_000; i++ {
-    sw.SetRow(i, []any{i, "hello", 3.14})
-}
-sw.Flush()
-file.SaveAs("big.xlsx")
-```
-
-Rows are serialized to XML immediately and buffered to a temp file. On save, the temp file content is streamed directly into the ZIP entry.
+- Streaming writer for large files
+- Calculation chain serialization (`xl/calcChain.xml`)
+- Rich style serialization (beyond default stylesheet)
 
 ---
 
@@ -622,22 +586,21 @@ Rows are serialized to XML immediately and buffered to a temp file. On save, the
 ```go
 // Open an existing file
 f, err := werkbook.Open("report.xlsx")
-f, err := werkbook.Open("report.xlsx", werkbook.Options{MaxMemoryMB: 512})
 
-// Create a new file
+// Create a new file (default first sheet: "Sheet1")
 f := werkbook.New()
+f := werkbook.New(werkbook.FirstSheet("Data"))
 
 // Save
 err := f.SaveAs("output.xlsx")
-err := f.Save() // overwrite original
 ```
 
 ### Sheet Operations
 
 ```go
-sheet := f.Sheet("Sheet1")
-sheet, err := f.NewSheet("Data")
-f.DeleteSheet("Sheet2")
+sheet := f.Sheet("Sheet1")        // returns nil if not found
+sheet, err := f.NewSheet("Data")  // error if name already exists
+err := f.DeleteSheet("Sheet2")    // error if only sheet
 names := f.SheetNames()
 ```
 
@@ -645,49 +608,46 @@ names := f.SheetNames()
 
 ```go
 // Get/set values
-val, err := sheet.Cell("A1")           // returns Value
-sheet.SetValue("A1", 42)               // sets number
-sheet.SetValue("A1", "hello")          // sets string
-sheet.SetValue("A1", true)             // sets bool
-sheet.SetValue("A1", time.Now())       // sets date
+val, err := sheet.GetValue("A1")        // returns Value (lazy-evaluates formulas)
+err := sheet.SetValue("A1", 42)         // sets number
+err := sheet.SetValue("A1", "hello")    // sets string
+err := sheet.SetValue("A1", true)       // sets bool
+err := sheet.SetValue("A1", time.Now()) // sets date (stored as Excel serial number)
 
-// Formulas
-sheet.SetFormula("B1", "SUM(A1:A100)")
-formula, err := sheet.Formula("B1")    // returns "SUM(A1:A100)"
+// Formulas (without leading '=')
+err := sheet.SetFormula("B1", "SUM(A1:A100)")
+formula, err := sheet.GetFormula("B1")  // returns "SUM(A1:A100)"
 
-// Calculated value (lazy - evaluates if dirty)
-result, err := sheet.CalcValue("B1")   // returns Value
+// GetValue on a formula cell triggers lazy evaluation if dirty/stale
+result, err := sheet.GetValue("B1")     // returns computed Value
 
-// Bulk read
-for row := range sheet.Rows() {        // iterator
+// Bulk read (Go 1.23 iterators)
+for row := range sheet.Rows() {
     for _, cell := range row.Cells() {
-        // ...
+        cell.Col()     // 1-based column
+        cell.Value()   // current Value
+        cell.Formula() // formula text or ""
     }
 }
+
+// Sheet metadata
+sheet.MaxRow()  // highest row with data
+sheet.MaxCol()  // highest column with data
+
+// Debug output
+sheet.PrintTo(os.Stdout) // tabular text dump
 ```
 
 ### Recalculation
 
 ```go
-// Recalculate all dirty cells
-err := f.Recalculate()
-
-// Recalculate a single cell (and its dependencies)
-val, err := f.CalcCell("Sheet1", "B1")
+// Recalculate all dirty/stale formula cells eagerly
+f.Recalculate()
 ```
 
-### Styles
+### Styles (not yet implemented)
 
-```go
-style := werkbook.Style{
-    Font:      &werkbook.Font{Bold: true, Size: 12, Name: "Calibri"},
-    Fill:      &werkbook.Fill{Type: "solid", Color: "#FF0000"},
-    Alignment: &werkbook.Alignment{Horizontal: "center"},
-    NumFmt:    "#,##0.00",
-}
-id, err := f.NewStyle(style)
-sheet.SetStyle("A1:D1", id)
-```
+Only a hardcoded default stylesheet is written (Calibri 11pt). A user-facing styles API is planned for a future phase.
 
 ---
 
@@ -695,23 +655,21 @@ sheet.SetStyle("A1:D1", id)
 
 | Operation | Naive Approach | Werkbook |
 |-----------|----------------|----------|
-| Parse formula | Every evaluation (re-tokenize) | Once (compile to bytecode, cache) |
-| Function dispatch | Reflection-based | Direct function pointer lookup by index |
-| Dependency tracking | None (clear all caches on any mutation) | DAG with incremental invalidation |
+| Parse formula | Every evaluation (re-tokenize) | Once (compile to bytecode, cache in `Cell.compiled`) |
+| Function dispatch | Reflection-based | Switch on function ID (no reflection) |
+| Dependency tracking | None (clear all caches on any mutation) | DAG with BFS incremental invalidation |
 | Recalc scope | All formula cells | Only dirty cells + transitive dependents |
 | Value representation | String boxing | `Value` tagged union, no boxing for numbers/bools |
 | Operator evaluation | String-keyed map lookup per operator | Switch on opcode byte |
-| Range resolution | Materialize full matrix | Lazy resolution, stream from sparse row map |
-| Defined name lookup | Linear scan of all names | Hash map lookup |
-| Stack implementation | Heap-allocated nodes | Pre-allocated `[]Value` slice |
+| Stack implementation | Heap-allocated nodes | `[]Value` slice |
 
-### Expected Speedup Sources
+### Key Performance Properties
 
-1. **Compiled formulas** (~5-10x for repeated evaluation): No re-tokenizing or re-parsing. The bytecode is a compact `[]Instruction` walked in a tight loop.
-2. **No reflection** (~2-3x for function-heavy sheets): Direct indexed function calls instead of reflection-based dispatch.
-3. **Incremental recalculation** (unbounded, depends on workbook): Changing one cell in a million-row sheet only recalculates the affected subgraph, not all formulas.
-4. **Cache-friendly data structures** (~1.5-2x): Pre-allocated operand stack, compact instruction encoding, sparse row/cell maps.
-5. **Lazy range evaluation** (~2-5x for large ranges): Avoid materializing `A:A` as a 1M-element matrix when SUM just needs to iterate.
+1. **Compiled formulas**: No re-tokenizing or re-parsing. The bytecode is a compact `[]Instruction` walked in a tight loop, cached on the `Cell`.
+2. **No reflection**: Function dispatch via switch on function ID.
+3. **Incremental recalculation**: Changing one cell only marks the affected subgraph dirty via BFS on the dependency graph, not all formulas.
+4. **Lazy evaluation**: Dirty formula cells are only re-evaluated when their value is read (via `GetValue`), or eagerly via `Recalculate()`.
+5. **Generation counters**: The `calcGen`/`cachedGen` mechanism provides a cheap staleness check without requiring every formula cell to be visited on mutation.
 
 ---
 
@@ -720,15 +678,15 @@ sheet.SetStyle("A1:D1", id)
 ### Phase 1: Core Read/Write ✅
 - [x] OOXML reader/writer (workbook, worksheets, shared strings, styles)
 - [x] Cell value get/set (numbers, strings, bools, dates)
-- [x] Sheet operations (create, delete, rename, list)
-- [x] Row/column operations
+- [x] Sheet operations (create, delete, list)
+- [x] Row/cell iteration (Go 1.23 `iter.Seq` iterators)
 - [ ] Basic streaming reader/writer
 
-#### Test Coverage (root package): 84.0%
+#### Test Coverage (root package): 77.2%
 
-Tests cover: round-trip read/write, shared string deduplication, sparse data, multi-sheet operations, sheet deletion, duplicate sheet names, formula evaluation and round-trip, row/cell iteration, MaxRow/MaxCol, SetValue/GetValue, date values, ZIP validity. The `ooxml/` internal package currently has 0% direct test coverage (exercised indirectly through integration tests).
+Tests cover: round-trip read/write, shared string deduplication, sparse data, multi-sheet operations, sheet deletion, duplicate sheet names, formula evaluation and round-trip, formula caching and dirty detection, dependency graph integration, row/cell iteration, MaxRow/MaxCol, SetValue/GetValue, date values, ZIP validity. The `ooxml/` internal package currently has 0% direct test coverage (exercised indirectly through integration tests).
 
-### Phase 2: Formula Engine (in progress)
+### Phase 2: Formula Engine ✅
 - [x] Lexer (`formula/lexer.go`) — tokenizer with 32 tests
 - [x] Parser (`formula/parser.go`) — Pratt parser producing AST, with comprehensive tests
   - [x] AST node types (`formula/ast.go`): `NumberLit`, `StringLit`, `BoolLit`, `ErrorLit`, `CellRef`, `RangeRef`, `UnaryExpr`, `BinaryExpr`, `PostfixExpr`, `FuncCall`, `ArrayLit`
@@ -736,29 +694,35 @@ Tests cover: round-trip read/write, shared string deduplication, sparse data, mu
   - [x] Cell reference parsing (`formula/cellref.go`): bare, absolute, mixed, sheet-qualified, quoted sheets with escape handling
   - [x] Operator precedence matching Excel: `^` right-associative, unary `-`/`+` so `-2^3 = -(2^3)`, greedy postfix `%`
   - [x] S-expression `String()` on all nodes for debugging and test output
-- [x] Compiler (`formula/compiler.go`) — AST to bytecode with constant/ref deduplication
+- [x] Compiler (`formula/compiler.go`) — AST to bytecode with constant/ref deduplication, 99 registered functions
 - [x] VM evaluator (`formula/eval.go`) — stack-based VM, `CellResolver` interface for cell/range lookup
-- [x] Core function set (70+ functions implemented across 7 files):
-  - [x] Math (27): SUM, ABS, ACOS, ASIN, ATAN, ATAN2, CEILING, COS, EXP, FLOOR, INT, LN, LOG, LOG10, MOD, PI, POWER, PRODUCT, RAND, RANDBETWEEN, ROUND, ROUNDDOWN, ROUNDUP, SIN, SQRT, TAN
-  - [x] Statistics (15): AVERAGE, AVERAGEIF, AVERAGEIFS, COUNT, COUNTA, COUNTBLANK, COUNTIF, COUNTIFS, LARGE, MAX, MEDIAN, MIN, SMALL, SUMIF, SUMIFS, SUMPRODUCT
+- [x] Core function set (99 functions implemented across 7 files):
+  - [x] Math (27): ABS, ACOS, ASIN, ATAN, ATAN2, CEILING, COS, EXP, FLOOR, INT, LN, LOG, LOG10, MOD, PI, POWER, PRODUCT, RAND, RANDBETWEEN, ROUND, ROUNDDOWN, ROUNDUP, SIN, SQRT, TAN
+  - [x] Statistics (16): SUM, AVERAGE, AVERAGEIF, AVERAGEIFS, COUNT, COUNTA, COUNTBLANK, COUNTIF, COUNTIFS, LARGE, MAX, MEDIAN, MIN, SMALL, SUMIF, SUMIFS, SUMPRODUCT
   - [x] Text (22): CHAR, CHOOSE, CLEAN, CODE, CONCATENATE/CONCAT, EXACT, FIND, LEFT, LEN, LOWER, MID, PROPER, REPLACE, REPT, RIGHT, SEARCH, SUBSTITUTE, TEXT, TRIM, UPPER, VALUE
   - [x] Logic (7): IF, IFERROR, AND, OR, NOT, XOR, SORT
   - [x] Lookup (7): VLOOKUP, HLOOKUP, INDEX, MATCH, LOOKUP, XLOOKUP, INDIRECT (stub)
-  - [x] Info (10): ISBLANK, ISERROR, ISNA, ISNUMBER, ISTEXT, IFNA, COLUMN, ROW, COLUMNS, ROWS
+  - [x] Info (11): ISBLANK, ISERR, ISERROR, ISNA, ISNUMBER, ISTEXT, IFNA, COLUMN, ROW, COLUMNS, ROWS
   - [x] Date (11): DATE, DAY, HOUR, MINUTE, MONTH, NOW, SECOND, TIME, TODAY, YEAR
 - [x] Cell reference resolution (single cell, ranges, cross-sheet via `CellResolver` interface)
-- [ ] Dependency graph and incremental invalidation
-- [ ] Circular reference detection and iterative evaluation
+- [x] Formula caching with generation counters (`calcGen`/`cachedGen`) for lazy evaluation
+- [x] Dependency graph (`formula/depgraph.go`) with BFS transitive invalidation
+- [x] Incremental recalculation — `SetValue` marks only affected dependents dirty
+- [x] Circular reference detection (via `evaluating` map at eval time)
+- [x] `Recalculate()` for eager evaluation of all dirty cells
+- [ ] Topological sort for optimal recalculation order (Kahn's algorithm)
+- [ ] Iterative circular reference convergence (MaxIterations/IterationTolerance)
 
-#### Test Coverage (formula package): 83.0%
+#### Test Coverage (formula package): 82.9%
 
-The formula engine has comprehensive test coverage across 22 test files:
+The formula engine has comprehensive test coverage across 13 test files:
 
 - **Lexer tests** (`lexer_test.go`): 32+ tests covering all token types, edge cases
 - **Parser tests** (`parser_test.go`): AST construction for all node types
 - **Cell ref tests** (`cellref_test.go`): absolute, relative, mixed, sheet-qualified, quoted sheet names
 - **Compiler tests** (`compiler_test.go`): bytecode generation for literals, refs, ranges, operators, functions, arrays, constant deduplication
 - **Eval tests** (`eval_test.go`): arithmetic, cell references, ranges, string concat, comparisons, division edge cases, type coercion (`coerceNum` with empty/string/bool/error), `compareValues` (same-type and cross-type ordering), `isTruthy` (all value types), `valueToString`/`errorValueToString` (all error codes), error propagation through all operators, unary/percent edge cases, large number arithmetic, empty cell handling, array literals, ROW/COLUMN/ROWS/COLUMNS, IFNA
+- **Dep graph tests** (`depgraph_test.go`): register/unregister, direct dependents, transitive BFS, range containment
 - **Math function tests** (`functions_math_test.go`): basic correctness for trig, rounding, log, power functions
 - **Stat function tests** (`functions_stat_test.go`): MEDIAN, LARGE/SMALL (including k out of range), COUNTBLANK, SUMIF/COUNTIF (with operator and wildcard criteria), SUMPRODUCT, COUNTA, SUMIFS/COUNTIFS/AVERAGEIF/AVERAGEIFS (multiple criteria, no-match DIV/0), SUM with mixed types, MIN/MAX with negatives/empty, error propagation in ranges, extended `matchesCriteria` (wildcards, case-insensitive, numeric operators)
 - **Text function tests** (`functions_text_test.go`): CHAR/CODE (bounds), CLEAN, PROPER, REPLACE (insert/delete/boundary), REPT (zero/negative), FIND/SEARCH (case sensitivity, start position, not found), LEFT/RIGHT/MID (default args, zero, exceeds length, negative), SUBSTITUTE (all occurrences, specific instance, no match, case sensitive), TEXT format codes (decimals, percent, commas, negative), VALUE (commas, dollar, percent, whitespace, non-numeric), EXACT (case-sensitive), CHOOSE (out of range), CONCATENATE with mixed types, LEN with Unicode
@@ -766,6 +730,11 @@ The formula engine has comprehensive test coverage across 22 test files:
 - **Logic function tests** (`functions_logic_test.go`): AND/OR/NOT, XOR (odd/even true count), IF (2-arg missing else)
 - **Info function tests** (`functions_info_test.go`): ISBLANK/ISNUMBER/ISTEXT, ISERROR (div/0, #N/A, #VALUE!, non-error)
 - **Date function tests** (`functions_date_test.go`): DATE, DAY, MONTH, YEAR, TODAY, NOW
+
+Root-level integration tests for the formula engine:
+- **Formula eval tests** (`formula_eval_test.go`): end-to-end formula evaluation via `Sheet.GetValue`
+- **Formula cache tests** (`formula_cache_test.go`): generation counter caching, dirty/stale detection, `Recalculate()`
+- **Formula round-trip tests** (`formula_roundtrip_test.go`): formula text and cached values survive XLSX serialization
 
 ### Phase 3: Extended Functions & Features
 - [ ] Remaining ~450 formula functions
