@@ -145,6 +145,16 @@ func Open(name string) (*File, error) {
 
 func fileFromData(data *ooxml.WorkbookData) *File {
 	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
+
+	// Convert StyleData slice to *Style slice for assignment.
+	var parsedStyles []*Style
+	if len(data.Styles) > 0 {
+		parsedStyles = make([]*Style, len(data.Styles))
+		for i, sd := range data.Styles {
+			parsedStyles[i] = styleDataToStyle(sd)
+		}
+	}
+
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
 		for _, rd := range sd.Rows {
@@ -161,6 +171,10 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
 					c.cachedGen = f.calcGen
+				}
+				// Assign style if non-default.
+				if cd.StyleIdx > 0 && cd.StyleIdx < len(parsedStyles) {
+					c.style = parsedStyles[cd.StyleIdx]
 				}
 			}
 		}
@@ -193,9 +207,15 @@ func cellDataToValue(cd ooxml.CellData) Value {
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 	data := &ooxml.WorkbookData{}
+
+	// Style dedup: index 0 is always the default (empty StyleData).
+	styles := []ooxml.StyleData{{}}
+	styleMap := map[string]int{styleKey(ooxml.StyleData{}): 0}
+
 	for _, s := range f.sheets {
-		data.Sheets = append(data.Sheets, s.toSheetData())
+		data.Sheets = append(data.Sheets, s.toSheetData(styleMap, &styles))
 	}
+	data.Styles = styles
 	return data
 }
 

@@ -91,6 +91,36 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	return nil
 }
 
+// SetStyle sets the style of a cell by reference (e.g. "A1").
+func (s *Sheet) SetStyle(cell string, style *Style) error {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	r := s.ensureRow(row)
+	c := r.ensureCell(col)
+	c.style = style
+	return nil
+}
+
+// GetStyle returns the style of a cell by reference (e.g. "A1").
+// Returns nil for default-styled or nonexistent cells.
+func (s *Sheet) GetStyle(cell string) (*Style, error) {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return nil, nil
+	}
+	c, ok := r.cells[col]
+	if !ok {
+		return nil, nil
+	}
+	return c.style, nil
+}
+
 // GetFormula returns the formula for a cell, or "" if none.
 func (s *Sheet) GetFormula(cell string) (string, error) {
 	col, row, err := CellNameToCoordinates(cell)
@@ -245,7 +275,9 @@ func (s *Sheet) PrintTo(w io.Writer) {
 }
 
 // toSheetData converts the sheet to the ooxml intermediate representation.
-func (s *Sheet) toSheetData() ooxml.SheetData {
+// styleMap maps style keys to indices in the WorkbookData.Styles slice.
+// styles collects all unique StyleData values; both are mutated in place.
+func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) ooxml.SheetData {
 	sd := ooxml.SheetData{Name: s.name}
 
 	// Sort rows by number.
@@ -271,11 +303,24 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 
 		for _, cn := range colNums {
 			c := r.cells[cn]
-			if c.value.Type == TypeEmpty && c.formula == "" {
+			if c.value.Type == TypeEmpty && c.formula == "" && c.style == nil {
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
 			cd := cellToData(ref, c.value, c.formula)
+
+			if c.style != nil {
+				sd := styleToStyleData(c.style)
+				key := styleKey(sd)
+				idx, ok := styleMap[key]
+				if !ok {
+					idx = len(*styles)
+					styleMap[key] = idx
+					*styles = append(*styles, sd)
+				}
+				cd.StyleIdx = idx
+			}
+
 			rd.Cells = append(rd.Cells, cd)
 		}
 		if len(rd.Cells) > 0 {

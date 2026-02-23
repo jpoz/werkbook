@@ -33,6 +33,19 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		}
 	}
 
+	// Build style sheet from WorkbookData.Styles.
+	ssb := NewStyleSheetBuilder()
+	// styleIndexMap maps intermediate StyleData index -> cellXfs index.
+	var styleIndexMap []int
+	if len(data.Styles) > 0 {
+		styleIndexMap = make([]int, len(data.Styles))
+		// Index 0 is the default; map it to cellXfs 0.
+		styleIndexMap[0] = 0
+		for i := 1; i < len(data.Styles); i++ {
+			styleIndexMap[i] = ssb.AddStyle(data.Styles[i])
+		}
+	}
+
 	// [Content_Types].xml
 	if err := writeContentTypes(zw, sheetCount, sst.Len() > 0); err != nil {
 		return err
@@ -54,13 +67,13 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/styles.xml
-	if err := writeRaw(zw, "xl/styles.xml", DefaultStylesXML()); err != nil {
+	if err := writeXML(zw, "xl/styles.xml", ssb.Build()); err != nil {
 		return err
 	}
 
 	// xl/worksheets/sheet{N}.xml
 	for i, sd := range data.Sheets {
-		if err := writeSheet(zw, i+1, &sd); err != nil {
+		if err := writeSheet(zw, i+1, &sd, styleIndexMap); err != nil {
 			return err
 		}
 	}
@@ -155,7 +168,7 @@ func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
 }
 
-func writeSheet(zw *zip.Writer, num int, sd *SheetData) error {
+func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) error {
 	ws := xlsxWorksheet{
 		Xmlns: NSSpreadsheetML,
 	}
@@ -167,6 +180,9 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData) error {
 				T: cd.Type,
 				F: cd.Formula,
 				V: cd.Value,
+			}
+			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
+				c.S = styleIndexMap[cd.StyleIdx]
 			}
 			row.Cells = append(row.Cells, c)
 		}
@@ -194,11 +210,3 @@ func writeXML(zw *zip.Writer, name string, v any) error {
 	return nil
 }
 
-func writeRaw(zw *zip.Writer, name string, data []byte) error {
-	w, err := zw.Create(name)
-	if err != nil {
-		return fmt.Errorf("create %s: %w", name, err)
-	}
-	_, err = w.Write(data)
-	return err
-}

@@ -19,6 +19,7 @@ type xlsxRow struct {
 
 type xlsxC struct {
 	R  string  `xml:"r,attr"`
+	S  int     `xml:"s,attr,omitempty"`
 	T  string  `xml:"t,attr,omitempty"`
 	F  string  `xml:"f,omitempty"`
 	V  string  `xml:"v,omitempty"`

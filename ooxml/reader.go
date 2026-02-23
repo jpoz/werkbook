@@ -42,7 +42,10 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 	// Parse shared string table (may not exist).
 	sst, _ := readSST(files)
 
-	data := &WorkbookData{}
+	// Parse styles (may not exist).
+	styles := readStyles(files)
+
+	data := &WorkbookData{Styles: styles}
 	for _, s := range wb.Sheets.Sheet {
 		target, ok := sheetRels[s.RID]
 		if !ok {
@@ -72,7 +75,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 }
 
 func parseCellData(xc xlsxC, sst []string) CellData {
-	cd := CellData{Ref: xc.R, Formula: xc.F}
+	cd := CellData{Ref: xc.R, Formula: xc.F, StyleIdx: xc.S}
 
 	switch xc.T {
 	case "s":
@@ -98,6 +101,97 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		cd.Value = xc.V
 	}
 	return cd
+}
+
+// readStyles parses xl/styles.xml and returns a []StyleData indexed by cellXfs position.
+// Returns a single empty StyleData if styles.xml is missing or unparseable.
+func readStyles(files map[string]*zip.File) []StyleData {
+	ss, err := readXML[xlsxStyleSheet](files, "xl/styles.xml")
+	if err != nil {
+		return []StyleData{{}}
+	}
+
+	// Build lookup tables for fonts, fills, borders, numFmts.
+	fonts := ss.Fonts.Font
+	fills := ss.Fills.Fill
+	borders := ss.Borders.Border
+	numFmtMap := make(map[int]string)
+	if ss.NumFmts != nil {
+		for _, nf := range ss.NumFmts.NumFmt {
+			numFmtMap[nf.NumFmtID] = nf.FormatCode
+		}
+	}
+
+	styles := make([]StyleData, 0, len(ss.CellXfs.Xf))
+	for _, xf := range ss.CellXfs.Xf {
+		var sd StyleData
+
+		// Font
+		if xf.FontID >= 0 && xf.FontID < len(fonts) {
+			f := fonts[xf.FontID]
+			if f.Name != nil {
+				sd.FontName = f.Name.Val
+			}
+			if f.Sz != nil {
+				sd.FontSize = f.Sz.Val
+			}
+			sd.FontBold = f.B != nil
+			sd.FontItalic = f.I != nil
+			sd.FontUL = f.U != nil
+			if f.Color != nil {
+				sd.FontColor = f.Color.RGB
+			}
+		}
+
+		// Fill
+		if xf.FillID >= 0 && xf.FillID < len(fills) {
+			pf := fills[xf.FillID].PatternFill
+			if pf.PatternType == "solid" && pf.FgColor != nil {
+				sd.FillColor = pf.FgColor.RGB
+			}
+		}
+
+		// Border
+		if xf.BorderID >= 0 && xf.BorderID < len(borders) {
+			b := borders[xf.BorderID]
+			sd.BorderLeftStyle = b.Left.Style
+			if b.Left.Color != nil {
+				sd.BorderLeftColor = b.Left.Color.RGB
+			}
+			sd.BorderRightStyle = b.Right.Style
+			if b.Right.Color != nil {
+				sd.BorderRightColor = b.Right.Color.RGB
+			}
+			sd.BorderTopStyle = b.Top.Style
+			if b.Top.Color != nil {
+				sd.BorderTopColor = b.Top.Color.RGB
+			}
+			sd.BorderBottomStyle = b.Bottom.Style
+			if b.Bottom.Color != nil {
+				sd.BorderBottomColor = b.Bottom.Color.RGB
+			}
+		}
+
+		// Number format
+		sd.NumFmtID = xf.NumFmtID
+		if code, ok := numFmtMap[xf.NumFmtID]; ok {
+			sd.NumFmt = code
+		}
+
+		// Alignment
+		if xf.Alignment != nil {
+			sd.HAlign = xf.Alignment.Horizontal
+			sd.VAlign = xf.Alignment.Vertical
+			sd.WrapText = xf.Alignment.WrapText
+		}
+
+		styles = append(styles, sd)
+	}
+
+	if len(styles) == 0 {
+		return []StyleData{{}}
+	}
+	return styles
 }
 
 func readSST(files map[string]*zip.File) ([]string, error) {
