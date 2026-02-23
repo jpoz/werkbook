@@ -4,10 +4,11 @@ import "github.com/jpoz/werkbook/formula"
 
 // Cell represents a single cell in a worksheet.
 type Cell struct {
-	col      int
-	value    Value
-	formula  string
-	compiled *formula.CompiledFormula
+	col       int
+	value     Value
+	formula   string
+	compiled  *formula.CompiledFormula
+	cachedGen uint64 // file.calcGen when value was last computed from formula
 }
 
 // Col returns the 1-based column number.

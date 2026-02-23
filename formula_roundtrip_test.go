@@ -140,8 +140,16 @@ func TestFormulaAndValueCoexist(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
 
-	s.SetValue("A1", 42)
+	// Set up inputs so the formula evaluates to 42.
+	s.SetValue("B1", 21)
+	s.SetValue("C1", 21)
 	s.SetFormula("A1", "B1+C1")
+
+	// Evaluate so the cached value is saved to the file.
+	val, _ := s.GetValue("A1")
+	if val.Type != werkbook.TypeNumber || val.Number != 42 {
+		t.Fatalf("pre-save value = %#v, want 42", val)
+	}
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "coexist.xlsx")
@@ -155,7 +163,7 @@ func TestFormulaAndValueCoexist(t *testing.T) {
 	}
 	s2 := f2.Sheet("Sheet1")
 
-	val, _ := s2.GetValue("A1")
+	val, _ = s2.GetValue("A1")
 	if val.Type != werkbook.TypeNumber || val.Number != 42 {
 		t.Errorf("value = %#v, want 42", val)
 	}

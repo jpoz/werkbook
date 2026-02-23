@@ -12,13 +12,14 @@ import (
 
 // Sheet represents a single worksheet in the workbook.
 type Sheet struct {
-	name       string
-	rows       map[int]*Row
-	evaluating map[[2]int]bool // tracks cells currently being evaluated (circular ref detection)
+	file *File
+	name string
+	rows map[int]*Row
 }
 
-func newSheet(name string) *Sheet {
+func newSheet(name string, file *File) *Sheet {
 	return &Sheet{
+		file: file,
 		name: name,
 		rows: make(map[int]*Row),
 	}
@@ -45,6 +46,10 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
 	c.value = val
+	c.formula = ""
+	c.compiled = nil
+	c.cachedGen = 0
+	s.file.calcGen++
 	return nil
 }
 
@@ -57,11 +62,11 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
-	if c.formula != "" {
-		c.value = Value{}
-	}
 	c.formula = f
 	c.compiled = nil
+	c.value = Value{}
+	c.cachedGen = 0
+	s.file.calcGen++
 	return nil
 }
 
@@ -98,11 +103,7 @@ func (s *Sheet) GetValue(cell string) (Value, error) {
 		return Value{Type: TypeEmpty}, nil
 	}
 
-	if c.formula != "" && c.value.Type == TypeEmpty {
-		v := s.evaluateFormula(c, col, row)
-		c.value = v
-	}
-
+	s.resolveCell(c, col, row)
 	return c.value, nil
 }
 
@@ -263,18 +264,27 @@ func (s *Sheet) toSheetData() ooxml.SheetData {
 	return sd
 }
 
+// resolveCell evaluates the cell's formula if it is stale (cachedGen < calcGen).
+func (s *Sheet) resolveCell(c *Cell, col, row int) {
+	if c.formula != "" && c.cachedGen < s.file.calcGen {
+		c.value = s.evaluateFormula(c, col, row)
+		c.cachedGen = s.file.calcGen
+	}
+}
+
 // evaluateFormula parses, compiles, and executes the formula on the given cell.
 func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
-	if s.evaluating == nil {
-		s.evaluating = make(map[[2]int]bool)
+	f := s.file
+	if f.evaluating == nil {
+		f.evaluating = make(map[cellKey]bool)
 	}
-	key := [2]int{col, row}
-	if s.evaluating[key] {
+	key := cellKey{sheet: s.name, col: col, row: row}
+	if f.evaluating[key] {
 		// Circular reference
 		return Value{Type: TypeError, String: "#REF!"}
 	}
-	s.evaluating[key] = true
-	defer delete(s.evaluating, key)
+	f.evaluating[key] = true
+	defer delete(f.evaluating, key)
 
 	cf := c.compiled
 	if cf == nil {
@@ -290,7 +300,7 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 		cf = compiled
 	}
 
-	resolver := &sheetResolver{sheet: s}
+	resolver := &fileResolver{file: f, currentSheet: s.name}
 	ctx := &formula.EvalContext{
 		CurrentCol:   col,
 		CurrentRow:   row,
@@ -314,19 +324,32 @@ func formulaValueToValue(fv formula.Value) Value {
 	case formula.ValueBool:
 		return Value{Type: TypeBool, Bool: fv.Bool}
 	case formula.ValueError:
-		return Value{Type: TypeError, String: fv.Str}
+		return Value{Type: TypeError, String: fv.Err.String()}
 	default:
 		return Value{Type: TypeEmpty}
 	}
 }
 
-// sheetResolver implements formula.CellResolver backed by a Sheet.
-type sheetResolver struct {
-	sheet *Sheet
+// fileResolver implements formula.CellResolver with cross-sheet support.
+type fileResolver struct {
+	file         *File
+	currentSheet string // sheet name for resolving unqualified refs
 }
 
-func (sr *sheetResolver) GetCellValue(addr formula.CellAddr) formula.Value {
-	r, ok := sr.sheet.rows[addr.Row]
+func (fr *fileResolver) resolveSheet(name string) *Sheet {
+	if name == "" {
+		name = fr.currentSheet
+	}
+	return fr.file.Sheet(name)
+}
+
+func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
+	s := fr.resolveSheet(addr.Sheet)
+	if s == nil {
+		return formula.ErrorVal(formula.ErrValREF)
+	}
+
+	r, ok := s.rows[addr.Row]
 	if !ok {
 		return formula.EmptyVal()
 	}
@@ -335,21 +358,29 @@ func (sr *sheetResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 		return formula.EmptyVal()
 	}
 
-	// If this cell has a formula that hasn't been evaluated, evaluate it now.
-	if c.formula != "" && c.value.Type == TypeEmpty {
-		v := sr.sheet.evaluateFormula(c, addr.Col, addr.Row)
-		c.value = v
-	}
-
+	s.resolveCell(c, addr.Col, addr.Row)
 	return valueToFormulaValue(c.value)
 }
 
-func (sr *sheetResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
+func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
+	s := fr.resolveSheet(addr.Sheet)
+	if s == nil {
+		rows := make([][]formula.Value, addr.ToRow-addr.FromRow+1)
+		for i := range rows {
+			row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
+			for j := range row {
+				row[j] = formula.ErrorVal(formula.ErrValREF)
+			}
+			rows[i] = row
+		}
+		return rows
+	}
+
 	rows := make([][]formula.Value, addr.ToRow-addr.FromRow+1)
 	for r := addr.FromRow; r <= addr.ToRow; r++ {
 		row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
 		for col := addr.FromCol; col <= addr.ToCol; col++ {
-			row[col-addr.FromCol] = sr.GetCellValue(formula.CellAddr{
+			row[col-addr.FromCol] = fr.GetCellValue(formula.CellAddr{
 				Sheet: addr.Sheet,
 				Col:   col,
 				Row:   r,

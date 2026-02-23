@@ -12,6 +12,15 @@ import (
 type File struct {
 	sheets     []*Sheet
 	sheetNames []string
+	calcGen    uint64          // incremented on any cell mutation; starts at 1
+	evaluating map[cellKey]bool // tracks cells being evaluated (circular ref detection)
+}
+
+// cellKey identifies a cell across the entire workbook for circular ref detection.
+type cellKey struct {
+	sheet string
+	col   int
+	row   int
 }
 
 // Option configures a new workbook created by New.
@@ -35,7 +44,7 @@ func New(opts ...Option) *File {
 	for _, fn := range opts {
 		fn(&o)
 	}
-	f := &File{}
+	f := &File{calcGen: 1}
 	f.addSheet(o.firstSheet)
 	return f
 }
@@ -85,7 +94,7 @@ func (f *File) DeleteSheet(name string) error {
 }
 
 func (f *File) addSheet(name string) *Sheet {
-	s := newSheet(name)
+	s := newSheet(name, f)
 	f.sheets = append(f.sheets, s)
 	f.sheetNames = append(f.sheetNames, name)
 	return s
@@ -125,7 +134,7 @@ func Open(name string) (*File, error) {
 }
 
 func fileFromData(data *ooxml.WorkbookData) *File {
-	f := &File{}
+	f := &File{calcGen: 1}
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
 		for _, rd := range sd.Rows {
@@ -139,6 +148,10 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				c := r.ensureCell(col)
 				c.value = v
 				c.formula = cd.Formula
+				// Trust the file's cached value for formula cells that have one.
+				if cd.Formula != "" && v.Type != TypeEmpty {
+					c.cachedGen = f.calcGen
+				}
 			}
 		}
 	}

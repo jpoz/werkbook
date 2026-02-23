@@ -29,6 +29,34 @@ const (
 	ErrValGETTINGDATA                   // #GETTING_DATA
 )
 
+// String returns the display string for an ErrorValue (e.g., "#DIV/0!").
+func (e ErrorValue) String() string {
+	switch e {
+	case ErrValDIV0:
+		return "#DIV/0!"
+	case ErrValNA:
+		return "#N/A"
+	case ErrValNAME:
+		return "#NAME?"
+	case ErrValNULL:
+		return "#NULL!"
+	case ErrValNUM:
+		return "#NUM!"
+	case ErrValREF:
+		return "#REF!"
+	case ErrValVALUE:
+		return "#VALUE!"
+	case ErrValSPILL:
+		return "#SPILL!"
+	case ErrValCALC:
+		return "#CALC!"
+	case ErrValGETTINGDATA:
+		return "#GETTING_DATA"
+	default:
+		return "#VALUE!"
+	}
+}
+
 // errorCodeFromAST converts the parser's ErrorCode string to a numeric ErrorValue.
 func errorCodeFromAST(code ErrorCode) ErrorValue {
 	switch code {
