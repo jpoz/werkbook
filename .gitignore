@@ -4,6 +4,8 @@ fuzz
 fuzzcheck
 fuzzgen
 fuzzorch
+excel-test
+msgraph-setup
 *.exe
 *.exe~
 *.dll
@@ -31,3 +33,5 @@ go.work.sum
 
 # OS
 .DS_Store
+
+.env

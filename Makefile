@@ -151,9 +151,9 @@ exceldoc: ## Fetch Excel function docs (use FUNC=name)
 # ============================================================================
 
 .PHONY: fuzzgen
-fuzzgen: ## Run the fuzz generator (use LEVEL=N, SEED=category)
+fuzzgen: ## Run the fuzz generator (use LEVEL=N, SEED=category, ORACLE=libreoffice|excel)
 	$(call print_stage,Running fuzz generator)
-	go run ./cmd/fuzzgen --level $(or $(LEVEL),1) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
+	go run ./cmd/fuzzgen --level $(or $(LEVEL),1) --oracle $(or $(ORACLE),libreoffice) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
 
 .PHONY: fuzzcheck
 fuzzcheck: ## Run the fuzz checker (use TESTCASE=dir)
@@ -161,6 +161,11 @@ fuzzcheck: ## Run the fuzz checker (use TESTCASE=dir)
 	go run ./cmd/fuzzcheck --testcase $(TESTCASE) $(if $(NOFIX),--no-fix) $(if $(VERBOSE),-v)
 
 .PHONY: fuzzorch
-fuzzorch: ## Run the fuzz orchestrator (use LEVEL=N, PASSES=N, SEED=category)
+fuzzorch: ## Run the fuzz orchestrator (use LEVEL=N, PASSES=N, SEED=category, ORACLE=libreoffice|excel)
 	$(call print_stage,Running fuzz orchestrator)
-	go run ./cmd/fuzzorch --start-level $(or $(LEVEL),1) --passes-to-escalate $(or $(PASSES),3) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
+	go run ./cmd/fuzzorch --start-level $(or $(LEVEL),1) --passes-to-escalate $(or $(PASSES),3) --oracle $(or $(ORACLE),libreoffice) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
+
+.PHONY: msgraph-setup
+msgraph-setup: ## Run MS Graph setup for Excel Online oracle
+	$(call print_stage,Setting up MS Graph authentication)
+	go run ./cmd/msgraph-setup

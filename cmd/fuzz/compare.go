@@ -11,7 +11,7 @@ import (
 type mismatch struct {
 	Ref      string
 	Werkbook string
-	LibreOff string
+	Oracle   string
 	Reason   string
 }
 
@@ -35,7 +35,7 @@ func compareResults(checks []CheckSpec, wb, lo []buildResult) []mismatch {
 			mismatches = append(mismatches, mismatch{
 				Ref:      check.Ref,
 				Werkbook: wbVal,
-				LibreOff: loVal,
+				Oracle:   loVal,
 				Reason:   reason,
 			})
 		}
@@ -77,10 +77,10 @@ func valuesMatch(wb, lo string) (bool, string) {
 		if numericMatch(wbNum, loNum) {
 			return true, ""
 		}
-		return false, fmt.Sprintf("numeric mismatch: werkbook=%g libreoffice=%g (diff=%g)", wbNum, loNum, math.Abs(wbNum-loNum))
+		return false, fmt.Sprintf("numeric mismatch: werkbook=%g oracle=%g (diff=%g)", wbNum, loNum, math.Abs(wbNum-loNum))
 	}
 
-	return false, fmt.Sprintf("value mismatch: werkbook=%q libreoffice=%q", wb, lo)
+	return false, fmt.Sprintf("value mismatch: werkbook=%q oracle=%q", wb, lo)
 }
 
 // normalizeValue strips trailing zeros and whitespace.
@@ -183,13 +183,14 @@ func numericMatch(a, b float64) bool {
 }
 
 // formatMismatches produces a human-readable summary of comparison failures.
-func formatMismatches(ms []mismatch) string {
+// oracleName is used to label the oracle column (e.g. "libreoffice", "local-excel").
+func formatMismatches(ms []mismatch, oracleName string) string {
 	var sb strings.Builder
 	for _, m := range ms {
 		fmt.Fprintf(&sb, "  %s: %s\n", m.Ref, m.Reason)
-		if m.Werkbook != "" || m.LibreOff != "" {
+		if m.Werkbook != "" || m.Oracle != "" {
 			fmt.Fprintf(&sb, "    werkbook:    %q\n", m.Werkbook)
-			fmt.Fprintf(&sb, "    libreoffice: %q\n", m.LibreOff)
+			fmt.Fprintf(&sb, "    %-12s %q\n", oracleName+":", m.Oracle)
 		}
 	}
 	return sb.String()

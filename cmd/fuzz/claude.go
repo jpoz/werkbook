@@ -297,7 +297,7 @@ func buildFixPrompt(spec *TestSpec, mismatches []mismatch) string {
 	sb.WriteString("\n```\n\n")
 	sb.WriteString("Mismatches found (LibreOffice is the ground truth):\n")
 	for _, m := range mismatches {
-		fmt.Fprintf(&sb, "- %s: werkbook=%q, libreoffice=%q (%s)\n", m.Ref, m.Werkbook, m.LibreOff, m.Reason)
+		fmt.Fprintf(&sb, "- %s: werkbook=%q, libreoffice=%q (%s)\n", m.Ref, m.Werkbook, m.Oracle, m.Reason)
 	}
 	sb.WriteString("\nThe formula engine code is in the `formula/` package. Key files:\n")
 	sb.WriteString("- formula/functions.go: Built-in function implementations\n")

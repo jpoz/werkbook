@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jpoz/werkbook/internal/fuzz"
 )
 
 func main() {
@@ -14,17 +16,18 @@ func main() {
 	specFile := flag.String("spec", "", "run a single saved spec instead of generating")
 	keep := flag.Bool("keep", false, "keep generated files")
 	seed := flag.String("seed", "", "focus category: math|text|lookup|logic|stat|date|info|financial|engineering|database|mixed")
+	oracle := flag.String("oracle", "libreoffice", "evaluation oracle: libreoffice or excel")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
-	// Find LibreOffice.
-	soffice, err := findLibreOffice()
+	// Create evaluator.
+	eval, err := fuzz.NewEvaluator(*oracle)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	if *verbose {
-		fmt.Printf("Using LibreOffice: %s\n", soffice)
+		fmt.Printf("Using oracle: %s\n", eval.Name())
 	}
 
 	// Ensure failures directory exists.
@@ -41,7 +44,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error loading spec: %v\n", err)
 			os.Exit(1)
 		}
-		ok := runSpec(spec, soffice, failDir, *fix, *keep, *verbose)
+		ok := runSpec(spec, eval, failDir, *fix, *keep, *verbose)
 		if !ok {
 			os.Exit(1)
 		}
@@ -62,7 +65,7 @@ func main() {
 
 		fmt.Printf("  Spec: %s (%d sheets, %d checks)\n", spec.Name, len(spec.Sheets), len(spec.Checks))
 
-		if runSpec(spec, soffice, failDir, *fix, *keep, *verbose) {
+		if runSpec(spec, eval, failDir, *fix, *keep, *verbose) {
 			passed++
 		} else {
 			failed++
@@ -76,9 +79,9 @@ func main() {
 	}
 }
 
-// runSpec executes a single test spec: build, eval with LibreOffice, compare.
+// runSpec executes a single test spec: build, eval with oracle, compare.
 // Returns true if all checks pass.
-func runSpec(spec *TestSpec, soffice, failDir string, fix, keep, verbose bool) bool {
+func runSpec(spec *TestSpec, eval fuzz.Evaluator, failDir string, fix, keep, verbose bool) bool {
 	// Create a temp dir for this spec.
 	tmpDir, err := os.MkdirTemp("", "werkbook-fuzz-*")
 	if err != nil {
@@ -106,15 +109,17 @@ func runSpec(spec *TestSpec, soffice, failDir string, fix, keep, verbose bool) b
 		}
 	}
 
-	// Evaluate with LibreOffice.
-	loResults, err := libreOfficeEval(soffice, xlsxPath, spec.Checks)
+	// Evaluate with oracle.
+	fuzzChecks := toFuzzChecks(spec.Checks)
+	oracleResults, err := eval.Eval(xlsxPath, fuzzChecks)
 	if err != nil {
-		fmt.Printf("  LibreOffice eval failed: %v\n", err)
+		fmt.Printf("  %s eval failed: %v\n", eval.Name(), err)
 		return false
 	}
+	loResults := fromFuzzResults(oracleResults)
 
 	if verbose {
-		fmt.Printf("  LibreOffice results:\n")
+		fmt.Printf("  %s results:\n", eval.Name())
 		for _, r := range loResults {
 			fmt.Printf("    %s = %q (%s)\n", r.Ref, r.Value, r.Type)
 		}
@@ -128,7 +133,7 @@ func runSpec(spec *TestSpec, soffice, failDir string, fix, keep, verbose bool) b
 	}
 
 	fmt.Printf("  FAIL: %d/%d checks mismatched:\n", len(mismatches), len(spec.Checks))
-	fmt.Print(formatMismatches(mismatches))
+	fmt.Print(formatMismatches(mismatches, eval.Name()))
 
 	// Save failure for reproduction.
 	saveFailure(spec, xlsxPath, failDir)
@@ -192,6 +197,32 @@ func seedCategory(seed string) string {
 	default:
 		return seed
 	}
+}
+
+// toFuzzChecks converts local CheckSpec to fuzz.CheckSpec.
+func toFuzzChecks(checks []CheckSpec) []fuzz.CheckSpec {
+	out := make([]fuzz.CheckSpec, len(checks))
+	for i, c := range checks {
+		out[i] = fuzz.CheckSpec{
+			Ref:      c.Ref,
+			Expected: c.Expected,
+			Type:     c.Type,
+		}
+	}
+	return out
+}
+
+// fromFuzzResults converts fuzz.CellResult to local buildResult.
+func fromFuzzResults(results []fuzz.CellResult) []buildResult {
+	out := make([]buildResult, len(results))
+	for i, r := range results {
+		out[i] = buildResult{
+			Ref:   r.Ref,
+			Value: r.Value,
+			Type:  r.Type,
+		}
+	}
+	return out
 }
 
 // indent prefixes each line with the given prefix.

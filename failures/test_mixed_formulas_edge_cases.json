@@ -6,12 +6,12 @@
       "cells": [
         {
           "ref": "A1",
-          "value": 6,
+          "value": 25,
           "type": "number"
         },
         {
           "ref": "A2",
-          "value": -3,
+          "value": -4,
           "type": "number"
         },
         {
@@ -21,22 +21,22 @@
         },
         {
           "ref": "A4",
-          "value": 9,
+          "value": 16,
           "type": "number"
         },
         {
           "ref": "A5",
-          "value": 12,
+          "value": 7,
           "type": "number"
         },
         {
           "ref": "B1",
-          "value": "hello",
+          "value": "Hello",
           "type": "string"
         },
         {
           "ref": "B2",
-          "value": "world",
+          "value": "  world  ",
           "type": "string"
         },
         {
@@ -45,11 +45,11 @@
         },
         {
           "ref": "C2",
-          "formula": "AVERAGE(A1:A4)"
+          "formula": "IF(SUM(A1:A5)\u003e40,AVERAGE(A1:A5),0)"
         },
         {
           "ref": "C3",
-          "formula": "IF(SUM(A1:A5)\u003e20,AVERAGE(A1:A4),0)"
+          "formula": "UPPER(TRIM(B2))"
         },
         {
           "ref": "C4",
@@ -57,19 +57,19 @@
         },
         {
           "ref": "C5",
-          "formula": "MAX(A1:A5)"
+          "formula": "IFERROR(SQRT(A2),\"negative\")"
         },
         {
           "ref": "C6",
-          "formula": "MIN(A1:A5)"
+          "formula": "SQRT(A4)"
         },
         {
           "ref": "C7",
-          "formula": "IFERROR(1/A3,\"error\")"
+          "formula": "MOD(A1,A5)"
         },
         {
-          "ref": "C8",
-          "formula": "CONCATENATE(B1,\" \",B2)"
+          "ref": "D1",
+          "formula": "TRUNC(C2)"
         }
       ]
     }
@@ -77,18 +77,18 @@
   "checks": [
     {
       "ref": "Sheet1!C1",
-      "expected": "24",
+      "expected": "44",
       "type": "number"
     },
     {
       "ref": "Sheet1!C2",
-      "expected": "3",
+      "expected": "8.8",
       "type": "number"
     },
     {
       "ref": "Sheet1!C3",
-      "expected": "3",
-      "type": "number"
+      "expected": "WORLD",
+      "type": "string"
     },
     {
       "ref": "Sheet1!C4",
@@ -97,23 +97,23 @@
     },
     {
       "ref": "Sheet1!C5",
-      "expected": "12",
-      "type": "number"
+      "expected": "negative",
+      "type": "string"
     },
     {
       "ref": "Sheet1!C6",
-      "expected": "-3",
+      "expected": "4",
       "type": "number"
     },
     {
       "ref": "Sheet1!C7",
-      "expected": "error",
-      "type": "string"
+      "expected": "4",
+      "type": "number"
     },
     {
-      "ref": "Sheet1!C8",
-      "expected": "hello world",
-      "type": "string"
+      "ref": "Sheet1!D1",
+      "expected": "8",
+      "type": "number"
     }
   ]
 }
