@@ -437,7 +437,13 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
 	s := fr.resolveSheet(addr.Sheet)
 	if s == nil {
-		rows := make([][]formula.Value, addr.ToRow-addr.FromRow+1)
+		// For unresolvable sheets, return a single-row error rather than
+		// potentially allocating millions of rows for full-column refs.
+		nRows := addr.ToRow - addr.FromRow + 1
+		if nRows > 1000 {
+			nRows = 1
+		}
+		rows := make([][]formula.Value, nRows)
 		for i := range rows {
 			row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
 			for j := range row {
@@ -448,8 +454,19 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 		return rows
 	}
 
-	rows := make([][]formula.Value, addr.ToRow-addr.FromRow+1)
-	for r := addr.FromRow; r <= addr.ToRow; r++ {
+	// Clamp the row range to the sheet's actual data extent so that
+	// full-column references (e.g. F:F → F1:F1048576) don't allocate
+	// a million rows.
+	toRow := addr.ToRow
+	if maxRow := s.MaxRow(); maxRow > 0 && toRow > maxRow {
+		toRow = maxRow
+	}
+	if toRow < addr.FromRow {
+		toRow = addr.FromRow
+	}
+
+	rows := make([][]formula.Value, toRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= toRow; r++ {
 		row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
 		for col := addr.FromCol; col <= addr.ToCol; col++ {
 			row[col-addr.FromCol] = fr.GetCellValue(formula.CellAddr{

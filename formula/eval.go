@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	maxExcelRows = 1048576 // maximum rows in an Excel worksheet
+	maxExcelCols = 16384   // maximum columns in an Excel worksheet (XFD)
+)
+
 // CellResolver abstracts cell/range lookups so the VM has no dependency on Sheet.
 type CellResolver interface {
 	GetCellValue(addr CellAddr) Value
@@ -15,9 +20,10 @@ type CellResolver interface {
 
 // EvalContext provides context about the current evaluation environment.
 type EvalContext struct {
-	CurrentCol   int
-	CurrentRow   int
-	CurrentSheet string
+	CurrentCol     int
+	CurrentRow     int
+	CurrentSheet   string
+	IsArrayFormula bool // true for CSE (Ctrl+Shift+Enter) array formulas
 }
 
 // Eval executes a compiled formula and returns the result.
@@ -53,6 +59,31 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 
 		case OpLoadRange:
 			addr := cf.Ranges[inst.Operand]
+			// Implicit intersection: when a full-column or full-row range is
+			// used in a non-array formula, reduce to the single cell at the
+			// formula's own row/column rather than loading the entire range.
+			if ctx != nil && !ctx.IsArrayFormula {
+				isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
+				isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
+				if isFullCol && addr.FromCol == addr.ToCol && ctx.CurrentRow >= addr.FromRow {
+					// Full-column ref like F:F → intersect at current row
+					push(resolver.GetCellValue(CellAddr{
+						Sheet: addr.Sheet,
+						Col:   addr.FromCol,
+						Row:   ctx.CurrentRow,
+					}))
+					continue
+				}
+				if isFullRow && addr.FromRow == addr.ToRow && ctx.CurrentCol >= addr.FromCol {
+					// Full-row ref like 1:1 → intersect at current column
+					push(resolver.GetCellValue(CellAddr{
+						Sheet: addr.Sheet,
+						Col:   ctx.CurrentCol,
+						Row:   addr.FromRow,
+					}))
+					continue
+				}
+			}
 			rows := resolver.GetRangeValues(addr)
 			push(Value{Type: ValueArray, Array: rows})
 
@@ -661,6 +692,34 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	default:
 		return Value{}, fmt.Errorf("unimplemented function: %s", name)
 	}
+}
+
+// liftUnary applies a scalar function element-wise over a ValueArray,
+// returning a new ValueArray of the same shape. Used for array-formula
+// evaluation of functions like ABS, ISNUMBER, etc.
+func liftUnary(arr Value, fn func(Value) Value) Value {
+	rows := make([][]Value, len(arr.Array))
+	for i, row := range arr.Array {
+		out := make([]Value, len(row))
+		for j, cell := range row {
+			out[j] = fn(cell)
+		}
+		rows[i] = out
+	}
+	return Value{Type: ValueArray, Array: rows}
+}
+
+// arrayElement returns element [i][j] from arr if it is an array,
+// or returns the scalar arr otherwise. Used for broadcasting scalars
+// alongside arrays in element-wise operations.
+func arrayElement(v Value, i, j int) Value {
+	if v.Type != ValueArray {
+		return v
+	}
+	if i < len(v.Array) && j < len(v.Array[i]) {
+		return v.Array[i][j]
+	}
+	return ErrorVal(ErrValNA)
 }
 
 // iterateNumeric calls fn for each numeric value in args, expanding arrays.

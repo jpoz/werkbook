@@ -9,6 +9,15 @@ func fnABS(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueArray {
+		return liftUnary(args[0], func(v Value) Value {
+			n, e := coerceNum(v)
+			if e != nil {
+				return *e
+			}
+			return NumberVal(math.Abs(n))
+		}), nil
+	}
 	n, e := coerceNum(args[0])
 	if e != nil {
 		return *e, nil

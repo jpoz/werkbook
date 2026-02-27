@@ -25,6 +25,11 @@ func fnISNUMBER(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueArray {
+		return liftUnary(args[0], func(v Value) Value {
+			return BoolVal(v.Type == ValueNumber)
+		}), nil
+	}
 	return BoolVal(args[0].Type == ValueNumber), nil
 }
 

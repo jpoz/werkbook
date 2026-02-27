@@ -69,13 +69,17 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		i++
 	}
 	if i == rowStart {
-		return nil, fmt.Errorf("expected row number in %q", raw)
+		// No row number: this is a column-only reference (e.g. "F" or "Ledger!F").
+		// Row=0 is the sentinel for column-only refs; the parser expands these
+		// into full-column ranges when it sees the colon operator (F:F).
+		ref.Row = 0
+	} else {
+		row := 0
+		for _, c := range s[rowStart:i] {
+			row = row*10 + int(c-'0')
+		}
+		ref.Row = row
 	}
-	row := 0
-	for _, c := range s[rowStart:i] {
-		row = row*10 + int(c-'0')
-	}
-	ref.Row = row
 
 	if i != len(s) {
 		return nil, fmt.Errorf("unexpected trailing characters in cell ref %q", raw)

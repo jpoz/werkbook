@@ -1,0 +1,119 @@
+{
+  "name": "test_mixed_formulas_edge_cases",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 6,
+          "type": "number"
+        },
+        {
+          "ref": "A2",
+          "value": -3,
+          "type": "number"
+        },
+        {
+          "ref": "A3",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A4",
+          "value": 9,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": 12,
+          "type": "number"
+        },
+        {
+          "ref": "B1",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "B2",
+          "value": "world",
+          "type": "string"
+        },
+        {
+          "ref": "C1",
+          "formula": "SUM(A1:A5)"
+        },
+        {
+          "ref": "C2",
+          "formula": "AVERAGE(A1:A4)"
+        },
+        {
+          "ref": "C3",
+          "formula": "IF(SUM(A1:A5)\u003e20,AVERAGE(A1:A4),0)"
+        },
+        {
+          "ref": "C4",
+          "formula": "COUNTIF(A1:A5,\"\u003e0\")"
+        },
+        {
+          "ref": "C5",
+          "formula": "MAX(A1:A5)"
+        },
+        {
+          "ref": "C6",
+          "formula": "MIN(A1:A5)"
+        },
+        {
+          "ref": "C7",
+          "formula": "IFERROR(1/A3,\"error\")"
+        },
+        {
+          "ref": "C8",
+          "formula": "CONCAT(B1,\" \",B2)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!C1",
+      "expected": "24",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C2",
+      "expected": "3",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C3",
+      "expected": "3",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C4",
+      "expected": "3",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C5",
+      "expected": "12",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C6",
+      "expected": "-3",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!C7",
+      "expected": "error",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!C8",
+      "expected": "hello world",
+      "type": "string"
+    }
+  ]
+}

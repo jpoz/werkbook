@@ -1062,6 +1062,80 @@ func TestTokenizeQuotedSheetRange(t *testing.T) {
 	}
 }
 
+func TestTokenizeFullColumnRef(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []Token
+	}{
+		{
+			input: "F:F",
+			want: []Token{
+				tok(TokCellRef, "F"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "F"),
+				tok(TokEOF, ""),
+			},
+		},
+		{
+			input: "$A:$A",
+			want: []Token{
+				tok(TokCellRef, "$A"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "$A"),
+				tok(TokEOF, ""),
+			},
+		},
+		{
+			input: "A:C",
+			want: []Token{
+				tok(TokCellRef, "A"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "C"),
+				tok(TokEOF, ""),
+			},
+		},
+		{
+			input: "Sheet1!A:A",
+			want: []Token{
+				tok(TokCellRef, "Sheet1!A"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "A"),
+				tok(TokEOF, ""),
+			},
+		},
+		{
+			input: "Ledger!F:F",
+			want: []Token{
+				tok(TokCellRef, "Ledger!F"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "F"),
+				tok(TokEOF, ""),
+			},
+		},
+		{
+			input: "'Sheet Name'!B:B",
+			want: []Token{
+				tok(TokCellRef, "'Sheet Name'!B"),
+				tok(TokColon, ":"),
+				tok(TokCellRef, "B"),
+				tok(TokEOF, ""),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := Tokenize(tt.input)
+			if err != nil {
+				t.Fatalf("Tokenize(%q) error: %v", tt.input, err)
+			}
+			if !tokensEqual(got, tt.want) {
+				t.Errorf("Tokenize(%q)\n  got:  %v\n  want: %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTokenizeCONCATENATE(t *testing.T) {
 	input := `CONCATENATE(A1," ",B1," ",C1)`
 	want := []Token{

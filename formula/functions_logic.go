@@ -6,6 +6,25 @@ func fnIF(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	// Array formula: when the condition is an array, apply IF element-wise.
+	if args[0].Type == ValueArray {
+		cond := args[0]
+		rows := make([][]Value, len(cond.Array))
+		for i, row := range cond.Array {
+			out := make([]Value, len(row))
+			for j, cell := range row {
+				if isTruthy(cell) {
+					out[j] = arrayElement(args[1], i, j)
+				} else if len(args) == 3 {
+					out[j] = arrayElement(args[2], i, j)
+				} else {
+					out[j] = BoolVal(false)
+				}
+			}
+			rows[i] = out
+		}
+		return Value{Type: ValueArray, Array: rows}, nil
+	}
 	if isTruthy(args[0]) {
 		return args[1], nil
 	}

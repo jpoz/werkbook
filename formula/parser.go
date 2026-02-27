@@ -80,6 +80,8 @@ const (
 	colonLeftBP  = 14
 	colonRightBP = 15
 	prefixRBP    = 9 // unary - and + bind tighter than * but looser than ^
+
+	maxExcelRow = 1048576 // maximum row number in Excel
 )
 
 // parseExpression is the core Pratt parsing loop.
@@ -132,6 +134,14 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 			toRef, ok := right.(*CellRef)
 			if !ok {
 				return nil, fmt.Errorf("right side of ':' must be a cell reference, got %s", right)
+			}
+			// Expand column-only references (Row==0) into full-column ranges.
+			// F:F becomes F1:F1048576.
+			if fromRef.Row == 0 {
+				fromRef.Row = 1
+			}
+			if toRef.Row == 0 {
+				toRef.Row = maxExcelRow
 			}
 			left = &RangeRef{From: fromRef, To: toRef}
 			for p.peek().Type == TokPercent {
