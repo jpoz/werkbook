@@ -124,6 +124,45 @@ func TestCoordinatesToCellName(t *testing.T) {
 	}
 }
 
+func TestRangeToCoordinates(t *testing.T) {
+	tests := []struct {
+		ref     string
+		col1    int
+		row1    int
+		col2    int
+		row2    int
+		wantErr bool
+	}{
+		{"A1:C5", 1, 1, 3, 5, false},
+		{"B2:B2", 2, 2, 2, 2, false},
+		// Single cell (no colon).
+		{"D10", 4, 10, 4, 10, false},
+		// Reversed range should normalize.
+		{"C5:A1", 1, 1, 3, 5, false},
+		{"Z10:A1", 1, 1, 26, 10, false},
+		// Errors.
+		{"", 0, 0, 0, 0, true},
+		{"A1:", 0, 0, 0, 0, true},
+		{":B2", 0, 0, 0, 0, true},
+		{"!!!:B2", 0, 0, 0, 0, true},
+		{"A1:!!!", 0, 0, 0, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			col1, row1, col2, row2, err := RangeToCoordinates(tt.ref)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("RangeToCoordinates(%q) err = %v, wantErr %v", tt.ref, err, tt.wantErr)
+			}
+			if err == nil {
+				if col1 != tt.col1 || row1 != tt.row1 || col2 != tt.col2 || row2 != tt.row2 {
+					t.Errorf("RangeToCoordinates(%q) = (%d,%d,%d,%d), want (%d,%d,%d,%d)",
+						tt.ref, col1, row1, col2, row2, tt.col1, tt.row1, tt.col2, tt.row2)
+				}
+			}
+		})
+	}
+}
+
 func TestRoundTripColumnNumber(t *testing.T) {
 	for i := 1; i <= MaxColumns; i++ {
 		name := ColumnNumberToName(i)

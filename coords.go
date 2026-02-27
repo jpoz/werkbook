@@ -88,6 +88,34 @@ func ColumnNumberToName(col int) string {
 	return string(buf[i:])
 }
 
+// RangeToCoordinates converts a range reference like "A1:C5" to
+// (col1, row1, col2, row2) 1-based coordinates. It normalizes reversed
+// ranges so that col1 <= col2 and row1 <= row2. A single-cell reference
+// like "A1" (no colon) returns the same cell for both corners.
+func RangeToCoordinates(ref string) (col1, row1, col2, row2 int, err error) {
+	ref = strings.TrimSpace(ref)
+	parts := strings.SplitN(ref, ":", 2)
+	col1, row1, err = CellNameToCoordinates(parts[0])
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("invalid range %q: %w", ref, err)
+	}
+	if len(parts) == 1 {
+		return col1, row1, col1, row1, nil
+	}
+	col2, row2, err = CellNameToCoordinates(parts[1])
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("invalid range %q: %w", ref, err)
+	}
+	// Normalize so that (col1,row1) is the top-left corner.
+	if col1 > col2 {
+		col1, col2 = col2, col1
+	}
+	if row1 > row2 {
+		row1, row2 = row2, row1
+	}
+	return col1, row1, col2, row2, nil
+}
+
 func isAlpha(b byte) bool {
 	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }

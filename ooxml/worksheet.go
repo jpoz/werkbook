@@ -5,7 +5,19 @@ import "encoding/xml"
 type xlsxWorksheet struct {
 	XMLName   xml.Name      `xml:"worksheet"`
 	Xmlns     string        `xml:"xmlns,attr"`
+	Cols      *xlsxCols     `xml:"cols,omitempty"`
 	SheetData xlsxSheetData `xml:"sheetData"`
+}
+
+type xlsxCols struct {
+	Col []xlsxCol `xml:"col"`
+}
+
+type xlsxCol struct {
+	Min         int     `xml:"min,attr"`
+	Max         int     `xml:"max,attr"`
+	Width       float64 `xml:"width,attr"`
+	CustomWidth bool    `xml:"customWidth,attr,omitempty"`
 }
 
 type xlsxSheetData struct {
@@ -13,8 +25,10 @@ type xlsxSheetData struct {
 }
 
 type xlsxRow struct {
-	R     int     `xml:"r,attr"`
-	Cells []xlsxC `xml:"c"`
+	R            int     `xml:"r,attr"`
+	Ht           float64 `xml:"ht,attr,omitempty"`
+	CustomHeight bool    `xml:"customHeight,attr,omitempty"`
+	Cells        []xlsxC `xml:"c"`
 }
 
 type xlsxC struct {

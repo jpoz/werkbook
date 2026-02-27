@@ -54,16 +54,25 @@ type StyleData struct {
 	NumFmt   string // custom format string
 }
 
+// ColWidthData holds the width for a range of columns.
+type ColWidthData struct {
+	Min   int     // 1-based first column
+	Max   int     // 1-based last column
+	Width float64 // column width in character units
+}
+
 // SheetData holds the data for a single worksheet.
 type SheetData struct {
-	Name string
-	Rows []RowData
+	Name      string
+	Rows      []RowData
+	ColWidths []ColWidthData
 }
 
 // RowData holds the data for a single row.
 type RowData struct {
-	Num   int // 1-based
-	Cells []CellData
+	Num    int // 1-based
+	Height float64
+	Cells  []CellData
 }
 
 // CellData holds the data for a single cell.

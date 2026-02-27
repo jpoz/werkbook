@@ -59,13 +59,26 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		}
 
 		sd := SheetData{Name: s.Name}
+
+		// Extract column widths.
+		if ws.Cols != nil {
+			for _, col := range ws.Cols.Col {
+				sd.ColWidths = append(sd.ColWidths, ColWidthData{
+					Min: col.Min, Max: col.Max, Width: col.Width,
+				})
+			}
+		}
+
 		for _, xr := range ws.SheetData.Rows {
 			rd := RowData{Num: xr.R}
+			if xr.CustomHeight && xr.Ht != 0 {
+				rd.Height = xr.Ht
+			}
 			for _, xc := range xr.Cells {
 				cd := parseCellData(xc, sst)
 				rd.Cells = append(rd.Cells, cd)
 			}
-			if len(rd.Cells) > 0 {
+			if len(rd.Cells) > 0 || rd.Height != 0 {
 				sd.Rows = append(sd.Rows, rd)
 			}
 		}

@@ -172,8 +172,26 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 	ws := xlsxWorksheet{
 		Xmlns: NSSpreadsheetML,
 	}
+
+	// Populate column widths.
+	if len(sd.ColWidths) > 0 {
+		ws.Cols = &xlsxCols{}
+		for _, cw := range sd.ColWidths {
+			ws.Cols.Col = append(ws.Cols.Col, xlsxCol{
+				Min:         cw.Min,
+				Max:         cw.Max,
+				Width:       cw.Width,
+				CustomWidth: true,
+			})
+		}
+	}
+
 	for _, rd := range sd.Rows {
 		row := xlsxRow{R: rd.Num}
+		if rd.Height != 0 {
+			row.Ht = rd.Height
+			row.CustomHeight = true
+		}
 		for _, cd := range rd.Cells {
 			c := xlsxC{
 				R: cd.Ref,

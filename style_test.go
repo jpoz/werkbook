@@ -259,6 +259,81 @@ func TestCellStyleAccessor(t *testing.T) {
 	}
 }
 
+func TestSetRangeStyle(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+
+	style := &Style{Font: &Font{Bold: true}}
+	if err := s.SetRangeStyle("A1:C3", style); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify all cells in the range have the style.
+	for _, ref := range []string{"A1", "B1", "C1", "A2", "B2", "C2", "A3", "B3", "C3"} {
+		got, err := s.GetStyle(ref)
+		if err != nil {
+			t.Fatalf("GetStyle(%s): %v", ref, err)
+		}
+		if got != style {
+			t.Errorf("GetStyle(%s) did not return expected style", ref)
+		}
+	}
+}
+
+func TestSetRangeStyle_SingleCell(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	style := &Style{Fill: &Fill{Color: "FF0000"}}
+	if err := s.SetRangeStyle("B2", style); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetStyle("B2")
+	if got != style {
+		t.Error("single-cell range did not apply style")
+	}
+}
+
+func TestSetRangeStyle_Reversed(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	style := &Style{Font: &Font{Italic: true}}
+	if err := s.SetRangeStyle("C3:A1", style); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetStyle("A1")
+	if got != style {
+		t.Error("reversed range did not apply style to A1")
+	}
+	got2, _ := s.GetStyle("C3")
+	if got2 != style {
+		t.Error("reversed range did not apply style to C3")
+	}
+}
+
+func TestSetRangeStyle_Invalid(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	err := s.SetRangeStyle("!!!:B2", &Style{})
+	if err == nil {
+		t.Error("expected error for invalid range")
+	}
+}
+
+func TestSetRangeStyle_CreatesEmptyCells(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	style := &Style{Font: &Font{Bold: true}}
+	_ = s.SetRangeStyle("A1:B2", style)
+
+	// All cells should exist even though no values were set.
+	for _, ref := range []string{"A1", "A2", "B1", "B2"} {
+		got, _ := s.GetStyle(ref)
+		if got == nil {
+			t.Errorf("cell %s should have been created with style", ref)
+		}
+	}
+}
+
 func TestRGBConversions(t *testing.T) {
 	if got := rgbToARGB("FF0000"); got != "FFFF0000" {
 		t.Errorf("rgbToARGB = %q, want FFFF0000", got)

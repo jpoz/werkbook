@@ -12,16 +12,18 @@ import (
 
 // Sheet represents a single worksheet in the workbook.
 type Sheet struct {
-	file *File
-	name string
-	rows map[int]*Row
+	file      *File
+	name      string
+	rows      map[int]*Row
+	colWidths map[int]float64
 }
 
 func newSheet(name string, file *File) *Sheet {
 	return &Sheet{
-		file: file,
-		name: name,
-		rows: make(map[int]*Row),
+		file:      file,
+		name:      name,
+		rows:      make(map[int]*Row),
+		colWidths: make(map[int]float64),
 	}
 }
 
@@ -121,6 +123,64 @@ func (s *Sheet) GetStyle(cell string) (*Style, error) {
 	return c.style, nil
 }
 
+// SetColumnWidth sets the width of a column by name (e.g. "A").
+func (s *Sheet) SetColumnWidth(col string, width float64) error {
+	num, err := ColumnNameToNumber(col)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	s.colWidths[num] = width
+	return nil
+}
+
+// GetColumnWidth returns the width of a column by name, or 0 if not set.
+func (s *Sheet) GetColumnWidth(col string) (float64, error) {
+	num, err := ColumnNameToNumber(col)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	return s.colWidths[num], nil
+}
+
+// SetRowHeight sets the height of a row by 1-based row number.
+func (s *Sheet) SetRowHeight(row int, height float64) error {
+	if row < 1 || row > MaxRows {
+		return fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, row, MaxRows)
+	}
+	r := s.ensureRow(row)
+	r.height = height
+	return nil
+}
+
+// GetRowHeight returns the height of a row, or 0 if not set.
+func (s *Sheet) GetRowHeight(row int) (float64, error) {
+	if row < 1 || row > MaxRows {
+		return 0, fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, row, MaxRows)
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return 0, nil
+	}
+	return r.height, nil
+}
+
+// SetRangeStyle applies the given style to every cell in the range (e.g. "A1:C5").
+// Cells that do not yet exist are created.
+func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
+	col1, row1, col2, row2, err := RangeToCoordinates(rangeRef)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	for r := row1; r <= row2; r++ {
+		row := s.ensureRow(r)
+		for c := col1; c <= col2; c++ {
+			cell := row.ensureCell(c)
+			cell.style = style
+		}
+	}
+	return nil
+}
+
 // GetFormula returns the formula for a cell, or "" if none.
 func (s *Sheet) GetFormula(cell string) (string, error) {
 	col, row, err := CellNameToCoordinates(cell)
@@ -177,6 +237,7 @@ func (r *Row) ensureCell(col int) *Cell {
 }
 
 // Rows returns an iterator over all non-empty rows in ascending order.
+// Rows with a custom height but no cells are also included.
 func (s *Sheet) Rows() iter.Seq[*Row] {
 	return func(yield func(*Row) bool) {
 		rowNums := make([]int, 0, len(s.rows))
@@ -186,7 +247,7 @@ func (s *Sheet) Rows() iter.Seq[*Row] {
 		sort.Ints(rowNums)
 		for _, n := range rowNums {
 			r := s.rows[n]
-			if len(r.cells) == 0 {
+			if len(r.cells) == 0 && r.height == 0 {
 				continue
 			}
 			if !yield(r) {
@@ -280,6 +341,20 @@ func (s *Sheet) PrintTo(w io.Writer) {
 func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) ooxml.SheetData {
 	sd := ooxml.SheetData{Name: s.name}
 
+	// Convert column widths map to ColWidthData slice.
+	if len(s.colWidths) > 0 {
+		colNums := make([]int, 0, len(s.colWidths))
+		for c := range s.colWidths {
+			colNums = append(colNums, c)
+		}
+		sort.Ints(colNums)
+		for _, c := range colNums {
+			sd.ColWidths = append(sd.ColWidths, ooxml.ColWidthData{
+				Min: c, Max: c, Width: s.colWidths[c],
+			})
+		}
+	}
+
 	// Sort rows by number.
 	rowNums := make([]int, 0, len(s.rows))
 	for n := range s.rows {
@@ -289,10 +364,10 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 	for _, rn := range rowNums {
 		r := s.rows[rn]
-		if len(r.cells) == 0 {
+		if len(r.cells) == 0 && r.height == 0 {
 			continue
 		}
-		rd := ooxml.RowData{Num: rn}
+		rd := ooxml.RowData{Num: rn, Height: r.height}
 
 		// Sort cells by column.
 		colNums := make([]int, 0, len(r.cells))
@@ -323,7 +398,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 			rd.Cells = append(rd.Cells, cd)
 		}
-		if len(rd.Cells) > 0 {
+		if len(rd.Cells) > 0 || rd.Height != 0 {
 			sd.Rows = append(sd.Rows, rd)
 		}
 	}

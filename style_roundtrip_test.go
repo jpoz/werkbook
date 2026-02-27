@@ -389,6 +389,50 @@ func TestStyleRoundTrip_FontUnderlineAndColor(t *testing.T) {
 	}
 }
 
+func TestStyleRoundTrip_RangeStyle(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	// Set some values and apply a range style.
+	_ = s.SetValue("A1", "TopLeft")
+	_ = s.SetValue("C3", "BottomRight")
+	_ = s.SetRangeStyle("A1:C3", &Style{Font: &Font{Bold: true, Size: 12, Name: "Calibri"}})
+
+	path := filepath.Join(t.TempDir(), "rangestyle.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+
+	f2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2 := f2.Sheet("Sheet1")
+
+	// All 9 cells should have the bold style.
+	for _, ref := range []string{"A1", "B1", "C1", "A2", "B2", "C2", "A3", "B3", "C3"} {
+		st, err := s2.GetStyle(ref)
+		if err != nil {
+			t.Fatalf("GetStyle(%s): %v", ref, err)
+		}
+		if st == nil || st.Font == nil {
+			t.Fatalf("%s style or font is nil", ref)
+		}
+		if !st.Font.Bold {
+			t.Errorf("%s Font.Bold = false, want true", ref)
+		}
+	}
+
+	// Verify data is preserved.
+	v1, _ := s2.GetValue("A1")
+	if v1.String != "TopLeft" {
+		t.Errorf("A1 = %q, want TopLeft", v1.String)
+	}
+	v2, _ := s2.GetValue("C3")
+	if v2.String != "BottomRight" {
+		t.Errorf("C3 = %q, want BottomRight", v2.String)
+	}
+}
+
 func TestReadExistingStyledFile(t *testing.T) {
 	// If a styled test fixture exists, read it and verify styles are preserved.
 	path := filepath.Join("testdata", "styled.xlsx")

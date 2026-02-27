@@ -157,7 +157,21 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
+
+		// Restore column widths.
+		for _, cw := range sd.ColWidths {
+			for col := cw.Min; col <= cw.Max; col++ {
+				s.colWidths[col] = cw.Width
+			}
+		}
+
 		for _, rd := range sd.Rows {
+			// Restore row height.
+			if rd.Height != 0 {
+				r := s.ensureRow(rd.Num)
+				r.height = rd.Height
+			}
+
 			for _, cd := range rd.Cells {
 				col, row, err := CellNameToCoordinates(cd.Ref)
 				if err != nil {
