@@ -531,6 +531,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSQRT(args)
 	case "TAN":
 		return fnTAN(args)
+	case "TRUNC":
+		return fnTRUNC(args)
 
 	// Statistics
 	case "AVERAGE":

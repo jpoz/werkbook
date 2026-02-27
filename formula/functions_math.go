@@ -367,6 +367,25 @@ func fnSQRT(args []Value) (Value, error) {
 	return NumberVal(math.Sqrt(n)), nil
 }
 
+func fnTRUNC(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	digits := 0.0
+	if len(args) == 2 {
+		digits, e = coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	pow := math.Pow(10, math.Floor(digits))
+	return NumberVal(math.Trunc(n*pow) / pow), nil
+}
+
 func fnTAN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

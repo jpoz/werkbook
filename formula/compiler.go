@@ -19,8 +19,8 @@ var knownFunctions = [...]string{
 	"PI", "POWER", "PRODUCT", "PROPER", "RAND", "RANDBETWEEN", "REPLACE",
 	"REPT", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP", "ROW", "ROWS", "SEARCH",
 	"SECOND", "SIN", "SMALL", "SORT", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
-	"SUMIFS", "SUMPRODUCT", "TAN", "TEXT", "TIME", "TODAY", "TRIM", "UPPER",
-	"VALUE", "VLOOKUP", "XLOOKUP", "XOR", "YEAR",
+	"SUMIFS", "SUMPRODUCT", "TAN", "TEXT", "TIME", "TODAY", "TRIM", "TRUNC",
+	"UPPER", "VALUE", "VLOOKUP", "XLOOKUP", "XOR", "YEAR",
 }
 
 // funcNameToID maps upper-cased function names to their ID (index in knownFunctions).
