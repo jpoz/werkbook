@@ -379,6 +379,85 @@ func TestEvalIFERROR(t *testing.T) {
 	}
 }
 
+func TestEvalImplicitIntersectionFullColumn(t *testing.T) {
+	// Simulate: formula in row 2 references F:F (full column).
+	// In non-array formula context, F:F should be implicitly intersected
+	// to a single cell at the formula's own row.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: StringVal("Header"),
+			{Col: 6, Row: 2}: NumberVal(-250264),
+			{Col: 6, Row: 3}: NumberVal(250264),
+			{Col: 6, Row: 4}: NumberVal(-5750000),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     2,
+		CurrentSheet:   "Outputs",
+		IsArrayFormula: false,
+	}
+
+	// ABS(F:F) in row 2 with implicit intersection → ABS(F2) = 250264
+	cf := evalCompile(t, "ABS(F:F)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 250264 {
+		t.Errorf("ABS(F:F) with implicit intersection = %v (%g), want 250264", got.Type, got.Num)
+	}
+
+	// ISNUMBER(F:F) in row 2 → ISNUMBER(F2) = TRUE
+	cf = evalCompile(t, "ISNUMBER(F:F)")
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Errorf("ISNUMBER(F:F) with implicit intersection = %v, want TRUE", got)
+	}
+
+	// ISNUMBER(F:F) in row 1 → ISNUMBER(F1) = FALSE (string header)
+	ctx1 := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Outputs"}
+	cf = evalCompile(t, "ISNUMBER(F:F)")
+	got, err = Eval(cf, resolver, ctx1)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || got.Bool {
+		t.Errorf("ISNUMBER(F:F) row 1 = %v, want FALSE", got)
+	}
+}
+
+func TestEvalArrayFormulaFullColumn(t *testing.T) {
+	// When IsArrayFormula=true, F:F should load as a full array.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	cf := evalCompile(t, "SUM(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Errorf("SUM(A:A) array formula = %v (%g), want 60", got.Type, got.Num)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // coerceNum edge cases (exercised through arithmetic operations)
 // ---------------------------------------------------------------------------

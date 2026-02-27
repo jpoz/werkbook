@@ -12,7 +12,7 @@ import (
 var knownFunctionsList = []string{
 	"ABS", "ACOS", "AND", "ASIN", "ATAN", "ATAN2", "AVERAGE", "AVERAGEIF",
 	"AVERAGEIFS", "CEILING", "CHAR", "CHOOSE", "CLEAN", "CODE", "COLUMN",
-	"COLUMNS", "CONCAT", "CONCATENATE", "COS", "COUNT", "COUNTA", "COUNTBLANK",
+	"COLUMNS", "CONCATENATE", "COS", "COUNT", "COUNTA", "COUNTBLANK",
 	"COUNTIF", "COUNTIFS", "DATE", "DAY", "EXACT", "EXP", "FIND", "FLOOR",
 	"HLOOKUP", "HOUR", "IF", "IFERROR", "IFNA", "INDEX", "INT",
 	"ISBLANK", "ISERR", "ISERROR", "ISNA", "ISNUMBER", "ISTEXT", "LARGE",
@@ -20,9 +20,9 @@ var knownFunctionsList = []string{
 	"MEDIAN", "MID", "MIN", "MINUTE", "MOD", "MONTH", "NOT", "OR",
 	"PI", "POWER", "PRODUCT", "PROPER", "REPLACE",
 	"REPT", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP", "ROW", "ROWS", "SEARCH",
-	"SECOND", "SIN", "SMALL", "SORT", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
+	"SECOND", "SIN", "SMALL", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
 	"SUMIFS", "SUMPRODUCT", "TAN", "TEXT", "TIME", "TRIM", "UPPER",
-	"VALUE", "VLOOKUP", "XLOOKUP", "XOR", "YEAR",
+	"VALUE", "VLOOKUP", "XOR", "YEAR",
 }
 
 // generateSpec shells out to `claude -p` to generate a test spec.
@@ -123,6 +123,8 @@ func buildGenerationPrompt(seed string) string {
 	sb.WriteString("- Include 5-15 cells and 3-8 checks\n")
 	sb.WriteString("- Use realistic but tricky inputs that might expose bugs\n")
 	sb.WriteString("- DO NOT use RAND, RANDBETWEEN, NOW, TODAY, or INDIRECT\n")
+	sb.WriteString("- DO NOT use CONCAT, XLOOKUP, or SORT (use CONCATENATE instead of CONCAT)\n")
+	sb.WriteString("- The formulas will be validated against LibreOffice, so only use functions that LibreOffice supports\n")
 	sb.WriteString("- The 'expected' field in checks should be the string representation of the expected result\n")
 	sb.WriteString("- For numbers, use the simplest representation (e.g., \"10\" not \"10.0\")\n")
 	sb.WriteString("- For booleans, use \"TRUE\" or \"FALSE\"\n")

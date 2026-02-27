@@ -35,13 +35,18 @@ type CheckSpec struct {
 	Type     string `json:"type"` // "number", "string", "bool", "error", "empty"
 }
 
-// excludedFunctions lists non-deterministic functions that should not appear in specs.
+// excludedFunctions lists functions that should not appear in specs.
 var excludedFunctions = map[string]bool{
+	// Non-deterministic
 	"RAND":        true,
 	"RANDBETWEEN": true,
 	"NOW":         true,
 	"TODAY":       true,
 	"INDIRECT":    true,
+	// Excel 2019+/365 — not supported by LibreOffice
+	"CONCAT":  true,
+	"XLOOKUP": true,
+	"SORT":    true,
 }
 
 // loadSpec reads and validates a test spec from a JSON file.

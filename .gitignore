@@ -1,5 +1,6 @@
 # Binaries
 werkbook
+fuzz
 *.exe
 *.exe~
 *.dll
