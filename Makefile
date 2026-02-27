@@ -139,6 +139,14 @@ clean: ## Remove generated artifacts
 	rm -f coverage.out coverage.html
 
 # ============================================================================
+## Documentation
+# ============================================================================
+
+.PHONY: exceldoc
+exceldoc: ## Fetch Excel function docs (use FUNC=name)
+	go run ./cmd/exceldoc $(FUNC)
+
+# ============================================================================
 ## Fuzz Orchestration
 # ============================================================================
 

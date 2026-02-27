@@ -40,13 +40,83 @@ var excludedFunctions = map[string]bool{
 	// Non-deterministic
 	"RAND":        true,
 	"RANDBETWEEN": true,
+	"RANDARRAY":   true,
 	"NOW":         true,
 	"TODAY":       true,
-	"INDIRECT":    true,
-	// Excel 2019+/365 — not supported by LibreOffice
-	"CONCAT":  true,
-	"XLOOKUP": true,
-	"SORT":    true,
+
+	// Volatile/indirect resolution
+	"INDIRECT": true,
+
+	// Excel 365+ dynamic array functions (not in LibreOffice)
+	"CONCAT":       true,
+	"XLOOKUP":      true,
+	"XMATCH":       true,
+	"SORT":         true,
+	"SORTBY":       true,
+	"FILTER":       true,
+	"UNIQUE":       true,
+	"SEQUENCE":     true,
+	"LET":          true,
+	"LAMBDA":       true,
+	"MAP":          true,
+	"REDUCE":       true,
+	"SCAN":         true,
+	"BYCOL":        true,
+	"BYROW":        true,
+	"MAKEARRAY":    true,
+	"CHOOSECOLS":   true,
+	"CHOOSEROWS":   true,
+	"DROP":         true,
+	"TAKE":         true,
+	"EXPAND":       true,
+	"HSTACK":       true,
+	"VSTACK":       true,
+	"WRAPCOLS":     true,
+	"WRAPROWS":     true,
+	"TOCOL":        true,
+	"TOROW":        true,
+	"TEXTBEFORE":   true,
+	"TEXTAFTER":    true,
+	"TEXTSPLIT":    true,
+	"VALUETOTEXT":  true,
+	"ARRAYTOTEXT":  true,
+	"ISOMITTED":    true,
+	"IMAGE":        true,
+	"GROUPBY":      true,
+	"PIVOTBY":      true,
+	"PERCENTOF":    true,
+	"TRIMRANGE":    true,
+
+	// Require external data / environment
+	"WEBSERVICE":      true,
+	"FILTERXML":       true,
+	"ENCODEURL":       true,
+	"RTD":             true,
+	"GETPIVOTDATA":    true,
+	"STOCKHISTORY":    true,
+	"DETECTLANGUAGE":  true,
+	"TRANSLATE":       true,
+	"REGEXEXTRACT":    true,
+	"REGEXREPLACE":    true,
+	"REGEXTEST":       true,
+
+	// Environment-dependent
+	"CELL": true,
+	"INFO": true,
+
+	// Cube functions (require OLAP connection)
+	"CUBEKPIMEMBER":       true,
+	"CUBEMEMBER":          true,
+	"CUBEMEMBERPROPERTY":  true,
+	"CUBERANKEDMEMBER":    true,
+	"CUBESET":             true,
+	"CUBESETCOUNT":        true,
+	"CUBEVALUE":           true,
+
+	// User-defined/add-in
+	"CALL":        true,
+	"EUROCONVERT": true,
+	"REGISTER.ID": true,
 }
 
 // loadSpec reads and validates a test spec from a JSON file.
