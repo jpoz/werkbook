@@ -69,7 +69,7 @@
         },
         {
           "ref": "C8",
-          "formula": "CONCAT(B1,\" \",B2)"
+          "formula": "CONCATENATE(B1,\" \",B2)"
         }
       ]
     }

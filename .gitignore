@@ -1,6 +1,9 @@
 # Binaries
 werkbook
 fuzz
+fuzzcheck
+fuzzgen
+fuzzorch
 *.exe
 *.exe~
 *.dll
@@ -10,6 +13,8 @@ fuzz
 
 # Test binary
 *.test
+testcases/
+failures/
 
 # Output of go coverage
 *.out

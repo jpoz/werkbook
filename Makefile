@@ -67,9 +67,16 @@ help: ## Show this help
 # ============================================================================
 
 .PHONY: setup
-setup: ## Install dependencies
+setup: ## Install dependencies (including LibreOffice for integration tests)
 	$(call print_stage,Downloading Go dependencies)
 	go mod download
+	$(call print_stage,Checking for LibreOffice)
+	@if ! command -v soffice >/dev/null 2>&1 && [ ! -f /Applications/LibreOffice.app/Contents/MacOS/soffice ]; then \
+		echo "$(YELLOW)Installing LibreOffice via Homebrew...$(NC)"; \
+		brew install --cask libreoffice; \
+	else \
+		echo "$(GREEN)✓ LibreOffice already installed$(NC)"; \
+	fi
 	$(call print_success,Setup complete!)
 
 .PHONY: deps
@@ -130,3 +137,22 @@ build: ## Verify the package compiles
 clean: ## Remove generated artifacts
 	$(call print_stage,Cleaning)
 	rm -f coverage.out coverage.html
+
+# ============================================================================
+## Fuzz Orchestration
+# ============================================================================
+
+.PHONY: fuzzgen
+fuzzgen: ## Run the fuzz generator (use LEVEL=N, SEED=category)
+	$(call print_stage,Running fuzz generator)
+	go run ./cmd/fuzzgen --level $(or $(LEVEL),1) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
+
+.PHONY: fuzzcheck
+fuzzcheck: ## Run the fuzz checker (use TESTCASE=dir)
+	$(call print_stage,Running fuzz checker)
+	go run ./cmd/fuzzcheck --testcase $(TESTCASE) $(if $(NOFIX),--no-fix) $(if $(VERBOSE),-v)
+
+.PHONY: fuzzorch
+fuzzorch: ## Run the fuzz orchestrator (use LEVEL=N, PASSES=N, SEED=category)
+	$(call print_stage,Running fuzz orchestrator)
+	go run ./cmd/fuzzorch --start-level $(or $(LEVEL),1) --passes-to-escalate $(or $(PASSES),3) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
