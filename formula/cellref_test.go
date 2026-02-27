@@ -53,6 +53,36 @@ func TestParseCellRefToken(t *testing.T) {
 	}
 }
 
+func TestParseCellRefTokenColumnOnly(t *testing.T) {
+	tests := []struct {
+		input string
+		want  CellRef
+	}{
+		// Column-only references have Row=0.
+		{"F", CellRef{Col: 6, Row: 0}},
+		{"$A", CellRef{Col: 1, Row: 0, AbsCol: true}},
+		{"AA", CellRef{Col: 27, Row: 0}},
+		{"XFD", CellRef{Col: 16384, Row: 0}},
+
+		// Sheet-qualified column-only refs.
+		{"Sheet1!F", CellRef{Sheet: "Sheet1", Col: 6, Row: 0}},
+		{"Ledger!F", CellRef{Sheet: "Ledger", Col: 6, Row: 0}},
+		{"'Sheet Name'!B", CellRef{Sheet: "Sheet Name", Col: 2, Row: 0}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseCellRefToken(tt.input)
+			if err != nil {
+				t.Fatalf("parseCellRefToken(%q) error: %v", tt.input, err)
+			}
+			if *got != tt.want {
+				t.Errorf("parseCellRefToken(%q)\n  got:  %+v\n  want: %+v", tt.input, *got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseCellRefTokenErrors(t *testing.T) {
 	tests := []string{
 		"",
