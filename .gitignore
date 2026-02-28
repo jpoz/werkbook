@@ -1,12 +1,12 @@
 # Binaries
 werkbook
-fuzz
-fuzzcheck
-fuzzgen
-fuzzorch
-excel-test
-msgraph-setup
-exceldoc
+/fuzz
+/fuzzcheck
+/fuzzgen
+/fuzzorch
+/excel-test
+/msgraph-setup
+/exceldoc
 *.exe
 *.exe~
 *.dll

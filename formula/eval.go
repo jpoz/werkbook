@@ -677,6 +677,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOLUMN(args, ctx)
 	case "COLUMNS":
 		return fnCOLUMNS(args)
+	case "ERROR.TYPE":
+		return fnERRORTYPE(args)
 	case "IFNA":
 		return fnIFNA(args)
 	case "ISBLANK":
@@ -685,10 +687,14 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnISERROR(args)
 	case "ISEVEN":
 		return fnISEVEN(args)
-	case "ISODD":
-		return fnISODD(args)
+	case "ISLOGICAL":
+		return fnISLOGICAL(args)
 	case "ISNA":
 		return fnISNA(args)
+	case "ISNONTEXT":
+		return fnISNONTEXT(args)
+	case "ISODD":
+		return fnISODD(args)
 	case "ISNUMBER":
 		return fnISNUMBER(args)
 	case "ISTEXT":

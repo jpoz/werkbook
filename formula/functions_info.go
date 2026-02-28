@@ -64,6 +64,47 @@ func fnISTEXT(args []Value) (Value, error) {
 	return BoolVal(args[0].Type == ValueString), nil
 }
 
+func fnISLOGICAL(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(args[0].Type == ValueBool), nil
+}
+
+func fnISNONTEXT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(args[0].Type != ValueString), nil
+}
+
+func fnERRORTYPE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type != ValueError {
+		return ErrorVal(ErrValNA), nil
+	}
+	switch args[0].Err {
+	case ErrValNULL:
+		return NumberVal(1), nil
+	case ErrValDIV0:
+		return NumberVal(2), nil
+	case ErrValVALUE:
+		return NumberVal(3), nil
+	case ErrValREF:
+		return NumberVal(4), nil
+	case ErrValNAME:
+		return NumberVal(5), nil
+	case ErrValNUM:
+		return NumberVal(6), nil
+	case ErrValNA:
+		return NumberVal(7), nil
+	default:
+		return ErrorVal(ErrValNA), nil
+	}
+}
+
 func fnIFNA(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
