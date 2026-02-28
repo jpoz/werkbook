@@ -202,6 +202,21 @@ func TestWORKDAYEdgeCases(t *testing.T) {
 
 		// Negative one from a Friday gives Thursday
 		{"friday_minus_one", "WORKDAY(DATE(2008,10,3), -1)", "DATE(2008,10,2)"},
+
+		// Large backward count: 260 workdays back from Dec 31, 2008 (Wed) = Jan 2, 2008 (Wed)
+		{"large_backward_260", "WORKDAY(DATE(2008,12,31), -260)", "DATE(2008,1,2)"},
+
+		// Forward across multiple months: Oct 30 (Thu) + 10 = Nov 13 (Thu)
+		{"across_multiple_months", "WORKDAY(DATE(2008,10,30), 10)", "DATE(2008,11,13)"},
+
+		// Near epoch: Jan 1, 1900 (Mon) + 5 = Jan 8, 1900 (Mon)
+		{"near_epoch_forward", "WORKDAY(DATE(1900,1,1), 5)", "DATE(1900,1,8)"},
+
+		// Near epoch backward: Jan 8, 1900 (Mon) - 5 = Jan 1, 1900 (Mon)
+		{"near_epoch_backward", "WORKDAY(DATE(1900,1,8), -5)", "DATE(1900,1,1)"},
+
+		// Saturday + 5 workdays: Oct 4 (Sat) → Oct 10 (Fri)
+		{"saturday_plus_five", "WORKDAY(DATE(2008,10,4), 5)", "DATE(2008,10,10)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -681,6 +696,35 @@ func TestWORKDAY(t *testing.T) {
 
 		// Large forward count (2 years ≈ 520 workdays)
 		{"two_years_workdays", "WORKDAY(DATE(2008,1,1), 520)", "DATE(2009,12,29)"},
+
+		// === Tests locking in DATE floor-truncation fix (mismatch scenario) ===
+
+		// Exact mismatch case: DATE(2024,-0.5,3.14...) uses Floor(-0.5)=-1 for month
+		// and Floor(3.14)=3 for day → DATE(2024,-1,3) = Nov 3, 2023 (Fri).
+		// Days=0.5 truncates to 0 → returns start_date unchanged.
+		{"mismatch_neg_frac_month_frac_days", "WORKDAY(DATE(2024,-0.5,3.14159265358979), 0.5)", "DATE(2023,11,3)"},
+
+		// DATE with month=0 → December of previous year; Dec 15, 2023 is Friday
+		{"date_month_zero_forward", "WORKDAY(DATE(2024,0,15), 1)", "DATE(2023,12,18)"},
+
+		// DATE with negative integer month: DATE(2024,-1,3) = Nov 3, 2023 (Fri) + 1 = Nov 6 (Mon)
+		{"date_neg_int_month_forward", "WORKDAY(DATE(2024,-1,3), 1)", "DATE(2023,11,6)"},
+
+		// DATE with positive fractional month/day: Floor(1.9)=1, Floor(15.7)=15
+		// → Jan 15, 2024 (Mon) + 1 = Jan 16 (Tue)
+		{"date_pos_frac_month_day", "WORKDAY(DATE(2024,1.9,15.7), 1)", "DATE(2024,1,16)"},
+
+		// Fractional days = exactly 0.5, mid-week start (Mon Jan 15, 2024)
+		{"fractional_half_day_midweek", "WORKDAY(DATE(2024,1,15), 0.5)", "DATE(2024,1,15)"},
+
+		// Fractional days = -0.5 truncates to 0 → same as start
+		{"fractional_neg_half_day", "WORKDAY(DATE(2024,1,15), -0.5)", "DATE(2024,1,15)"},
+
+		// Raw serial number as start_date (39722 = Oct 1, 2008, Wed)
+		{"raw_serial_start_date", "WORKDAY(39722, 1)", "DATE(2008,10,2)"},
+
+		// Near-epoch: serial 1 = Jan 1, 1900 (Mon) + 1 = Jan 2, 1900 (Tue)
+		{"serial_one_plus_one", "WORKDAY(1, 1)", "DATE(1900,1,2)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -861,6 +905,88 @@ func TestWORKDAYWithHolidays(t *testing.T) {
 		}
 		if got.Num != want.Num {
 			t.Errorf("WORKDAY with weekend holiday = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Entire work week (Mon-Fri) as holidays forces jump over full week
+	t.Run("entire_week_as_holidays", func(t *testing.T) {
+		cfMon := evalCompile(t, "DATE(2008,10,6)")
+		mon, _ := Eval(cfMon, nil, nil)
+		cfTue := evalCompile(t, "DATE(2008,10,7)")
+		tue, _ := Eval(cfTue, nil, nil)
+		cfWed := evalCompile(t, "DATE(2008,10,8)")
+		wed, _ := Eval(cfWed, nil, nil)
+		cfThu := evalCompile(t, "DATE(2008,10,9)")
+		thu, _ := Eval(cfThu, nil, nil)
+		cfFri := evalCompile(t, "DATE(2008,10,10)")
+		fri, _ := Eval(cfFri, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(mon.Num),
+				{Col: 1, Row: 2}: NumberVal(tue.Num),
+				{Col: 1, Row: 3}: NumberVal(wed.Num),
+				{Col: 1, Row: 4}: NumberVal(thu.Num),
+				{Col: 1, Row: 5}: NumberVal(fri.Num),
+			},
+		}
+		// Oct 3 (Fri) + 1 workday, with Oct 6-10 all holidays
+		// → skip weekend (Oct 4-5) and holiday week (Oct 6-10) → Oct 13 (Mon)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,3), 1, A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,13)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY entire week holiday = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Backward across a week of holidays
+	t.Run("backward_across_holiday_week", func(t *testing.T) {
+		cfMon := evalCompile(t, "DATE(2008,10,6)")
+		mon, _ := Eval(cfMon, nil, nil)
+		cfTue := evalCompile(t, "DATE(2008,10,7)")
+		tue, _ := Eval(cfTue, nil, nil)
+		cfWed := evalCompile(t, "DATE(2008,10,8)")
+		wed, _ := Eval(cfWed, nil, nil)
+		cfThu := evalCompile(t, "DATE(2008,10,9)")
+		thu, _ := Eval(cfThu, nil, nil)
+		cfFri := evalCompile(t, "DATE(2008,10,10)")
+		fri, _ := Eval(cfFri, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(mon.Num),
+				{Col: 1, Row: 2}: NumberVal(tue.Num),
+				{Col: 1, Row: 3}: NumberVal(wed.Num),
+				{Col: 1, Row: 4}: NumberVal(thu.Num),
+				{Col: 1, Row: 5}: NumberVal(fri.Num),
+			},
+		}
+		// Oct 13 (Mon) - 1 workday, with Oct 6-10 all holidays
+		// → skip weekend (Oct 11-12) and holiday week (Oct 6-10) → Oct 3 (Fri)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,13), -1, A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,3)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY backward across holiday week = %g, want %g", got.Num, want.Num)
 		}
 	})
 

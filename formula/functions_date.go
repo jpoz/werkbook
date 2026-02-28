@@ -728,5 +728,9 @@ func fnWORKDAY(args []Value) (Value, error) {
 		days--
 	}
 
-	return NumberVal(timeToExcelSerial(t)), nil
+	result := timeToExcelSerial(t)
+	if result < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(result), nil
 }
