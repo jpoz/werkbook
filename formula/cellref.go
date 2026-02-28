@@ -39,8 +39,9 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		ref.Sheet = s[:idx]
 		s = s[idx+1:]
 	} else if idx := findDotSheetSeparator(s); idx > 0 {
-		// Dot notation: Sheet1.A1
+		// Dot notation: Sheet1.A1 (LibreOffice style; Excel returns #NAME? for this)
 		ref.Sheet = s[:idx]
+		ref.DotNotation = true
 		s = s[idx+1:]
 	} else if len(s) > 0 && s[0] == '!' {
 		return nil, fmt.Errorf("empty sheet name in %q", raw)

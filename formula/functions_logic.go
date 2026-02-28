@@ -25,6 +25,9 @@ func fnIF(args []Value) (Value, error) {
 		}
 		return Value{Type: ValueArray, Array: rows}, nil
 	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
 	if isTruthy(args[0]) {
 		return args[1], nil
 	}

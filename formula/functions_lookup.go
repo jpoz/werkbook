@@ -104,6 +104,9 @@ func fnVLOOKUP(args []Value) (Value, error) {
 	}
 	lookup := args[0]
 	table := args[1]
+	if table.Type == ValueError {
+		return table, nil
+	}
 	if table.Type != ValueArray {
 		return ErrorVal(ErrValVALUE), nil
 	}

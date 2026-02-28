@@ -134,11 +134,21 @@ func (c *compiler) compileNode(node Node) error {
 		c.emit(OpPushError, uint32(errorCodeFromAST(n.Code)))
 
 	case *CellRef:
+		if n.DotNotation {
+			// Dot-notation (Sheet1.A1) is a LibreOffice extension; Excel returns #NAME?
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
 		addr := CellAddr{Sheet: n.Sheet, Col: n.Col, Row: n.Row}
 		idx := c.addRef(addr)
 		c.emit(OpLoadCell, idx)
 
 	case *RangeRef:
+		if n.From.DotNotation || n.To.DotNotation {
+			// Dot-notation range (Sheet1.A1:Sheet1.A5) is a LibreOffice extension; Excel returns #NAME?
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
 		sheet := n.From.Sheet
 		addr := RangeAddr{
 			Sheet:   sheet,
@@ -204,7 +214,7 @@ func (c *compiler) compileNode(node Node) error {
 		// cell value.  When the single argument is a direct cell reference, push
 		// a ValueRef (address only) so the function can extract col/row.
 		if (name == "COLUMN" || name == "ROW") && argc == 1 {
-			if cr, ok := n.Args[0].(*CellRef); ok {
+			if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation {
 				idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 				c.emit(OpLoadCellRef, idx)
 				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))

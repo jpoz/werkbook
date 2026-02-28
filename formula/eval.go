@@ -234,7 +234,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) == 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) == 0))
+			}
 
 		case OpNe:
 			b, err := pop()
@@ -245,7 +251,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) != 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) != 0))
+			}
 
 		case OpLt:
 			b, err := pop()
@@ -256,7 +268,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) < 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) < 0))
+			}
 
 		case OpLe:
 			b, err := pop()
@@ -267,7 +285,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) <= 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) <= 0))
+			}
 
 		case OpGt:
 			b, err := pop()
@@ -278,7 +302,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) > 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) > 0))
+			}
 
 		case OpGe:
 			b, err := pop()
@@ -289,7 +319,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(BoolVal(compareValues(a, b) >= 0))
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(BoolVal(compareValues(a, b) >= 0))
+			}
 
 		case OpCall:
 			funcID := int(inst.Operand >> 8)

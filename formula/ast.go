@@ -74,11 +74,12 @@ func (n *ErrorLit) String() string {
 
 // CellRef represents a cell reference, possibly sheet-qualified.
 type CellRef struct {
-	Sheet  string // empty if not sheet-qualified
-	Col    int    // 1-based column number
-	Row    int    // 1-based row number
-	AbsCol bool   // true if column is absolute ($A)
-	AbsRow bool   // true if row is absolute ($1)
+	Sheet       string // empty if not sheet-qualified
+	Col         int    // 1-based column number
+	Row         int    // 1-based row number
+	AbsCol      bool   // true if column is absolute ($A)
+	AbsRow      bool   // true if row is absolute ($1)
+	DotNotation bool   // true if parsed with LibreOffice dot separator (Sheet1.A1); Excel returns #NAME?
 }
 
 func (n *CellRef) nodeMarker() {}

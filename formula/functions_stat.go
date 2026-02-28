@@ -326,6 +326,9 @@ func fnSUMIF(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	rangeArg := args[0]
+	if rangeArg.Type == ValueError {
+		return rangeArg, nil
+	}
 	criteria := args[1]
 	sumRange := rangeArg
 	if len(args) == 3 {
@@ -486,6 +489,9 @@ func fnCOUNTIF(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	rangeArg := args[0]
+	if rangeArg.Type == ValueError {
+		return rangeArg, nil
+	}
 	criteria := args[1]
 	count := 0
 	if rangeArg.Type == ValueArray {

@@ -68,6 +68,9 @@ func fnCODE(args []Value) (Value, error) {
 func fnCONCATENATE(args []Value) (Value, error) {
 	var b strings.Builder
 	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
 		b.WriteString(valueToString(arg))
 	}
 	return StringVal(b.String()), nil
@@ -186,6 +189,9 @@ func fnLEN(args []Value) (Value, error) {
 func fnLOWER(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
 	}
 	return StringVal(strings.ToLower(valueToString(args[0]))), nil
 }

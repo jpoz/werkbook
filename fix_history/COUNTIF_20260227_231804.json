@@ -1,0 +1,7 @@
+{
+  "function": "COUNTIF",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"130\" oracle=\"#NAME?\"",
+  "fix_summary": "All 863 tests pass. Here's a summary of the complete fix:\n\n## Root Cause\n\nThe formula engine parsed LibreOffice-style dot notation (`Sheet1.A1`) as valid cross-sheet references, but Excel returns `#NAME?` for this syntax. The previous fix attempt correctly emitted `#NAME?` for those refs, but error values then failed to propagate through several operators and functions.\n\n## Changes Made (7 files)\n\n**`formula/ast.go`** — Added `DotNotation bool` field to `CellRef` to track refs parsed via dot s...",
+  "timestamp": "2026-02-27T23:18:04.337056-07:00"
+}
