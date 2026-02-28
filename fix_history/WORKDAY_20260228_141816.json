@@ -1,7 +1,0 @@
-{
-  "function": "WORKDAY",
-  "failure_type": "bug_in_function",
-  "error_pattern": "value mismatch: werkbook=\"#VALUE!\" oracle=\"#NUM!\"",
-  "fix_summary": "**Root cause:** The bug was in `valueToFormulaValue()` in `sheet.go`, not in the formula functions themselves. When a cell's formula evaluates to an error (e.g., `DATE(-1,-1,3.14)` → `#NUM!`), it was stored correctly as `Value{Type: TypeError, String: \"#NUM!\"}`. But when another formula referenced that cell, `valueToFormulaValue` always converted ANY error to `formula.ErrValVALUE`, discarding the original error type:\n\n```go\ncase TypeError:\n    return formula.ErrorVal(formula.ErrValVALUE)  // a...",
-  "timestamp": "2026-02-28T14:18:16.839458-07:00"
-}

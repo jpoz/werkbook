@@ -1,7 +1,0 @@
-{
-  "function": "PERMUT",
-  "failure_type": "bug_in_function",
-  "error_pattern": "value mismatch: werkbook=\"1\" oracle=\"#NUM!\"",
-  "fix_summary": "All 902 tests pass. \n\nThe root cause: Go's `int(-1e-15)` truncates toward zero, yielding `0`, so the `k \u003c 0` guard never fired. Excel evaluates the `\u003c 0` condition on the original floating-point argument **before** truncation, so `-1e-15 \u003c 0` correctly triggers `#NUM!`. The fix splits the check — validate `nf \u003c= 0` and `kf \u003c 0` on the raw floats, then truncate to integers for the `n \u003c k` comparison.",
-  "timestamp": "2026-02-28T01:42:41.622252-07:00"
-}

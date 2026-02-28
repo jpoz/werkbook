@@ -1,7 +1,0 @@
-{
-  "function": "WORKDAY",
-  "failure_type": "bug_in_function",
-  "error_pattern": "value mismatch: werkbook=\"#VALUE!\" oracle=\"#NUM!\"",
-  "fix_summary": "All 1279 tests pass. The fix is already in place in `sheet.go`. The root cause was in `valueToFormulaValue()` — it was hardcoding `formula.ErrValVALUE` for all error types. The modified code at `sheet.go:568` now uses `formula.ErrorValueFromString(v.String)` to properly preserve the original error type (`#NUM!`, `#DIV/0!`, `#REF!`, etc.) when a cell's error value is passed through to formula evaluation.\n\nNo changes to the `formula/` package are needed — the `fnYEAR`, `fnMONTH`, `fnDAY`, and ...",
-  "timestamp": "2026-02-28T15:49:42.525903-07:00"
-}

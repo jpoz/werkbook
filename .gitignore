@@ -19,6 +19,7 @@ werkbook
 testcases/
 failures/
 fuzzorch_*.log
+fix_history/
 
 # Output of go coverage
 *.out

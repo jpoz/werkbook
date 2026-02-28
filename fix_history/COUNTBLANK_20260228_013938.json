@@ -1,7 +1,0 @@
-{
-  "function": "COUNTBLANK",
-  "failure_type": "bug_in_function",
-  "error_pattern": "numeric mismatch: werkbook=0 oracle=1 (diff=1)",
-  "fix_summary": "The fix is already in place. The `eval.go` modification (seen in git diff) adds padding for bounded ranges to compensate for `sheet.go`'s `GetRangeValues` clamping trailing blank rows to `MaxRow`.\n\nHere's the diagnosis and current state:\n\n**Root cause:** `sheet.go`'s `GetRangeValues` clamps `toRow` to `s.MaxRow()` (the highest row with actual data). For `COUNTBLANK(A6:A8)` where only `A6=0` exists, `MaxRow=6`, so `toRow` gets clamped to 6, returning only `[[NumberVal(0)]]` — a single row. `fnC...",
-  "timestamp": "2026-02-28T01:39:38.473192-07:00"
-}

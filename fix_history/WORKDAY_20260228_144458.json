@@ -1,7 +1,0 @@
-{
-  "function": "WORKDAY",
-  "failure_type": "bug_in_function",
-  "error_pattern": "numeric mismatch: werkbook=12 oracle=11 (diff=1)",
-  "fix_summary": "**Summary of the fix:**\n\n**Root cause:** The `fnDATE` function in `formula/functions_date.go:68` used Go's `int()` to truncate the `month` and `day` arguments to integers. Go's `int()` truncates toward zero (e.g., `int(-0.5)` = 0), but Excel uses INT/floor semantics which truncate toward negative infinity (e.g., `INT(-0.5)` = -1).\n\n**Fix:** Changed `int(month)` → `int(math.Floor(month))` and `int(day)` → `int(math.Floor(day))` on line 68.\n\n**Effect on the test case:**\n- `DATE(2024, -0.5, 3.1...",
-  "timestamp": "2026-02-28T14:44:58.823887-07:00"
-}

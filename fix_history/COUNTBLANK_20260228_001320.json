@@ -1,7 +1,0 @@
-{
-  "function": "COUNTBLANK",
-  "failure_type": "bug_in_function",
-  "error_pattern": "numeric mismatch: werkbook=1 oracle=2 (diff=1)",
-  "fix_summary": "All 866 tests pass. Here's a summary of the two fixes made in `formula/`:\n\n---\n\n**Fix 1: `fnDATE` in `formula/functions_date.go`**\n\nThe original implementation passed arguments directly to `time.Date` without validation, causing two problems:\n\n1. **Missing year bounds check**: Per Excel docs, `year \u003c 0` or `year \u003e= 10000` must return `#NUM!`\n2. **Missing year correction**: Per Excel docs, years 0–1899 should have 1900 added (e.g., `DATE(108,1,2)` → year 2008)\n3. **No range validation after n...",
-  "timestamp": "2026-02-28T00:13:20.369926-07:00"
-}

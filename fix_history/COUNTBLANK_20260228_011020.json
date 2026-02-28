@@ -1,7 +1,0 @@
-{
-  "function": "COUNTBLANK",
-  "failure_type": "bug_in_function",
-  "error_pattern": "numeric mismatch: werkbook=0 oracle=1 (diff=1)",
-  "fix_summary": "The fix is clean and correct. Here's the root cause and fix summary:\n\n**Root cause:** `sheet.go`'s `GetRangeValues` clamps `toRow` to `s.MaxRow()` (the highest row with actual cell data in the map) to avoid allocating millions of rows for full-column references like `A:A`. However, this clamping also affected bounded ranges like `A1:A10` — if the last row(s) in the range are blank (not stored in the sparse row map), they're silently excluded. For `COUNTBLANK(A1:A10)` where A10 is blank and Max...",
-  "timestamp": "2026-02-28T01:10:20.183112-07:00"
-}

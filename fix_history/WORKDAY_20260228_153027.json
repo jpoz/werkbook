@@ -1,7 +1,0 @@
-{
-  "function": "WORKDAY",
-  "failure_type": "bug_in_function",
-  "error_pattern": "value mismatch: werkbook=\"1607\" oracle=\"#NUM!\"",
-  "fix_summary": "All fixes work correctly:\n\n- `YEAR(2958465)` (max valid serial) → 9999 (correct)\n- `YEAR(2958466)` (just above max) → `#NUM!` (correct)\n- Same for `MONTH` and `DAY`\n- `DATE(2024, 1e15, 3)` → `#NUM!` (was already working, added upper bound check as defense)\n- `WORKDAY(2958466, 1)` → `#NUM!` (correct)\n\n**Summary of changes** in `formula/functions_date.go`:\n\n1. Added `const maxExcelSerial = 2958465` — Excel's maximum valid serial number (Dec 31, 9999)\n2. **fnYEAR, fnMONTH, fnDAY**: Change...",
-  "timestamp": "2026-02-28T15:30:27.704691-07:00"
-}
