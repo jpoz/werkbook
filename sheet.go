@@ -587,6 +587,6 @@ func cellToData(ref string, v Value, formula string) ooxml.CellData {
 	default:
 		cd = ooxml.CellData{Ref: ref}
 	}
-	cd.Formula = formula
+	cd.Formula = ooxml.AddFormulaPrefix(formula)
 	return cd
 }

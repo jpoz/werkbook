@@ -186,6 +186,11 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *FuncCall:
 		name := strings.ToUpper(n.Name)
+		// Strip OOXML prefixes (_xlfn., _xlfn._xlws.) so formulas read
+		// from XLSX files compile correctly even if the prefix wasn't
+		// removed earlier.
+		name = strings.TrimPrefix(name, "_XLFN._XLWS.")
+		name = strings.TrimPrefix(name, "_XLFN.")
 		funcID, ok := funcNameToID[name]
 		if !ok {
 			return fmt.Errorf("unknown function %q", n.Name)
