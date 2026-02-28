@@ -18,7 +18,7 @@ var knownFunctions = [...]string{
 	"MEDIAN", "MID", "MIN", "MINUTE", "MOD", "MONTH", "NOT", "NOW", "OR",
 	"PI", "POWER", "PRODUCT", "PROPER", "RAND", "RANDBETWEEN", "REPLACE",
 	"REPT", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP", "ROW", "ROWS", "SEARCH",
-	"SECOND", "SIN", "SMALL", "SORT", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
+	"SECOND", "SIGN", "SIN", "SMALL", "SORT", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
 	"SUMIFS", "SUMPRODUCT", "TAN", "TEXT", "TIME", "TODAY", "TRIM", "TRUNC",
 	"UPPER", "VALUE", "VLOOKUP", "XLOOKUP", "XOR", "YEAR",
 }

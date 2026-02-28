@@ -525,6 +525,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnROUNDDOWN(args)
 	case "ROUNDUP":
 		return fnROUNDUP(args)
+	case "SIGN":
+		return fnSIGN(args)
 	case "SIN":
 		return fnSIN(args)
 	case "SQRT":

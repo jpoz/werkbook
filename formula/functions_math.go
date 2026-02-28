@@ -342,6 +342,24 @@ func fnROUNDUP(args []Value) (Value, error) {
 	return NumberVal(math.Floor(n*pow) / pow), nil
 }
 
+func fnSIGN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	switch {
+	case n > 0:
+		return NumberVal(1), nil
+	case n < 0:
+		return NumberVal(-1), nil
+	default:
+		return NumberVal(0), nil
+	}
+}
+
 func fnSIN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
