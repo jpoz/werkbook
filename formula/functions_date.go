@@ -69,6 +69,14 @@ func fnDATE(args []Value) (Value, error) {
 	// not TRUNC (toward zero). E.g. INT(-0.5) = -1, not 0.
 	m := int(math.Floor(month))
 	d := int(math.Floor(day))
+
+	// Guard against extreme month/day values that would overflow time.Duration
+	// (max ≈ 292 years in nanoseconds). Excel's valid range is 1/1/1900–12/31/9999,
+	// so values that shift the year far outside always produce #NUM!.
+	if m < -120000 || m > 120000 || d < -4000000 || d > 4000000 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
 	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
 	serial := timeToExcelSerial(t)
 	if serial < 0 {

@@ -725,6 +725,32 @@ func TestWORKDAY(t *testing.T) {
 
 		// Near-epoch: serial 1 = Jan 1, 1900 (Mon) + 1 = Jan 2, 1900 (Tue)
 		{"serial_one_plus_one", "WORKDAY(1, 1)", "DATE(1900,1,2)"},
+
+		// === Boundary-valid results near epoch (complement of result-goes-negative tests) ===
+
+		// Jan 3 (Wed, serial 3) - 2 workdays: Wed→Tue(2)→Mon(1) = serial 1 (valid!)
+		{"backward_to_serial_1", "WORKDAY(DATE(1900,1,3), -2)", "DATE(1900,1,1)"},
+		// Jan 2 (Tue, serial 2) - 1 workday = Mon Jan 1 (serial 1, valid)
+		{"backward_to_serial_1_from_tue", "WORKDAY(2, -1)", "DATE(1900,1,1)"},
+		// Jan 5 (Fri, serial 5) - 4 workdays: Fri→Thu(4)→Wed(3)→Tue(2)→Mon(1) = valid
+		{"backward_to_serial_1_from_fri", "WORKDAY(5, -4)", "DATE(1900,1,1)"},
+
+		// === Additional type coercion tests ===
+
+		// Boolean TRUE as start_date (TRUE=1 → serial 1 = Jan 1, 1900 Mon)
+		{"bool_true_as_start_date", "WORKDAY(TRUE, 1)", "DATE(1900,1,2)"},
+		// String numeric start_date
+		{"string_serial_as_start_date", `WORKDAY("39722", 1)`, "DATE(2008,10,2)"},
+		// Fractional serial as start_date (39722.75 = Oct 1, 2008 at 6pm)
+		// WORKDAY preserves the time component, so result has fractional part too
+		{"fractional_serial_start_date", "WORKDAY(39722.75, 1)", "DATE(2008,10,2)+0.75"},
+
+		// === Documentation example verification ===
+
+		// From docs: WORKDAY(DATE(2008,10,1), 151) = 4/30/2009
+		// Already tested above as doc_example_151_days, but verify with raw serial too
+		// DATE(2008,10,1) = serial 39722
+		{"doc_example_raw_serial", "WORKDAY(39722, 151)", "DATE(2009,4,30)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -990,6 +1016,58 @@ func TestWORKDAYWithHolidays(t *testing.T) {
 		}
 	})
 
+	// Duplicate holidays should not double-count
+	t.Run("duplicate_holidays", func(t *testing.T) {
+		cfOct2 := evalCompile(t, "DATE(2008,10,2)")
+		oct2, _ := Eval(cfOct2, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(oct2.Num),
+				{Col: 1, Row: 2}: NumberVal(oct2.Num), // same holiday listed twice
+			},
+		}
+		// Oct 1 (Wed) + 1 workday, Oct 2 is holiday (listed twice) → Oct 3 (Fri)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 1, A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,3)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY with duplicate holidays = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Holiday on start_date (start_date itself is a holiday, days > 0)
+	t.Run("holiday_on_start_date", func(t *testing.T) {
+		cfOct1 := evalCompile(t, "DATE(2008,10,1)")
+		oct1, _ := Eval(cfOct1, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(oct1.Num),
+			},
+		}
+		// Oct 1 (Wed) + 0 workdays, Oct 1 is holiday → result is still Oct 1 (days=0 returns start_date)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 0, A1:A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		if got.Num != oct1.Num {
+			t.Errorf("WORKDAY with start=holiday, days=0 = %g, want %g", got.Num, oct1.Num)
+		}
+	})
+
 	// Empty cells in holiday range should be ignored
 	t.Run("empty_cell_in_holiday_range", func(t *testing.T) {
 		cfOct2 := evalCompile(t, "DATE(2008,10,2)")
@@ -1062,6 +1140,21 @@ func TestWORKDAYErrors(t *testing.T) {
 
 		// Both arguments invalid
 		{"value_error_both_args_invalid", `WORKDAY("hello", "world")`, ErrValVALUE},
+
+		// Result goes negative when counting backward past epoch → #NUM!
+		// (per docs: "If start_date plus days yields an invalid date, WORKDAY returns the #NUM! error value.")
+		// Jan 1, 1900 (Mon, serial 1) - 1 workday = Fri Dec 29, 1899 → negative serial
+		{"result_negative_backward_from_epoch", "WORKDAY(DATE(1900,1,1), -1)", ErrValNUM},
+		// Using raw serial 1
+		{"result_negative_backward_serial_1", "WORKDAY(1, -1)", ErrValNUM},
+		// Jan 3 (Wed, serial 3) - 3 workdays: Wed→Tue(2)→Mon(1)→Fri(Dec 29) → negative
+		{"result_negative_backward_from_serial_3", "WORKDAY(3, -3)", ErrValNUM},
+		// Jan 5 (Fri, serial 5) - 5 workdays: Fri→Thu(4)→Wed(3)→Tue(2)→Mon(1)→Fri(Dec 29) → negative
+		{"result_negative_backward_from_serial_5", "WORKDAY(5, -5)", ErrValNUM},
+		// Larger backward count from a date close to epoch
+		{"result_negative_backward_from_jan_15", "WORKDAY(DATE(1900,1,15), -15)", ErrValNUM},
+		// Serial 2 (Jan 2, Tue) - 2 workdays: Tue→Mon(1)→Fri(Dec 29) → negative
+		{"result_negative_backward_from_serial_2", "WORKDAY(2, -2)", ErrValNUM},
 	}
 
 	for _, tc := range tests {
@@ -1134,6 +1227,24 @@ func TestWORKDAYErrorPropagation(t *testing.T) {
 		}
 		if got.Type != ValueError || got.Err != ErrValDIV0 {
 			t.Errorf("WORKDAY(#DIV/0!, 5): got %v, want #DIV/0!", got)
+		}
+	})
+
+	// Error in days argument should be propagated
+	t.Run("propagate_error_from_days_arg", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39722),       // valid start date
+				{Col: 2, Row: 1}: ErrorVal(ErrValVALUE),  // error in days
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("WORKDAY(valid, #VALUE!): got %v, want #VALUE!", got)
 		}
 	})
 

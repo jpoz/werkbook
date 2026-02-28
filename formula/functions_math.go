@@ -376,9 +376,9 @@ func fnMOD(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 	q := n / d
-	// When |n/d| exceeds 2^53, math.Floor loses precision and the result is
+	// When |n/d| is very large, math.Floor loses precision and the result is
 	// floating-point noise. Excel returns #NUM! in this case.
-	if math.Abs(q) > 1<<53 {
+	if math.Abs(q) > 1<<49 {
 		return ErrorVal(ErrValNUM), nil
 	}
 	result := n - d*math.Floor(q)
