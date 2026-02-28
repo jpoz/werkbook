@@ -45,7 +45,27 @@ func fnDATE(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := time.Date(int(year), time.Month(int(month)), int(day), 0, 0, 0, 0, time.UTC)
+
+	// Excel checks the raw float BEFORE truncation: negative values → #NUM!
+	// e.g. int(-0.5) truncates to 0 in Go, but Excel sees -0.5 < 0 → #NUM!
+	if year < 0 || year >= 10000 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	y := int(year)
+
+	// Excel adds 1900 to years in the range 0–1899.
+	// e.g. DATE(108,1,2) → year 2008.
+	if y >= 0 && y <= 1899 {
+		y += 1900
+	}
+
+	// After normalization the year must still be in range.
+	if y < 0 || y >= 10000 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	t := time.Date(y, time.Month(int(month)), int(day), 0, 0, 0, 0, time.UTC)
 	return NumberVal(timeToExcelSerial(t)), nil
 }
 

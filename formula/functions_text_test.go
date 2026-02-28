@@ -254,6 +254,10 @@ func TestNUMBERVALUE(t *testing.T) {
 		{name: "multiple_decimals", formula: `NUMBERVALUE("1.2.3")`, isErr: true},
 		{name: "double_percent", formula: `NUMBERVALUE("50%%")`, wantNum: 0.005},
 		{name: "integer", formula: `NUMBERVALUE("100")`, wantNum: 100},
+		// Whitespace handling (tabs and Unicode whitespace)
+		{name: "all_whitespace_tabs", formula: "NUMBERVALUE(\"  \t  \")", wantNum: 0},
+		{name: "spaces_around", formula: `NUMBERVALUE(" 123 ")`, wantNum: 123},
+		{name: "tabs_around", formula: "NUMBERVALUE(\"\t456\t\")", wantNum: 456},
 	}
 
 	const epsilon = 0.0001

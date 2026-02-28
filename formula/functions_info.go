@@ -9,6 +9,13 @@ func fnISBLANK(args []Value) (Value, error) {
 	return BoolVal(args[0].Type == ValueEmpty), nil
 }
 
+func fnISERR(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(args[0].Type == ValueError && args[0].Err != ErrValNA), nil
+}
+
 func fnISERROR(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

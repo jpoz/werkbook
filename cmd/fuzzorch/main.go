@@ -183,6 +183,7 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 				state.TotalFailed++
 			} else {
 				fmt.Println("  Regression tests passed. Fix kept.")
+				commitFormula(verbose)
 				state.TotalFixed++
 				// Auto-sync implemented functions after successful fix.
 				if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
@@ -531,6 +532,7 @@ func runReplay(state *OrchestratorState, maxFixAttempts int, eval fuzz.Evaluator
 				failed++
 			} else {
 				fmt.Println("  Regression tests passed. Fix kept.")
+				commitFormula(verbose)
 				state.TotalFixed++
 				if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
 					fmt.Printf("  Auto-synced implemented functions (%d total)\n", synced)
@@ -621,6 +623,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 					state.TotalFailed++
 				} else {
 					fmt.Println("  Regression tests passed. Fix kept.")
+				commitFormula(verbose)
 					state.TotalFixed++
 					if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
 						fmt.Printf("  Auto-synced implemented functions (%d total)\n", synced)
@@ -678,6 +681,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 					state.TotalFailed++
 				} else {
 					fmt.Println("  Regression tests passed. Fix kept.")
+				commitFormula(verbose)
 					state.TotalFixed++
 					if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
 						fmt.Printf("  Auto-synced implemented functions (%d total)\n", synced)
@@ -828,6 +832,28 @@ func revertTestFiles(verbose bool) {
 		cmd2 := exec.Command("bash", "-c", "git checkout -- formula/*_test.go")
 		cmd2.Stderr = os.Stderr
 		cmd2.Run()
+	}
+}
+
+// commitFormula commits successful formula fixes so that subsequent reverts
+// only undo the current attempt, not all prior successful fixes.
+func commitFormula(verbose bool) {
+	// Stage formula/ changes.
+	add := exec.Command("git", "add", "formula/")
+	add.Stderr = os.Stderr
+	if err := add.Run(); err != nil {
+		fmt.Printf("  Warning: git add formula/ failed: %v\n", err)
+		return
+	}
+	// Commit with a standard message.
+	commit := exec.Command("git", "commit", "-m", "fix(formula): auto-fix from fuzzorch")
+	commit.Stderr = os.Stderr
+	if err := commit.Run(); err != nil {
+		fmt.Printf("  Warning: git commit failed: %v\n", err)
+		return
+	}
+	if verbose {
+		fmt.Println("  Committed formula/ fix.")
 	}
 }
 

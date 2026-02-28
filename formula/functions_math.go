@@ -375,7 +375,13 @@ func fnMOD(args []Value) (Value, error) {
 	if d == 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
-	result := n - d*math.Floor(n/d)
+	q := n / d
+	// When |n/d| exceeds 2^53, math.Floor loses precision and the result is
+	// floating-point noise. Excel returns #NUM! in this case.
+	if math.Abs(q) > 1<<53 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := n - d*math.Floor(q)
 	return NumberVal(result), nil
 }
 
@@ -412,9 +418,12 @@ func fnPERMUT(args []Value) (Value, error) {
 	if e2 != nil {
 		return *e2, nil
 	}
+	if nf <= 0 || kf < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	n := int(nf)
 	k := int(kf)
-	if n <= 0 || k < 0 || n < k {
+	if n < k {
 		return ErrorVal(ErrValNUM), nil
 	}
 	result := 1.0

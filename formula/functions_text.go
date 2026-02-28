@@ -246,8 +246,13 @@ func fnNUMBERVALUE(args []Value) (Value, error) {
 		}
 	}
 
-	// Strip spaces
-	text = strings.ReplaceAll(text, " ", "")
+	// Strip all whitespace (spaces, tabs, etc.)
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, text)
 
 	if text == "" {
 		return NumberVal(0), nil

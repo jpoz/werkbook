@@ -85,6 +85,23 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				}
 			}
 			rows := resolver.GetRangeValues(addr)
+			// Pad trailing blank rows for bounded ranges. GetRangeValues
+			// clamps toRow to MaxRow to avoid huge allocations for
+			// full-column refs, but bounded ranges like A1:A5 need all
+			// requested rows so functions like COUNTBLANK see every blank.
+			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
+			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
+			if !isFullCol && !isFullRow {
+				expectedRows := addr.ToRow - addr.FromRow + 1
+				cols := addr.ToCol - addr.FromCol + 1
+				for len(rows) < expectedRows {
+					emptyRow := make([]Value, cols)
+					for j := range emptyRow {
+						emptyRow[j] = EmptyVal()
+					}
+					rows = append(rows, emptyRow)
+				}
+			}
 			push(Value{Type: ValueArray, Array: rows})
 
 		case OpLoadCellRef:
@@ -741,7 +758,9 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnIFNA(args)
 	case "ISBLANK":
 		return fnISBLANK(args)
-	case "ISERR", "ISERROR":
+	case "ISERR":
+		return fnISERR(args)
+	case "ISERROR":
 		return fnISERROR(args)
 	case "ISEVEN":
 		return fnISEVEN(args)

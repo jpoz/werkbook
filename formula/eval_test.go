@@ -899,6 +899,34 @@ func TestEvalISERROR(t *testing.T) {
 	}
 }
 
+func TestEvalISERR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    bool
+	}{
+		{`ISERR(1/0)`, true},
+		{`ISERR(#VALUE!)`, true},
+		{`ISERR(#N/A)`, false},  // ISERR excludes #N/A
+		{`ISERR(NA())`, false},  // ISERR excludes #N/A
+		{`ISERR(42)`, false},
+		{`ISERR("hello")`, false},
+	}
+
+	for _, tt := range tests {
+		cf := evalCompile(t, tt.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Errorf("Eval(%q): %v", tt.formula, err)
+			continue
+		}
+		if got.Type != ValueBool || got.Bool != tt.want {
+			t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // XOR — previously partially tested
 // ---------------------------------------------------------------------------
@@ -1185,5 +1213,40 @@ func TestEvalIFNA(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 42 {
 		t.Errorf("IFNA(42,...) = %v, want 42", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUNTBLANK range padding — ensures blank rows beyond MaxRow are counted
+// ---------------------------------------------------------------------------
+
+func TestEvalCOUNTBLANKPadding(t *testing.T) {
+	// Simulate a sheet where only rows 1 and 3 have data in column A.
+	// Rows 2, 4, and 5 are blank (not present in the resolver).
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("hello"),
+			{Col: 1, Row: 3}: StringVal("world"),
+		},
+	}
+
+	// COUNTBLANK(A1:A5): range spans 5 rows, rows 2/4/5 are blank → 3
+	cf := evalCompile(t, "COUNTBLANK(A1:A5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(COUNTBLANK(A1:A5)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTBLANK(A1:A5) = %v (%g), want 3", got.Type, got.Num)
+	}
+
+	// COUNTBLANK(A1:A3): range spans 3 rows, only row 2 is blank → 1
+	cf = evalCompile(t, "COUNTBLANK(A1:A3)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(COUNTBLANK(A1:A3)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTBLANK(A1:A3) = %v (%g), want 1", got.Type, got.Num)
 	}
 }

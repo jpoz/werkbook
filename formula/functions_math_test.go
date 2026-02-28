@@ -137,6 +137,7 @@ func TestMathErrors(t *testing.T) {
 		{"LOG(10,1)", ErrValNUM},
 		{"SQRT(-1)", ErrValNUM},
 		{"MOD(10,0)", ErrValDIV0},
+		{"MOD(100,-1e-15)", ErrValNUM},
 		{"ATAN2(0,0)", ErrValDIV0},
 		{"COMBIN(3,5)", ErrValNUM},
 		{"COMBIN(-1,2)", ErrValNUM},
@@ -145,6 +146,8 @@ func TestMathErrors(t *testing.T) {
 		{"LCM(-5,2)", ErrValNUM},
 		{"MROUND(5,-2)", ErrValNUM},
 		{"QUOTIENT(10,0)", ErrValDIV0},
+		// MOD precision overflow: |n/d| exceeds 2^53
+		{"MOD(1e18,3)", ErrValNUM},
 	}
 
 	for _, tt := range errTests {
@@ -177,6 +180,10 @@ func TestPERMUT(t *testing.T) {
 		{"PERMUT(3,5)", 0, true},
 		{"PERMUT(-1,2)", 0, true},
 		{"PERMUT(0,0)", 0, true},
+		// Pre-truncation negativity checks
+		{"PERMUT(-1e-15,1)", 0, true},  // tiny negative n, int truncation would give 0
+		{"PERMUT(-0.5,1)", 0, true},    // negative n before truncation
+		{"PERMUT(5,-1e-15)", 0, true},  // tiny negative k
 	}
 
 	for _, tt := range tests {
