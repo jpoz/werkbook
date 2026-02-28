@@ -1,0 +1,7 @@
+{
+  "function": "WORKDAY",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"-7.77053998766611e-15\" oracle=\"#NUM!\"",
+  "fix_summary": "The fix is working correctly. Here's a summary of what I did and why:\n\n## Summary\n\n**Bug diagnosed:** `MOD(100, -1e-15)` in `fnMOD` was returning `-7.77e-15` (floating-point noise) instead of `#NUM!`.\n\n**Root cause:** When `|n/d|` exceeds `2^53` (the precision limit of IEEE 754 double-precision integers), the `floor(n/d)` computation becomes inaccurate. For `MOD(100, -1e-15)`, `n/d = -1e17`, which is far beyond `2^53 ≈ 9e15`. The multiplication `d * floor(n/d) = -1e-15 * -1e17` should equal ex...",
+  "timestamp": "2026-02-28T04:13:18.805098-07:00"
+}

@@ -1,0 +1,15 @@
+[0;34m[1m▶ Running fuzz orchestrator[0m
+go run ./cmd/fuzzorch --start-level 6 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
+Fuzz orchestrator starting at level 6 (escalate after 3 consecutive passes)
+Oracle: local-excel
+Max rounds: 1000
+Press Ctrl+C to stop.
+
+=== Replaying 31 saved failures ===
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... failed (122.6s)
+  local-excel eval failed: AppleScript failed: exit status 1
+output: 202:222: execution error: Microsoft Excel got an error: AppleEvent timed out. (-1712)
+
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... 

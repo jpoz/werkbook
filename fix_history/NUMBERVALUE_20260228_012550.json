@@ -1,0 +1,7 @@
+{
+  "function": "NUMBERVALUE",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"#VALUE!\" oracle=\"0\"",
+  "fix_summary": "All 881 tests pass. The fix was simple: `NUMBERVALUE` was only stripping regular space characters (`\" \"`), but the input `\"  \\t  \"` contains tabs. After removing only spaces, `\"\\t\"` remained and caused `strconv.ParseFloat` to fail with `#VALUE!`. \n\nThe fix uses `strings.Map` with `unicode.IsSpace` to strip all whitespace characters (spaces, tabs, newlines, etc.), so `\"  \\t  \"` correctly becomes `\"\"`, which then returns `0` per Excel's spec: *\"If an empty string (\"\") is specified as the Text argu...",
+  "timestamp": "2026-02-28T01:25:50.378372-07:00"
+}

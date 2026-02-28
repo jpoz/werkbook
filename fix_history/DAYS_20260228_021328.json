@@ -1,0 +1,7 @@
+{
+  "function": "DAYS",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"1607\" oracle=\"#NUM!\"",
+  "fix_summary": "All 918 tests pass. The fix:\n\n- **Root cause**: `fnDATE` was not validating the year argument before truncation. `int(-0.5)` in Go truncates toward zero, giving `0`, which appeared valid. But Excel checks the raw float value and returns `#NUM!` when year \u003c 0.\n\n- **Fix**: Added a pre-truncation check — if `year \u003c 0 || year \u003e= 10000`, return `#NUM!`. Also added the correct 0–1899 normalization (add 1900) that was missing.\n\nSince all 4 failing formulas (`YEAR(DATE(...))`, `MONTH(DATE(...))`, `D...",
+  "timestamp": "2026-02-28T02:13:28.958385-07:00"
+}

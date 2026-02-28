@@ -11,6 +11,20 @@ import (
 	"strings"
 )
 
+// IsClaudeCLIError reports whether err looks like a Claude CLI failure
+// (crash, auth, nested session, etc.) as opposed to a logic error in
+// the generated output.
+func IsClaudeCLIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "claude command failed") ||
+		strings.Contains(msg, "claude streaming failed") ||
+		strings.Contains(msg, "claude apply fix failed") ||
+		strings.Contains(msg, "start claude")
+}
+
 // ImplementedFunctions is the set of functions werkbook's formula engine currently supports.
 // Sourced from formula/compiler.go knownFunctions.
 var ImplementedFunctions = map[string]bool{
@@ -337,7 +351,10 @@ type streamContentBlock struct {
 func runClaudeStreamingFix(prompt string, progress io.Writer) (string, error) {
 	cmd := exec.Command("claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json")
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = FilterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = FilterClaudeEnv(os.Environ())
+
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -372,7 +389,7 @@ func runClaudeStreamingFix(prompt string, progress io.Writer) (string, error) {
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("claude streaming failed: %w\nresult so far: %s", err, Truncate(result, 500))
+		return "", fmt.Errorf("claude streaming failed: %w\nstderr: %s\nresult so far: %s", err, stderrBuf.String(), Truncate(result, 500))
 	}
 
 	return result, nil
@@ -448,7 +465,7 @@ func ApplyFix(spec *TestSpec, mismatches []Mismatch, oracleName string, failureT
 
 	cmd := exec.Command("claude", "-p", "--dangerously-skip-permissions")
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = FilterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = FilterClaudeEnv(os.Environ())
 	if verbose {
 		cmd.Stderr = os.Stderr
 	}
@@ -470,7 +487,7 @@ func ApplyFixRetry(spec *TestSpec, mismatches []Mismatch, oracleName string, pre
 
 	cmd := exec.Command("claude", "-p", "--dangerously-skip-permissions")
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = FilterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = FilterClaudeEnv(os.Environ())
 	if verbose {
 		cmd.Stderr = os.Stderr
 	}
@@ -594,6 +611,13 @@ func BuildApplyFixPrompt(spec *TestSpec, mismatches []Mismatch, oracleName strin
 	sb.WriteString("- formula/compiler.go: Compiles AST to bytecode\n")
 	sb.WriteString("- formula/parser.go: Parses formula strings to AST\n\n")
 
+	// Pre-include source code for broken functions to avoid tool call overhead.
+	brokenForSource := extractBrokenFunctions(mismatches)
+	if sourceBlock := buildSourceBlock(brokenForSource, failureType); sourceBlock != "" {
+		sb.WriteString("Current source for the affected function(s) — you do NOT need to re-read these files:\n\n")
+		sb.WriteString(sourceBlock)
+	}
+
 	// Include relevant fix history.
 	if len(fixHistory) > 0 {
 		relevantHistory := findRelevantHistory(mismatches, fixHistory)
@@ -704,7 +728,7 @@ func findRelevantHistory(mismatches []Mismatch, history []FixRecord) []FixRecord
 func RunClaude(prompt string) (string, error) {
 	cmd := exec.Command("claude", "-p", prompt)
 	// Clear CLAUDECODE env var to allow running inside a Claude Code session.
-	cmd.Env = FilterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = FilterClaudeEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("claude command failed: %w\noutput: %s", err, Truncate(string(out), 500))
@@ -1005,7 +1029,7 @@ func GenerateTests(spec *TestSpec, mismatches []Mismatch, oracleName string, fix
 
 	cmd := exec.Command("claude", "-p", "--dangerously-skip-permissions")
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = FilterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = FilterClaudeEnv(os.Environ())
 	if verbose {
 		cmd.Stderr = os.Stderr
 	}
@@ -1076,14 +1100,17 @@ func Truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// FilterEnv returns a copy of env with the named variable removed.
-func FilterEnv(env []string, name string) []string {
-	prefix := name + "="
+// FilterClaudeEnv returns a copy of env with all Claude Code session
+// variables removed so that subprocess invocations of the claude CLI
+// don't detect a nested session and refuse to start.
+func FilterClaudeEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
-		if !strings.HasPrefix(e, prefix) {
-			out = append(out, e)
+		if strings.HasPrefix(e, "CLAUDECODE=") ||
+			strings.HasPrefix(e, "CLAUDE_CODE_") {
+			continue
 		}
+		out = append(out, e)
 	}
 	return out
 }

@@ -134,6 +134,73 @@ func TestDAYS(t *testing.T) {
 	}
 }
 
+func TestDAYSErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// DATE(-0.5,1,1) should return #NUM!, which DAYS should propagate
+		{"negative_year_start", "DAYS(100, DATE(-0.5,1,1))", ErrValNUM},
+		{"negative_year_end", "DAYS(DATE(-0.5,1,1), 100)", ErrValNUM},
+		// DATE(10000,1,1) → #NUM!
+		{"year_too_large", "DAYS(DATE(10000,1,1), 100)", ErrValNUM},
+		// Tiny negative year that truncates to 0 but is still < 0
+		{"tiny_negative_year", "DAYS(DATE(-1e-15,1,1), 100)", ErrValNUM},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tc.wantErr {
+				t.Errorf("%s: got type=%v err=%v, want error %v", tc.formula, got.Type, got.Err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestWORKDAYEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		expect  string
+	}{
+		// Negative workdays
+		{"negative_five", "WORKDAY(DATE(2008,10,15), -5)", "DATE(2008,10,8)"},
+		{"negative_ten", "WORKDAY(DATE(2008,10,15), -10)", "DATE(2008,10,1)"},
+		// Crossing weekends backward
+		{"negative_across_weekend", "WORKDAY(DATE(2008,10,6), -2)", "DATE(2008,10,2)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("WORKDAY: got type %v, want number for %s", got.Type, tt.formula)
+			}
+
+			cfExpect := evalCompile(t, tt.expect)
+			want, err := Eval(cfExpect, nil, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expect, err)
+			}
+
+			if got.Num != want.Num {
+				t.Errorf("%s = %g, want %g (from %s)", tt.formula, got.Num, want.Num, tt.expect)
+			}
+		})
+	}
+}
+
 func TestTIME(t *testing.T) {
 	resolver := &mockResolver{}
 

@@ -208,6 +208,65 @@ func TestPERMUT(t *testing.T) {
 	}
 }
 
+func TestMOD(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{"positive_mod", "MOD(10,3)", 1},
+		{"exact_divisor", "MOD(10,5)", 0},
+		{"negative_dividend", "MOD(-10,3)", 2},
+		{"negative_divisor", "MOD(10,-3)", -2},
+		{"both_negative", "MOD(-10,-3)", -1},
+		{"fractional", "MOD(7.5,2)", 1.5},
+		{"small_divisor_ok", "MOD(10,0.1)", 0},
+	}
+
+	const epsilon = 1e-10
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Errorf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			} else if math.Abs(got.Num-tt.wantNum) > epsilon {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Division by zero → #DIV/0!
+		{"div_by_zero", "MOD(10,0)", ErrValDIV0},
+		// Precision overflow: |n/d| > 2^53 → #NUM!
+		{"precision_overflow", "MOD(100,-1e-15)", ErrValNUM},
+		{"precision_overflow_large", "MOD(1e18,1)", ErrValNUM},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestSUBTOTAL(t *testing.T) {
 	resolver := &mockResolver{}
 

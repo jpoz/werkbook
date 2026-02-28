@@ -35,6 +35,16 @@ type SystematicState struct {
 	Phase   string   // "targeted" or "regression"
 }
 
+const coverageSavePath = "coverage.json"
+
+func saveCoverage(state *OrchestratorState, verbose bool) {
+	if err := fuzz.SaveCoverage(coverageSavePath, state.Coverage); err != nil {
+		fmt.Printf("  Warning: could not save coverage: %v\n", err)
+	} else if verbose {
+		fmt.Printf("  Coverage saved to %s\n", coverageSavePath)
+	}
+}
+
 func main() {
 	startLevel := flag.Int("start-level", 1, "starting complexity level")
 	passesToEscalate := flag.Int("passes-to-escalate", 3, "consecutive passes before escalating")
@@ -83,6 +93,14 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 		Coverage: fuzz.NewFunctionCoverage(),
 	}
 
+	// Load persisted coverage from a previous run.
+	if saved, err := fuzz.LoadCoverage(coverageSavePath); err != nil {
+		fmt.Printf("Warning: could not load coverage: %v\n", err)
+	} else if saved != nil {
+		fuzz.MergeCoverage(state.Coverage, saved)
+		fmt.Printf("Loaded coverage from previous run (%d functions tracked)\n", len(saved.Tested))
+	}
+
 	fmt.Printf("Fuzz orchestrator starting at level %d (escalate after %d consecutive passes)\n", state.Level, passesToEscalate)
 	fmt.Printf("Oracle: %s\n", eval.Name())
 	if maxRounds > 0 {
@@ -111,6 +129,7 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 		case <-sigCh:
 			fmt.Println("\nInterrupted. Printing final summary.")
 			printSummary(state)
+			saveCoverage(state, verbose)
 			fmt.Println()
 			fmt.Print(state.Coverage.Summary())
 			return nil
@@ -142,6 +161,15 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 			if err != nil {
 				fmt.Printf("failed (%.1fs)\n", genElapsed.Seconds())
 				fmt.Printf("  Generation failed: %v\n", err)
+				if fuzz.IsClaudeCLIError(err) {
+					fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+					fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+					fmt.Println("  running inside another Claude Code session.")
+					printSummary(state)
+					fmt.Println()
+					fmt.Print(state.Coverage.Summary())
+					return fmt.Errorf("claude CLI failed")
+				}
 				roundElapsed := time.Since(roundStart)
 				state.TotalTime += roundElapsed
 				state.TotalFailed++
@@ -155,7 +183,7 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 				spec.Name, len(spec.Sheets), len(spec.Checks))
 		}
 
-		result, fi := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
+		result, fi, gt := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
 		roundElapsed := time.Since(roundStart)
 		state.TotalTime += roundElapsed
 		fmt.Printf("  Round time: %.1fs\n", roundElapsed.Seconds())
@@ -166,6 +194,9 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 			state.ConsecutivePasses++
 			lastPassingSpec = spec
 			fmt.Printf("  PASS (%d/%d to escalate)\n", state.ConsecutivePasses, passesToEscalate)
+			if n := fuzz.LearnIsolationTests(spec, gt, eval.Name()); n > 0 {
+				fmt.Printf("  Learned %d new isolation test(s)\n", n)
+			}
 
 			if state.ConsecutivePasses >= passesToEscalate {
 				state.Level++
@@ -201,9 +232,20 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 
 		case resultError:
 			state.TotalFailed++
+
+		case resultClaudeError:
+			state.TotalFailed++
+			fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+			fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+			fmt.Println("  running inside another Claude Code session.")
+			printSummary(state)
+			fmt.Println()
+			fmt.Print(state.Coverage.Summary())
+			return fmt.Errorf("claude CLI failed")
 		}
 
 		printSummary(state)
+		saveCoverage(state, verbose)
 
 		// Print coverage summary at interval.
 		if coverageInterval > 0 && state.TotalGenerated%coverageInterval == 0 {
@@ -215,6 +257,7 @@ func run(startLevel, passesToEscalate, maxRounds, maxFixAttempts, coverageInterv
 
 	fmt.Println("Max rounds reached. Final summary:")
 	printSummary(state)
+	saveCoverage(state, verbose)
 	fmt.Println()
 	fmt.Print(state.Coverage.Summary())
 	return nil
@@ -227,6 +270,7 @@ const (
 	resultFixed
 	resultFailed
 	resultError
+	resultClaudeError // Claude CLI itself failed (auth, env, crash) — fatal
 )
 
 // fixInfo holds data about a successful fix for downstream use (e.g., test generation).
@@ -237,14 +281,15 @@ type fixInfo struct {
 
 // executeSpec runs the build->eval->compare->fix pipeline on an already-generated spec.
 // When the result is resultFixed, fixData contains the mismatches and broken functions.
-func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSpec, eval fuzz.Evaluator, testcaseDir, failureDir string, verbose bool) (roundResult, *fixInfo) {
+// On resultPass, groundTruth contains the oracle results for use in learning isolation tests.
+func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSpec, eval fuzz.Evaluator, testcaseDir, failureDir string, verbose bool) (roundResult, *fixInfo, []fuzz.CellResult) {
 	// Build XLSX.
 	fmt.Printf("  Building XLSX... ")
 	buildStart := time.Now()
 	tmpDir, err := os.MkdirTemp("", "werkbook-fuzzorch-*")
 	if err != nil {
 		fmt.Printf("  Error creating temp dir: %v\n", err)
-		return resultError, nil
+		return resultError, nil, nil
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -253,7 +298,7 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 	if err != nil {
 		fmt.Printf("failed (%.1fs)\n", buildElapsed.Seconds())
 		fmt.Printf("  Build failed: %v\n", err)
-		return resultError, nil
+		return resultError, nil, nil
 	}
 	fmt.Printf("ok (%.1fs)\n", buildElapsed.Seconds())
 
@@ -272,7 +317,7 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 	if err != nil {
 		fmt.Printf("failed (%.1fs)\n", evalElapsed.Seconds())
 		fmt.Printf("  %s eval failed: %v\n", eval.Name(), err)
-		return resultError, nil
+		return resultError, nil, nil
 	}
 	fmt.Printf("ok (%.1fs)\n", evalElapsed.Seconds())
 
@@ -287,11 +332,11 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 	tcDir, err := fuzz.NewTestCaseDir(testcaseDir)
 	if err != nil {
 		fmt.Printf("  Error creating test case dir: %v\n", err)
-		return resultError, nil
+		return resultError, nil, nil
 	}
 	if err := fuzz.SaveTestCase(tcDir, spec, xlsxPath, groundTruth, eval.Name()); err != nil {
 		fmt.Printf("  Error saving test case: %v\n", err)
-		return resultError, nil
+		return resultError, nil, nil
 	}
 
 	// Compare results.
@@ -314,7 +359,7 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 		fmt.Printf("  All %d checks match.\n", len(spec.Checks))
 		result := &fuzz.CheckResult{Passed: true}
 		fuzz.SaveCheckResult(tcDir, result)
-		return resultPass, nil
+		return resultPass, nil, groundTruth
 	}
 
 	state.Coverage.Record(specFunctions, false)
@@ -362,6 +407,9 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 		if err != nil {
 			fmt.Printf("  Fix failed (%.1fs): %v\n", fixElapsed.Seconds(), err)
 			revertFormula(verbose)
+			if fuzz.IsClaudeCLIError(err) {
+				return resultClaudeError, nil, nil
+			}
 			break
 		}
 		fmt.Printf("  Fix applied (%.1fs)\n", fixElapsed.Seconds())
@@ -450,7 +498,7 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 
 			result := &fuzz.CheckResult{Passed: false, FixApplied: true}
 			fuzz.SaveCheckResult(tcDir, result)
-			return resultFixed, &fixInfo{Mismatches: mismatches, BrokenFuncs: brokenFuncs}
+			return resultFixed, &fixInfo{Mismatches: mismatches, BrokenFuncs: brokenFuncs}, nil
 		}
 
 		fmt.Printf("failed (%.1fs)\n", verifyElapsed.Seconds())
@@ -482,7 +530,7 @@ func executeSpec(state *OrchestratorState, maxFixAttempts int, spec *fuzz.TestSp
 
 	result := &fuzz.CheckResult{Passed: false, Mismatches: mismatches}
 	fuzz.SaveCheckResult(tcDir, result)
-	return resultFailed, nil
+	return resultFailed, nil, nil
 }
 
 // runReplay re-runs saved failures from the failures/ directory.
@@ -509,11 +557,14 @@ func runReplay(state *OrchestratorState, maxFixAttempts int, eval fuzz.Evaluator
 		}
 
 		fmt.Printf("  Replaying %s... ", spec.Name)
-		result, fi := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
+		result, fi, gt := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
 
 		switch result {
 		case resultPass:
 			passed++
+			if n := fuzz.LearnIsolationTests(spec, gt, eval.Name()); n > 0 {
+				fmt.Printf("  Learned %d new isolation test(s)\n", n)
+			}
 			fmt.Printf("  Now passes! Moving to resolved/\n")
 			baseName := filepath.Base(specPath)
 			os.Rename(specPath, filepath.Join(resolvedDir, baseName))
@@ -551,6 +602,14 @@ func runReplay(state *OrchestratorState, maxFixAttempts int, eval fuzz.Evaluator
 
 		case resultFailed, resultError:
 			failed++
+
+		case resultClaudeError:
+			failed++
+			fmt.Println("\n  Claude CLI is not working. Stopping replay.")
+			fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+			fmt.Println("  running inside another Claude Code session.")
+			fmt.Printf("=== Replay aborted: %d passed, %d fixed, %d still failing ===\n\n", passed, fixed, failed)
+			return
 		}
 	}
 
@@ -573,6 +632,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 		case <-sigCh:
 			fmt.Println("\nInterrupted. Printing final summary.")
 			printSummary(state)
+			saveCoverage(state, verbose)
 			fmt.Println()
 			fmt.Print(state.Coverage.Summary())
 			return nil
@@ -596,6 +656,15 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 			if err != nil {
 				fmt.Printf("failed (%.1fs)\n", genElapsed.Seconds())
 				fmt.Printf("  Generation failed: %v\n", err)
+				if fuzz.IsClaudeCLIError(err) {
+					fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+					fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+					fmt.Println("  running inside another Claude Code session.")
+					printSummary(state)
+					fmt.Println()
+					fmt.Print(state.Coverage.Summary())
+					return fmt.Errorf("claude CLI failed")
+				}
 				state.TotalFailed++
 				sysState.Current++
 				roundElapsed := time.Since(roundStart)
@@ -609,11 +678,14 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 
 			fmt.Printf("  Spec: %s (%d sheets, %d checks)\n", spec.Name, len(spec.Sheets), len(spec.Checks))
 
-			result, fi := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
+			result, fi, gt := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
 
 			switch result {
 			case resultPass:
 				state.TotalPassed++
+				if n := fuzz.LearnIsolationTests(spec, gt, eval.Name()); n > 0 {
+					fmt.Printf("  Learned %d new isolation test(s)\n", n)
+				}
 				fmt.Printf("  PASS - %s works correctly\n", targetFn)
 			case resultFixed:
 				fmt.Println("  FIXED - running regression tests...")
@@ -623,7 +695,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 					state.TotalFailed++
 				} else {
 					fmt.Println("  Regression tests passed. Fix kept.")
-				commitFormula(verbose)
+					commitFormula(verbose)
 					state.TotalFixed++
 					if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
 						fmt.Printf("  Auto-synced implemented functions (%d total)\n", synced)
@@ -637,6 +709,15 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 				fmt.Printf("  FAILED - %s has mismatches\n", targetFn)
 			case resultError:
 				state.TotalFailed++
+			case resultClaudeError:
+				state.TotalFailed++
+				fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+				fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+				fmt.Println("  running inside another Claude Code session.")
+				printSummary(state)
+				fmt.Println()
+				fmt.Print(state.Coverage.Summary())
+				return fmt.Errorf("claude CLI failed")
 			}
 
 			sysState.Current++
@@ -658,6 +739,15 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 			if err != nil {
 				fmt.Printf("failed (%.1fs)\n", genElapsed.Seconds())
 				fmt.Printf("  Generation failed: %v\n", err)
+				if fuzz.IsClaudeCLIError(err) {
+					fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+					fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+					fmt.Println("  running inside another Claude Code session.")
+					printSummary(state)
+					fmt.Println()
+					fmt.Print(state.Coverage.Summary())
+					return fmt.Errorf("claude CLI failed")
+				}
 				state.TotalFailed++
 				roundElapsed := time.Since(roundStart)
 				state.TotalTime += roundElapsed
@@ -669,10 +759,13 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 			fmt.Printf("ok (%.1fs)\n", genElapsed.Seconds())
 			fmt.Printf("  Spec: %s (%d sheets, %d checks)\n", spec.Name, len(spec.Sheets), len(spec.Checks))
 
-			result, fi := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
+			result, fi, gt := executeSpec(state, maxFixAttempts, spec, eval, testcaseDir, failureDir, verbose)
 			switch result {
 			case resultPass:
 				state.TotalPassed++
+				if n := fuzz.LearnIsolationTests(spec, gt, eval.Name()); n > 0 {
+					fmt.Printf("  Learned %d new isolation test(s)\n", n)
+				}
 			case resultFixed:
 				fmt.Println("  FIXED - running regression tests...")
 				if err := runTests(verbose); err != nil {
@@ -681,7 +774,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 					state.TotalFailed++
 				} else {
 					fmt.Println("  Regression tests passed. Fix kept.")
-				commitFormula(verbose)
+					commitFormula(verbose)
 					state.TotalFixed++
 					if synced := fuzz.SyncImplementedFunctions(); synced > 0 {
 						fmt.Printf("  Auto-synced implemented functions (%d total)\n", synced)
@@ -694,6 +787,15 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 				state.TotalFailed++
 			case resultError:
 				state.TotalFailed++
+			case resultClaudeError:
+				state.TotalFailed++
+				fmt.Println("\n  Claude CLI is not working. Stopping orchestrator.")
+				fmt.Println("  Check that 'claude' is installed, authenticated, and not")
+				fmt.Println("  running inside another Claude Code session.")
+				printSummary(state)
+				fmt.Println()
+				fmt.Print(state.Coverage.Summary())
+				return fmt.Errorf("claude CLI failed")
 			}
 		}
 
@@ -702,6 +804,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 		fmt.Printf("  Round time: %.1fs\n", roundElapsed.Seconds())
 
 		printSummary(state)
+		saveCoverage(state, verbose)
 		if coverageInterval > 0 && state.TotalGenerated%coverageInterval == 0 {
 			fmt.Println()
 			fmt.Print(state.Coverage.Summary())
@@ -711,6 +814,7 @@ func runSystematic(state *OrchestratorState, eval fuzz.Evaluator, maxRounds, max
 
 	fmt.Println("Finished. Final summary:")
 	printSummary(state)
+	saveCoverage(state, verbose)
 	fmt.Printf("Functions tested: %d/%d unimplemented\n", sysState.Current, totalUnimplemented)
 	fmt.Println()
 	fmt.Print(state.Coverage.Summary())

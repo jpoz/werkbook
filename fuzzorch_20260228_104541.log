@@ -1,0 +1,298 @@
+[0;34m[1m▶ Running fuzz orchestrator[0m
+go run ./cmd/fuzzorch --start-level 6 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
+Fuzz orchestrator starting at level 6 (escalate after 3 consecutive passes)
+Oracle: local-excel
+Max rounds: 1000
+Press Ctrl+C to stop.
+
+=== Replaying 22 saved failures ===
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (4.2s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104546.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (2.0s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="1899" oracle="#NUM!"
+    werkbook:    "1899"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="12" oracle="#NUM!"
+    werkbook:    "12"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="3" oracle="#NUM!"
+    werkbook:    "3"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="-28" oracle="#NUM!"
+    werkbook:    "-28"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104552.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.5s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  2/38 checks mismatched:
+  Sheet4!A3: =MONTH(A1) → numeric mismatch: werkbook=12 oracle=11 (diff=1)
+    werkbook:    "12"
+    local-excel: "11"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → numeric mismatch: werkbook=45263 oracle=45233 (diff=30)
+    werkbook:    "45263"
+    local-excel: "45233"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104557.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (3.0s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="1899" oracle="#NUM!"
+    werkbook:    "1899"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="12" oracle="#NUM!"
+    werkbook:    "12"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="3" oracle="#NUM!"
+    werkbook:    "3"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="-28" oracle="#NUM!"
+    werkbook:    "-28"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104603.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.4s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  5/38 checks mismatched:
+  Sheet2!A3: =MOD(Sheet1!A8,Sheet1!A6) → value mismatch: werkbook="0" oracle="#NUM!"
+    werkbook:    "0"
+    local-excel: "#NUM!"
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="1607" oracle="#NUM!"
+    werkbook:    "1607"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="9" oracle="#NUM!"
+    werkbook:    "9"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="21" oracle="#NUM!"
+    werkbook:    "21"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="-106751.991167301" oracle="#NUM!"
+    werkbook:    "-106751.991167301"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104608.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.7s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="1607" oracle="#NUM!"
+    werkbook:    "1607"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="9" oracle="#NUM!"
+    werkbook:    "9"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="21" oracle="#NUM!"
+    werkbook:    "21"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="-106751.991167301" oracle="#NUM!"
+    werkbook:    "-106751.991167301"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104613.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.4s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  All 38 checks match.
+  Now passes! Moving to resolved/
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104622.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.3s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104627.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.5s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  5/38 checks mismatched:
+  Sheet2!A3: =MOD(Sheet1!A8,Sheet1!A6) → value mismatch: werkbook="1" oracle="#NUM!"
+    werkbook:    "1"
+    local-excel: "#NUM!"
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="1607" oracle="#NUM!"
+    werkbook:    "1607"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="9" oracle="#NUM!"
+    werkbook:    "9"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="21" oracle="#NUM!"
+    werkbook:    "21"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="-106751.991167301" oracle="#NUM!"
+    werkbook:    "-106751.991167301"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104632.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.6s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104637.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.6s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_104642.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (1.4s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_test_counta_countblank_countifs_date_day_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.6s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTA, COUNTBLANK, COUNTIFS, DATE, DAY, IF, IFERROR, INDEX, ISNUMBER, LOWER, MATCH, MIN, MONTH, PRODUCT, ROUND, SQRT, SUM, SUMIF, UPPER, VLOOKUP, YEAR
+  2/16 checks mismatched:
+  Sheet2!A3: =COUNTBLANK(Sheet1!A1:A15) → numeric mismatch: werkbook=1 oracle=2 (diff=1)
+    werkbook:    "1"
+    local-excel: "2"
+  Sheet2!A4: =DATE(Sheet1!D1,Sheet1!D2,Sheet1!D3) → value mismatch: werkbook="106752.991167301" oracle="#NUM!"
+    werkbook:    "106752.991167301"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_test_counta_countblank_countifs_date_day_edge_cases_20260228_104647.json
+  Failure type: bug_in_function
+  Isolated broken functions: COUNTBLANK
+  Applying fix with Claude...
+  Fix failed (1.7s): claude streaming failed: exit status 1
+result so far: Credit balance is too low
+  Replaying mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  All 38 checks match.
+  Now passes! Moving to resolved/
+  Replaying mutated_test_priority_functions_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.4s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTBLANK, DATE, DAY, IF, IFERROR, INDEX, LOG, MATCH, MAX, MIN, MONTH, NETWORKDAYS, NUMBERVALUE, ODD, PERMUT, SUM, SUMIF, UPPER, VLOOKUP, YEAR
+  All 27 checks match.
+  Now passes! Moving to resolved/
+  Replaying mutated_test_priority_functions_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... 

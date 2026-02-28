@@ -1,0 +1,7 @@
+{
+  "function": "ISERR",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"TRUE\" oracle=\"FALSE\"",
+  "fix_summary": "All 937 tests pass. The fix is straightforward:\n\n**Root cause**: `ISERR` and `ISERROR` were both dispatched to `fnISERROR`, but per Excel's spec:\n- `ISERROR` → TRUE for **any** error value (including `#N/A`)\n- `ISERR` → TRUE for any error value **except `#N/A`**\n\nSo `ISERR(NA())` correctly returns `FALSE` now.\n\n**Fix**: Added a separate `fnISERR` function that checks `args[0].Err != ErrValNA`, and updated the dispatch in `eval.go` to route `ISERR` to it instead of `fnISERROR`.",
+  "timestamp": "2026-02-28T04:31:47.693572-07:00"
+}

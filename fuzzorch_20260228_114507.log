@@ -1,0 +1,55 @@
+[0;34m[1m▶ Running fuzz orchestrator[0m
+go run ./cmd/fuzzorch --start-level 6 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
+Fuzz orchestrator starting at level 6 (escalate after 3 consecutive passes)
+Oracle: local-excel
+Max rounds: 1000
+Press Ctrl+C to stop.
+
+=== Replaying 31 saved failures ===
+  Replaying mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (5.3s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, AND, AVERAGE, CONCATENATE, COUNTIF, COUNTIFS, DATE, DAY, IF, IFERROR, ISBLANK, ISERROR, ISLOGICAL, ISNUMBER, ISTEXT, LEN, LOWER, MAX, MEDIAN, MIN, MOD, MONTH, NOT, OR, POWER, ROUND, SQRT, SUBSTITUTE, SUM, SUMIF, TRIM, UPPER, VALUE, WORKDAY, XOR, YEAR, YEARFRAC
+  4/38 checks mismatched:
+  Sheet4!A2: =YEAR(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A3: =MONTH(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A4: =DAY(A1) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Sheet4!A9: =WORKDAY(A1,Sheet1!C5) → value mismatch: werkbook="#VALUE!" oracle="#NUM!"
+    werkbook:    "#VALUE!"
+    local-excel: "#NUM!"
+  Saved failure: failures/mutated_mutated_mutated_mutated_mutated_test_n_t_workday_xor_yearfrac_edge_cases_20260228_114513.json
+  Failure type: bug_in_function
+  Isolated broken functions: WORKDAY
+  Applying fix with Claude...
+  Fix failed (2.1s): claude streaming failed: exit status 1
+stderr: 
+result so far: Credit balance is too low
+
+  Claude CLI is not working. Stopping replay.
+  Check that 'claude' is installed, authenticated, and not
+  running inside another Claude Code session.
+=== Replay aborted: 0 passed, 0 fixed, 1 still failing ===
+
+=== Round 1 (Level 6, 0 consecutive passes) ===
+  Generating spec with Claude... failed (1.6s)
+  Generation failed: claude generate: claude command failed: exit status 1
+output: Credit balance is too low
+
+
+  Claude CLI is not working. Stopping orchestrator.
+  Check that 'claude' is installed, authenticated, and not
+  running inside another Claude Code session.
+  [Level 6] Generated: 1 | Passed: 0 | Fixed: 0 | Failed: 0 | Avg: 0.0s/round
+
+=== Function Coverage (37/396 tested) ===
+Failing (37): ABS(0/1) AND(0/1) AVERAGE(0/1) CONCATENATE(0/1) COUNTIF(0/1) COUNTIFS(0/1) DATE(0/1) DAY(0/1) IF(0/1) IFERROR(0/1) ISBLANK(0/1) ISERROR(0/1) ISLOGICAL(0/1) ISNUMBER(0/1) ISTEXT(0/1) LEN(0/1) LOWER(0/1) MAX(0/1) MEDIAN(0/1) MIN(0/1) MOD(0/1) MONTH(0/1) NOT(0/1) OR(0/1) POWER(0/1) ROUND(0/1) SQRT(0/1) SUBSTITUTE(0/1) SUM(0/1) SUMIF(0/1) TRIM(0/1) UPPER(0/1) VALUE(0/1) WORKDAY(0/1) XOR(0/1) YEAR(0/1) YEARFRAC(0/1)
+Untested (359): ACOS, ACOSH, ACOT, ACOTH, ARABIC, ASIN, ASINH, ATAN, ATAN2, ATANH, BASE, CEILING, CEILING.MATH, CEILING.PRECISE, COMBIN, COMBINA, COS, COSH, COT, COTH, CSC, CSCH, DECIMAL, DEGREES, EVEN, EXP, FACT, FACTDOUBLE, FLOOR, FLOOR.MATH, FLOOR.PRECISE, GCD, INT, LCM, LN, LOG, LOG10, MDETERM, MINVERSE, MMULT, MROUND, MULTINOMIAL, MUNIT, ODD, PI, PRODUCT, QUOTIENT, RADIANS, ROMAN, ROUNDDOWN, ROUNDUP, SEC, SECH, SERIESSUM, SIGN, SIN, SINH, SQRTPI, SUBTOTAL, SUMIFS, SUMPRODUCT, SUMSQ, SUMX2MY2, SUMX2PY2, SUMXMY2, TAN, TANH, TRUNC, FALSE, IFNA, IFS, SWITCH, TRUE, CHAR, CLEAN, CODE, DOLLAR, EXACT, FIND, FIXED, LEFT, MID, NUMBERVALUE, PROPER, REPLACE, REPT, RIGHT, SEARCH, T, TEXT, TEXTJOIN, UNICHAR, UNICODE, AVEDEV, AVERAGEA, AVERAGEIF, AVERAGEIFS, BETA.DIST, BETA.INV, BINOM.DIST, BINOM.DIST.RANGE, BINOM.INV, CHISQ.DIST, CHISQ.DIST.RT, CHISQ.INV, CHISQ.INV.RT, CHISQ.TEST, CONFIDENCE.NORM, CONFIDENCE.T, CORREL, COUNT, COUNTA, COUNTBLANK, COVARIANCE.P, COVARIANCE.S, DEVSQ, EXPON.DIST, F.DIST, F.DIST.RT, F.INV, F.INV.RT, F.TEST, FISHER, FISHERINV, FORECAST.LINEAR, FREQUENCY, GAMMA, GAMMA.DIST, GAMMA.INV, GAMMALN, GAMMALN.PRECISE, GAUSS, GEOMEAN, GROWTH, HARMEAN, HYPGEOM.DIST, INTERCEPT, KURT, LARGE, LINEST, LOGEST, LOGNORM.DIST, LOGNORM.INV, MAXA, MAXIFS, MINA, MINIFS, MODE.MULT, MODE.SNGL, NEGBINOM.DIST, NORM.DIST, NORM.INV, NORM.S.DIST, NORM.S.INV, PEARSON, PERCENTILE.EXC, PERCENTILE.INC, PERCENTRANK.EXC, PERCENTRANK.INC, PERMUT, PERMUTATIONA, PHI, POISSON.DIST, PROB, QUARTILE.EXC, QUARTILE.INC, RANK.AVG, RANK.EQ, RSQ, SKEW, SKEW.P, SLOPE, SMALL, STANDARDIZE, STDEV.P, STDEV.S, STDEVA, STDEVPA, STEYX, T.DIST, T.DIST.2T, T.DIST.RT, T.INV, T.INV.2T, T.TEST, TREND, TRIMMEAN, VAR.P, VAR.S, VARA, VARPA, WEIBULL.DIST, Z.TEST, ADDRESS, AREAS, CHOOSE, COLUMN, COLUMNS, FORMULATEXT, HLOOKUP, HYPERLINK, INDEX, LOOKUP, MATCH, ROW, ROWS, TRANSPOSE, VLOOKUP, DATEDIF, DATEVALUE, DAYS, DAYS360, EDATE, EOMONTH, HOUR, ISOWEEKNUM, MINUTE, NETWORKDAYS, NETWORKDAYS.INTL, SECOND, TIME, TIMEVALUE, WEEKDAY, WEEKNUM, WORKDAY.INTL, ERROR.TYPE, ISERR, ISEVEN, ISFORMULA, ISNA, ISNONTEXT, ISODD, ISREF, N, NA, SHEET, SHEETS, TYPE, ACCRINT, ACCRINTM, AMORDEGRC, AMORLINC, COUPDAYBS, COUPDAYS, COUPDAYSNC, COUPNCD, COUPNUM, COUPPCD, CUMIPMT, CUMPRINC, DB, DDB, DISC, DOLLARDE, DOLLARFR, DURATION, EFFECT, FV, FVSCHEDULE, INTRATE, IPMT, IRR, ISPMT, MDURATION, MIRR, NOMINAL, NPER, NPV, ODDFPRICE, ODDFYIELD, ODDLPRICE, ODDLYIELD, PDURATION, PMT, PPMT, PRICE, PRICEDISC, PRICEMAT, PV, RATE, RECEIVED, RRI, SLN, SYD, TBILLEQ, TBILLPRICE, TBILLYIELD, VDB, XIRR, XNPV, YIELD, YIELDDISC, YIELDMAT, BESSELI, BESSELJ, BESSELK, BESSELY, BIN2DEC, BIN2HEX, BIN2OCT, BITAND, BITLSHIFT, BITOR, BITRSHIFT, BITXOR, COMPLEX, CONVERT, DEC2BIN, DEC2HEX, DEC2OCT, DELTA, ERF, ERF.PRECISE, ERFC, ERFC.PRECISE, GESTEP, HEX2BIN, HEX2DEC, HEX2OCT, IMABS, IMAGINARY, IMARGUMENT, IMCONJUGATE, IMCOS, IMCOSH, IMCOT, IMCSC, IMCSCH, IMDIV, IMEXP, IMLN, IMLOG10, IMLOG2, IMPOWER, IMPRODUCT, IMREAL, IMSEC, IMSECH, IMSIN, IMSINH, IMSQRT, IMSUB, IMSUM, IMTAN, OCT2BIN, OCT2DEC, OCT2HEX, DAVERAGE, DCOUNT, DCOUNTA, DGET, DMAX, DMIN, DPRODUCT, DSTDEV, DSTDEVP, DSUM, DVAR, DVARP
+Error: claude CLI failed
+exit status 1
+make: *** [fuzzorch] Error 1

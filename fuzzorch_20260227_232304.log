@@ -1,0 +1,74 @@
+[0;34m[1m▶ Running fuzz orchestrator[0m
+go run ./cmd/fuzzorch --start-level 4 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
+Fuzz orchestrator starting at level 4 (escalate after 3 consecutive passes)
+Oracle: local-excel
+Max rounds: 1000
+Press Ctrl+C to stop.
+
+=== Replaying 3 saved failures ===
+  Replaying test_math_logic_text_clean_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: ABS, CHAR, CLEAN, CONCATENATE, IF, IFERROR, ISBLANK, LOWER, MOD, OR, POWER, ROUND, SUM, TRIM, UPPER
+  1/8 checks mismatched:
+  Sheet1!C4: =CLEAN(CONCATENATE(B1,CHAR(10),B2)) → value mismatch: werkbook=" hello world" oracle="helloworld"
+    werkbook:    " hello world"
+    local-excel: "helloworld"
+  Saved failure: failures/test_math_logic_text_clean_edge_cases_20260227_232309.json
+  Failure type: bug_in_function
+  Applying fix with Claude...
+    Running: go run cmd/exceldoc/main.go CLEAN
+    Reading functions_text.go
+    Grepping for "fnCLEAN|CLEAN"
+    Reading functions_text_test.go
+    Running: grep -n "mockResolver\|Resolver\|valueToString" /Users/jpoz/...
+    Grepping for "mockResolver"
+    Reading eval_test.go
+    Reading claude.go
+    Reading eval.go
+    Searching /Users/jpoz/Developer/werkbook/ooxml/*.go
+    Reading sharedstrings.go
+    Searching /Users/jpoz/Developer/werkbook/internal/fuzz/*.go
+    Reading build.go
+    Reading writer.go
+    Reading reader.go
+    Reading sharedstrings.go
+    Editing sharedstrings.go
+    Editing sharedstrings.go
+    Reading sharedstrings.go
+    Running: go build ./... 2>&1
+    Running: gotestsum ./formula/... 2>&1
+    Running: gotestsum ./... 2>&1
+    Running: go run - <<'EOF'
+package main
+
+import (
+	"bytes"
+	"encoding/...
+    Running: cat > /tmp/test_sst.go << 'EOF'
+package main
+
+import (
+	"byt...
+  Fix applied (520.7s)
+  Verifying fix... ok (4.5s)
+  Fix verified: all checks now pass!
+  FIXED - running regression tests...
+  Regression tests passed. Fix kept.
+  Auto-synced implemented functions (149 total)
+  Replaying test_multisheet_formula_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: AND, AVERAGE, CONCATENATE, COUNTA, COUNTIF, IF, IFERROR, ISBLANK, ISNUMBER, LOWER, MAX, MIN, ROUND, SQRT, SUM, SUMIF, VLOOKUP
+  All 15 checks match.
+  Now passes! Moving to resolved/
+  Replaying test_multisheet_formula_edge_cases...   Building XLSX... ok (0.0s)
+  Evaluating with local-excel... ok (3.5s)
+  Comparing results... done (0.0s)
+  Functions tested: AND, AVERAGE, CONCATENATE, COUNTA, COUNTIF, IF, IFERROR, ISBLANK, ISNUMBER, LOWER, MAX, MIN, ROUND, SQRT, SUM, SUMIF, VLOOKUP
+  All 15 checks match.
+  Now passes! Moving to resolved/
+=== Replay summary: 2 passed, 1 fixed, 0 still failing ===
+
+=== Round 1 (Level 4, 0 consecutive passes) ===
+  Generating spec with Claude... 

@@ -122,6 +122,16 @@ func IsolateFailure(spec *TestSpec, mismatches []Mismatch) []string {
 
 		test, ok := isolationTests[fn]
 		if !ok {
+			// Check learned isolation tests before giving up.
+			if learned, lOk := GetLearnedIsolationTest(fn); lOk {
+				test = struct {
+					formula  string
+					expected string
+				}{formula: learned.Formula, expected: learned.Expected}
+				ok = true
+			}
+		}
+		if !ok {
 			// No isolation test available; assume it could be broken.
 			if !seen[fn] {
 				seen[fn] = true
