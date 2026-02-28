@@ -619,6 +619,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnEXACT(args)
 	case "FIND":
 		return fnFIND(args)
+	case "FIXED":
+		return fnFIXED(args)
 	case "LEFT":
 		return fnLEFT(args)
 	case "LEN":
@@ -713,16 +715,24 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	// Date/Time
 	case "DATE":
 		return fnDATE(args)
+	case "DATEVALUE":
+		return fnDATEVALUE(args)
 	case "DAY":
 		return fnDAY(args)
 	case "DAYS":
 		return fnDAYS(args)
+	case "EDATE":
+		return fnEDATE(args)
+	case "EOMONTH":
+		return fnEOMONTH(args)
 	case "HOUR":
 		return fnHOUR(args)
 	case "MINUTE":
 		return fnMINUTE(args)
 	case "MONTH":
 		return fnMONTH(args)
+	case "NETWORKDAYS":
+		return fnNETWORKDAYS(args)
 	case "NOW":
 		return fnNOW(args)
 	case "SECOND":
@@ -733,10 +743,14 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnTODAY(args)
 	case "WEEKDAY":
 		return fnWEEKDAY(args)
+	case "WEEKNUM":
+		return fnWEEKNUM(args)
 	case "YEAR":
 		return fnYEAR(args)
 
 	// Lookup
+	case "ADDRESS":
+		return fnADDRESS(args)
 	case "HLOOKUP":
 		return fnHLOOKUP(args)
 	case "INDEX":

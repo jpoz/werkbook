@@ -766,3 +766,39 @@ func TestLENUnicode(t *testing.T) {
 		t.Errorf("LEN unicode: got %g, want 4", got.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FIXED
+// ---------------------------------------------------------------------------
+
+func TestFIXED(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "with_1_decimal", formula: `FIXED(1234.567, 1)`, want: "1,234.6"},
+		{name: "negative_decimals", formula: `FIXED(1234.567, -1)`, want: "1,230"},
+		{name: "negative_num_neg_dec_no_commas", formula: `FIXED(-1234.567, -1, TRUE)`, want: "-1230"},
+		{name: "default_decimals", formula: `FIXED(44.332)`, want: "44.33"},
+		{name: "large_number_with_commas", formula: `FIXED(1234567.89, 2)`, want: "1,234,567.89"},
+		{name: "large_number_no_commas", formula: `FIXED(1234567.89, 2, TRUE)`, want: "1234567.89"},
+		{name: "zero", formula: `FIXED(0, 2)`, want: "0.00"},
+		{name: "round_half_up", formula: `FIXED(1.5, 0)`, want: "2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}

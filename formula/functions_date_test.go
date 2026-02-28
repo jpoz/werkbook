@@ -222,6 +222,187 @@ func TestWEEKDAY_InvalidReturnType(t *testing.T) {
 	}
 }
 
+func TestDATEVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{`DATEVALUE("8/22/2011")`, 40777, false, 0},
+		{`DATEVALUE("2011/02/23")`, 40597, false, 0},
+		{`DATEVALUE("2011-02-23")`, 40597, false, 0},
+		{`DATEVALUE("not a date")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if tc.isErr {
+			if got.Type != ValueError || got.Err != tc.errVal {
+				t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+			}
+			continue
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestEDATE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Helper: evaluate a formula and return its numeric value.
+	evalNum := func(formula string) float64 {
+		t.Helper()
+		cf := evalCompile(t, formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("%s: got type %v, want number", formula, got.Type)
+		}
+		return got.Num
+	}
+
+	tests := []struct {
+		formula  string
+		expected string
+	}{
+		{"EDATE(DATE(2011,1,15),1)", "DATE(2011,2,15)"},
+		{"EDATE(DATE(2011,1,15),-1)", "DATE(2010,12,15)"},
+		{"EDATE(DATE(2011,1,15),0)", "DATE(2011,1,15)"},
+		{"EDATE(DATE(2011,1,31),1)", "DATE(2011,2,28)"}, // clamped
+	}
+
+	for _, tc := range tests {
+		got := evalNum(tc.formula)
+		want := evalNum(tc.expected)
+		if got != want {
+			t.Errorf("%s = %g, want %g (from %s)", tc.formula, got, want, tc.expected)
+		}
+	}
+}
+
+func TestEOMONTH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	evalNum := func(formula string) float64 {
+		t.Helper()
+		cf := evalCompile(t, formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("%s: got type %v, want number", formula, got.Type)
+		}
+		return got.Num
+	}
+
+	tests := []struct {
+		formula  string
+		expected string
+	}{
+		{"EOMONTH(DATE(2011,1,1),1)", "DATE(2011,2,28)"},
+		{"EOMONTH(DATE(2011,1,1),0)", "DATE(2011,1,31)"},
+		{"EOMONTH(DATE(2020,1,1),1)", "DATE(2020,2,29)"}, // leap year
+		{"EOMONTH(DATE(2011,1,1),-3)", "DATE(2010,10,31)"},
+	}
+
+	for _, tc := range tests {
+		got := evalNum(tc.formula)
+		want := evalNum(tc.expected)
+		if got != want {
+			t.Errorf("%s = %g, want %g (from %s)", tc.formula, got, want, tc.expected)
+		}
+	}
+}
+
+func TestNETWORKDAYS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		// Oct 1 2012 = Monday, Oct 5 = Friday → 5 weekdays
+		{"NETWORKDAYS(DATE(2012,10,1),DATE(2012,10,5))", 5},
+		// Single weekday
+		{"NETWORKDAYS(DATE(2012,10,1),DATE(2012,10,1))", 1},
+		// Saturday only → 0
+		{"NETWORKDAYS(DATE(2012,10,6),DATE(2012,10,6))", 0},
+		// Mon-Sun: 5 weekdays (Mon-Fri), Sat+Sun excluded
+		{"NETWORKDAYS(DATE(2012,10,1),DATE(2012,10,7))", 5},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("NETWORKDAYS: got type %v, want number for %s", got.Type, tc.formula)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestWEEKNUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		// March 9, 2012 is a Friday
+		{"WEEKNUM(DATE(2012,3,9))", 10},      // Sunday start (default)
+		{"WEEKNUM(DATE(2012,3,9),2)", 11},     // Monday start
+		{"WEEKNUM(DATE(2012,1,1))", 1},        // Jan 1 always week 1
+		{"WEEKNUM(DATE(2012,3,9),21)", 10},    // ISO week
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("WEEKNUM: got type %v, want number for %s", got.Type, tc.formula)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestWEEKNUM_Invalid(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, "WEEKNUM(DATE(2012,3,9),99)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("WEEKNUM with invalid return_type: got %v, want #NUM!", got)
+	}
+}
+
 func TestNOWTODAY(t *testing.T) {
 	resolver := &mockResolver{}
 

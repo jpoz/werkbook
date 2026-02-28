@@ -2,6 +2,7 @@ package formula
 
 import (
 	"math"
+	"strings"
 	"time"
 )
 
@@ -222,4 +223,222 @@ func fnYEAR(args []Value) (Value, error) {
 	}
 	t := excelSerialToTime(n)
 	return NumberVal(float64(t.Year())), nil
+}
+
+// DATEVALUE(date_text) — converts a date string to a serial number.
+func fnDATEVALUE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := strings.TrimSpace(valueToString(args[0]))
+
+	layouts := []string{
+		"1/2/2006",
+		"01/02/2006",
+		"2-Jan-2006",
+		"02-Jan-2006",
+		"2006/01/02",
+		"2006-01-02",
+		"January 2, 2006",
+	}
+
+	for _, layout := range layouts {
+		t, err := time.Parse(layout, text)
+		if err == nil {
+			return NumberVal(math.Floor(timeToExcelSerial(t))), nil
+		}
+	}
+	return ErrorVal(ErrValVALUE), nil
+}
+
+// EDATE(start_date, months) — returns date serial shifted by N months.
+func fnEDATE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	serial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	months, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	t := excelSerialToTime(serial)
+	y, mo, d := t.Date()
+	m := int(math.Trunc(months))
+	// Compute target year/month by adding months to the month component
+	targetMonth := time.Month(int(mo) + m)
+	targetYear := y
+	// Normalize month (Go's time.Date handles this, but we need the actual month for clamping)
+	for targetMonth > 12 {
+		targetMonth -= 12
+		targetYear++
+	}
+	for targetMonth < 1 {
+		targetMonth += 12
+		targetYear--
+	}
+	// Try original day; if it overflows, clamp to last day of target month
+	result := time.Date(targetYear, targetMonth, d, 0, 0, 0, 0, time.UTC)
+	if result.Month() != targetMonth {
+		// Day overflowed; use last day of target month
+		result = time.Date(targetYear, targetMonth+1, 0, 0, 0, 0, 0, time.UTC)
+	}
+	return NumberVal(math.Floor(timeToExcelSerial(result))), nil
+}
+
+// EOMONTH(start_date, months) — returns serial for last day of month N months away.
+func fnEOMONTH(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	serial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	months, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	t := excelSerialToTime(serial)
+	y, m, _ := t.Date()
+	// Day 0 of month X is the last day of month X-1 in Go.
+	// So day 0 of (m + months + 1) is last day of (m + months).
+	last := time.Date(y, m+time.Month(int(math.Trunc(months))+1), 0, 0, 0, 0, 0, time.UTC)
+	return NumberVal(math.Floor(timeToExcelSerial(last))), nil
+}
+
+// NETWORKDAYS(start_date, end_date, [holidays]) — count working days between two dates.
+func fnNETWORKDAYS(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	endSerial, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	startSerial = math.Trunc(startSerial)
+	endSerial = math.Trunc(endSerial)
+
+	// Build holiday set
+	holidays := make(map[float64]bool)
+	if len(args) == 3 {
+		arg := args[2]
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					n, ce := coerceNum(cell)
+					if ce != nil {
+						return *ce, nil
+					}
+					holidays[math.Trunc(n)] = true
+				}
+			}
+		} else if arg.Type != ValueEmpty {
+			n, ce := coerceNum(arg)
+			if ce != nil {
+				return *ce, nil
+			}
+			holidays[math.Trunc(n)] = true
+		}
+	}
+
+	negate := false
+	from := startSerial
+	to := endSerial
+	if from > to {
+		from, to = to, from
+		negate = true
+	}
+
+	count := 0.0
+	for d := from; d <= to; d++ {
+		t := excelSerialToTime(d)
+		wd := t.Weekday()
+		if wd != time.Saturday && wd != time.Sunday && !holidays[d] {
+			count++
+		}
+	}
+
+	if negate {
+		count = -count
+	}
+	return NumberVal(count), nil
+}
+
+// WEEKNUM(serial_number, [return_type]) — returns the week number of a date.
+func fnWEEKNUM(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	serial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	returnType := 1.0
+	if len(args) == 2 {
+		returnType, e = coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	rt := int(returnType)
+	t := excelSerialToTime(serial)
+
+	// return_type 21 = ISO 8601 week number
+	if rt == 21 {
+		_, isoWeek := t.ISOWeek()
+		return NumberVal(float64(isoWeek)), nil
+	}
+
+	// Determine which weekday starts the week based on return_type.
+	// The start day is expressed as time.Weekday (0=Sunday..6=Saturday).
+	var weekStart time.Weekday
+	switch rt {
+	case 1, 17:
+		weekStart = time.Sunday
+	case 2, 11:
+		weekStart = time.Monday
+	case 12:
+		weekStart = time.Tuesday
+	case 13:
+		weekStart = time.Wednesday
+	case 14:
+		weekStart = time.Thursday
+	case 15:
+		weekStart = time.Friday
+	case 16:
+		weekStart = time.Saturday
+	default:
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Find Jan 1 of the date's year.
+	jan1 := time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
+	jan1Wd := jan1.Weekday()
+
+	// Offset = how many days Jan 1 is past the week start day.
+	// This tells us how far into the first partial week Jan 1 falls.
+	offset := int(jan1Wd-weekStart+7) % 7
+
+	// Day of year (1-based).
+	dayOfYear := t.YearDay()
+
+	// Week number: Jan 1 is always in week 1.
+	weekNum := (dayOfYear + offset - 1) / 7 + 1
+	return NumberVal(float64(weekNum)), nil
 }

@@ -2,6 +2,7 @@ package formula
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -110,6 +111,45 @@ func fnFIND(args []Value) (Value, error) {
 		}
 	}
 	return ErrorVal(ErrValVALUE), nil
+}
+
+func fnFIXED(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	decimals := 2
+	if len(args) >= 2 {
+		d, e := coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		decimals = int(d)
+	}
+
+	noCommas := false
+	if len(args) >= 3 {
+		noCommas = isTruthy(args[2])
+	}
+
+	// Handle negative decimals: round to the left of the decimal point
+	if decimals < 0 {
+		factor := math.Pow(10, float64(-decimals))
+		n = math.Round(n/factor) * factor
+		decimals = 0
+	} else {
+		factor := math.Pow(10, float64(decimals))
+		n = math.Round(n*factor) / factor
+	}
+
+	if noCommas {
+		return StringVal(fmt.Sprintf("%.*f", decimals, n)), nil
+	}
+	return StringVal(formatWithCommas(n, decimals)), nil
 }
 
 func fnLEFT(args []Value) (Value, error) {

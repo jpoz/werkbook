@@ -1,5 +1,103 @@
 package formula
 
+import (
+	"fmt"
+	"strings"
+)
+
+func columnNumberToName(col int) string {
+	var buf [3]byte
+	i := len(buf)
+	for col > 0 {
+		col--
+		i--
+		buf[i] = byte('A' + col%26)
+		col /= 26
+	}
+	return string(buf[i:])
+}
+
+func fnADDRESS(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rowNum, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	colNum, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	row := int(rowNum)
+	col := int(colNum)
+	if row < 1 || col < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	absNum := 1
+	if len(args) >= 3 {
+		a, e := coerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		absNum = int(a)
+	}
+
+	a1Style := true
+	if len(args) >= 4 {
+		a1Style = isTruthy(args[3])
+	}
+
+	sheetText := ""
+	if len(args) >= 5 {
+		sheetText = valueToString(args[4])
+	}
+
+	var result string
+	if a1Style {
+		colName := columnNumberToName(col)
+		switch absNum {
+		case 1:
+			result = fmt.Sprintf("$%s$%d", colName, row)
+		case 2:
+			result = fmt.Sprintf("%s$%d", colName, row)
+		case 3:
+			result = fmt.Sprintf("$%s%d", colName, row)
+		case 4:
+			result = fmt.Sprintf("%s%d", colName, row)
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	} else {
+		// R1C1 style
+		switch absNum {
+		case 1:
+			result = fmt.Sprintf("R%dC%d", row, col)
+		case 2:
+			result = fmt.Sprintf("R%dC[%d]", row, col)
+		case 3:
+			result = fmt.Sprintf("R[%d]C%d", row, col)
+		case 4:
+			result = fmt.Sprintf("R[%d]C[%d]", row, col)
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	if sheetText != "" {
+		// Quote the sheet name if it contains spaces or special chars
+		needsQuote := strings.ContainsAny(sheetText, " '[")
+		if needsQuote {
+			result = "'" + sheetText + "'!" + result
+		} else {
+			result = sheetText + "!" + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
 func fnVLOOKUP(args []Value) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil

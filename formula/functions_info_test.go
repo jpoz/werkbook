@@ -183,6 +183,111 @@ func TestIFNA(t *testing.T) {
 	}
 }
 
+func TestISLOGICAL(t *testing.T) {
+	resolver := &mockResolver{}
+	tests := []struct {
+		expr string
+		want bool
+	}{
+		{"ISLOGICAL(TRUE)", true},
+		{"ISLOGICAL(FALSE)", true},
+		{`ISLOGICAL("TRUE")`, false},
+		{"ISLOGICAL(1)", false},
+		{"ISLOGICAL(0)", false},
+		{`ISLOGICAL("")`, false},
+		{"ISLOGICAL(1/0)", false},  // error value is not boolean
+		{"ISLOGICAL(1>0)", true},   // comparison result is boolean
+	}
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			cf := evalCompile(t, tt.expr)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expr, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("%s = %v, want %v", tt.expr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestISNONTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+	tests := []struct {
+		expr string
+		want bool
+	}{
+		{"ISNONTEXT(123)", true},
+		{`ISNONTEXT("hello")`, false},
+		{"ISNONTEXT(TRUE)", true},
+		{"ISNONTEXT(1/0)", true},  // error is non-text
+		{`ISNONTEXT("")`, false},  // empty string is still text type
+	}
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			cf := evalCompile(t, tt.expr)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expr, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("%s = %v, want %v", tt.expr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestERRORTYPE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Test cases that return a number
+	numTests := []struct {
+		expr    string
+		wantNum float64
+	}{
+		{"ERROR.TYPE(1/0)", 2},     // #DIV/0!
+		{"ERROR.TYPE(#N/A)", 7},    // #N/A
+		{"ERROR.TYPE(#VALUE!)", 3}, // #VALUE!
+		{"ERROR.TYPE(#REF!)", 4},   // #REF!
+		{"ERROR.TYPE(#NAME?)", 5},  // #NAME?
+		{"ERROR.TYPE(#NUM!)", 6},   // #NUM!
+		{"ERROR.TYPE(#NULL!)", 1},  // #NULL!
+	}
+	for _, tt := range numTests {
+		t.Run(tt.expr, func(t *testing.T) {
+			cf := evalCompile(t, tt.expr)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expr, err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.wantNum {
+				t.Errorf("%s = %v, want %g", tt.expr, got, tt.wantNum)
+			}
+		})
+	}
+
+	// Test cases that return #N/A (non-error input)
+	naTests := []struct {
+		expr string
+	}{
+		{"ERROR.TYPE(123)"},
+		{`ERROR.TYPE("hello")`},
+	}
+	for _, tt := range naTests {
+		t.Run(tt.expr, func(t *testing.T) {
+			cf := evalCompile(t, tt.expr)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expr, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValNA {
+				t.Errorf("%s = %v, want #N/A", tt.expr, got)
+			}
+		})
+	}
+}
+
 func TestNA(t *testing.T) {
 	resolver := &mockResolver{}
 
