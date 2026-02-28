@@ -499,14 +499,26 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnATAN2(args)
 	case "CEILING":
 		return fnCEILING(args)
+	case "COMBIN":
+		return fnCOMBIN(args)
 	case "COS":
 		return fnCOS(args)
+	case "DEGREES":
+		return fnDEGREES(args)
+	case "EVEN":
+		return fnEVEN(args)
 	case "EXP":
 		return fnEXP(args)
+	case "FACT":
+		return fnFACT(args)
 	case "FLOOR":
 		return fnFLOOR(args)
+	case "GCD":
+		return fnGCD(args)
 	case "INT":
 		return fnINT(args)
+	case "LCM":
+		return fnLCM(args)
 	case "LN":
 		return fnLN(args)
 	case "LOG":
@@ -515,12 +527,20 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLOG10(args)
 	case "MOD":
 		return fnMOD(args)
+	case "MROUND":
+		return fnMROUND(args)
+	case "ODD":
+		return fnODD(args)
 	case "PI":
 		return fnPI(args)
 	case "POWER":
 		return fnPOWER(args)
 	case "PRODUCT":
 		return fnPRODUCT(args)
+	case "QUOTIENT":
+		return fnQUOTIENT(args)
+	case "RADIANS":
+		return fnRADIANS(args)
 	case "RAND":
 		return fnRAND(args)
 	case "RANDBETWEEN":
@@ -563,10 +583,14 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLARGE(args)
 	case "MAX":
 		return fnMAX(args)
+	case "MAXIFS":
+		return fnMAXIFS(args)
 	case "MEDIAN":
 		return fnMEDIAN(args)
 	case "MIN":
 		return fnMIN(args)
+	case "MINIFS":
+		return fnMINIFS(args)
 	case "SMALL":
 		return fnSMALL(args)
 	case "SUM":
@@ -577,6 +601,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSUMIFS(args)
 	case "SUMPRODUCT":
 		return fnSUMPRODUCT(args)
+	case "SUMSQ":
+		return fnSUMSQ(args)
 
 	// Text
 	case "CHAR":
@@ -613,8 +639,12 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSEARCH(args)
 	case "SUBSTITUTE":
 		return fnSUBSTITUTE(args)
+	case "T":
+		return fnT(args)
 	case "TEXT":
 		return fnTEXT(args)
+	case "TEXTJOIN":
+		return fnTEXTJOIN(args)
 	case "TRIM":
 		return fnTRIM(args)
 	case "UPPER":
@@ -629,12 +659,16 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnIF(args)
 	case "IFERROR":
 		return fnIFERROR(args)
+	case "IFS":
+		return fnIFS(args)
 	case "NOT":
 		return fnNOT(args)
 	case "OR":
 		return fnOR(args)
 	case "SORT":
 		return fnSORT(args)
+	case "SWITCH":
+		return fnSWITCH(args)
 	case "XOR":
 		return fnXOR(args)
 
@@ -649,22 +683,34 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnISBLANK(args)
 	case "ISERR", "ISERROR":
 		return fnISERROR(args)
+	case "ISEVEN":
+		return fnISEVEN(args)
+	case "ISODD":
+		return fnISODD(args)
 	case "ISNA":
 		return fnISNA(args)
 	case "ISNUMBER":
 		return fnISNUMBER(args)
 	case "ISTEXT":
 		return fnISTEXT(args)
+	case "N":
+		return fnN(args)
+	case "NA":
+		return fnNA(args)
 	case "ROW":
 		return fnROW(args, ctx)
 	case "ROWS":
 		return fnROWS(args)
+	case "TYPE":
+		return fnTYPE(args)
 
 	// Date/Time
 	case "DATE":
 		return fnDATE(args)
 	case "DAY":
 		return fnDAY(args)
+	case "DAYS":
+		return fnDAYS(args)
 	case "HOUR":
 		return fnHOUR(args)
 	case "MINUTE":
@@ -679,6 +725,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnTIME(args)
 	case "TODAY":
 		return fnTODAY(args)
+	case "WEEKDAY":
+		return fnWEEKDAY(args)
 	case "YEAR":
 		return fnYEAR(args)
 

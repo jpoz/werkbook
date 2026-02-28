@@ -343,6 +343,16 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 	return StringVal(strings.ReplaceAll(text, oldText, newText)), nil
 }
 
+func fnT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueString {
+		return args[0], nil
+	}
+	return StringVal(""), nil
+}
+
 func fnTEXT(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -427,6 +437,39 @@ func formatWithCommas(n float64, decimals int) string {
 		s += "." + parts[1]
 	}
 	return s
+}
+
+func fnTEXTJOIN(args []Value) (Value, error) {
+	if len(args) < 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	delimiter := valueToString(args[0])
+	ignoreEmpty := isTruthy(args[1])
+
+	var parts []string
+	for _, arg := range args[2:] {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if ignoreEmpty && (cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "")) {
+						continue
+					}
+					parts = append(parts, valueToString(cell))
+				}
+			}
+		} else {
+			if ignoreEmpty && (arg.Type == ValueEmpty || (arg.Type == ValueString && arg.Str == "")) {
+				continue
+			}
+			parts = append(parts, valueToString(arg))
+		}
+	}
+
+	result := strings.Join(parts, delimiter)
+	if len(result) > 32767 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return StringVal(result), nil
 }
 
 func fnTRIM(args []Value) (Value, error) {

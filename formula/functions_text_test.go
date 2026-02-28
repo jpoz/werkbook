@@ -546,6 +546,86 @@ func TestVALUEEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// T function
+// ---------------------------------------------------------------------------
+
+func TestT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "string_value", formula: `T("hello")`, want: "hello"},
+		{name: "number_value", formula: `T(123)`, want: ""},
+		{name: "bool_value", formula: `T(TRUE)`, want: ""},
+		{name: "empty_string", formula: `T("")`, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (str=%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEXTJOIN
+// ---------------------------------------------------------------------------
+
+func TestTEXTJOIN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "basic", formula: `TEXTJOIN(", ", TRUE, "a", "b", "c")`, want: "a, b, c"},
+		{name: "ignore_empty", formula: `TEXTJOIN(", ", TRUE, "a", "", "c")`, want: "a, c"},
+		{name: "include_empty", formula: `TEXTJOIN(", ", FALSE, "a", "", "c")`, want: "a, , c"},
+		{name: "empty_delimiter", formula: `TEXTJOIN("", TRUE, "a", "b")`, want: "ab"},
+		{name: "single_value", formula: `TEXTJOIN("-", TRUE, "only")`, want: "only"},
+		{name: "all_empty_ignored", formula: `TEXTJOIN(", ", TRUE, "", "", "")`, want: ""},
+		{name: "numbers", formula: `TEXTJOIN("-", TRUE, 1, 2, 3)`, want: "1-2-3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTJOINTooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, `TEXTJOIN(", ", TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("TEXTJOIN too few args: got %v, want #VALUE!", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // CLEAN edge cases
 // ---------------------------------------------------------------------------
 

@@ -60,6 +60,21 @@ func fnDAY(args []Value) (Value, error) {
 	return NumberVal(float64(t.Day())), nil
 }
 
+func fnDAYS(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	end, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	start, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(math.Trunc(end) - math.Trunc(start)), nil
+}
+
 func fnHOUR(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -141,6 +156,60 @@ func fnTODAY(args []Value) (Value, error) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	return NumberVal(math.Floor(timeToExcelSerial(today))), nil
+}
+
+func fnWEEKDAY(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	serial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	returnType := 1.0
+	if len(args) == 2 {
+		returnType, e = coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	t := excelSerialToTime(serial)
+	wd := int(t.Weekday()) // 0=Sunday, 1=Monday, ..., 6=Saturday
+
+	rt := int(returnType)
+	var result int
+	switch rt {
+	case 1, 17:
+		// Sunday=1 through Saturday=7
+		result = wd + 1
+	case 2, 11:
+		// Monday=1 through Sunday=7
+		result = (wd+6)%7 + 1
+	case 3:
+		// Monday=0 through Sunday=6
+		result = (wd + 6) % 7
+	case 12:
+		// Tuesday=1 through Monday=7
+		result = (wd-2+7)%7 + 1
+	case 13:
+		// Wednesday=1 through Tuesday=7
+		result = (wd-3+7)%7 + 1
+	case 14:
+		// Thursday=1 through Wednesday=7
+		result = (wd-4+7)%7 + 1
+	case 15:
+		// Friday=1 through Thursday=7
+		result = (wd-5+7)%7 + 1
+	case 16:
+		// Saturday=1 through Friday=7
+		result = (wd-6+7)%7 + 1
+	default:
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return NumberVal(float64(result)), nil
 }
 
 func fnYEAR(args []Value) (Value, error) {

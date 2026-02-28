@@ -61,6 +61,34 @@ func TestDAY(t *testing.T) {
 	}
 }
 
+func TestDAYS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		{"DAYS(DATE(2021,3,15), DATE(2021,2,1))", 42},
+		{"DAYS(DATE(2021,12,31), DATE(2021,1,1))", 364},
+		{"DAYS(DATE(2020,1,1), DATE(2021,1,1))", -366},
+		{"DAYS(100, 50)", 50},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("DAYS: got type %v, want number for %s", got.Type, tc.formula)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
 func TestTIME(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -118,6 +146,80 @@ func TestHOURMINUTESECOND(t *testing.T) {
 	}
 
 	_ = resolver
+}
+
+func TestWEEKDAY(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		// Feb 14, 2008 is a Thursday
+		// Type 1 (default): Sunday=1, so Thursday=5
+		{"WEEKDAY(DATE(2008,2,14))", 5},
+		// Type 2: Monday=1, so Thursday=4
+		{"WEEKDAY(DATE(2008,2,14), 2)", 4},
+		// Type 3: Monday=0, so Thursday=3
+		{"WEEKDAY(DATE(2008,2,14), 3)", 3},
+
+		// Jan 1, 2024 is a Monday
+		// Type 1 (default): Sunday=1, so Monday=2
+		{"WEEKDAY(DATE(2024,1,1))", 2},
+		// Type 2: Monday=1, so Monday=1
+		{"WEEKDAY(DATE(2024,1,1), 2)", 1},
+
+		// Type 11 same as type 2: Monday=1
+		{"WEEKDAY(DATE(2024,1,1), 11)", 1},
+		// Type 17 same as type 1: Sunday=1, Monday=2
+		{"WEEKDAY(DATE(2024,1,1), 17)", 2},
+
+		// Jan 7, 2024 is a Sunday
+		// Type 1: Sunday=1
+		{"WEEKDAY(DATE(2024,1,7))", 1},
+		// Type 2: Sunday=7
+		{"WEEKDAY(DATE(2024,1,7), 2)", 7},
+		// Type 3: Sunday=6
+		{"WEEKDAY(DATE(2024,1,7), 3)", 6},
+
+		// Type 12: Tuesday=1; for Thursday => (4-2+7)%7+1 = 3
+		{"WEEKDAY(DATE(2008,2,14), 12)", 3},
+		// Type 13: Wednesday=1; for Thursday => (4-3+7)%7+1 = 2
+		{"WEEKDAY(DATE(2008,2,14), 13)", 2},
+		// Type 14: Thursday=1; for Thursday => (4-4+7)%7+1 = 1
+		{"WEEKDAY(DATE(2008,2,14), 14)", 1},
+		// Type 15: Friday=1; for Thursday => (4-5+7)%7+1 = 7
+		{"WEEKDAY(DATE(2008,2,14), 15)", 7},
+		// Type 16: Saturday=1; for Thursday => (4-6+7)%7+1 = 6
+		{"WEEKDAY(DATE(2008,2,14), 16)", 6},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("WEEKDAY: got type %v, want number for %s", got.Type, tc.formula)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestWEEKDAY_InvalidReturnType(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, "WEEKDAY(DATE(2024,1,1), 5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("WEEKDAY with invalid return_type: got %v, want #NUM!", got)
+	}
 }
 
 func TestNOWTODAY(t *testing.T) {

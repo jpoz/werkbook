@@ -1,5 +1,7 @@
 package formula
 
+import "math"
+
 func fnISBLANK(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -12,6 +14,28 @@ func fnISERROR(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return BoolVal(args[0].Type == ValueError), nil
+}
+
+func fnISEVEN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(int(math.Trunc(n))%2 == 0), nil
+}
+
+func fnISODD(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(int(math.Trunc(n))%2 != 0), nil
 }
 
 func fnISNA(args []Value) (Value, error) {
@@ -48,6 +72,34 @@ func fnIFNA(args []Value) (Value, error) {
 		return args[1], nil
 	}
 	return args[0], nil
+}
+
+func fnNA(args []Value) (Value, error) {
+	if len(args) != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return ErrorVal(ErrValNA), nil
+}
+
+func fnN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	switch args[0].Type {
+	case ValueNumber:
+		return args[0], nil
+	case ValueBool:
+		if args[0].Bool {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	case ValueError:
+		return args[0], nil
+	case ValueString, ValueEmpty:
+		return NumberVal(0), nil
+	default:
+		return NumberVal(0), nil
+	}
 }
 
 func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
@@ -96,4 +148,26 @@ func fnROWS(args []Value) (Value, error) {
 		return NumberVal(float64(len(args[0].Array))), nil
 	}
 	return NumberVal(1), nil
+}
+
+func fnTYPE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	switch args[0].Type {
+	case ValueNumber:
+		return NumberVal(1), nil
+	case ValueString:
+		return NumberVal(2), nil
+	case ValueBool:
+		return NumberVal(4), nil
+	case ValueError:
+		return NumberVal(16), nil
+	case ValueArray:
+		return NumberVal(64), nil
+	case ValueEmpty:
+		return NumberVal(1), nil // empty treated as number 0
+	default:
+		return NumberVal(1), nil
+	}
 }

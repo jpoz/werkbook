@@ -397,6 +397,90 @@ func fnSUMIFS(args []Value) (Value, error) {
 	return NumberVal(sum), nil
 }
 
+func fnMAXIFS(args []Value) (Value, error) {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	maxRange := args[0]
+	if maxRange.Type != ValueArray {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	maxVal := -math.MaxFloat64
+	found := false
+	for r, row := range maxRange.Array {
+		for c := range row {
+			allMatch := true
+			for k := 1; k < len(args); k += 2 {
+				critRange := args[k]
+				criteria := args[k+1]
+				var cellVal Value
+				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
+					cellVal = critRange.Array[r][c]
+				}
+				if !matchesCriteria(cellVal, criteria) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				if n, e := coerceNum(maxRange.Array[r][c]); e == nil {
+					if !found || n > maxVal {
+						maxVal = n
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(maxVal), nil
+}
+
+func fnMINIFS(args []Value) (Value, error) {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	minRange := args[0]
+	if minRange.Type != ValueArray {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	minVal := math.MaxFloat64
+	found := false
+	for r, row := range minRange.Array {
+		for c := range row {
+			allMatch := true
+			for k := 1; k < len(args); k += 2 {
+				critRange := args[k]
+				criteria := args[k+1]
+				var cellVal Value
+				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
+					cellVal = critRange.Array[r][c]
+				}
+				if !matchesCriteria(cellVal, criteria) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				if n, e := coerceNum(minRange.Array[r][c]); e == nil {
+					if !found || n < minVal {
+						minVal = n
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(minVal), nil
+}
+
 func fnCOUNTIF(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -524,6 +608,14 @@ func fnAVERAGEIFS(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 	return NumberVal(sum / float64(count)), nil
+}
+
+func fnSUMSQ(args []Value) (Value, error) {
+	sum := 0.0
+	if e := iterateNumeric(args, func(n float64) { sum += n * n }); e != nil {
+		return *e, nil
+	}
+	return NumberVal(sum), nil
 }
 
 func fnSUMPRODUCT(args []Value) (Value, error) {

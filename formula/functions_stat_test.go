@@ -682,6 +682,73 @@ func TestMEDIANSingleValue(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SUMSQ
+// ---------------------------------------------------------------------------
+
+func TestSUMSQ(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		{"SUMSQ(3, 4)", 25},
+		{"SUMSQ(1, 2, 3)", 14},
+		{"SUMSQ(0)", 0},
+		{"SUMSQ(-3, 4)", 25},
+		{"SUMSQ(5)", 25},
+	}
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("%s: got %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSUMSQRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+		},
+	}
+
+	cf := evalCompile(t, "SUMSQ(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 25 {
+		t.Errorf("SUMSQ range: got %g, want 25", got.Num)
+	}
+}
+
+func TestSUMSQErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+		},
+	}
+
+	cf := evalCompile(t, "SUMSQ(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("SUMSQ error propagation: got %v, want #N/A", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // PRODUCT
 // ---------------------------------------------------------------------------
 
@@ -764,5 +831,163 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 				t.Errorf("matchesCriteria(%v, %v) = %v, want %v", tt.v, tt.crit, got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MAXIFS — maximum value with multiple criteria
+// ---------------------------------------------------------------------------
+
+func TestMAXIFS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Max range (B) — values to take max from
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			// Criteria range 1 (A) — category
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("veg"),
+		},
+	}
+
+	// MAXIFS with single criteria: max of B where A="fruit"
+	cf := evalCompile(t, `MAXIFS(B1:B4,A1:A4,"fruit")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match (fruit): max(10, 30) = 30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS single criteria: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFSNoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 3}: StringVal("c"),
+		},
+	}
+
+	// No rows match criteria "z" => return 0
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"z")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MAXIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestMAXIFSMultipleCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Max range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			// Criteria range 1 (B) — category
+			{Col: 2, Row: 1}: StringVal("fruit"),
+			{Col: 2, Row: 2}: StringVal("veg"),
+			{Col: 2, Row: 3}: StringVal("fruit"),
+			{Col: 2, Row: 4}: StringVal("veg"),
+			// Criteria range 2 (C) — score
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(15),
+			{Col: 3, Row: 3}: NumberVal(25),
+			{Col: 3, Row: 4}: NumberVal(35),
+		},
+	}
+
+	// MAXIFS(max_range, criteria_range1, criteria1, criteria_range2, criteria2)
+	// Max of A where B="fruit" AND C>10
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"fruit",C1:C4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only row 3 matches (fruit, 25>10) => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS multiple criteria: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFSArgErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args (only 2 — missing criteria)
+	cf := evalCompile(t, "MAXIFS(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS bad args: got %v, want #VALUE!", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MINIFS — minimum value with multiple criteria
+// ---------------------------------------------------------------------------
+
+func TestMINIFS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Min range (B) — values to take min from
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			// Criteria range 1 (A) — category
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("veg"),
+		},
+	}
+
+	// MINIFS with single criteria: min of B where A="fruit"
+	cf := evalCompile(t, `MINIFS(B1:B4,A1:A4,"fruit")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match (fruit): min(10, 30) = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MINIFS single criteria: got %v, want 10", got)
+	}
+}
+
+func TestMINIFSNoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 3}: StringVal("c"),
+		},
+	}
+
+	// No rows match criteria "z" => return 0
+	cf := evalCompile(t, `MINIFS(A1:A3,B1:B3,"z")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MINIFS no matches: got %v, want 0", got)
 	}
 }
