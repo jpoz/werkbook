@@ -659,6 +659,28 @@ func TestWORKDAY(t *testing.T) {
 		{"wednesday_plus_one", "WORKDAY(DATE(2008,10,1), 1)", "DATE(2008,10,2)"},
 		// Thursday + 1 = Friday
 		{"thursday_plus_one", "WORKDAY(DATE(2008,10,2), 1)", "DATE(2008,10,3)"},
+
+		// Type coercion: boolean as days (TRUE=1, FALSE=0)
+		{"bool_true_as_days", "WORKDAY(DATE(2008,10,1), TRUE)", "DATE(2008,10,2)"},
+		{"bool_false_as_days", "WORKDAY(DATE(2008,10,1), FALSE)", "DATE(2008,10,1)"},
+
+		// Type coercion: numeric string as days
+		{"string_numeric_days", `WORKDAY(DATE(2008,10,1), "5")`, "DATE(2008,10,8)"},
+
+		// Fractional days: truncated (not rounded) per documentation "If days is not an integer, it is truncated."
+		{"fractional_0_point_9_truncates_to_0", "WORKDAY(DATE(2008,10,1), 0.9)", "DATE(2008,10,1)"},
+		{"fractional_0_point_1_truncates_to_0", "WORKDAY(DATE(2008,10,1), 0.1)", "DATE(2008,10,1)"},
+		{"fractional_4_point_99_truncates_to_4", "WORKDAY(DATE(2008,10,1), 4.99)", "DATE(2008,10,7)"},
+		{"fractional_neg_0_point_9_truncates_to_0", "WORKDAY(DATE(2008,10,3), -0.9)", "DATE(2008,10,3)"},
+
+		// Y2K boundary crossing
+		{"y2k_crossing", "WORKDAY(DATE(1999,12,31), 1)", "DATE(2000,1,3)"},
+
+		// New year crossing 2023→2024 (Dec 29 is Friday)
+		{"new_year_crossing_2024", "WORKDAY(DATE(2023,12,29), 2)", "DATE(2024,1,2)"},
+
+		// Large forward count (2 years ≈ 520 workdays)
+		{"two_years_workdays", "WORKDAY(DATE(2008,1,1), 520)", "DATE(2009,12,29)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -777,6 +799,99 @@ func TestWORKDAYWithHolidays(t *testing.T) {
 			t.Errorf("WORKDAY consecutive holidays = %g, want %g", got.Num, want.Num)
 		}
 	})
+
+	// Backward counting with a holiday
+	t.Run("backward_with_holiday", func(t *testing.T) {
+		// Oct 7, 2008 (Tuesday) is a holiday
+		cfOct7 := evalCompile(t, "DATE(2008,10,7)")
+		oct7, _ := Eval(cfOct7, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(oct7.Num),
+			},
+		}
+		// Oct 8 (Wed) - 1 workday, skipping Oct 7 (Tue, holiday) → Oct 6 (Mon)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,8), -1, A1:A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,6)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY backward with holiday = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Holiday on weekend has no extra effect
+	t.Run("holiday_on_weekend_no_effect", func(t *testing.T) {
+		// Oct 4 (Sat) and Oct 7 (Tue) as holidays
+		cfOct4 := evalCompile(t, "DATE(2008,10,4)")
+		oct4, _ := Eval(cfOct4, nil, nil)
+		cfOct7 := evalCompile(t, "DATE(2008,10,7)")
+		oct7, _ := Eval(cfOct7, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(oct4.Num),
+				{Col: 1, Row: 2}: NumberVal(oct7.Num),
+			},
+		}
+		// Oct 1 (Wed) + 5 workdays:
+		// Without holidays: Oct 2,3,6,7,8 → Oct 8
+		// With Oct 4 (Sat, already weekend) and Oct 7 (Tue, holiday):
+		// Oct 2,3,6,8,9 → Oct 9
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 5, A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,9)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY with weekend holiday = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Empty cells in holiday range should be ignored
+	t.Run("empty_cell_in_holiday_range", func(t *testing.T) {
+		cfOct2 := evalCompile(t, "DATE(2008,10,2)")
+		oct2, _ := Eval(cfOct2, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(oct2.Num),
+				// A2 is not set → EmptyVal(), should be ignored
+			},
+		}
+		// Oct 1 (Wed) + 1 workday, Oct 2 is holiday → Oct 3 (Fri)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 1, A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,3)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY with empty in holidays = %g, want %g", got.Num, want.Num)
+		}
+	})
 }
 
 func TestWORKDAYErrors(t *testing.T) {
@@ -797,6 +912,30 @@ func TestWORKDAYErrors(t *testing.T) {
 
 		// Invalid days: non-numeric string → #VALUE!
 		{"value_error_string_days", `WORKDAY(DATE(2008,10,1), "abc")`, ErrValVALUE},
+
+		// Negative serial numbers → #NUM! (the core mismatch fix)
+		// When start_date is a negative number, WORKDAY returns #NUM!
+		{"negative_serial_minus_one", "WORKDAY(-1, 0)", ErrValNUM},
+		{"negative_serial_minus_28", "WORKDAY(-28, 0)", ErrValNUM},
+		{"negative_serial_large", "WORKDAY(-1000, 5)", ErrValNUM},
+		{"negative_serial_small_fraction", "WORKDAY(-0.5, 0)", ErrValNUM},
+		{"negative_serial_tiny", "WORKDAY(-1E-15, 0)", ErrValNUM},
+		{"negative_serial_positive_days", "WORKDAY(-5, 10)", ErrValNUM},
+		{"negative_serial_negative_days", "WORKDAY(-5, -10)", ErrValNUM},
+
+		// DATE producing #NUM! that propagates through WORKDAY
+		// DATE(0,0,3) → Dec 3, 1899 → serial < 0 → #NUM!
+		{"date_month_zero_negative_serial", "WORKDAY(DATE(0, 0, 3), 0)", ErrValNUM},
+		// Exact mismatch case from the fuzz test spec
+		{"date_fractional_args_negative", "WORKDAY(DATE(0.5, 0.01, 3.14159265358979), 0.5)", ErrValNUM},
+		// DATE with very negative day going before epoch
+		{"date_negative_day_past_epoch", "WORKDAY(DATE(1900, 1, -40), 1)", ErrValNUM},
+
+		// Non-numeric string as holiday → #VALUE!
+		{"value_error_string_holiday", `WORKDAY(DATE(2008,10,1), 5, "hello")`, ErrValVALUE},
+
+		// Both arguments invalid
+		{"value_error_both_args_invalid", `WORKDAY("hello", "world")`, ErrValVALUE},
 	}
 
 	for _, tc := range tests {

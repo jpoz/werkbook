@@ -65,7 +65,11 @@ func fnDATE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 
-	t := time.Date(y, time.Month(int(month)), int(day), 0, 0, 0, 0, time.UTC)
+	// Excel uses INT (floor) semantics to truncate month and day to integers,
+	// not TRUNC (toward zero). E.g. INT(-0.5) = -1, not 0.
+	m := int(math.Floor(month))
+	d := int(math.Floor(day))
+	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
 	serial := timeToExcelSerial(t)
 	if serial < 0 {
 		return ErrorVal(ErrValNUM), nil
