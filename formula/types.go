@@ -121,6 +121,35 @@ func EmptyVal() Value {
 	return Value{Type: ValueEmpty}
 }
 
+// ErrorValueFromString converts an error display string (e.g. "#NUM!") to an ErrorValue.
+// Returns ErrValVALUE if the string is not recognized.
+func ErrorValueFromString(s string) ErrorValue {
+	switch s {
+	case "#DIV/0!":
+		return ErrValDIV0
+	case "#N/A":
+		return ErrValNA
+	case "#NAME?":
+		return ErrValNAME
+	case "#NULL!":
+		return ErrValNULL
+	case "#NUM!":
+		return ErrValNUM
+	case "#REF!":
+		return ErrValREF
+	case "#VALUE!":
+		return ErrValVALUE
+	case "#SPILL!":
+		return ErrValSPILL
+	case "#CALC!":
+		return ErrValCALC
+	case "#GETTING_DATA":
+		return ErrValGETTINGDATA
+	default:
+		return ErrValVALUE
+	}
+}
+
 // CellAddr is a compiled cell address.
 type CellAddr struct {
 	Sheet string // sheet name (empty if unqualified)
