@@ -6,6 +6,7 @@ fuzzgen
 fuzzorch
 excel-test
 msgraph-setup
+exceldoc
 *.exe
 *.exe~
 *.dll

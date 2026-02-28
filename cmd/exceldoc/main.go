@@ -73,21 +73,20 @@ func fetchPage(url string) (string, error) {
 func parseFunctionLinks(html string) map[string]string {
 	result := make(map[string]string)
 
-	// Match links that contain function names. Microsoft's page uses patterns like:
-	// <a href="https://support.microsoft.com/...">FUNCTION_NAME function</a>
-	// We look for links containing "support.microsoft.com" with function-like text.
-	linkRe := regexp.MustCompile(`<a[^>]+href="(https://support\.microsoft\.com/[^"]*)"[^>]*>([^<]+)</a>`)
+	// Match links with class="ocpArticleLink" which are the function doc links.
+	// These use relative URLs like /en-us/office/abs-function-...
+	linkRe := regexp.MustCompile(`<a[^>]+href="(/en-us/office/[^"]*-function[^"]*)"[^>]*>([^<]+)</a>`)
 	matches := linkRe.FindAllStringSubmatch(html, -1)
 
 	for _, m := range matches {
-		url := m[1]
+		relURL := m[1]
 		text := strings.TrimSpace(m[2])
 
-		// Extract function name from link text like "SUM function" or "VLOOKUP function"
+		// Extract function name from link text like "SUM" or "VLOOKUP"
+		// Also handle "SUM function" style text
 		text = strings.TrimSuffix(text, " function")
 		text = strings.TrimSuffix(text, " Function")
 
-		// Function names are all uppercase (possibly with dots like CEILING.MATH)
 		name := strings.TrimSpace(text)
 		if name == "" {
 			continue
@@ -95,7 +94,7 @@ func parseFunctionLinks(html string) map[string]string {
 
 		// Only include entries that look like function names
 		if isFunctionName(name) {
-			result[strings.ToUpper(name)] = url
+			result[strings.ToUpper(name)] = "https://support.microsoft.com" + relURL
 		}
 	}
 
@@ -189,9 +188,22 @@ func fetchDoc(funcName string, urlOnly, raw bool) error {
 
 // extractDocContent strips HTML and extracts readable text from a doc page.
 func extractDocContent(html string) string {
+	// Try to extract just the main article content to avoid page chrome.
+	if idx := strings.Index(html, "<article"); idx != -1 {
+		if end := strings.Index(html[idx:], "</article>"); end != -1 {
+			html = html[idx : idx+end+len("</article>")]
+		}
+	} else if idx := strings.Index(html, "<main"); idx != -1 {
+		if end := strings.Index(html[idx:], "</main>"); end != -1 {
+			html = html[idx : idx+end+len("</main>")]
+		}
+	}
+
 	// Remove script and style tags with their content.
-	scriptRe := regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</\1>`)
+	scriptRe := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
 	html = scriptRe.ReplaceAllString(html, "")
+	styleRe := regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	html = styleRe.ReplaceAllString(html, "")
 
 	// Remove HTML comments.
 	commentRe := regexp.MustCompile(`(?s)<!--.*?-->`)
@@ -220,6 +232,27 @@ func extractDocContent(html string) string {
 	liRe := regexp.MustCompile(`(?i)<li[^>]*>`)
 	html = liRe.ReplaceAllString(html, "\n- ")
 
+	// Convert table rows: extract cells and join with " | ".
+	trRe := regexp.MustCompile(`(?is)<tr[^>]*>(.*?)</tr>`)
+	cellRe := regexp.MustCompile(`(?is)<t[dh][^>]*>(.*?)</t[dh]>`)
+	html = trRe.ReplaceAllStringFunc(html, func(row string) string {
+		cells := cellRe.FindAllStringSubmatch(row, -1)
+		if len(cells) == 0 {
+			return "\n"
+		}
+		var parts []string
+		for _, c := range cells {
+			text := strings.TrimSpace(stripTags(c[1]))
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+		if len(parts) == 0 {
+			return "\n"
+		}
+		return "\n" + strings.Join(parts, " | ") + "\n"
+	})
+
 	// Strip all remaining HTML tags.
 	html = stripTags(html)
 
@@ -232,17 +265,42 @@ func extractDocContent(html string) string {
 	html = strings.ReplaceAll(html, "&nbsp;", " ")
 	html = strings.ReplaceAll(html, "&#160;", " ")
 
-	// Collapse multiple blank lines.
-	multiNewline := regexp.MustCompile(`\n{3,}`)
-	html = multiNewline.ReplaceAllString(html, "\n\n")
+	// Boilerplate markers that signal end of useful content.
+	stopMarkers := []string{"Need more help?", "See Also", "Was this information helpful?", "Want more options?"}
 
-	// Trim leading/trailing whitespace per line.
+	// Trim leading/trailing whitespace per line, collapse blank lines,
+	// and stop at boilerplate sections.
 	lines := strings.Split(html, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimSpace(line)
+	var out []string
+	lastBlank := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Stop at boilerplate.
+		cleaned := strings.TrimPrefix(line, "## ")
+		stop := false
+		for _, m := range stopMarkers {
+			if strings.EqualFold(cleaned, m) {
+				stop = true
+				break
+			}
+		}
+		if stop {
+			break
+		}
+
+		if line == "" {
+			if !lastBlank {
+				out = append(out, "")
+			}
+			lastBlank = true
+		} else {
+			out = append(out, line)
+			lastBlank = false
+		}
 	}
 
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 // stripTags removes all HTML tags from a string.
@@ -290,10 +348,11 @@ func extractSections(text string) map[string]string {
 	var currentContent []string
 
 	for _, line := range lines {
+		trimmed := strings.TrimPrefix(line, "## ")
+
 		// Check if this line is a section header.
 		found := false
 		for _, name := range sectionNames {
-			trimmed := strings.TrimPrefix(line, "## ")
 			if strings.EqualFold(trimmed, name) || strings.EqualFold(line, name) {
 				// Save previous section.
 				if currentSection != "" {
