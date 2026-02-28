@@ -192,6 +192,17 @@ func (c *compiler) compileNode(node Node) error {
 		if argc > 255 {
 			return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
 		}
+		// COLUMN and ROW need the cell reference coordinates, not the resolved
+		// cell value.  When the single argument is a direct cell reference, push
+		// a ValueRef (address only) so the function can extract col/row.
+		if (name == "COLUMN" || name == "ROW") && argc == 1 {
+			if cr, ok := n.Args[0].(*CellRef); ok {
+				idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
+				c.emit(OpLoadCellRef, idx)
+				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+				return nil
+			}
+		}
 		for _, arg := range n.Args {
 			if err := c.compileNode(arg); err != nil {
 				return err

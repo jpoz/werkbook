@@ -57,6 +57,10 @@ func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
 		}
 		return NumberVal(float64(ctx.CurrentCol)), nil
 	}
+	if len(args) == 1 && args[0].Type == ValueRef {
+		col := int(args[0].Num) % 100_000
+		return NumberVal(float64(col)), nil
+	}
 	return ErrorVal(ErrValVALUE), nil
 }
 
@@ -66,6 +70,10 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
 			return ErrorVal(ErrValVALUE), nil
 		}
 		return NumberVal(float64(ctx.CurrentRow)), nil
+	}
+	if len(args) == 1 && args[0].Type == ValueRef {
+		row := int(args[0].Num) / 100_000
+		return NumberVal(float64(row)), nil
 	}
 	return ErrorVal(ErrValVALUE), nil
 }

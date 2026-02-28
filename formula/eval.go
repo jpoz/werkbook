@@ -87,6 +87,12 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			rows := resolver.GetRangeValues(addr)
 			push(Value{Type: ValueArray, Array: rows})
 
+		case OpLoadCellRef:
+			addr := cf.Refs[inst.Operand]
+			// Encode col and row into Num: col + row*100_000.
+			// Max col = 16384 < 100_000, max row = 1_048_576, product < 2^53.
+			push(Value{Type: ValueRef, Num: float64(addr.Col + addr.Row*100_000)})
+
 		case OpAdd:
 			b, err := pop()
 			if err != nil {
