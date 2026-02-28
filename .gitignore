@@ -18,6 +18,7 @@ werkbook
 *.test
 testcases/
 failures/
+fuzzorch_*.log
 
 # Output of go coverage
 *.out

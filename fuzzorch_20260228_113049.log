@@ -1,8 +1,0 @@
-[0;34m[1m▶ Running fuzz orchestrator[0m
-go run ./cmd/fuzzorch --start-level 6 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
-# github.com/jpoz/werkbook/cmd/fuzzorch
-cmd/fuzzorch/main.go:167:17: assignment mismatch: 2 variables but executeSpec returns 3 values
-cmd/fuzzorch/main.go:536:17: assignment mismatch: 2 variables but executeSpec returns 3 values
-cmd/fuzzorch/main.go:653:18: assignment mismatch: 2 variables but executeSpec returns 3 values
-cmd/fuzzorch/main.go:731:18: assignment mismatch: 2 variables but executeSpec returns 3 values
-make: *** [fuzzorch] Error 1

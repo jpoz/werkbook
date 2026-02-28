@@ -1,9 +1,0 @@
-[0;34m[1m▶ Running fuzz orchestrator[0m
-go run ./cmd/fuzzorch --start-level 6 --passes-to-escalate 3 --max-rounds 1000 --oracle local-excel --seed mixed --replay --mutate 
-# github.com/jpoz/werkbook/cmd/fuzzorch
-cmd/fuzzorch/main.go:229:3: undefined: saveCoverage
-cmd/fuzzorch/main.go:241:2: undefined: saveCoverage
-cmd/fuzzorch/main.go:541:15: declared and not used: gt
-cmd/fuzzorch/main.go:658:16: declared and not used: gt
-cmd/fuzzorch/main.go:736:16: declared and not used: gt
-make: *** [fuzzorch] Error 1
