@@ -845,6 +845,35 @@ func TestWORKDAY(t *testing.T) {
 
 		// Negative string days via coercion
 		{"string_neg_frac_days", `WORKDAY(DATE(2008,10,6), "-1.9")`, "DATE(2008,10,3)"},
+
+		// === Documentation example: reverse verification ===
+		// WORKDAY(Apr 30 2009, -151) should return Oct 1 2008
+		{"doc_example_151_backward", "WORKDAY(DATE(2009,4,30), -151)", "DATE(2008,10,1)"},
+
+		// === Additional documentation-based coverage ===
+		// 50 workdays forward from Oct 1 2008 (Wed)
+		// 50 workdays = 10 weeks → Dec 10, 2008 (Wed)
+		{"fifty_workdays_forward", "WORKDAY(DATE(2008,10,1), 50)", "DATE(2008,12,10)"},
+
+		// WORKDAY preserves time component of start_date (fractional serial)
+		// Serial 39722.5 = Oct 1, 2008 noon; +1 workday = Oct 2 noon
+		{"preserves_time_component", "WORKDAY(39722.5, 1)", "DATE(2008,10,2)+0.5"},
+
+		// Very small days value truncates to 0
+		{"days_1e_minus_10_truncates_to_0", "WORKDAY(DATE(2008,10,1), 1E-10)", "DATE(2008,10,1)"},
+
+		// Negative fractional days just below zero truncates to 0
+		{"days_neg_1e_minus_10_truncates_to_0", "WORKDAY(DATE(2008,10,1), -1E-10)", "DATE(2008,10,1)"},
+
+		// Day count that crosses multiple months: 65 workdays = 13 weeks
+		// Oct 1 (Wed) + 13 weeks = Dec 31 (Wed)
+		{"sixty_five_workdays", "WORKDAY(DATE(2008,10,1), 65)", "DATE(2008,12,31)"},
+
+		// Wednesday + 3 = Monday (crosses one weekend)
+		{"wednesday_plus_three", "WORKDAY(DATE(2008,10,1), 3)", "DATE(2008,10,6)"},
+
+		// Thursday + 2 = Monday (crosses one weekend)
+		{"thursday_plus_two", "WORKDAY(DATE(2008,10,2), 2)", "DATE(2008,10,6)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1162,6 +1191,91 @@ func TestWORKDAYWithHolidays(t *testing.T) {
 		}
 	})
 
+	// Holiday that coincides with a weekend day has no extra effect (single inline holiday)
+	t.Run("inline_holiday_on_saturday", func(t *testing.T) {
+		// Oct 1 (Wed) + 5 with Saturday Oct 4 as holiday (already a weekend)
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 5, DATE(2008,10,4))")
+		got, err := Eval(cf, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,8)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY with inline Saturday holiday = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Multiple holidays spanning across a weekend
+	t.Run("holidays_around_weekend", func(t *testing.T) {
+		// Oct 3 (Fri) and Oct 6 (Mon) as holidays; Oct 4-5 is weekend
+		cfFri := evalCompile(t, "DATE(2008,10,3)")
+		fri, _ := Eval(cfFri, nil, nil)
+		cfMon := evalCompile(t, "DATE(2008,10,6)")
+		mon, _ := Eval(cfMon, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(fri.Num),
+				{Col: 1, Row: 2}: NumberVal(mon.Num),
+			},
+		}
+		// Oct 2 (Thu) + 1 workday: skip Fri (holiday), Sat/Sun (weekend), Mon (holiday) → Tue Oct 7
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,2), 1, A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,7)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY holidays around weekend = %g, want %g", got.Num, want.Num)
+		}
+	})
+
+	// Backward counting across holidays that span weekend
+	t.Run("backward_across_holidays_around_weekend", func(t *testing.T) {
+		// Oct 3 (Fri) and Oct 6 (Mon) as holidays
+		cfFri := evalCompile(t, "DATE(2008,10,3)")
+		fri, _ := Eval(cfFri, nil, nil)
+		cfMon := evalCompile(t, "DATE(2008,10,6)")
+		mon, _ := Eval(cfMon, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(fri.Num),
+				{Col: 1, Row: 2}: NumberVal(mon.Num),
+			},
+		}
+		// Oct 7 (Tue) - 1 workday: skip Mon (holiday), Sun/Sat (weekend), Fri (holiday) → Thu Oct 2
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,7), -1, A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2008,10,2)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY backward across holidays = %g, want %g", got.Num, want.Num)
+		}
+	})
+
 	// Empty cells in holiday range should be ignored
 	t.Run("empty_cell_in_holiday_range", func(t *testing.T) {
 		cfOct2 := evalCompile(t, "DATE(2008,10,2)")
@@ -1281,6 +1395,17 @@ func TestWORKDAYErrors(t *testing.T) {
 		{"extreme_month_1e9", "WORKDAY(DATE(2024,1000000000,1), 0)", ErrValNUM},
 		{"extreme_neg_month_1e12", "WORKDAY(DATE(2024,-1000000000000,1), 0)", ErrValNUM},
 
+		// === Mismatch lock-in from fuzz test spec (Sheet4!A9) ===
+		// DATE(-999999999, 0.001, 3.14159265358979) → #NUM! from extreme negative year.
+		// WORKDAY must propagate #NUM! (not #VALUE!) regardless of days value.
+		{"mismatch_lockin_frac_days", "WORKDAY(DATE(-999999999, 0.001, 3.14159265358979), 0.5)", ErrValNUM},
+		{"mismatch_lockin_int_days", "WORKDAY(DATE(-999999999, 0.001, 3.14159265358979), 5)", ErrValNUM},
+		{"mismatch_lockin_neg_days", "WORKDAY(DATE(-999999999, 0.001, 3.14159265358979), -1)", ErrValNUM},
+		{"mismatch_lockin_zero_days", "WORKDAY(DATE(-999999999, 0.001, 3.14159265358979), 0)", ErrValNUM},
+		// Verify the same behavior with negative year directly
+		{"num_error_neg_year_500", "WORKDAY(DATE(-500, 1, 1), 1)", ErrValNUM},
+		{"num_error_neg_year_intmin", "WORKDAY(DATE(-2147483648, 1, 1), 0)", ErrValNUM},
+
 		// === Argument count validation ===
 		// Too few arguments (1 arg) → #VALUE!
 		{"too_few_args_one", "WORKDAY(DATE(2008,10,1))", ErrValVALUE},
@@ -1385,6 +1510,94 @@ func TestWORKDAYErrorPropagation(t *testing.T) {
 		}
 		if got.Type != ValueError || got.Err != ErrValVALUE {
 			t.Errorf("WORKDAY(valid, #VALUE!): got %v, want #VALUE!", got)
+		}
+	})
+
+	// Mismatch lock-in: #NUM! propagation with fractional days (0.5)
+	// This is the exact scenario from the fuzz test spec (Sheet4!A9):
+	// WORKDAY(DATE(-999999999,...), 0.5) must return #NUM!, not #VALUE!
+	t.Run("propagate_num_error_with_fractional_days", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, 0.5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(#NUM!, 0.5): got %v, want #NUM!", got)
+		}
+	})
+
+	// #NUM! propagation with positive integer days
+	t.Run("propagate_num_error_with_positive_days", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, 5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(#NUM!, 5): got %v, want #NUM!", got)
+		}
+	})
+
+	// #NUM! propagation with negative days
+	t.Run("propagate_num_error_with_negative_days", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, -1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(#NUM!, -1): got %v, want #NUM!", got)
+		}
+	})
+
+	// #NA propagation from start_date
+	t.Run("propagate_na_error_from_start", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, 5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("WORKDAY(#N/A, 5): got %v, want #N/A", got)
+		}
+	})
+
+	// Error in days argument with fractional start_date
+	t.Run("propagate_error_from_days_fractional", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39722),      // valid start date
+				{Col: 2, Row: 1}: ErrorVal(ErrValNUM),   // error in days
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(valid, #NUM!): got %v, want #NUM!", got)
 		}
 	})
 
