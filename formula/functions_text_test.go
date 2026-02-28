@@ -233,6 +233,57 @@ func TestTEXTFormatExtended(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// NUMBERVALUE
+// ---------------------------------------------------------------------------
+
+func TestNUMBERVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		{name: "european_format", formula: `NUMBERVALUE("2.500,27", ",", ".")`, wantNum: 2500.27},
+		{name: "percent", formula: `NUMBERVALUE("3.5%")`, wantNum: 0.035},
+		{name: "empty_string", formula: `NUMBERVALUE("")`, wantNum: 0},
+		{name: "spaces", formula: `NUMBERVALUE("  3 000  ")`, wantNum: 3000},
+		{name: "us_format", formula: `NUMBERVALUE("1,234.56")`, wantNum: 1234.56},
+		{name: "european_full", formula: `NUMBERVALUE("1.234,56", ",", ".")`, wantNum: 1234.56},
+		{name: "multiple_decimals", formula: `NUMBERVALUE("1.2.3")`, isErr: true},
+		{name: "double_percent", formula: `NUMBERVALUE("50%%")`, wantNum: 0.005},
+		{name: "integer", formula: `NUMBERVALUE("100")`, wantNum: 100},
+	}
+
+	const epsilon = 0.0001
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("Eval(%q) = %v, want #VALUE!", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber {
+					t.Errorf("Eval(%q) = %v, want number %g", tt.formula, got, tt.wantNum)
+				} else {
+					diff := got.Num - tt.wantNum
+					if diff < -epsilon || diff > epsilon {
+						t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+					}
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // FIND edge cases
 // ---------------------------------------------------------------------------
 
@@ -546,6 +597,86 @@ func TestVALUEEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// T function
+// ---------------------------------------------------------------------------
+
+func TestT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "string_value", formula: `T("hello")`, want: "hello"},
+		{name: "number_value", formula: `T(123)`, want: ""},
+		{name: "bool_value", formula: `T(TRUE)`, want: ""},
+		{name: "empty_string", formula: `T("")`, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (str=%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEXTJOIN
+// ---------------------------------------------------------------------------
+
+func TestTEXTJOIN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "basic", formula: `TEXTJOIN(", ", TRUE, "a", "b", "c")`, want: "a, b, c"},
+		{name: "ignore_empty", formula: `TEXTJOIN(", ", TRUE, "a", "", "c")`, want: "a, c"},
+		{name: "include_empty", formula: `TEXTJOIN(", ", FALSE, "a", "", "c")`, want: "a, , c"},
+		{name: "empty_delimiter", formula: `TEXTJOIN("", TRUE, "a", "b")`, want: "ab"},
+		{name: "single_value", formula: `TEXTJOIN("-", TRUE, "only")`, want: "only"},
+		{name: "all_empty_ignored", formula: `TEXTJOIN(", ", TRUE, "", "", "")`, want: ""},
+		{name: "numbers", formula: `TEXTJOIN("-", TRUE, 1, 2, 3)`, want: "1-2-3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTJOINTooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, `TEXTJOIN(", ", TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("TEXTJOIN too few args: got %v, want #VALUE!", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // CLEAN edge cases
 // ---------------------------------------------------------------------------
 
@@ -684,5 +815,41 @@ func TestLENUnicode(t *testing.T) {
 	// "caf\u00e9" is 4 runes
 	if got.Type != ValueNumber || got.Num != 4 {
 		t.Errorf("LEN unicode: got %g, want 4", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FIXED
+// ---------------------------------------------------------------------------
+
+func TestFIXED(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "with_1_decimal", formula: `FIXED(1234.567, 1)`, want: "1,234.6"},
+		{name: "negative_decimals", formula: `FIXED(1234.567, -1)`, want: "1,230"},
+		{name: "negative_num_neg_dec_no_commas", formula: `FIXED(-1234.567, -1, TRUE)`, want: "-1230"},
+		{name: "default_decimals", formula: `FIXED(44.332)`, want: "44.33"},
+		{name: "large_number_with_commas", formula: `FIXED(1234567.89, 2)`, want: "1,234,567.89"},
+		{name: "large_number_no_commas", formula: `FIXED(1234567.89, 2, TRUE)`, want: "1234567.89"},
+		{name: "zero", formula: `FIXED(0, 2)`, want: "0.00"},
+		{name: "round_half_up", formula: `FIXED(1.5, 0)`, want: "2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
 	}
 }

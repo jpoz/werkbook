@@ -87,6 +87,12 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			rows := resolver.GetRangeValues(addr)
 			push(Value{Type: ValueArray, Array: rows})
 
+		case OpLoadCellRef:
+			addr := cf.Refs[inst.Operand]
+			// Encode col and row into Num: col + row*100_000.
+			// Max col = 16384 < 100_000, max row = 1_048_576, product < 2^53.
+			push(Value{Type: ValueRef, Num: float64(addr.Col + addr.Row*100_000)})
+
 		case OpAdd:
 			b, err := pop()
 			if err != nil {
@@ -493,14 +499,26 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnATAN2(args)
 	case "CEILING":
 		return fnCEILING(args)
+	case "COMBIN":
+		return fnCOMBIN(args)
 	case "COS":
 		return fnCOS(args)
+	case "DEGREES":
+		return fnDEGREES(args)
+	case "EVEN":
+		return fnEVEN(args)
 	case "EXP":
 		return fnEXP(args)
+	case "FACT":
+		return fnFACT(args)
 	case "FLOOR":
 		return fnFLOOR(args)
+	case "GCD":
+		return fnGCD(args)
 	case "INT":
 		return fnINT(args)
+	case "LCM":
+		return fnLCM(args)
 	case "LN":
 		return fnLN(args)
 	case "LOG":
@@ -509,12 +527,22 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLOG10(args)
 	case "MOD":
 		return fnMOD(args)
+	case "MROUND":
+		return fnMROUND(args)
+	case "ODD":
+		return fnODD(args)
+	case "PERMUT":
+		return fnPERMUT(args)
 	case "PI":
 		return fnPI(args)
 	case "POWER":
 		return fnPOWER(args)
 	case "PRODUCT":
 		return fnPRODUCT(args)
+	case "QUOTIENT":
+		return fnQUOTIENT(args)
+	case "RADIANS":
+		return fnRADIANS(args)
 	case "RAND":
 		return fnRAND(args)
 	case "RANDBETWEEN":
@@ -525,12 +553,18 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnROUNDDOWN(args)
 	case "ROUNDUP":
 		return fnROUNDUP(args)
+	case "SIGN":
+		return fnSIGN(args)
 	case "SIN":
 		return fnSIN(args)
 	case "SQRT":
 		return fnSQRT(args)
+	case "SUBTOTAL":
+		return fnSUBTOTAL(args)
 	case "TAN":
 		return fnTAN(args)
+	case "TRUNC":
+		return fnTRUNC(args)
 
 	// Statistics
 	case "AVERAGE":
@@ -553,10 +587,20 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLARGE(args)
 	case "MAX":
 		return fnMAX(args)
+	case "MAXIFS":
+		return fnMAXIFS(args)
 	case "MEDIAN":
 		return fnMEDIAN(args)
+	case "MODE":
+		return fnMODE(args)
+	case "PERCENTILE":
+		return fnPERCENTILE(args)
 	case "MIN":
 		return fnMIN(args)
+	case "MINIFS":
+		return fnMINIFS(args)
+	case "RANK":
+		return fnRANK(args)
 	case "SMALL":
 		return fnSMALL(args)
 	case "SUM":
@@ -567,6 +611,16 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSUMIFS(args)
 	case "SUMPRODUCT":
 		return fnSUMPRODUCT(args)
+	case "STDEV":
+		return fnSTDEV(args)
+	case "STDEVP":
+		return fnSTDEVP(args)
+	case "SUMSQ":
+		return fnSUMSQ(args)
+	case "VAR":
+		return fnVAR(args)
+	case "VARP":
+		return fnVARP(args)
 
 	// Text
 	case "CHAR":
@@ -583,6 +637,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnEXACT(args)
 	case "FIND":
 		return fnFIND(args)
+	case "FIXED":
+		return fnFIXED(args)
 	case "LEFT":
 		return fnLEFT(args)
 	case "LEN":
@@ -591,6 +647,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLOWER(args)
 	case "MID":
 		return fnMID(args)
+	case "NUMBERVALUE":
+		return fnNUMBERVALUE(args)
 	case "PROPER":
 		return fnPROPER(args)
 	case "REPLACE":
@@ -603,8 +661,12 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSEARCH(args)
 	case "SUBSTITUTE":
 		return fnSUBSTITUTE(args)
+	case "T":
+		return fnT(args)
 	case "TEXT":
 		return fnTEXT(args)
+	case "TEXTJOIN":
+		return fnTEXTJOIN(args)
 	case "TRIM":
 		return fnTRIM(args)
 	case "UPPER":
@@ -619,12 +681,16 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnIF(args)
 	case "IFERROR":
 		return fnIFERROR(args)
+	case "IFS":
+		return fnIFS(args)
 	case "NOT":
 		return fnNOT(args)
 	case "OR":
 		return fnOR(args)
 	case "SORT":
 		return fnSORT(args)
+	case "SWITCH":
+		return fnSWITCH(args)
 	case "XOR":
 		return fnXOR(args)
 
@@ -633,34 +699,64 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOLUMN(args, ctx)
 	case "COLUMNS":
 		return fnCOLUMNS(args)
+	case "ERROR.TYPE":
+		return fnERRORTYPE(args)
 	case "IFNA":
 		return fnIFNA(args)
 	case "ISBLANK":
 		return fnISBLANK(args)
 	case "ISERR", "ISERROR":
 		return fnISERROR(args)
+	case "ISEVEN":
+		return fnISEVEN(args)
+	case "ISLOGICAL":
+		return fnISLOGICAL(args)
 	case "ISNA":
 		return fnISNA(args)
+	case "ISNONTEXT":
+		return fnISNONTEXT(args)
+	case "ISODD":
+		return fnISODD(args)
 	case "ISNUMBER":
 		return fnISNUMBER(args)
 	case "ISTEXT":
 		return fnISTEXT(args)
+	case "N":
+		return fnN(args)
+	case "NA":
+		return fnNA(args)
 	case "ROW":
 		return fnROW(args, ctx)
 	case "ROWS":
 		return fnROWS(args)
+	case "TYPE":
+		return fnTYPE(args)
 
 	// Date/Time
 	case "DATE":
 		return fnDATE(args)
+	case "DATEDIF":
+		return fnDATEDIF(args)
+	case "DATEVALUE":
+		return fnDATEVALUE(args)
 	case "DAY":
 		return fnDAY(args)
+	case "DAYS":
+		return fnDAYS(args)
+	case "EDATE":
+		return fnEDATE(args)
+	case "EOMONTH":
+		return fnEOMONTH(args)
 	case "HOUR":
 		return fnHOUR(args)
+	case "ISOWEEKNUM":
+		return fnISOWEEKNUM(args)
 	case "MINUTE":
 		return fnMINUTE(args)
 	case "MONTH":
 		return fnMONTH(args)
+	case "NETWORKDAYS":
+		return fnNETWORKDAYS(args)
 	case "NOW":
 		return fnNOW(args)
 	case "SECOND":
@@ -669,10 +765,20 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnTIME(args)
 	case "TODAY":
 		return fnTODAY(args)
+	case "WEEKDAY":
+		return fnWEEKDAY(args)
+	case "WEEKNUM":
+		return fnWEEKNUM(args)
+	case "WORKDAY":
+		return fnWORKDAY(args)
 	case "YEAR":
 		return fnYEAR(args)
+	case "YEARFRAC":
+		return fnYEARFRAC(args)
 
 	// Lookup
+	case "ADDRESS":
+		return fnADDRESS(args)
 	case "HLOOKUP":
 		return fnHLOOKUP(args)
 	case "INDEX":

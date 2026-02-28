@@ -51,6 +51,53 @@ func TestMathFunctions(t *testing.T) {
 		{"FLOOR(4.9,1)", 4, 0},
 		{"FLOOR(4.5,2)", 4, 0},
 		{"PRODUCT(2,3,4)", 24, 0},
+		{"COMBIN(8,2)", 28, 0},
+		{"COMBIN(5,0)", 1, 0},
+		{"COMBIN(5,5)", 1, 0},
+		{"COMBIN(10,3)", 120, 0},
+		{"DEGREES(PI())", 180, 1e-10},
+		{"EVEN(1.5)", 2, 0},
+		{"EVEN(3)", 4, 0},
+		{"EVEN(2)", 2, 0},
+		{"EVEN(-1)", -2, 0},
+		{"EVEN(-2)", -2, 0},
+		{"EVEN(0)", 0, 0},
+		{"DEGREES(0)", 0, 0},
+		{"DEGREES(1)", 57.29577951308232, 1e-10},
+		{"FACT(5)", 120, 0},
+		{"FACT(0)", 1, 0},
+		{"FACT(1)", 1, 0},
+		{"FACT(1.9)", 1, 0},
+		{"FACT(10)", 3628800, 0},
+		{"GCD(5,2)", 1, 0},
+		{"GCD(24,36)", 12, 0},
+		{"GCD(7,1)", 1, 0},
+		{"GCD(5,0)", 5, 0},
+		{"GCD(0,0)", 0, 0},
+		{"GCD(12,8,4)", 4, 0},
+		{"LCM(5,2)", 10, 0},
+		{"LCM(24,36)", 72, 0},
+		{"LCM(3,4,5)", 60, 0},
+		{"LCM(5,0)", 0, 0},
+		{"LCM(7)", 7, 0},
+		{"MROUND(10,3)", 9, 0},
+		{"MROUND(-10,-3)", -9, 0},
+		{"MROUND(1.3,0.2)", 1.4, 1e-10},
+		{"MROUND(5,0)", 0, 0},
+		{"MROUND(7.5,5)", 10, 0},
+		{"ODD(1.5)", 3, 0},
+		{"ODD(3)", 3, 0},
+		{"ODD(2)", 3, 0},
+		{"ODD(-1)", -1, 0},
+		{"ODD(-2)", -3, 0},
+		{"ODD(0)", 1, 0},
+		{"QUOTIENT(5,2)", 2, 0},
+		{"QUOTIENT(4.5,3.1)", 1, 0},
+		{"QUOTIENT(-10,3)", -3, 0},
+		{"QUOTIENT(7,7)", 1, 0},
+		{"RADIANS(180)", math.Pi, 1e-10},
+		{"RADIANS(0)", 0, 0},
+		{"RADIANS(360)", 2 * math.Pi, 1e-10},
 	}
 
 	for _, tt := range numTests {
@@ -91,6 +138,13 @@ func TestMathErrors(t *testing.T) {
 		{"SQRT(-1)", ErrValNUM},
 		{"MOD(10,0)", ErrValDIV0},
 		{"ATAN2(0,0)", ErrValDIV0},
+		{"COMBIN(3,5)", ErrValNUM},
+		{"COMBIN(-1,2)", ErrValNUM},
+		{"FACT(-1)", ErrValNUM},
+		{"GCD(-5,2)", ErrValNUM},
+		{"LCM(-5,2)", ErrValNUM},
+		{"MROUND(5,-2)", ErrValNUM},
+		{"QUOTIENT(10,0)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
@@ -103,6 +157,98 @@ func TestMathErrors(t *testing.T) {
 		if got.Type != ValueError || got.Err != tt.errVal {
 			t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
 		}
+	}
+}
+
+func TestPERMUT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		wantNum float64
+		wantErr bool
+	}{
+		{"PERMUT(100,3)", 970200, false},
+		{"PERMUT(3,2)", 6, false},
+		{"PERMUT(5,0)", 1, false},
+		{"PERMUT(5,5)", 120, false},
+		{"PERMUT(10,1)", 10, false},
+		{"PERMUT(7,3)", 210, false},
+		{"PERMUT(3,5)", 0, true},
+		{"PERMUT(-1,2)", 0, true},
+		{"PERMUT(0,0)", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = type %v, want ValueError", tt.formula, got.Type)
+				}
+			} else {
+				if got.Type != ValueNumber {
+					t.Errorf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+				} else if got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
+
+func TestSUBTOTAL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		wantErr ErrorValue
+	}{
+		{"SUM", "SUBTOTAL(9,{120,10,150,23})", 303, 0, 0},
+		{"SUM_100series", "SUBTOTAL(109,{120,10,150,23})", 303, 0, 0},
+		{"AVERAGE", "SUBTOTAL(1,{120,10,150,23})", 75.75, 1e-10, 0},
+		{"MAX", "SUBTOTAL(4,{120,10,150,23})", 150, 0, 0},
+		{"MIN", "SUBTOTAL(5,{120,10,150,23})", 10, 0, 0},
+		{"COUNT", "SUBTOTAL(2,{120,10,150,23})", 4, 0, 0},
+		{"PRODUCT", "SUBTOTAL(6,{2,3,4})", 24, 0, 0},
+		{"invalid_0", "SUBTOTAL(0,{1,2})", 0, 0, ErrValVALUE},
+		{"invalid_12", "SUBTOTAL(12,{1,2})", 0, 0, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Errorf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+				return
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
 	}
 }
 

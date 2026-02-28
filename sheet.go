@@ -571,7 +571,7 @@ func valueToFormulaValue(v Value) formula.Value {
 	}
 }
 
-func cellToData(ref string, v Value, formula string) ooxml.CellData {
+func cellToData(ref string, v Value, f string) ooxml.CellData {
 	var cd ooxml.CellData
 	switch v.Type {
 	case TypeString:
@@ -587,6 +587,6 @@ func cellToData(ref string, v Value, formula string) ooxml.CellData {
 	default:
 		cd = ooxml.CellData{Ref: ref}
 	}
-	cd.Formula = formula
+	cd.Formula = formula.AddXlfnPrefixes(f)
 	return cd
 }

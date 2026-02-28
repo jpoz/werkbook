@@ -161,9 +161,9 @@ fuzzcheck: ## Run the fuzz checker (use TESTCASE=dir)
 	go run ./cmd/fuzzcheck --testcase $(TESTCASE) $(if $(NOFIX),--no-fix) $(if $(VERBOSE),-v)
 
 .PHONY: fuzzorch
-fuzzorch: ## Run the fuzz orchestrator (use LEVEL=N, PASSES=N, SEED=category, ORACLE=libreoffice|excel)
+fuzzorch: ## Run the fuzz orchestrator (use LEVEL=N, PASSES=N, ROUNDS=N, SEED=category, ORACLE=libreoffice|excel, REPLAY=1, MUTATE=1)
 	$(call print_stage,Running fuzz orchestrator)
-	go run ./cmd/fuzzorch --start-level $(or $(LEVEL),1) --passes-to-escalate $(or $(PASSES),3) --oracle $(or $(ORACLE),libreoffice) $(if $(SEED),--seed $(SEED)) $(if $(VERBOSE),-v)
+	go run ./cmd/fuzzorch --start-level $(or $(LEVEL),1) --passes-to-escalate $(or $(PASSES),3) $(if $(ROUNDS),--max-rounds $(ROUNDS)) --oracle $(or $(ORACLE),libreoffice) $(if $(SEED),--seed $(SEED)) $(if $(REPLAY),--replay) $(if $(MUTATE),--mutate) $(if $(VERBOSE),-v)
 
 .PHONY: msgraph-setup
 msgraph-setup: ## Run MS Graph setup for Excel Online oracle

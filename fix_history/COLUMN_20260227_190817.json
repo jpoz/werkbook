@@ -1,0 +1,7 @@
+{
+  "function": "COLUMN",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"#VALUE!\" oracle=\"3\"",
+  "fix_summary": "All 632 tests pass. Here's a summary of the fix:\n\n**Root cause**: `COLUMN(C1)` was returning `#VALUE!` because the compiler emitted `OpLoadCell` for the argument, resolving `C1` to its cell value. `fnCOLUMN` received a cell value (not the address) and had no way to extract the column number, so it fell through to `return ErrorVal(ErrValVALUE)`.\n\n**Fix** (5 changes across 4 files):\n\n1. **`types.go`**: Added `ValueRef` type (encoded as `col + row*100_000` in `Num`) to represent an unresolved cell ...",
+  "timestamp": "2026-02-27T19:08:17.596827-07:00"
+}

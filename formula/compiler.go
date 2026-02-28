@@ -8,19 +8,22 @@ import (
 // knownFunctions lists the function names the compiler recognises.
 // The index in this slice is the function ID encoded in OpCall.
 var knownFunctions = [...]string{
-	"ABS", "ACOS", "AND", "ASIN", "ATAN", "ATAN2", "AVERAGE", "AVERAGEIF",
+	"ABS", "ACOS", "ADDRESS", "AND", "ASIN", "ATAN", "ATAN2", "AVERAGE", "AVERAGEIF",
 	"AVERAGEIFS", "CEILING", "CHAR", "CHOOSE", "CLEAN", "CODE", "COLUMN",
-	"COLUMNS", "CONCAT", "CONCATENATE", "COS", "COUNT", "COUNTA", "COUNTBLANK",
-	"COUNTIF", "COUNTIFS", "DATE", "DAY", "EXACT", "EXP", "FIND", "FLOOR",
-	"HLOOKUP", "HOUR", "IF", "IFERROR", "IFNA", "INDEX", "INDIRECT", "INT",
-	"ISBLANK", "ISERR", "ISERROR", "ISNA", "ISNUMBER", "ISTEXT", "LARGE",
-	"LEFT", "LEN", "LN", "LOG", "LOG10", "LOOKUP", "LOWER", "MATCH", "MAX",
-	"MEDIAN", "MID", "MIN", "MINUTE", "MOD", "MONTH", "NOT", "NOW", "OR",
-	"PI", "POWER", "PRODUCT", "PROPER", "RAND", "RANDBETWEEN", "REPLACE",
+	"COLUMNS", "COMBIN", "CONCAT", "CONCATENATE", "COS", "COUNT", "COUNTA", "COUNTBLANK",
+	"COUNTIF", "COUNTIFS", "DATE", "DATEDIF", "DATEVALUE", "DAY", "DAYS", "DEGREES", "EDATE", "EOMONTH",
+	"ERROR.TYPE", "EVEN", "EXACT", "EXP", "FACT", "FIND", "FIXED", "FLOOR",
+	"GCD", "HLOOKUP", "HOUR", "IF", "IFERROR", "IFNA", "IFS", "INDEX", "INDIRECT", "INT",
+	"ISBLANK", "ISERR", "ISERROR", "ISEVEN", "ISLOGICAL", "ISNA", "ISNONTEXT", "ISODD", "ISOWEEKNUM", "ISNUMBER", "ISTEXT", "LARGE",
+	"LCM", "LEFT", "LEN", "LN", "LOG", "LOG10", "LOOKUP", "LOWER", "MATCH", "MAX",
+	"MAXIFS", "MEDIAN", "MID", "MIN", "MINIFS", "MINUTE", "MOD", "MODE", "MONTH", "MROUND", "N", "NA",
+	"NETWORKDAYS", "NOT", "NOW", "NUMBERVALUE", "ODD", "OR", "PERCENTILE", "PERMUT",
+	"PI", "POWER", "PRODUCT", "PROPER", "QUOTIENT", "RADIANS", "RAND", "RANDBETWEEN", "RANK", "REPLACE",
 	"REPT", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP", "ROW", "ROWS", "SEARCH",
-	"SECOND", "SIN", "SMALL", "SORT", "SQRT", "SUBSTITUTE", "SUM", "SUMIF",
-	"SUMIFS", "SUMPRODUCT", "TAN", "TEXT", "TIME", "TODAY", "TRIM", "UPPER",
-	"VALUE", "VLOOKUP", "XLOOKUP", "XOR", "YEAR",
+	"SECOND", "SIGN", "SIN", "SMALL", "SORT", "SQRT", "STDEV", "STDEVP", "SUBSTITUTE", "SUBTOTAL", "SUM", "SUMIF",
+	"SUMIFS", "SUMPRODUCT", "SUMSQ", "SWITCH", "T", "TAN", "TEXT", "TEXTJOIN", "TIME", "TODAY", "TRIM", "TRUNC",
+	"TYPE", "UPPER", "VAR", "VARP", "VALUE", "VLOOKUP", "WEEKDAY", "WEEKNUM", "WORKDAY", "XLOOKUP", "XOR", "YEAR",
+	"YEARFRAC",
 }
 
 // funcNameToID maps upper-cased function names to their ID (index in knownFunctions).
@@ -184,6 +187,11 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *FuncCall:
 		name := strings.ToUpper(n.Name)
+		// Strip OOXML prefixes (_xlfn., _xlfn._xlws.) so formulas read
+		// from XLSX files compile correctly even if the prefix wasn't
+		// removed earlier.
+		name = strings.TrimPrefix(name, "_XLFN._XLWS.")
+		name = strings.TrimPrefix(name, "_XLFN.")
 		funcID, ok := funcNameToID[name]
 		if !ok {
 			return fmt.Errorf("unknown function %q", n.Name)
@@ -191,6 +199,17 @@ func (c *compiler) compileNode(node Node) error {
 		argc := len(n.Args)
 		if argc > 255 {
 			return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
+		}
+		// COLUMN and ROW need the cell reference coordinates, not the resolved
+		// cell value.  When the single argument is a direct cell reference, push
+		// a ValueRef (address only) so the function can extract col/row.
+		if (name == "COLUMN" || name == "ROW") && argc == 1 {
+			if cr, ok := n.Args[0].(*CellRef); ok {
+				idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
+				c.emit(OpLoadCellRef, idx)
+				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+				return nil
+			}
 		}
 		for _, arg := range n.Args {
 			if err := c.compileNode(arg); err != nil {

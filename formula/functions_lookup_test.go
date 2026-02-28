@@ -4,6 +4,65 @@ import (
 	"testing"
 )
 
+func TestADDRESS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{"default abs", "ADDRESS(2,3)", "$C$2"},
+		{"abs row relative col", "ADDRESS(2,3,2)", "C$2"},
+		{"relative row abs col", "ADDRESS(2,3,3)", "$C2"},
+		{"all relative", "ADDRESS(2,3,4)", "C2"},
+		{"R1C1 absolute", "ADDRESS(2,3,1,FALSE)", "R2C3"},
+		{"R1C1 abs row", "ADDRESS(2,3,2,FALSE)", "R2C[3]"},
+		{"R1C1 abs col", "ADDRESS(2,3,3,FALSE)", "R[2]C3"},
+		{"R1C1 all relative", "ADDRESS(2,3,4,FALSE)", "R[2]C[3]"},
+		{"with sheet", `ADDRESS(1,1,1,TRUE,"Sheet2")`, "Sheet2!$A$1"},
+		{"sheet with space", `ADDRESS(1,1,1,TRUE,"My Sheet")`, "'My Sheet'!$A$1"},
+		{"multi-letter column", "ADDRESS(1,27)", "$AA$1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("ADDRESS %s: got %v, want %s", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestADDRESSErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "ADDRESS(1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("ADDRESS too few args: got %v, want #VALUE!", got)
+	}
+
+	// Invalid abs_num
+	cf = evalCompile(t, "ADDRESS(1,1,5)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("ADDRESS invalid abs_num: got %v, want #VALUE!", got)
+	}
+}
+
 func TestVLOOKUP(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{

@@ -38,6 +38,10 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		// Unquoted sheet: Sheet1!A1
 		ref.Sheet = s[:idx]
 		s = s[idx+1:]
+	} else if idx := findDotSheetSeparator(s); idx > 0 {
+		// Dot notation: Sheet1.A1
+		ref.Sheet = s[:idx]
+		s = s[idx+1:]
 	} else if len(s) > 0 && s[0] == '!' {
 		return nil, fmt.Errorf("empty sheet name in %q", raw)
 	}
@@ -86,6 +90,28 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 	}
 
 	return ref, nil
+}
+
+// findDotSheetSeparator finds a '.' that separates a sheet name from a cell
+// reference (e.g. "Sheet1.A1"). Returns the index of the dot, or -1 if not found.
+// The text after the dot must start with an optional '$' then a letter (column).
+func findDotSheetSeparator(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			rest := s[i+1:]
+			if len(rest) == 0 {
+				continue
+			}
+			j := 0
+			if j < len(rest) && rest[j] == '$' {
+				j++
+			}
+			if j < len(rest) && ((rest[j] >= 'A' && rest[j] <= 'Z') || (rest[j] >= 'a' && rest[j] <= 'z')) {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // colLettersToNumber converts column letters (e.g. "A", "AA", "XFD") to a 1-based column number.

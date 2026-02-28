@@ -10,6 +10,7 @@ const (
 	ValueBool             // bool
 	ValueError            // ErrorValue
 	ValueArray            // unused by compiler; reserved for VM
+	ValueRef              // cell reference; Num encodes col+row*100_000
 )
 
 // ErrorValue is a numeric error code for the formula engine.

@@ -10,21 +10,25 @@ import (
 // mismatch describes a single comparison failure.
 type mismatch struct {
 	Ref      string
+	Formula  string
 	Werkbook string
 	Oracle   string
 	Reason   string
 }
 
 // compareResults compares werkbook results against LibreOffice results.
+// If spec is non-nil, each mismatch will include the formula from the spec.
 // Returns nil if all match.
-func compareResults(checks []CheckSpec, wb, lo []buildResult) []mismatch {
+func compareResults(checks []CheckSpec, wb, lo []buildResult, spec *TestSpec) []mismatch {
 	var mismatches []mismatch
 	for i, check := range checks {
 		if i >= len(wb) || i >= len(lo) {
-			mismatches = append(mismatches, mismatch{
+			m := mismatch{
 				Ref:    check.Ref,
 				Reason: "missing result",
-			})
+			}
+			m.Formula = lookupFormula(check.Ref, spec)
+			mismatches = append(mismatches, m)
 			continue
 		}
 
@@ -32,15 +36,40 @@ func compareResults(checks []CheckSpec, wb, lo []buildResult) []mismatch {
 		loVal := lo[i].Value
 
 		if match, reason := valuesMatch(wbVal, loVal); !match {
-			mismatches = append(mismatches, mismatch{
+			m := mismatch{
 				Ref:      check.Ref,
 				Werkbook: wbVal,
 				Oracle:   loVal,
 				Reason:   reason,
-			})
+			}
+			m.Formula = lookupFormula(check.Ref, spec)
+			mismatches = append(mismatches, m)
 		}
 	}
 	return mismatches
+}
+
+// lookupFormula finds the formula for a check ref in the spec.
+// Returns "" if spec is nil or no matching formula cell is found.
+func lookupFormula(ref string, spec *TestSpec) string {
+	if spec == nil {
+		return ""
+	}
+	sheet, cellRef := parseCheckRef(ref)
+	if sheet == "" && len(spec.Sheets) > 0 {
+		sheet = spec.Sheets[0].Name
+	}
+	for _, s := range spec.Sheets {
+		if s.Name != sheet {
+			continue
+		}
+		for _, c := range s.Cells {
+			if c.Ref == cellRef && c.Formula != "" {
+				return c.Formula
+			}
+		}
+	}
+	return ""
 }
 
 // valuesMatch applies layered comparison strategies.
@@ -187,7 +216,11 @@ func numericMatch(a, b float64) bool {
 func formatMismatches(ms []mismatch, oracleName string) string {
 	var sb strings.Builder
 	for _, m := range ms {
-		fmt.Fprintf(&sb, "  %s: %s\n", m.Ref, m.Reason)
+		if m.Formula != "" {
+			fmt.Fprintf(&sb, "  %s: =%s → %s\n", m.Ref, m.Formula, m.Reason)
+		} else {
+			fmt.Fprintf(&sb, "  %s: %s\n", m.Ref, m.Reason)
+		}
 		if m.Werkbook != "" || m.Oracle != "" {
 			fmt.Fprintf(&sb, "    werkbook:    %q\n", m.Werkbook)
 			fmt.Fprintf(&sb, "    %-12s %q\n", oracleName+":", m.Oracle)

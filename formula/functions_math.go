@@ -101,6 +101,42 @@ func fnCEILING(args []Value) (Value, error) {
 	return NumberVal(math.Ceil(n/sig) * sig), nil
 }
 
+func fnCOMBIN(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	n := int(math.Trunc(nf))
+	k := int(math.Trunc(kf))
+	if n < 0 || k < 0 || n < k {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Multiplicative formula: C(n,k) = ∏(i=1..k) (n-k+i)/i
+	result := 1.0
+	for i := 1; i <= k; i++ {
+		result = result * float64(n-k+i) / float64(i)
+	}
+	return NumberVal(result), nil
+}
+
+func fnDEGREES(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(n * 180 / math.Pi), nil
+}
+
 func fnCOS(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -112,6 +148,49 @@ func fnCOS(args []Value) (Value, error) {
 	return NumberVal(math.Cos(n)), nil
 }
 
+func fnEVEN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return NumberVal(0), nil
+	}
+	if n > 0 {
+		return NumberVal(math.Ceil(n/2) * 2), nil
+	}
+	return NumberVal(math.Floor(n/2) * 2), nil
+}
+
+func fnODD(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return NumberVal(1), nil
+	}
+	if n > 0 {
+		n2 := math.Ceil(n)
+		if int(n2)%2 == 0 {
+			n2++
+		}
+		return NumberVal(n2), nil
+	}
+	// negative: round away from zero (toward more negative)
+	n2 := math.Floor(n)
+	if int(n2)%2 == 0 {
+		n2--
+	}
+	return NumberVal(n2), nil
+}
+
 func fnEXP(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -121,6 +200,25 @@ func fnEXP(args []Value) (Value, error) {
 		return *e, nil
 	}
 	return NumberVal(math.Exp(n)), nil
+}
+
+func fnFACT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n = math.Trunc(n)
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := 1.0
+	for i := 2.0; i <= n; i++ {
+		result *= i
+	}
+	return NumberVal(result), nil
 }
 
 func fnFLOOR(args []Value) (Value, error) {
@@ -139,6 +237,64 @@ func fnFLOOR(args []Value) (Value, error) {
 		return NumberVal(0), nil
 	}
 	return NumberVal(math.Floor(n/sig) * sig), nil
+}
+
+func fnGCD(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := int64(0)
+	for _, arg := range args {
+		n, e := coerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
+		n = math.Trunc(n)
+		if n < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		v := int64(n)
+		// Euclidean algorithm
+		a, b := result, v
+		for b != 0 {
+			a, b = b, a%b
+		}
+		result = a
+	}
+	return NumberVal(float64(result)), nil
+}
+
+func fnLCM(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := int64(1)
+	hasZero := false
+	for _, arg := range args {
+		n, e := coerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
+		n = math.Trunc(n)
+		if n < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		v := int64(n)
+		if v == 0 {
+			hasZero = true
+			continue
+		}
+		// lcm(a, b) = a / gcd(a, b) * b
+		a, b := result, v
+		for b != 0 {
+			a, b = b, a%b
+		}
+		result = result / a * v
+	}
+	if hasZero {
+		return NumberVal(0), nil
+	}
+	return NumberVal(float64(result)), nil
 }
 
 func fnINT(args []Value) (Value, error) {
@@ -223,6 +379,51 @@ func fnMOD(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnMROUND(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	multiple, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if multiple == 0 {
+		return NumberVal(0), nil
+	}
+	if (n > 0 && multiple < 0) || (n < 0 && multiple > 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Round(n/multiple) * multiple), nil
+}
+
+func fnPERMUT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	n := int(nf)
+	k := int(kf)
+	if n <= 0 || k < 0 || n < k {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := 1.0
+	for i := 0; i < k; i++ {
+		result *= float64(n - i)
+	}
+	return NumberVal(result), nil
+}
+
 func fnPI(args []Value) (Value, error) {
 	if len(args) != 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -259,6 +460,35 @@ func fnPRODUCT(args []Value) (Value, error) {
 		return NumberVal(0), nil
 	}
 	return NumberVal(product), nil
+}
+
+func fnQUOTIENT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	den, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if den == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(math.Trunc(num / den)), nil
+}
+
+func fnRADIANS(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(n * math.Pi / 180), nil
 }
 
 func fnRAND(args []Value) (Value, error) {
@@ -342,6 +572,24 @@ func fnROUNDUP(args []Value) (Value, error) {
 	return NumberVal(math.Floor(n*pow) / pow), nil
 }
 
+func fnSIGN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	switch {
+	case n > 0:
+		return NumberVal(1), nil
+	case n < 0:
+		return NumberVal(-1), nil
+	default:
+		return NumberVal(0), nil
+	}
+}
+
 func fnSIN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -365,6 +613,70 @@ func fnSQRT(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(math.Sqrt(n)), nil
+}
+
+func fnTRUNC(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	digits := 0.0
+	if len(args) == 2 {
+		digits, e = coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	pow := math.Pow(10, math.Floor(digits))
+	return NumberVal(math.Trunc(n*pow) / pow), nil
+}
+
+func fnSUBTOTAL(args []Value) (Value, error) {
+	if len(args) < 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	fnNum, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fn := int(fnNum)
+	// Normalize 101-111 to 1-11
+	if fn >= 101 && fn <= 111 {
+		fn -= 100
+	}
+	if fn < 1 || fn > 11 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rest := args[1:]
+	switch fn {
+	case 1:
+		return fnAVERAGE(rest)
+	case 2:
+		return fnCOUNT(rest)
+	case 3:
+		return fnCOUNTA(rest)
+	case 4:
+		return fnMAX(rest)
+	case 5:
+		return fnMIN(rest)
+	case 6:
+		return fnPRODUCT(rest)
+	case 7:
+		return fnSTDEV(rest)
+	case 8:
+		return fnSTDEVP(rest)
+	case 9:
+		return fnSUM(rest)
+	case 10:
+		return fnVAR(rest)
+	case 11:
+		return fnVARP(rest)
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
 }
 
 func fnTAN(args []Value) (Value, error) {

@@ -111,6 +111,56 @@ func fnXOR(args []Value) (Value, error) {
 	return BoolVal(count%2 == 1), nil
 }
 
+func fnIFS(args []Value) (Value, error) {
+	// Must have an even number of args >= 2 (condition/value pairs).
+	if len(args) < 2 || len(args)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Iterate condition/value pairs; return value for first TRUE condition.
+	for i := 0; i < len(args); i += 2 {
+		if args[i].Type == ValueError {
+			return args[i], nil
+		}
+		if isTruthy(args[i]) {
+			return args[i+1], nil
+		}
+	}
+	// No TRUE condition found.
+	return ErrorVal(ErrValNA), nil
+}
+
+func fnSWITCH(args []Value) (Value, error) {
+	// SWITCH(expression, value1, result1, [default_or_value2, result2], ...)
+	// Minimum 3 args: expression, value1, result1
+	if len(args) < 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	expr := args[0]
+	rest := args[1:] // everything after the expression
+
+	// Determine if there's a default value.
+	// If odd count of remaining args → last is default; pairs before it are value/result.
+	// If even count → all are value/result pairs; no default.
+	hasDefault := len(rest)%2 == 1
+	pairCount := len(rest) / 2
+
+	// Check each value/result pair
+	for i := 0; i < pairCount; i++ {
+		val := rest[i*2]
+		result := rest[i*2+1]
+		if compareValues(expr, val) == 0 {
+			return result, nil
+		}
+	}
+
+	// No match found
+	if hasDefault {
+		return rest[len(rest)-1], nil
+	}
+	return ErrorVal(ErrValNA), nil
+}
+
 func fnSORT(args []Value) (Value, error) {
 	if len(args) < 1 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil

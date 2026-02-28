@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"math"
 	"testing"
 )
 
@@ -682,6 +683,73 @@ func TestMEDIANSingleValue(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SUMSQ
+// ---------------------------------------------------------------------------
+
+func TestSUMSQ(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		{"SUMSQ(3, 4)", 25},
+		{"SUMSQ(1, 2, 3)", 14},
+		{"SUMSQ(0)", 0},
+		{"SUMSQ(-3, 4)", 25},
+		{"SUMSQ(5)", 25},
+	}
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("%s: got %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSUMSQRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+		},
+	}
+
+	cf := evalCompile(t, "SUMSQ(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 25 {
+		t.Errorf("SUMSQ range: got %g, want 25", got.Num)
+	}
+}
+
+func TestSUMSQErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+		},
+	}
+
+	cf := evalCompile(t, "SUMSQ(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("SUMSQ error propagation: got %v, want #N/A", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // PRODUCT
 // ---------------------------------------------------------------------------
 
@@ -762,6 +830,677 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 			got := matchesCriteria(tt.v, tt.crit)
 			if got != tt.want {
 				t.Errorf("matchesCriteria(%v, %v) = %v, want %v", tt.v, tt.crit, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MAXIFS — maximum value with multiple criteria
+// ---------------------------------------------------------------------------
+
+func TestMAXIFS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Max range (B) — values to take max from
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			// Criteria range 1 (A) — category
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("veg"),
+		},
+	}
+
+	// MAXIFS with single criteria: max of B where A="fruit"
+	cf := evalCompile(t, `MAXIFS(B1:B4,A1:A4,"fruit")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match (fruit): max(10, 30) = 30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS single criteria: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFSNoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 3}: StringVal("c"),
+		},
+	}
+
+	// No rows match criteria "z" => return 0
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"z")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MAXIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestMAXIFSMultipleCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Max range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			// Criteria range 1 (B) — category
+			{Col: 2, Row: 1}: StringVal("fruit"),
+			{Col: 2, Row: 2}: StringVal("veg"),
+			{Col: 2, Row: 3}: StringVal("fruit"),
+			{Col: 2, Row: 4}: StringVal("veg"),
+			// Criteria range 2 (C) — score
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(15),
+			{Col: 3, Row: 3}: NumberVal(25),
+			{Col: 3, Row: 4}: NumberVal(35),
+		},
+	}
+
+	// MAXIFS(max_range, criteria_range1, criteria1, criteria_range2, criteria2)
+	// Max of A where B="fruit" AND C>10
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"fruit",C1:C4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only row 3 matches (fruit, 25>10) => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS multiple criteria: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFSArgErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args (only 2 — missing criteria)
+	cf := evalCompile(t, "MAXIFS(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS bad args: got %v, want #VALUE!", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MINIFS — minimum value with multiple criteria
+// ---------------------------------------------------------------------------
+
+func TestMINIFS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Min range (B) — values to take min from
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			// Criteria range 1 (A) — category
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("veg"),
+		},
+	}
+
+	// MINIFS with single criteria: min of B where A="fruit"
+	cf := evalCompile(t, `MINIFS(B1:B4,A1:A4,"fruit")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match (fruit): min(10, 30) = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MINIFS single criteria: got %v, want 10", got)
+	}
+}
+
+func TestMINIFSNoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 3}: StringVal("c"),
+		},
+	}
+
+	// No rows match criteria "z" => return 0
+	cf := evalCompile(t, `MINIFS(A1:A3,B1:B3,"z")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MINIFS no matches: got %v, want 0", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STDEV — sample standard deviation
+// ---------------------------------------------------------------------------
+
+func TestSTDEV(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "dataset_1",
+			formula:   "STDEV(1345, 1301, 1368, 1322, 1310, 1370, 1318, 1350, 1303, 1299)",
+			wantNum:   27.46,
+			tolerance: 0.01,
+		},
+		{
+			name:      "dataset_2",
+			formula:   "STDEV(2, 4, 4, 4, 5, 5, 7, 9)",
+			wantNum:   2.138,
+			tolerance: 0.001,
+		},
+		{
+			name:    "single_value",
+			formula: "STDEV(5)",
+			wantErr: true,
+			errVal:  ErrValDIV0,
+		},
+		{
+			name:      "all_same",
+			formula:   "STDEV(3, 3, 3)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "two_values",
+			formula:   "STDEV(10, 20)",
+			wantNum:   7.071,
+			tolerance: 0.001,
+		},
+		{
+			name:      "sequential",
+			formula:   "STDEV(1, 2, 3, 4, 5)",
+			wantNum:   1.5811,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STDEVP — population standard deviation
+// ---------------------------------------------------------------------------
+
+func TestSTDEVP(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "dataset_1",
+			formula:   "STDEVP(1345, 1301, 1368, 1322, 1310, 1370, 1318, 1350, 1303, 1299)",
+			wantNum:   26.05,
+			tolerance: 0.01,
+		},
+		{
+			name:      "dataset_2",
+			formula:   "STDEVP(2, 4, 4, 4, 5, 5, 7, 9)",
+			wantNum:   2.0,
+			tolerance: 0.001,
+		},
+		{
+			name:      "single_value",
+			formula:   "STDEVP(5)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "all_same",
+			formula:   "STDEVP(3, 3, 3)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "two_values",
+			formula:   "STDEVP(10, 20)",
+			wantNum:   5.0,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAR — sample variance
+// ---------------------------------------------------------------------------
+
+func TestVAR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "dataset_1",
+			formula:   "VAR(1345, 1301, 1368, 1322, 1310, 1370, 1318, 1350, 1303, 1299)",
+			wantNum:   754.27,
+			tolerance: 0.01,
+		},
+		{
+			name:      "dataset_2",
+			formula:   "VAR(2, 4, 4, 4, 5, 5, 7, 9)",
+			wantNum:   4.571,
+			tolerance: 0.001,
+		},
+		{
+			name:    "single_value",
+			formula: "VAR(5)",
+			wantErr: true,
+			errVal:  ErrValDIV0,
+		},
+		{
+			name:      "all_same",
+			formula:   "VAR(3, 3, 3)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "two_values",
+			formula:   "VAR(10, 20)",
+			wantNum:   50.0,
+			tolerance: 0.001,
+		},
+		{
+			name:      "sequential",
+			formula:   "VAR(1, 2, 3, 4, 5)",
+			wantNum:   2.5,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MODE — most frequently occurring value
+// ---------------------------------------------------------------------------
+
+func TestMODE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		wantNA  bool
+	}{
+		{name: "basic", formula: "MODE(5.6, 4, 4, 3, 2, 4)", wantNum: 4},
+		{name: "no_duplicates", formula: "MODE(1, 2, 3, 4, 5)", wantNA: true},
+		{name: "tie_first_wins", formula: "MODE(1, 2, 2, 3, 3)", wantNum: 2},
+		{name: "all_same", formula: "MODE(7, 7, 7)", wantNum: 7},
+		{name: "floats", formula: "MODE(1.5, 1.5, 2.5, 2.5, 2.5)", wantNum: 2.5},
+		{name: "clear_winner", formula: "MODE(1, 1, 2, 2, 3, 3, 3)", wantNum: 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantNA {
+				if got.Type != ValueError || got.Err != ErrValNA {
+					t.Errorf("%s: got %v, want #N/A", tt.formula, got)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.wantNum {
+				t.Errorf("%s: got %v, want %g", tt.formula, got, tt.wantNum)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VARP — population variance
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// PERCENTILE — k-th percentile using linear interpolation
+// ---------------------------------------------------------------------------
+
+func TestPERCENTILE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "basic_0.3",
+			formula:   "PERCENTILE({1, 2, 3, 4}, 0.3)",
+			wantNum:   1.9,
+			tolerance: 1e-9,
+		},
+		{
+			name:      "minimum",
+			formula:   "PERCENTILE({1, 2, 3, 4}, 0)",
+			wantNum:   1,
+			tolerance: 0,
+		},
+		{
+			name:      "maximum",
+			formula:   "PERCENTILE({1, 2, 3, 4}, 1)",
+			wantNum:   4,
+			tolerance: 0,
+		},
+		{
+			name:      "median",
+			formula:   "PERCENTILE({1, 2, 3, 4}, 0.5)",
+			wantNum:   2.5,
+			tolerance: 1e-9,
+		},
+		{
+			name:    "k_negative",
+			formula: "PERCENTILE({1, 2, 3, 4}, -0.1)",
+			wantErr: true,
+			errVal:  ErrValNUM,
+		},
+		{
+			name:    "k_too_large",
+			formula: "PERCENTILE({1, 2, 3, 4}, 1.1)",
+			wantErr: true,
+			errVal:  ErrValNUM,
+		},
+		{
+			name:      "single_element",
+			formula:   "PERCENTILE({10}, 0.5)",
+			wantNum:   10,
+			tolerance: 0,
+		},
+		{
+			name:      "five_elements_0.25",
+			formula:   "PERCENTILE({1, 3, 5, 7, 9}, 0.25)",
+			wantNum:   3,
+			tolerance: 1e-9,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RANK — rank of a number in a list
+// ---------------------------------------------------------------------------
+
+func TestRANK(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		wantErr bool
+		errVal  ErrorValue
+	}{
+		{
+			name:    "descending_default",
+			formula: "RANK(3.5, {7, 3.5, 3.5, 1, 2})",
+			wantNum: 2,
+		},
+		{
+			name:    "descending_largest",
+			formula: "RANK(7, {7, 3.5, 3.5, 1, 2})",
+			wantNum: 1,
+		},
+		{
+			name:    "descending_smallest",
+			formula: "RANK(1, {7, 3.5, 3.5, 1, 2})",
+			wantNum: 5,
+		},
+		{
+			name:    "ascending_smallest",
+			formula: "RANK(1, {7, 3.5, 3.5, 1, 2}, 1)",
+			wantNum: 1,
+		},
+		{
+			name:    "ascending_largest",
+			formula: "RANK(7, {7, 3.5, 3.5, 1, 2}, 1)",
+			wantNum: 5,
+		},
+		{
+			name:    "not_in_list",
+			formula: "RANK(99, {1, 2, 3})",
+			wantErr: true,
+			errVal:  ErrValNA,
+		},
+		{
+			name:    "explicit_descending",
+			formula: "RANK(2, {7, 3.5, 3.5, 1, 2}, 0)",
+			wantNum: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.wantNum {
+				t.Errorf("%s: got %v, want %g", tt.formula, got, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestVARP(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "dataset_1",
+			formula:   "VARP(1345, 1301, 1368, 1322, 1310, 1370, 1318, 1350, 1303, 1299)",
+			wantNum:   678.84,
+			tolerance: 0.01,
+		},
+		{
+			name:      "dataset_2",
+			formula:   "VARP(2, 4, 4, 4, 5, 5, 7, 9)",
+			wantNum:   4.0,
+			tolerance: 0.001,
+		},
+		{
+			name:      "single_value",
+			formula:   "VARP(5)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "all_same",
+			formula:   "VARP(3, 3, 3)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "two_values",
+			formula:   "VARP(10, 20)",
+			wantNum:   25.0,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
 			}
 		})
 	}

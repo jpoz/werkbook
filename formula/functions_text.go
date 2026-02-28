@@ -2,6 +2,7 @@ package formula
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -112,6 +113,45 @@ func fnFIND(args []Value) (Value, error) {
 	return ErrorVal(ErrValVALUE), nil
 }
 
+func fnFIXED(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	decimals := 2
+	if len(args) >= 2 {
+		d, e := coerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		decimals = int(d)
+	}
+
+	noCommas := false
+	if len(args) >= 3 {
+		noCommas = isTruthy(args[2])
+	}
+
+	// Handle negative decimals: round to the left of the decimal point
+	if decimals < 0 {
+		factor := math.Pow(10, float64(-decimals))
+		n = math.Round(n/factor) * factor
+		decimals = 0
+	} else {
+		factor := math.Pow(10, float64(decimals))
+		n = math.Round(n*factor) / factor
+	}
+
+	if noCommas {
+		return StringVal(fmt.Sprintf("%.*f", decimals, n)), nil
+	}
+	return StringVal(formatWithCommas(n, decimals)), nil
+}
+
 func fnLEFT(args []Value) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -177,6 +217,71 @@ func fnMID(args []Value) (Value, error) {
 		end = len(runes)
 	}
 	return StringVal(string(runes[start:end])), nil
+}
+
+func fnNUMBERVALUE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	text := valueToString(args[0])
+
+	decSep := "."
+	grpSep := ","
+	if len(args) >= 2 {
+		ds := valueToString(args[1])
+		if len(ds) > 0 {
+			decSep = string(ds[0])
+		}
+	}
+	if len(args) >= 3 {
+		gs := valueToString(args[2])
+		if len(gs) > 0 {
+			grpSep = string(gs[0])
+		}
+	}
+
+	// Strip spaces
+	text = strings.ReplaceAll(text, " ", "")
+
+	if text == "" {
+		return NumberVal(0), nil
+	}
+
+	// Count and remove percent signs
+	percentCount := strings.Count(text, "%")
+	text = strings.ReplaceAll(text, "%", "")
+
+	// Check: group separator must not appear after decimal separator
+	decIdx := strings.Index(text, decSep)
+	if decIdx >= 0 {
+		after := text[decIdx+len(decSep):]
+		if strings.Contains(after, grpSep) {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Remove group separators
+	text = strings.ReplaceAll(text, grpSep, "")
+
+	// Check for multiple decimal separators
+	if strings.Count(text, decSep) > 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Replace decimal separator with "." for Go parsing
+	text = strings.Replace(text, decSep, ".", 1)
+
+	num, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Apply percent scaling
+	for i := 0; i < percentCount; i++ {
+		num /= 100
+	}
+
+	return NumberVal(num), nil
 }
 
 func fnPROPER(args []Value) (Value, error) {
@@ -343,6 +448,16 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 	return StringVal(strings.ReplaceAll(text, oldText, newText)), nil
 }
 
+func fnT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueString {
+		return args[0], nil
+	}
+	return StringVal(""), nil
+}
+
 func fnTEXT(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -427,6 +542,39 @@ func formatWithCommas(n float64, decimals int) string {
 		s += "." + parts[1]
 	}
 	return s
+}
+
+func fnTEXTJOIN(args []Value) (Value, error) {
+	if len(args) < 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	delimiter := valueToString(args[0])
+	ignoreEmpty := isTruthy(args[1])
+
+	var parts []string
+	for _, arg := range args[2:] {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if ignoreEmpty && (cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "")) {
+						continue
+					}
+					parts = append(parts, valueToString(cell))
+				}
+			}
+		} else {
+			if ignoreEmpty && (arg.Type == ValueEmpty || (arg.Type == ValueString && arg.Str == "")) {
+				continue
+			}
+			parts = append(parts, valueToString(arg))
+		}
+	}
+
+	result := strings.Join(parts, delimiter)
+	if len(result) > 32767 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return StringVal(result), nil
 }
 
 func fnTRIM(args []Value) (Value, error) {

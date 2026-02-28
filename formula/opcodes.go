@@ -29,6 +29,7 @@ const (
 	OpGe                      // pop two, push greater-or-equal
 	OpCall                    // operand: funcID<<8 | argc
 	OpMakeArray               // operand: rows<<16 | cols
+	OpLoadCellRef             // operand: index into Refs; pushes ValueRef (no cell lookup)
 )
 
 var opNames = [...]string{
@@ -53,8 +54,9 @@ var opNames = [...]string{
 	OpLe:        "Le",
 	OpGt:        "Gt",
 	OpGe:        "Ge",
-	OpCall:      "Call",
-	OpMakeArray: "MakeArray",
+	OpCall:        "Call",
+	OpMakeArray:   "MakeArray",
+	OpLoadCellRef: "LoadCellRef",
 }
 
 func (op OpCode) String() string {
