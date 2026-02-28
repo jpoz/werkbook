@@ -217,6 +217,45 @@ func TestWORKDAYEdgeCases(t *testing.T) {
 
 		// Saturday + 5 workdays: Oct 4 (Sat) → Oct 10 (Fri)
 		{"saturday_plus_five", "WORKDAY(DATE(2008,10,4), 5)", "DATE(2008,10,10)"},
+
+		// === Zero serial (serial 0 = fictitious Jan 0, 1900 = Dec 31, 1899, Sunday) ===
+
+		// Zero serial + 0 days → returns 0 unchanged
+		{"zero_serial_zero_days", "WORKDAY(0, 0)", "DATE(1900,1,1)-1"},
+		// Zero serial + 1: Sun Dec 31, 1899 → step to Mon Jan 1 = serial 1
+		{"zero_serial_plus_one", "WORKDAY(0, 1)", "DATE(1900,1,1)"},
+		// Zero serial + 5: skips to Fri Jan 5 = serial 5
+		{"zero_serial_plus_five", "WORKDAY(0, 5)", "DATE(1900,1,5)"},
+
+		// === Leap day boundary ===
+
+		// Feb 29, 2024 (Thursday) + 0 = same day
+		{"leap_day_same_day", "WORKDAY(DATE(2024,2,29), 0)", "DATE(2024,2,29)"},
+		// Feb 29, 2024 (Thursday) + 1 = Fri March 1
+		{"leap_day_plus_one", "WORKDAY(DATE(2024,2,29), 1)", "DATE(2024,3,1)"},
+		// Feb 29, 2024 (Thursday) - 1 = Wed Feb 28
+		{"leap_day_minus_one", "WORKDAY(DATE(2024,2,29), -1)", "DATE(2024,2,28)"},
+
+		// === Sunday start with various day counts ===
+
+		// Sunday + 1: Oct 5, 2008 (Sun) + 1 = Mon Oct 6
+		{"sunday_plus_one", "WORKDAY(DATE(2008,10,5), 1)", "DATE(2008,10,6)"},
+		// Sunday - 1: Oct 5, 2008 (Sun) - 1 = Fri Oct 3
+		{"sunday_minus_one", "WORKDAY(DATE(2008,10,5), -1)", "DATE(2008,10,3)"},
+		// Saturday + 1: Oct 4, 2008 (Sat) + 1 = Mon Oct 6
+		{"saturday_plus_one", "WORKDAY(DATE(2008,10,4), 1)", "DATE(2008,10,6)"},
+		// Saturday - 1: Oct 4, 2008 (Sat) - 1 = Fri Oct 3
+		{"saturday_minus_one", "WORKDAY(DATE(2008,10,4), -1)", "DATE(2008,10,3)"},
+
+		// === Very large workday counts ===
+
+		// ~4 years ≈ 1040 workdays forward
+		{"four_years_workdays", "WORKDAY(DATE(2008,1,1), 1040)", "DATE(2011,12,27)"},
+
+		// === Far-future dates ===
+
+		// Year 9999: Dec 30, 9999 (Thu) + 1 = Dec 31, 9999 (Fri)
+		{"far_future_plus_one", "WORKDAY(DATE(9999,12,30), 1)", "DATE(9999,12,31)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -751,6 +790,26 @@ func TestWORKDAY(t *testing.T) {
 		// Already tested above as doc_example_151_days, but verify with raw serial too
 		// DATE(2008,10,1) = serial 39722
 		{"doc_example_raw_serial", "WORKDAY(39722, 151)", "DATE(2009,4,30)"},
+
+		// === Additional coverage for negative serial fix ===
+
+		// Boolean FALSE as start_date (FALSE=0 → serial 0) + 0 = serial 0
+		{"bool_false_as_start_date_zero", "WORKDAY(FALSE, 0)", "DATE(1900,1,1)-1"},
+		// Boolean FALSE as start_date + 1 = serial 1 (Mon Jan 1, 1900)
+		{"bool_false_as_start_date_plus_one", "WORKDAY(FALSE, 1)", "DATE(1900,1,1)"},
+		// String "0" as start_date (coerced to serial 0) + 1 = serial 1
+		{"string_zero_as_start_date", `WORKDAY("0", 1)`, "DATE(1900,1,1)"},
+		// String negative days: "-5" coerced to -5
+		{"string_negative_days", `WORKDAY(DATE(2008,10,15), "-5")`, "DATE(2008,10,8)"},
+		// Boolean TRUE as days from Friday: TRUE=1 → Fri + 1 = Mon
+		{"bool_true_days_from_friday", "WORKDAY(DATE(2008,10,3), TRUE)", "DATE(2008,10,6)"},
+		// Non-leap year crossing: Feb 28, 2023 (Tue) + 1 = Mar 1 (Wed), no Feb 29
+		{"non_leap_year_feb_crossing", "WORKDAY(DATE(2023,2,28), 1)", "DATE(2023,3,1)"},
+		// End of month: Mar 31, 2024 (Sun) + 1 = Mon Apr 1
+		{"end_of_month_sunday", "WORKDAY(DATE(2024,3,31), 1)", "DATE(2024,4,1)"},
+		// 1900 leap year bug: serial 59 = Feb 28, serial 60 = fictitious Feb 29, serial 61 = Mar 1
+		// WORKDAY uses real dates internally, so Feb 28 + 1 workday = Mar 1 (skips fictitious Feb 29)
+		{"excel_1900_serial_59_plus_1", "WORKDAY(59, 1)", "61"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1155,6 +1214,34 @@ func TestWORKDAYErrors(t *testing.T) {
 		{"result_negative_backward_from_jan_15", "WORKDAY(DATE(1900,1,15), -15)", ErrValNUM},
 		// Serial 2 (Jan 2, Tue) - 2 workdays: Tue→Mon(1)→Fri(Dec 29) → negative
 		{"result_negative_backward_from_serial_2", "WORKDAY(2, -2)", ErrValNUM},
+
+		// === Exact mismatch lock-in from fuzz test spec ===
+		// DATE(2024,-2147483648,-0.5): extreme negative month triggers overflow guard → #NUM!
+		// WORKDAY(#NUM!, -1) propagates the #NUM! error
+		{"mismatch_extreme_neg_month", "WORKDAY(DATE(2024,-2147483648,-0.5), -1)", ErrValNUM},
+		// Same with INT32_MAX month
+		{"mismatch_extreme_pos_month", "WORKDAY(DATE(2024,2147483647,-0.5), -1)", ErrValNUM},
+		// Extreme positive month just above the overflow guard limit (>120000)
+		{"extreme_month_above_limit", "WORKDAY(DATE(2024,120001,1), 0)", ErrValNUM},
+		// Extreme negative day below the overflow guard limit (<-4000000)
+		{"extreme_day_below_limit", "WORKDAY(DATE(2024,1,-4000001), 0)", ErrValNUM},
+		// Extreme positive day above the overflow guard limit (>4000000)
+		{"extreme_day_above_limit", "WORKDAY(DATE(2024,1,4000001), 0)", ErrValNUM},
+
+		// === Argument count validation ===
+		// Too few arguments (1 arg) → #VALUE!
+		{"too_few_args_one", "WORKDAY(DATE(2008,10,1))", ErrValVALUE},
+		// Too many arguments (4 args) → #VALUE!
+		{"too_many_args_four", "WORKDAY(DATE(2008,10,1), 5, DATE(2008,10,2), 99)", ErrValVALUE},
+
+		// === Zero serial backward → result goes negative ===
+		// Serial 0 (Dec 31, 1899 Sun) - 1 workday = Fri Dec 29 → negative
+		{"zero_serial_backward", "WORKDAY(0, -1)", ErrValNUM},
+
+		// === Negative result from forward direction (shouldn't normally happen,
+		// but verify guard works when start_date is already at boundary) ===
+		// DATE that produces serial exactly at boundary then backward
+		{"date_produces_small_serial_backward", "WORKDAY(DATE(1900,1,2), -2)", ErrValNUM},
 	}
 
 	for _, tc := range tests {

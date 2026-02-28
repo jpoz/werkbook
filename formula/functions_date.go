@@ -9,6 +9,9 @@ import (
 // Serial date helpers — duplicated from werkbook/date.go to avoid circular imports.
 var excelEpoch = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
 
+// maxExcelSerial is the largest valid Excel serial date (Dec 31, 9999).
+const maxExcelSerial = 2958465
+
 func timeToExcelSerial(t time.Time) float64 {
 	duration := t.Sub(excelEpoch)
 	days := duration.Hours() / 24
@@ -79,7 +82,7 @@ func fnDATE(args []Value) (Value, error) {
 
 	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
 	serial := timeToExcelSerial(t)
-	if serial < 0 {
+	if serial < 0 || serial > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(serial), nil
@@ -161,7 +164,7 @@ func fnDAY(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	if n < 0 {
+	if n < 0 || n > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	t := excelSerialToTime(n)
@@ -215,7 +218,7 @@ func fnMONTH(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	if n < 0 {
+	if n < 0 || n > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	t := excelSerialToTime(n)
@@ -344,7 +347,7 @@ func fnYEAR(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	if n < 0 {
+	if n < 0 || n > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	t := excelSerialToTime(n)
@@ -676,7 +679,7 @@ func fnWORKDAY(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	if startSerial < 0 {
+	if startSerial < 0 || startSerial > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	daysF, e2 := coerceNum(args[1])
@@ -737,7 +740,7 @@ func fnWORKDAY(args []Value) (Value, error) {
 	}
 
 	result := timeToExcelSerial(t)
-	if result < 0 {
+	if result < 0 || result > maxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(result), nil
