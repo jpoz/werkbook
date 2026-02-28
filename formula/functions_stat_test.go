@@ -521,6 +521,110 @@ func TestCOUNTIFNumericCriteria(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// COUNTIF with mixed positive/negative/zero values
+// ---------------------------------------------------------------------------
+
+func TestCOUNTIFMixedSignValues(t *testing.T) {
+	// Mirrors the multisheet edge case spec: A1:A5 = [10, -5, 0, 100, 25]
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(-5),
+			{Col: 1, Row: 3}: NumberVal(0),
+			{Col: 1, Row: 4}: NumberVal(100),
+			{Col: 1, Row: 5}: NumberVal(25),
+		},
+	}
+
+	// >0 should count only strictly positive values (10, 100, 25) => 3
+	cf := evalCompile(t, `COUNTIF(A1:A5,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIF >0 mixed: got %g, want 3", got.Num)
+	}
+
+	// <0 should count only negative values (-5) => 1
+	cf = evalCompile(t, `COUNTIF(A1:A5,"<0")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIF <0 mixed: got %g, want 1", got.Num)
+	}
+
+	// =0 should count only zero values => 1
+	cf = evalCompile(t, `COUNTIF(A1:A5,"=0")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIF =0 mixed: got %g, want 1", got.Num)
+	}
+
+	// >=0 should count zero and positives (10, 0, 100, 25) => 4
+	cf = evalCompile(t, `COUNTIF(A1:A5,">=0")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("COUNTIF >=0 mixed: got %g, want 4", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SUMIF with mixed positive/negative/zero values
+// ---------------------------------------------------------------------------
+
+func TestSUMIFMixedSignValues(t *testing.T) {
+	// Mirrors the multisheet edge case spec: A1:A5 = [10, -5, 0, 100, 25]
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(-5),
+			{Col: 1, Row: 3}: NumberVal(0),
+			{Col: 1, Row: 4}: NumberVal(100),
+			{Col: 1, Row: 5}: NumberVal(25),
+		},
+	}
+
+	// >0 should sum only strictly positive values (10+100+25) => 135
+	cf := evalCompile(t, `SUMIF(A1:A5,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 135 {
+		t.Errorf("SUMIF >0 mixed: got %g, want 135", got.Num)
+	}
+
+	// <0 should sum only negative values (-5) => -5
+	cf = evalCompile(t, `SUMIF(A1:A5,"<0")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -5 {
+		t.Errorf("SUMIF <0 mixed: got %g, want -5", got.Num)
+	}
+
+	// No matches => 0
+	cf = evalCompile(t, `SUMIF(A1:A5,">1000")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("SUMIF no match: got %g, want 0", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // AVERAGE / SUM / MIN / MAX with edge cases
 // ---------------------------------------------------------------------------
 

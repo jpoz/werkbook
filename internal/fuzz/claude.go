@@ -606,7 +606,24 @@ func BuildApplyFixPrompt(spec *TestSpec, mismatches []Mismatch, oracleName strin
 		}
 	}
 
-	sb.WriteString("Your task: READ the relevant source files, DIAGNOSE the root cause, and EDIT the code to fix the issue.\n\n")
+	sb.WriteString("Your task: READ the relevant source files, LOOK UP the official documentation, DIAGNOSE the root cause, and EDIT the code to fix the issue.\n\n")
+
+	// Instruct Claude to look up official Microsoft documentation for the broken function(s).
+	brokenFns := extractBrokenFunctions(mismatches)
+	if len(brokenFns) > 0 {
+		sb.WriteString("IMPORTANT — Look up official documentation FIRST:\n")
+		sb.WriteString("Before implementing or fixing any function, run the exceldoc tool to get the official Microsoft Excel specification:\n")
+		for _, fn := range brokenFns {
+			fmt.Fprintf(&sb, "  go run cmd/exceldoc/main.go %s\n", fn)
+		}
+		sb.WriteString("\nUse the documentation (Description, Syntax, Remarks, Examples) to ensure your implementation fully matches Excel's specification.\n")
+		sb.WriteString("Pay close attention to:\n")
+		sb.WriteString("- The exact syntax and argument order\n")
+		sb.WriteString("- Which arguments are required vs optional, and their default values\n")
+		sb.WriteString("- Edge case behavior described in the Remarks section\n")
+		sb.WriteString("- Error conditions (e.g., #VALUE!, #NUM!, #DIV/0!) and when they are returned\n\n")
+	}
+
 	sb.WriteString("Instructions:\n")
 	sb.WriteString("- If a function is missing, implement it by following the patterns in the existing code.\n")
 	sb.WriteString("- Add the function implementation in the appropriate functions_*.go file.\n")
@@ -628,6 +645,22 @@ func extractMissingFunctions(mismatches []Mismatch) []string {
 		if !strings.Contains(m.Werkbook, "#NAME?") {
 			continue
 		}
+		if m.Formula != "" {
+			fn := extractOutermostFunction(m.Formula)
+			if fn != "" && !seen[fn] {
+				seen[fn] = true
+				fns = append(fns, fn)
+			}
+		}
+	}
+	return fns
+}
+
+// extractBrokenFunctions returns function names from all mismatches (both missing and buggy).
+func extractBrokenFunctions(mismatches []Mismatch) []string {
+	seen := make(map[string]bool)
+	var fns []string
+	for _, m := range mismatches {
 		if m.Formula != "" {
 			fn := extractOutermostFunction(m.Formula)
 			if fn != "" && !seen[fn] {
@@ -928,17 +961,34 @@ func BuildGenerateTestsPrompt(spec *TestSpec, mismatches []Mismatch, oracleName 
 
 	fmt.Fprintf(&sb, "\nFixed functions: %s\n\n", strings.Join(fixedFunctions, ", "))
 
-	sb.WriteString("Your task: Add unit test cases for the fixed function(s) to lock in correct behavior.\n\n")
+	// Instruct Claude to look up official documentation for thorough test coverage.
+	if len(fixedFunctions) > 0 {
+		sb.WriteString("IMPORTANT — Look up official documentation to write thorough tests:\n")
+		sb.WriteString("Before writing tests, run the exceldoc tool to get the full Microsoft Excel specification for each function:\n")
+		for _, fn := range fixedFunctions {
+			fmt.Fprintf(&sb, "  go run cmd/exceldoc/main.go %s\n", fn)
+		}
+		sb.WriteString("\nUse the documentation to write comprehensive tests that cover the FULL specification, not just the mismatches above.\n\n")
+	}
+
+	sb.WriteString("Your task: Add thorough unit test cases for the fixed function(s) to lock in correct behavior.\n\n")
 	sb.WriteString("Instructions:\n")
 	sb.WriteString("- Read the existing test files in the formula/ package to understand the test patterns used.\n")
 	sb.WriteString("- The tests use table-driven patterns (e.g., numTests in functions_math_test.go, textTests in functions_text_test.go, etc.).\n")
 	sb.WriteString("- Add test cases to the EXISTING table in the appropriate formula/functions_*_test.go file.\n")
 	sb.WriteString("- Each test case should cover the scenarios from the mismatches above.\n")
-	sb.WriteString("- Also add edge cases: zero, negative numbers, empty strings, etc. where relevant.\n")
+	sb.WriteString("- Go BEYOND the mismatches — use the official documentation to test the full behavior:\n")
+	sb.WriteString("  - Every documented argument combination (required args, optional args, default values)\n")
+	sb.WriteString("  - All examples from the documentation's Example section\n")
+	sb.WriteString("  - Edge cases from the Remarks section (special values, boundary conditions)\n")
+	sb.WriteString("  - Error conditions: what inputs should produce #VALUE!, #NUM!, #DIV/0!, #N/A, #REF!\n")
+	sb.WriteString("  - Type coercion: booleans as numbers (TRUE=1, FALSE=0), strings that look like numbers, empty cells\n")
+	sb.WriteString("  - Boundary values: zero, negative numbers, very large/small numbers, empty strings, max length strings\n")
+	sb.WriteString("  - If the function takes a range, test single-cell ranges, multi-cell ranges, and ranges with mixed types\n")
+	sb.WriteString("- Aim for at least 10-15 test cases per function to ensure solid coverage.\n")
 	sb.WriteString("- You may ONLY edit formula/*_test.go files. Do NOT modify implementation files.\n")
 	sb.WriteString("- Do NOT modify files outside the formula/ package.\n")
 	sb.WriteString("- Run `gotestsum ./formula/...` after your changes to confirm the tests pass.\n")
-	sb.WriteString("- Keep changes minimal and focused on the fixed function(s).\n")
 
 	return sb.String()
 }

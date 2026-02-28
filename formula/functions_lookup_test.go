@@ -298,6 +298,60 @@ func TestVLOOKUPStringKeys(t *testing.T) {
 	}
 }
 
+func TestVLOOKUPStringKeyExactMatch(t *testing.T) {
+	// Mirrors the multisheet edge case spec: look up "veggie" in a category/value table
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("veggie"),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: StringVal("grain"),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+
+	// exact match (4th arg = 0) for "veggie" => 20
+	cf := evalCompile(t, `VLOOKUP("veggie",A1:B3,2,0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("VLOOKUP veggie exact: got %v, want 20", got)
+	}
+
+	// first entry
+	cf = evalCompile(t, `VLOOKUP("fruit",A1:B3,2,0)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("VLOOKUP fruit exact: got %v, want 10", got)
+	}
+
+	// last entry
+	cf = evalCompile(t, `VLOOKUP("grain",A1:B3,2,0)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("VLOOKUP grain exact: got %v, want 30", got)
+	}
+
+	// not found => #N/A
+	cf = evalCompile(t, `VLOOKUP("dairy",A1:B3,2,0)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("VLOOKUP dairy not found: got %v, want #N/A", got)
+	}
+}
+
 func TestVLOOKUPArgErrors(t *testing.T) {
 	resolver := &mockResolver{}
 
