@@ -810,6 +810,41 @@ func TestWORKDAY(t *testing.T) {
 		// 1900 leap year bug: serial 59 = Feb 28, serial 60 = fictitious Feb 29, serial 61 = Mar 1
 		// WORKDAY uses real dates internally, so Feb 28 + 1 workday = Mar 1 (skips fictitious Feb 29)
 		{"excel_1900_serial_59_plus_1", "WORKDAY(59, 1)", "61"},
+
+		// === Additional documentation-based coverage ===
+
+		// Negative fractional days: -1.7 truncates to -1 (toward zero, not floor)
+		{"negative_frac_truncates_toward_zero", "WORKDAY(DATE(2008,10,6), -1.7)", "DATE(2008,10,3)"},
+		// Very small positive fractional truncates to 0
+		{"tiny_positive_frac", "WORKDAY(DATE(2008,10,1), 0.0001)", "DATE(2008,10,1)"},
+
+		// Start on Saturday going backward: Oct 4 (Sat) - 5 = Sep 29 (Mon)
+		{"saturday_minus_five", "WORKDAY(DATE(2008,10,4), -5)", "DATE(2008,9,29)"},
+		// Start on Sunday going forward across multiple weekends
+		{"sunday_plus_ten", "WORKDAY(DATE(2008,10,5), 10)", "DATE(2008,10,17)"},
+
+		// 0 days from weekday returns same date
+		{"zero_days_tuesday", "WORKDAY(DATE(2008,10,7), 0)", "DATE(2008,10,7)"},
+
+		// Crossing February in a non-leap year
+		{"cross_feb_non_leap", "WORKDAY(DATE(2023,2,27), 2)", "DATE(2023,3,1)"},
+		// Crossing February in a leap year
+		{"cross_feb_leap", "WORKDAY(DATE(2024,2,27), 2)", "DATE(2024,2,29)"},
+
+		// Large negative workday count (~2 years back)
+		{"two_years_backward", "WORKDAY(DATE(2010,1,1), -520)", "DATE(2008,1,4)"},
+
+		// Backward from end of year: Dec 31, 2025 (Wed) - 1 = Dec 30, 2025 (Tue)
+		{"year_end_backward", "WORKDAY(DATE(2025,12,31), -1)", "DATE(2025,12,30)"},
+
+		// Wednesday + exactly 5 = next Wednesday (skipping one weekend)
+		{"wednesday_plus_five", "WORKDAY(DATE(2008,10,1), 5)", "DATE(2008,10,8)"},
+
+		// Multiple of 5 workdays = exact weeks
+		{"fifteen_workdays", "WORKDAY(DATE(2008,10,1), 15)", "DATE(2008,10,22)"},
+
+		// Negative string days via coercion
+		{"string_neg_frac_days", `WORKDAY(DATE(2008,10,6), "-1.9")`, "DATE(2008,10,3)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1227,6 +1262,24 @@ func TestWORKDAYErrors(t *testing.T) {
 		{"extreme_day_below_limit", "WORKDAY(DATE(2024,1,-4000001), 0)", ErrValNUM},
 		// Extreme positive day above the overflow guard limit (>4000000)
 		{"extreme_day_above_limit", "WORKDAY(DATE(2024,1,4000001), 0)", ErrValNUM},
+
+		// === Exact mismatch lock-in: DATE with 1e15 month ===
+		// DATE(2024,1000000000000000,3.14159265358979) → #NUM! (month overflow)
+		// WORKDAY should propagate that #NUM! error
+		{"mismatch_1e15_month_frac_day", "WORKDAY(DATE(2024,1000000000000000,3.14159265358979), 0.5)", ErrValNUM},
+		{"mismatch_1e15_month_zero_days", "WORKDAY(DATE(2024,1000000000000000,1), 0)", ErrValNUM},
+		{"mismatch_1e15_month_positive_days", "WORKDAY(DATE(2024,1000000000000000,1), 5)", ErrValNUM},
+		{"mismatch_neg_1e15_month", "WORKDAY(DATE(2024,-1000000000000000,1), 0)", ErrValNUM},
+		// Extreme day value (1e15) should also overflow
+		{"extreme_day_1e15", "WORKDAY(DATE(2024,1,1000000000000000), 0)", ErrValNUM},
+		// Both month and day extreme
+		{"extreme_month_and_day_1e15", "WORKDAY(DATE(2024,1000000000000000,1000000000000000), 0)", ErrValNUM},
+		// DATE(2024,1e15,pi) with negative days
+		{"mismatch_1e15_month_neg_days", "WORKDAY(DATE(2024,1000000000000000,3.14159265358979), -1)", ErrValNUM},
+		// Various large-but-not-int-max month values
+		{"extreme_month_1e12", "WORKDAY(DATE(2024,1000000000000,1), 0)", ErrValNUM},
+		{"extreme_month_1e9", "WORKDAY(DATE(2024,1000000000,1), 0)", ErrValNUM},
+		{"extreme_neg_month_1e12", "WORKDAY(DATE(2024,-1000000000000,1), 0)", ErrValNUM},
 
 		// === Argument count validation ===
 		// Too few arguments (1 arg) → #VALUE!
