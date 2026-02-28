@@ -8,16 +8,19 @@ import "strings"
 var xlfnPrefix = map[string]string{
 	"CONCAT":   "_xlfn.",
 	"DAYS":     "_xlfn.",
-	"IFERROR":  "_xlfn.",
-	"IFNA":     "_xlfn.",
+	"IFERROR":    "_xlfn.",
+	"IFNA":       "_xlfn.",
+	"ISOWEEKNUM": "_xlfn.",
 	"IFS":      "_xlfn.",
 	"MAXIFS":   "_xlfn.",
-	"MINIFS":   "_xlfn.",
-	"SORT":     "_xlfn._xlws.",
+	"MINIFS":      "_xlfn.",
+	"NUMBERVALUE": "_xlfn.",
+	"SORT":        "_xlfn._xlws.",
 	"SWITCH":   "_xlfn.",
 	"TEXTJOIN": "_xlfn.",
 	"XLOOKUP":  "_xlfn.",
 	"XOR":      "_xlfn.",
+	"YEARFRAC": "_xlfn.",
 }
 
 // AddXlfnPrefixes tokenizes the formula and inserts the required OOXML

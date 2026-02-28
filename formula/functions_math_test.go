@@ -160,6 +160,98 @@ func TestMathErrors(t *testing.T) {
 	}
 }
 
+func TestPERMUT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		wantNum float64
+		wantErr bool
+	}{
+		{"PERMUT(100,3)", 970200, false},
+		{"PERMUT(3,2)", 6, false},
+		{"PERMUT(5,0)", 1, false},
+		{"PERMUT(5,5)", 120, false},
+		{"PERMUT(10,1)", 10, false},
+		{"PERMUT(7,3)", 210, false},
+		{"PERMUT(3,5)", 0, true},
+		{"PERMUT(-1,2)", 0, true},
+		{"PERMUT(0,0)", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = type %v, want ValueError", tt.formula, got.Type)
+				}
+			} else {
+				if got.Type != ValueNumber {
+					t.Errorf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+				} else if got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
+
+func TestSUBTOTAL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		wantErr ErrorValue
+	}{
+		{"SUM", "SUBTOTAL(9,{120,10,150,23})", 303, 0, 0},
+		{"SUM_100series", "SUBTOTAL(109,{120,10,150,23})", 303, 0, 0},
+		{"AVERAGE", "SUBTOTAL(1,{120,10,150,23})", 75.75, 1e-10, 0},
+		{"MAX", "SUBTOTAL(4,{120,10,150,23})", 150, 0, 0},
+		{"MIN", "SUBTOTAL(5,{120,10,150,23})", 10, 0, 0},
+		{"COUNT", "SUBTOTAL(2,{120,10,150,23})", 4, 0, 0},
+		{"PRODUCT", "SUBTOTAL(6,{2,3,4})", 24, 0, 0},
+		{"invalid_0", "SUBTOTAL(0,{1,2})", 0, 0, ErrValVALUE},
+		{"invalid_12", "SUBTOTAL(12,{1,2})", 0, 0, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Errorf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+				return
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+}
+
 func TestRandFunctions(t *testing.T) {
 	resolver := &mockResolver{}
 

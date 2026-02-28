@@ -400,6 +400,30 @@ func fnMROUND(args []Value) (Value, error) {
 	return NumberVal(math.Round(n/multiple) * multiple), nil
 }
 
+func fnPERMUT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	n := int(nf)
+	k := int(kf)
+	if n <= 0 || k < 0 || n < k {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := 1.0
+	for i := 0; i < k; i++ {
+		result *= float64(n - i)
+	}
+	return NumberVal(result), nil
+}
+
 func fnPI(args []Value) (Value, error) {
 	if len(args) != 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -608,6 +632,51 @@ func fnTRUNC(args []Value) (Value, error) {
 	}
 	pow := math.Pow(10, math.Floor(digits))
 	return NumberVal(math.Trunc(n*pow) / pow), nil
+}
+
+func fnSUBTOTAL(args []Value) (Value, error) {
+	if len(args) < 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	fnNum, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fn := int(fnNum)
+	// Normalize 101-111 to 1-11
+	if fn >= 101 && fn <= 111 {
+		fn -= 100
+	}
+	if fn < 1 || fn > 11 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rest := args[1:]
+	switch fn {
+	case 1:
+		return fnAVERAGE(rest)
+	case 2:
+		return fnCOUNT(rest)
+	case 3:
+		return fnCOUNTA(rest)
+	case 4:
+		return fnMAX(rest)
+	case 5:
+		return fnMIN(rest)
+	case 6:
+		return fnPRODUCT(rest)
+	case 7:
+		return fnSTDEV(rest)
+	case 8:
+		return fnSTDEVP(rest)
+	case 9:
+		return fnSUM(rest)
+	case 10:
+		return fnVAR(rest)
+	case 11:
+		return fnVARP(rest)
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
 }
 
 func fnTAN(args []Value) (Value, error) {

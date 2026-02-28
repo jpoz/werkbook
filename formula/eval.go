@@ -531,6 +531,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnMROUND(args)
 	case "ODD":
 		return fnODD(args)
+	case "PERMUT":
+		return fnPERMUT(args)
 	case "PI":
 		return fnPI(args)
 	case "POWER":
@@ -557,6 +559,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSIN(args)
 	case "SQRT":
 		return fnSQRT(args)
+	case "SUBTOTAL":
+		return fnSUBTOTAL(args)
 	case "TAN":
 		return fnTAN(args)
 	case "TRUNC":
@@ -587,10 +591,16 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnMAXIFS(args)
 	case "MEDIAN":
 		return fnMEDIAN(args)
+	case "MODE":
+		return fnMODE(args)
+	case "PERCENTILE":
+		return fnPERCENTILE(args)
 	case "MIN":
 		return fnMIN(args)
 	case "MINIFS":
 		return fnMINIFS(args)
+	case "RANK":
+		return fnRANK(args)
 	case "SMALL":
 		return fnSMALL(args)
 	case "SUM":
@@ -601,8 +611,16 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSUMIFS(args)
 	case "SUMPRODUCT":
 		return fnSUMPRODUCT(args)
+	case "STDEV":
+		return fnSTDEV(args)
+	case "STDEVP":
+		return fnSTDEVP(args)
 	case "SUMSQ":
 		return fnSUMSQ(args)
+	case "VAR":
+		return fnVAR(args)
+	case "VARP":
+		return fnVARP(args)
 
 	// Text
 	case "CHAR":
@@ -629,6 +647,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnLOWER(args)
 	case "MID":
 		return fnMID(args)
+	case "NUMBERVALUE":
+		return fnNUMBERVALUE(args)
 	case "PROPER":
 		return fnPROPER(args)
 	case "REPLACE":
@@ -715,6 +735,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	// Date/Time
 	case "DATE":
 		return fnDATE(args)
+	case "DATEDIF":
+		return fnDATEDIF(args)
 	case "DATEVALUE":
 		return fnDATEVALUE(args)
 	case "DAY":
@@ -727,6 +749,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnEOMONTH(args)
 	case "HOUR":
 		return fnHOUR(args)
+	case "ISOWEEKNUM":
+		return fnISOWEEKNUM(args)
 	case "MINUTE":
 		return fnMINUTE(args)
 	case "MONTH":
@@ -745,8 +769,12 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnWEEKDAY(args)
 	case "WEEKNUM":
 		return fnWEEKNUM(args)
+	case "WORKDAY":
+		return fnWORKDAY(args)
 	case "YEAR":
 		return fnYEAR(args)
+	case "YEARFRAC":
+		return fnYEARFRAC(args)
 
 	// Lookup
 	case "ADDRESS":

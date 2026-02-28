@@ -403,6 +403,156 @@ func TestWEEKNUM_Invalid(t *testing.T) {
 	}
 }
 
+func TestDATEDIF(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{`DATEDIF(DATE(2001,1,1),DATE(2003,1,1),"Y")`, 2, false, 0},
+		{`DATEDIF(DATE(2001,6,1),DATE(2002,8,15),"D")`, 440, false, 0},
+		{`DATEDIF(DATE(2001,6,1),DATE(2002,8,15),"YD")`, 75, false, 0},
+		{`DATEDIF(DATE(2001,6,1),DATE(2002,8,15),"M")`, 14, false, 0},
+		{`DATEDIF(DATE(2001,6,1),DATE(2002,8,15),"YM")`, 2, false, 0},
+		{`DATEDIF(DATE(2001,6,1),DATE(2002,8,15),"MD")`, 14, false, 0},
+		{`DATEDIF(DATE(2003,1,1),DATE(2001,1,1),"Y")`, 0, true, ErrValNUM},
+		{`DATEDIF(DATE(2020,1,15),DATE(2020,3,10),"MD")`, 24, false, 0},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if tc.isErr {
+			if got.Type != ValueError || got.Err != tc.errVal {
+				t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+			}
+			continue
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestISOWEEKNUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		{"ISOWEEKNUM(DATE(2012,3,9))", 10},
+		{"ISOWEEKNUM(DATE(2023,1,1))", 52},  // Jan 1 2023 is a Sunday, belongs to week 52 of 2022
+		{"ISOWEEKNUM(DATE(2023,1,2))", 1},   // first Monday of 2023
+		{"ISOWEEKNUM(DATE(2020,12,31))", 53}, // 2020 has 53 ISO weeks
+		{"ISOWEEKNUM(DATE(2021,1,4))", 1},   // first Monday of 2021
+		{"ISOWEEKNUM(DATE(2015,12,31))", 53},
+	}
+
+	for _, tc := range tests {
+		cf := evalCompile(t, tc.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(%s): %v", tc.formula, err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("ISOWEEKNUM: got type %v, want number for %s", got.Type, tc.formula)
+		}
+		if got.Num != tc.want {
+			t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+		}
+	}
+}
+
+func TestWORKDAY(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		expect  string // formula that produces expected result
+	}{
+		{"same_day", "WORKDAY(DATE(2008,10,1), 0)", "DATE(2008,10,1)"},
+		{"friday_plus_one", "WORKDAY(DATE(2008,10,3), 1)", "DATE(2008,10,6)"},
+		{"monday_minus_one", "WORKDAY(DATE(2008,10,6), -1)", "DATE(2008,10,3)"},
+		{"five_workdays", "WORKDAY(DATE(2008,10,1), 5)", "DATE(2008,10,8)"},
+		{"ten_workdays", "WORKDAY(DATE(2008,10,1), 10)", "DATE(2008,10,15)"},
+		{"skip_christmas_weekend", "WORKDAY(DATE(2024,12,23), 5)", "DATE(2024,12,30)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("WORKDAY: got type %v, want number for %s", got.Type, tt.formula)
+			}
+
+			cfExpect := evalCompile(t, tt.expect)
+			want, err := Eval(cfExpect, nil, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.expect, err)
+			}
+
+			if got.Num != want.Num {
+				t.Errorf("%s = %g, want %g (from %s)", tt.formula, got.Num, want.Num, tt.expect)
+			}
+		})
+	}
+}
+
+func TestYEARFRAC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"basis0", "YEARFRAC(DATE(2012,1,1), DATE(2012,7,30), 0)", 0.58056, 0.001, false, 0},
+		{"basis1", "YEARFRAC(DATE(2012,1,1), DATE(2012,7,30), 1)", 0.57650, 0.001, false, 0},
+		{"basis2", "YEARFRAC(DATE(2012,1,1), DATE(2012,7,30), 2)", 0.58611, 0.001, false, 0},
+		{"basis3", "YEARFRAC(DATE(2012,1,1), DATE(2012,7,30), 3)", 0.57808, 0.001, false, 0},
+		{"basis4", "YEARFRAC(DATE(2012,1,1), DATE(2012,7,30), 4)", 0.58056, 0.001, false, 0},
+		{"same_date", "YEARFRAC(DATE(2006,1,1), DATE(2006,1,1))", 0, 0, false, 0},
+		{"invalid_basis", "YEARFRAC(DATE(2006,1,1), DATE(2006,1,1), 5)", 0, 0, true, ErrValNUM},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > tc.tol {
+				t.Errorf("%s = %g, want %g (tolerance %g)", tc.formula, got.Num, tc.want, tc.tol)
+			}
+		})
+	}
+}
+
 func TestNOWTODAY(t *testing.T) {
 	resolver := &mockResolver{}
 

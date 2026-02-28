@@ -618,6 +618,229 @@ func fnSUMSQ(args []Value) (Value, error) {
 	return NumberVal(sum), nil
 }
 
+func fnSTDEV(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	// Compute mean
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	// Compute sum of squared deviations
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(math.Sqrt(ssq / float64(n-1))), nil
+}
+
+func fnSTDEVP(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(math.Sqrt(ssq / float64(n))), nil // divide by n, not n-1
+}
+
+func fnVAR(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n-1)), nil
+}
+
+func fnVARP(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n)), nil // divide by n, not n-1
+}
+
+func fnMODE(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	// Count frequency of each value
+	freq := make(map[float64]int)
+	// Track order of first appearance
+	order := make([]float64, 0)
+	for _, n := range nums {
+		if freq[n] == 0 {
+			order = append(order, n)
+		}
+		freq[n]++
+	}
+	// Find value with highest frequency (must be >= 2)
+	bestVal := 0.0
+	bestCount := 1 // minimum must be 2 to qualify
+	for _, v := range order {
+		if freq[v] > bestCount {
+			bestCount = freq[v]
+			bestVal = v
+		}
+	}
+	if bestCount < 2 {
+		return ErrorVal(ErrValNA), nil // no duplicates
+	}
+	return NumberVal(bestVal), nil
+}
+
+func fnPERCENTILE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Collect numeric values from first arg (the array)
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Get k value
+	k, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	if k < 0 || k > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Sort ascending
+	sort.Float64s(nums)
+	n := len(nums)
+	if n == 1 {
+		return NumberVal(nums[0]), nil
+	}
+	rank := k * float64(n-1)
+	intPart := int(rank)
+	frac := rank - float64(intPart)
+	if intPart >= n-1 {
+		return NumberVal(nums[n-1]), nil
+	}
+	result := nums[intPart] + frac*(nums[intPart+1]-nums[intPart])
+	return NumberVal(result), nil
+}
+
+func fnRANK(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// Collect numeric values from the reference (arg[1])
+	nums, e2 := collectNumeric(args[1:2])
+	if e2 != nil {
+		return *e2, nil
+	}
+	// Determine order
+	ascending := false
+	if len(args) == 3 {
+		order, e3 := coerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		ascending = order != 0
+	}
+	// Check if number exists in the list
+	found := false
+	for _, v := range nums {
+		if v == num {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrorVal(ErrValNA), nil
+	}
+	// Compute rank
+	rank := 1
+	for _, v := range nums {
+		if ascending {
+			if v < num {
+				rank++
+			}
+		} else {
+			if v > num {
+				rank++
+			}
+		}
+	}
+	return NumberVal(float64(rank)), nil
+}
+
 func fnSUMPRODUCT(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil

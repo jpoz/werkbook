@@ -233,6 +233,57 @@ func TestTEXTFormatExtended(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// NUMBERVALUE
+// ---------------------------------------------------------------------------
+
+func TestNUMBERVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		{name: "european_format", formula: `NUMBERVALUE("2.500,27", ",", ".")`, wantNum: 2500.27},
+		{name: "percent", formula: `NUMBERVALUE("3.5%")`, wantNum: 0.035},
+		{name: "empty_string", formula: `NUMBERVALUE("")`, wantNum: 0},
+		{name: "spaces", formula: `NUMBERVALUE("  3 000  ")`, wantNum: 3000},
+		{name: "us_format", formula: `NUMBERVALUE("1,234.56")`, wantNum: 1234.56},
+		{name: "european_full", formula: `NUMBERVALUE("1.234,56", ",", ".")`, wantNum: 1234.56},
+		{name: "multiple_decimals", formula: `NUMBERVALUE("1.2.3")`, isErr: true},
+		{name: "double_percent", formula: `NUMBERVALUE("50%%")`, wantNum: 0.005},
+		{name: "integer", formula: `NUMBERVALUE("100")`, wantNum: 100},
+	}
+
+	const epsilon = 0.0001
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("Eval(%q) = %v, want #VALUE!", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber {
+					t.Errorf("Eval(%q) = %v, want number %g", tt.formula, got, tt.wantNum)
+				} else {
+					diff := got.Num - tt.wantNum
+					if diff < -epsilon || diff > epsilon {
+						t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+					}
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // FIND edge cases
 // ---------------------------------------------------------------------------
 

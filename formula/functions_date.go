@@ -49,6 +49,74 @@ func fnDATE(args []Value) (Value, error) {
 	return NumberVal(timeToExcelSerial(t)), nil
 }
 
+func fnDATEDIF(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	endSerial, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	unitStr := strings.ToUpper(valueToString(args[2]))
+
+	if startSerial > endSerial {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	start := excelSerialToTime(startSerial)
+	end := excelSerialToTime(endSerial)
+
+	switch unitStr {
+	case "D":
+		days := int(endSerial - startSerial)
+		return NumberVal(float64(days)), nil
+	case "M":
+		months := (end.Year()-start.Year())*12 + int(end.Month()) - int(start.Month())
+		if end.Day() < start.Day() {
+			months--
+		}
+		return NumberVal(float64(months)), nil
+	case "Y":
+		years := end.Year() - start.Year()
+		if end.Month() < start.Month() || (end.Month() == start.Month() && end.Day() < start.Day()) {
+			years--
+		}
+		return NumberVal(float64(years)), nil
+	case "MD":
+		d := end.Day() - start.Day()
+		if d < 0 {
+			// Get days in the previous month
+			prevMonth := time.Date(end.Year(), end.Month(), 0, 0, 0, 0, 0, time.UTC)
+			d = prevMonth.Day() - start.Day() + end.Day()
+		}
+		return NumberVal(float64(d)), nil
+	case "YM":
+		m := int(end.Month()) - int(start.Month())
+		if end.Day() < start.Day() {
+			m--
+		}
+		if m < 0 {
+			m += 12
+		}
+		return NumberVal(float64(m)), nil
+	case "YD":
+		// Set start to same year as end
+		startInEndYear := time.Date(end.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+		days := int(end.Sub(startInEndYear).Hours() / 24)
+		if days < 0 {
+			startInEndYear = time.Date(end.Year()-1, start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+			days = int(end.Sub(startInEndYear).Hours() / 24)
+		}
+		return NumberVal(float64(days)), nil
+	default:
+		return ErrorVal(ErrValNUM), nil
+	}
+}
+
 func fnDAY(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -211,6 +279,19 @@ func fnWEEKDAY(args []Value) (Value, error) {
 	}
 
 	return NumberVal(float64(result)), nil
+}
+
+func fnISOWEEKNUM(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	serial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	t := excelSerialToTime(serial)
+	_, week := t.ISOWeek()
+	return NumberVal(float64(week)), nil
 }
 
 func fnYEAR(args []Value) (Value, error) {
@@ -441,4 +522,171 @@ func fnWEEKNUM(args []Value) (Value, error) {
 	// Week number: Jan 1 is always in week 1.
 	weekNum := (dayOfYear + offset - 1) / 7 + 1
 	return NumberVal(float64(weekNum)), nil
+}
+
+// YEARFRAC(start_date, end_date, [basis]) — calculates the fraction of the year
+// represented by the number of whole days between two dates.
+func fnYEARFRAC(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	endSerial, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	basis := 0
+	if len(args) == 3 {
+		b, e3 := coerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		basis = int(b)
+	}
+	if basis < 0 || basis > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Swap if start > end
+	if startSerial > endSerial {
+		startSerial, endSerial = endSerial, startSerial
+	}
+
+	start := excelSerialToTime(startSerial)
+	end := excelSerialToTime(endSerial)
+
+	sy, sm, sd := start.Year(), int(start.Month()), start.Day()
+	ey, em, ed := end.Year(), int(end.Month()), end.Day()
+
+	switch basis {
+	case 0: // US (NASD) 30/360
+		if sd == 31 {
+			sd = 30
+		}
+		if ed == 31 && sd >= 30 {
+			ed = 30
+		}
+		num := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
+		return NumberVal(num / 360), nil
+
+	case 1: // Actual/actual
+		actualDays := endSerial - startSerial
+		// Average year length across the span
+		if sy == ey {
+			daysInYear := 365.0
+			if isLeapYear(sy) {
+				daysInYear = 366.0
+			}
+			return NumberVal(actualDays / daysInYear), nil
+		}
+		// Multi-year span: compute average days per year
+		totalYearDays := 0.0
+		for y := sy; y <= ey; y++ {
+			if isLeapYear(y) {
+				totalYearDays += 366
+			} else {
+				totalYearDays += 365
+			}
+		}
+		avgYear := totalYearDays / float64(ey-sy+1)
+		return NumberVal(actualDays / avgYear), nil
+
+	case 2: // Actual/360
+		actualDays := endSerial - startSerial
+		return NumberVal(actualDays / 360), nil
+
+	case 3: // Actual/365
+		actualDays := endSerial - startSerial
+		return NumberVal(actualDays / 365), nil
+
+	case 4: // European 30/360
+		if sd == 31 {
+			sd = 30
+		}
+		if ed == 31 {
+			ed = 30
+		}
+		num := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
+		return NumberVal(num / 360), nil
+	}
+
+	return ErrorVal(ErrValNUM), nil
+}
+
+func isLeapYear(year int) bool {
+	return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+// WORKDAY(start_date, days, [holidays]) — returns the serial number of the date
+// that is the indicated number of working days before or after a start date.
+// Working days exclude weekends (Saturday and Sunday) and specified holidays.
+func fnWORKDAY(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	daysF, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	days := int(daysF)
+
+	// Collect holidays if provided
+	holidays := make(map[int]bool)
+	if len(args) == 3 {
+		arg := args[2]
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					if cell.Type == ValueNumber {
+						holidays[int(cell.Num)] = true
+					}
+				}
+			}
+		} else if arg.Type == ValueNumber {
+			holidays[int(arg.Num)] = true
+		} else if arg.Type != ValueEmpty {
+			n, ce := coerceNum(arg)
+			if ce != nil {
+				return *ce, nil
+			}
+			holidays[int(n)] = true
+		}
+	}
+
+	t := excelSerialToTime(startSerial)
+
+	if days == 0 {
+		return NumberVal(startSerial), nil
+	}
+
+	step := 1
+	if days < 0 {
+		step = -1
+		days = -days
+	}
+
+	for days > 0 {
+		t = t.AddDate(0, 0, step)
+		serial := timeToExcelSerial(t)
+		wd := t.Weekday()
+		if wd == time.Saturday || wd == time.Sunday {
+			continue
+		}
+		if holidays[int(serial)] {
+			continue
+		}
+		days--
+	}
+
+	return NumberVal(timeToExcelSerial(t)), nil
 }
