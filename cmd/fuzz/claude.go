@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -156,6 +157,141 @@ var knownFunctionsList = []string{
 	"DVAR", "DVARP",
 }
 
+// functionCategories maps each function to its category for queue ordering.
+var functionCategories = buildFunctionCategories()
+
+func buildFunctionCategories() map[string]string {
+	cats := map[string][]string{
+		"math": {
+			"ABS", "ACOS", "ACOSH", "ACOT", "ACOTH", "ARABIC", "ASIN", "ASINH",
+			"ATAN", "ATAN2", "ATANH", "BASE",
+			"CEILING", "CEILING.MATH", "CEILING.PRECISE",
+			"COMBIN", "COMBINA", "COS", "COSH", "COT", "COTH", "CSC", "CSCH",
+			"DECIMAL", "DEGREES", "EVEN", "EXP",
+			"FACT", "FACTDOUBLE", "FLOOR", "FLOOR.MATH", "FLOOR.PRECISE",
+			"GCD", "INT", "LCM", "LN", "LOG", "LOG10",
+			"MDETERM", "MINVERSE", "MMULT", "MOD", "MROUND", "MULTINOMIAL", "MUNIT",
+			"ODD", "PI", "POWER", "PRODUCT", "QUOTIENT",
+			"RADIANS", "ROMAN", "ROUND", "ROUNDDOWN", "ROUNDUP",
+			"SEC", "SECH", "SERIESSUM", "SIGN", "SIN", "SINH", "SQRT", "SQRTPI",
+			"SUBTOTAL", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT",
+			"SUMSQ", "SUMX2MY2", "SUMX2PY2", "SUMXMY2",
+			"TAN", "TANH", "TRUNC",
+		},
+		"logical": {
+			"AND", "FALSE", "IF", "IFERROR", "IFNA", "IFS",
+			"NOT", "OR", "SWITCH", "TRUE", "XOR",
+		},
+		"text": {
+			"CHAR", "CLEAN", "CODE", "CONCATENATE", "DOLLAR",
+			"EXACT", "FIND", "FIXED", "LEFT", "LEN", "LOWER", "MID",
+			"NUMBERVALUE", "PROPER", "REPLACE", "REPT", "RIGHT",
+			"SEARCH", "SUBSTITUTE", "T", "TEXT", "TEXTJOIN",
+			"TRIM", "UNICHAR", "UNICODE", "UPPER", "VALUE",
+		},
+		"statistical": {
+			"AVEDEV", "AVERAGE", "AVERAGEA", "AVERAGEIF", "AVERAGEIFS",
+			"BETA.DIST", "BETA.INV", "BINOM.DIST", "BINOM.DIST.RANGE", "BINOM.INV",
+			"CHISQ.DIST", "CHISQ.DIST.RT", "CHISQ.INV", "CHISQ.INV.RT", "CHISQ.TEST",
+			"CONFIDENCE.NORM", "CONFIDENCE.T", "CORREL", "COUNT", "COUNTA", "COUNTBLANK",
+			"COUNTIF", "COUNTIFS", "COVARIANCE.P", "COVARIANCE.S",
+			"DEVSQ", "EXPON.DIST",
+			"F.DIST", "F.DIST.RT", "F.INV", "F.INV.RT", "F.TEST",
+			"FISHER", "FISHERINV", "FORECAST.LINEAR", "FREQUENCY",
+			"GAMMA", "GAMMA.DIST", "GAMMA.INV", "GAMMALN", "GAMMALN.PRECISE",
+			"GAUSS", "GEOMEAN", "GROWTH",
+			"HARMEAN", "HYPGEOM.DIST",
+			"INTERCEPT", "KURT",
+			"LARGE", "LINEST", "LOGEST", "LOGNORM.DIST", "LOGNORM.INV",
+			"MAX", "MAXA", "MAXIFS", "MEDIAN", "MIN", "MINA", "MINIFS",
+			"MODE.MULT", "MODE.SNGL",
+			"NEGBINOM.DIST", "NORM.DIST", "NORM.INV", "NORM.S.DIST", "NORM.S.INV",
+			"PEARSON", "PERCENTILE.EXC", "PERCENTILE.INC",
+			"PERCENTRANK.EXC", "PERCENTRANK.INC",
+			"PERMUT", "PERMUTATIONA", "PHI", "POISSON.DIST", "PROB",
+			"QUARTILE.EXC", "QUARTILE.INC",
+			"RANK.AVG", "RANK.EQ", "RSQ",
+			"SKEW", "SKEW.P", "SLOPE", "SMALL", "STANDARDIZE",
+			"STDEV.P", "STDEV.S", "STDEVA", "STDEVPA", "STEYX",
+			"T.DIST", "T.DIST.2T", "T.DIST.RT", "T.INV", "T.INV.2T", "T.TEST",
+			"TREND", "TRIMMEAN",
+			"VAR.P", "VAR.S", "VARA", "VARPA",
+			"WEIBULL.DIST", "Z.TEST",
+		},
+		"lookup": {
+			"ADDRESS", "AREAS", "CHOOSE", "COLUMN", "COLUMNS",
+			"FORMULATEXT", "HLOOKUP", "HYPERLINK",
+			"INDEX", "LOOKUP", "MATCH",
+			"ROW", "ROWS", "TRANSPOSE", "VLOOKUP",
+		},
+		"date": {
+			"DATE", "DATEDIF", "DATEVALUE", "DAY", "DAYS", "DAYS360",
+			"EDATE", "EOMONTH", "HOUR", "ISOWEEKNUM",
+			"MINUTE", "MONTH",
+			"NETWORKDAYS", "NETWORKDAYS.INTL",
+			"SECOND", "TIME", "TIMEVALUE",
+			"WEEKDAY", "WEEKNUM",
+			"WORKDAY", "WORKDAY.INTL",
+			"YEAR", "YEARFRAC",
+		},
+		"information": {
+			"ERROR.TYPE", "ISBLANK", "ISERR", "ISERROR",
+			"ISEVEN", "ISFORMULA", "ISLOGICAL", "ISNA", "ISNONTEXT",
+			"ISNUMBER", "ISODD", "ISREF", "ISTEXT",
+			"N", "NA", "SHEET", "SHEETS", "TYPE",
+		},
+		"financial": {
+			"ACCRINT", "ACCRINTM", "AMORDEGRC", "AMORLINC",
+			"COUPDAYBS", "COUPDAYS", "COUPDAYSNC", "COUPNCD", "COUPNUM", "COUPPCD",
+			"CUMIPMT", "CUMPRINC",
+			"DB", "DDB", "DISC", "DOLLARDE", "DOLLARFR", "DURATION",
+			"EFFECT", "FV", "FVSCHEDULE",
+			"INTRATE", "IPMT", "IRR", "ISPMT",
+			"MDURATION", "MIRR",
+			"NOMINAL", "NPER", "NPV",
+			"ODDFPRICE", "ODDFYIELD", "ODDLPRICE", "ODDLYIELD",
+			"PDURATION", "PMT", "PPMT",
+			"PRICE", "PRICEDISC", "PRICEMAT", "PV",
+			"RATE", "RECEIVED", "RRI",
+			"SLN", "SYD",
+			"TBILLEQ", "TBILLPRICE", "TBILLYIELD",
+			"VDB",
+			"XIRR", "XNPV",
+			"YIELD", "YIELDDISC", "YIELDMAT",
+		},
+		"engineering": {
+			"BESSELI", "BESSELJ", "BESSELK", "BESSELY",
+			"BIN2DEC", "BIN2HEX", "BIN2OCT",
+			"BITAND", "BITLSHIFT", "BITOR", "BITRSHIFT", "BITXOR",
+			"COMPLEX", "CONVERT",
+			"DEC2BIN", "DEC2HEX", "DEC2OCT",
+			"DELTA", "ERF", "ERF.PRECISE", "ERFC", "ERFC.PRECISE",
+			"GESTEP",
+			"HEX2BIN", "HEX2DEC", "HEX2OCT",
+			"IMABS", "IMAGINARY", "IMARGUMENT", "IMCONJUGATE",
+			"IMCOS", "IMCOSH", "IMCOT", "IMCSC", "IMCSCH",
+			"IMDIV", "IMEXP", "IMLN", "IMLOG10", "IMLOG2",
+			"IMPOWER", "IMPRODUCT", "IMREAL",
+			"IMSEC", "IMSECH", "IMSIN", "IMSINH", "IMSQRT",
+			"IMSUB", "IMSUM", "IMTAN",
+			"OCT2BIN", "OCT2DEC", "OCT2HEX",
+		},
+		"database": {
+			"DAVERAGE", "DCOUNT", "DCOUNTA", "DGET",
+			"DMAX", "DMIN", "DPRODUCT",
+			"DSTDEV", "DSTDEVP", "DSUM",
+			"DVAR", "DVARP",
+		},
+	}
+	m := make(map[string]string)
+	for cat, fns := range cats {
+		for _, fn := range fns {
+			m[fn] = cat
+		}
+	}
+	return m
+}
+
 // generateSpec shells out to `claude -p` to generate a test spec.
 func generateSpec(seed string, verbose bool) (*TestSpec, error) {
 	prompt := buildGenerationPrompt(seed)
@@ -170,6 +306,36 @@ func generateSpec(seed string, verbose bool) (*TestSpec, error) {
 	}
 
 	// Extract JSON from the output (claude may wrap it in markdown).
+	jsonStr := extractJSON(output)
+	if jsonStr == "" {
+		return nil, fmt.Errorf("no JSON found in claude output:\n%s", truncate(output, 500))
+	}
+
+	var spec TestSpec
+	if err := json.Unmarshal([]byte(jsonStr), &spec); err != nil {
+		return nil, fmt.Errorf("parse generated spec: %w\njson: %s", err, truncate(jsonStr, 500))
+	}
+
+	if err := validateSpec(&spec); err != nil {
+		return nil, fmt.Errorf("invalid generated spec: %w", err)
+	}
+
+	return &spec, nil
+}
+
+// generateTargetedSpec generates a test spec targeting a specific function.
+func generateTargetedSpec(targetFn string, verbose bool) (*TestSpec, error) {
+	prompt := buildTargetedGenerationPrompt(targetFn)
+
+	if verbose {
+		fmt.Printf("  Generating spec for %s with claude...\n", targetFn)
+	}
+
+	output, err := runClaude(prompt)
+	if err != nil {
+		return nil, fmt.Errorf("claude generate targeted: %w", err)
+	}
+
 	jsonStr := extractJSON(output)
 	if jsonStr == "" {
 		return nil, fmt.Errorf("no JSON found in claude output:\n%s", truncate(output, 500))
@@ -286,6 +452,69 @@ func buildGenerationPrompt(seed string) string {
 	return sb.String()
 }
 
+// buildTargetedGenerationPrompt creates a prompt focused on testing one specific function.
+func buildTargetedGenerationPrompt(targetFn string) string {
+	var sb strings.Builder
+	sb.WriteString("Generate a JSON test spec for testing Excel formula evaluation in a Go spreadsheet library.\n\n")
+	sb.WriteString("The spec must be valid JSON matching this exact schema:\n")
+	sb.WriteString(`{
+  "name": "test_<descriptive_name>",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {"ref": "A1", "value": 10, "type": "number"},
+        {"ref": "A2", "value": "hello", "type": "string"},
+        {"ref": "A3", "value": true, "type": "bool"},
+        {"ref": "B1", "formula": "SUM(A1:A3)"}
+      ]
+    }
+  ],
+  "checks": [
+    {"ref": "Sheet1!B1", "expected": "10", "type": "number"}
+  ]
+}`)
+	sb.WriteString("\n\n")
+
+	fmt.Fprintf(&sb, "Generate a test spec that specifically tests the %s function.\n", targetFn)
+	fmt.Fprintf(&sb, "Include 2-3 checks that exercise %s with different inputs.\n", targetFn)
+	sb.WriteString("Also include 2-3 checks using known-working functions as a control group.\n\n")
+
+	var implemented []string
+	for _, fn := range knownFunctionsList {
+		if implementedFunctions[fn] {
+			implemented = append(implemented, fn)
+		}
+	}
+
+	sb.WriteString("Implemented functions (werkbook already supports these - use for control group checks):\n")
+	sb.WriteString(strings.Join(implemented, ", "))
+	sb.WriteString("\n\n")
+
+	fmt.Fprintf(&sb, "The target function %s is NOT yet implemented. Test it thoroughly.\n\n", targetFn)
+
+	sb.WriteString("Requirements:\n")
+	fmt.Fprintf(&sb, "- The spec MUST use %s in at least 2-3 formula cells with different argument patterns\n", targetFn)
+	sb.WriteString("- Include 2-3 additional checks using implemented functions as a control group\n")
+	sb.WriteString("- Create edge cases: empty cells, zero values, negative numbers, large numbers, mixed types\n")
+	sb.WriteString("- Include 5-15 cells and 4-6 checks total\n")
+	sb.WriteString("- Use realistic but tricky inputs that might expose bugs\n")
+	sb.WriteString("- DO NOT use non-deterministic functions: RAND, RANDBETWEEN, RANDARRAY, NOW, TODAY\n")
+	sb.WriteString("- DO NOT use INDIRECT (volatile/indirect resolution)\n")
+	sb.WriteString("- DO NOT use Excel 365+ dynamic array functions: CONCAT, XLOOKUP, XMATCH, SORT, SORTBY, FILTER, UNIQUE, SEQUENCE, LET, LAMBDA, MAP, REDUCE, SCAN, BYCOL, BYROW, MAKEARRAY, CHOOSECOLS, CHOOSEROWS, DROP, TAKE, EXPAND, HSTACK, VSTACK, WRAPCOLS, WRAPROWS, TOCOL, TOROW, TEXTBEFORE, TEXTAFTER, TEXTSPLIT, VALUETOTEXT, ARRAYTOTEXT, ISOMITTED, IMAGE, GROUPBY, PIVOTBY, PERCENTOF, TRIMRANGE\n")
+	sb.WriteString("- DO NOT use environment-dependent functions: CELL, INFO\n")
+	sb.WriteString("- Use CONCATENATE instead of CONCAT\n")
+	sb.WriteString("- The formulas will be validated against LibreOffice, so only use functions that LibreOffice supports\n")
+	sb.WriteString("- The 'expected' field in checks should be the string representation of the expected result\n")
+	sb.WriteString("- For numbers, use the simplest representation (e.g., \"10\" not \"10.0\")\n")
+	sb.WriteString("- For booleans, use \"TRUE\" or \"FALSE\"\n")
+	sb.WriteString("- Cell refs in formulas should NOT include the sheet name if on the same sheet\n")
+	sb.WriteString("\n")
+	sb.WriteString("Output ONLY the JSON, no explanation or markdown fences.\n")
+
+	return sb.String()
+}
+
 // buildFixPrompt creates the prompt for suggesting a fix.
 func buildFixPrompt(spec *TestSpec, mismatches []mismatch) string {
 	specJSON, _ := json.MarshalIndent(spec, "", "  ")
@@ -340,6 +569,40 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// buildUnimplementedQueue returns the list of unimplemented, non-excluded functions
+// sorted by category then alphabetically within each category.
+func buildUnimplementedQueue() []string {
+	categoryOrder := map[string]int{
+		"math": 0, "logical": 1, "text": 2, "statistical": 3,
+		"lookup": 4, "date": 5, "information": 6, "financial": 7,
+		"engineering": 8, "database": 9,
+	}
+
+	var queue []string
+	for _, fn := range knownFunctionsList {
+		if implementedFunctions[fn] {
+			continue
+		}
+		if excludedFunctions[fn] {
+			continue
+		}
+		queue = append(queue, fn)
+	}
+
+	sort.Slice(queue, func(i, j int) bool {
+		catI := functionCategories[queue[i]]
+		catJ := functionCategories[queue[j]]
+		orderI := categoryOrder[catI]
+		orderJ := categoryOrder[catJ]
+		if orderI != orderJ {
+			return orderI < orderJ
+		}
+		return queue[i] < queue[j]
+	})
+
+	return queue
 }
 
 // filterEnv returns a copy of env with the named variable removed.
