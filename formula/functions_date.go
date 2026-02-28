@@ -66,7 +66,11 @@ func fnDATE(args []Value) (Value, error) {
 	}
 
 	t := time.Date(y, time.Month(int(month)), int(day), 0, 0, 0, 0, time.UTC)
-	return NumberVal(timeToExcelSerial(t)), nil
+	serial := timeToExcelSerial(t)
+	if serial < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(serial), nil
 }
 
 func fnDATEDIF(args []Value) (Value, error) {
@@ -145,6 +149,9 @@ func fnDAY(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	t := excelSerialToTime(n)
 	return NumberVal(float64(t.Day())), nil
 }
@@ -195,6 +202,9 @@ func fnMONTH(args []Value) (Value, error) {
 	n, e := coerceNum(args[0])
 	if e != nil {
 		return *e, nil
+	}
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
 	}
 	t := excelSerialToTime(n)
 	return NumberVal(float64(t.Month())), nil
@@ -321,6 +331,9 @@ func fnYEAR(args []Value) (Value, error) {
 	n, e := coerceNum(args[0])
 	if e != nil {
 		return *e, nil
+	}
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
 	}
 	t := excelSerialToTime(n)
 	return NumberVal(float64(t.Year())), nil
@@ -650,6 +663,9 @@ func fnWORKDAY(args []Value) (Value, error) {
 	startSerial, e := coerceNum(args[0])
 	if e != nil {
 		return *e, nil
+	}
+	if startSerial < 0 {
+		return ErrorVal(ErrValNUM), nil
 	}
 	daysF, e2 := coerceNum(args[1])
 	if e2 != nil {
