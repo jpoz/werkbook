@@ -1,0 +1,7 @@
+{
+  "function": "WORKDAY",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"1899\" oracle=\"#NUM!\"",
+  "fix_summary": "All fixes applied and tests pass. Here's a summary:\n\n**Root cause:** The `DATE` function could produce negative serial numbers (dates before Jan 1, 1900) without returning `#NUM!`. In the test case, `DATE(0.5, 0.01, 3.14)` truncates to `DATE(0, 0, 3)` which resolves to December 3, 1899 (serial ≈ -28). Excel treats negative serial numbers as invalid.\n\n**Fixes in `formula/functions_date.go`:**\n\n1. **`fnDATE`** (line 68-72): Added check after computing the serial — if `serial \u003c 0`, return `#NUM...",
+  "timestamp": "2026-02-28T14:24:45.097249-07:00"
+}

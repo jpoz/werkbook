@@ -1,0 +1,7 @@
+{
+  "function": "WORKDAY",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"1899\" oracle=\"#NUM!\"",
+  "fix_summary": "All 981 tests pass. Let me summarize the diagnosis and fix:\n\n**Root cause:** The mismatches were caused by two issues, both already partially fixed:\n\n1. **Negative serial checks** (fixed in commit `ce6e528`): `DATE`, `YEAR`, `MONTH`, `DAY`, and `WORKDAY` were missing `if n \u003c 0 → #NUM!` guards. When `DATE(0, 0.001, 3.14)` computed a serial of -28 (December 3, 1899 — before Excel's epoch), it returned -28 as a number instead of `#NUM!`. Downstream functions then processed the negative serial, ...",
+  "timestamp": "2026-02-28T15:08:28.166567-07:00"
+}

@@ -565,7 +565,7 @@ func valueToFormulaValue(v Value) formula.Value {
 	case TypeBool:
 		return formula.BoolVal(v.Bool)
 	case TypeError:
-		return formula.ErrorVal(formula.ErrValVALUE)
+		return formula.ErrorVal(formula.ErrorValueFromString(v.String))
 	default:
 		return formula.EmptyVal()
 	}

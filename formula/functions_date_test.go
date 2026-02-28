@@ -874,6 +874,12 @@ func TestWORKDAY(t *testing.T) {
 
 		// Thursday + 2 = Monday (crosses one weekend)
 		{"thursday_plus_two", "WORKDAY(DATE(2008,10,2), 2)", "DATE(2008,10,6)"},
+
+		// === Empty string coercion: empty string coerces to 0 ===
+		// Empty string as start_date → serial 0 + 5 workdays = serial 5 (Jan 5, 1900 Fri)
+		{"empty_string_start_date", `WORKDAY("", 5)`, "DATE(1900,1,5)"},
+		// Empty string as days → 0 days, returns start_date unchanged
+		{"empty_string_days", `WORKDAY(DATE(2008,10,1), "")`, "DATE(2008,10,1)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1420,6 +1426,27 @@ func TestWORKDAYErrors(t *testing.T) {
 		// but verify guard works when start_date is already at boundary) ===
 		// DATE that produces serial exactly at boundary then backward
 		{"date_produces_small_serial_backward", "WORKDAY(DATE(1900,1,2), -2)", ErrValNUM},
+
+		// === Exact mismatch lock-in from test spec: positive extreme year (999999999) ===
+		// DATE(999999999, 0.001, 3.14159265358979) → #NUM! from extreme positive year.
+		// WORKDAY must propagate #NUM! (not #VALUE!). This was the exact bug:
+		// werkbook returned #VALUE! but local-excel returned #NUM!.
+		{"mismatch_lockin_pos_999999999_frac_days", "WORKDAY(DATE(999999999, 0.001, 3.14159265358979), 0.5)", ErrValNUM},
+		{"mismatch_lockin_pos_999999999_zero_days", "WORKDAY(DATE(999999999, 0.001, 3.14159265358979), 0)", ErrValNUM},
+		{"mismatch_lockin_pos_999999999_int_days", "WORKDAY(DATE(999999999, 0.001, 3.14159265358979), 5)", ErrValNUM},
+		{"mismatch_lockin_pos_999999999_neg_days", "WORKDAY(DATE(999999999, 0.001, 3.14159265358979), -1)", ErrValNUM},
+		// Variations with different extreme positive years
+		{"num_error_year_100000", "WORKDAY(DATE(100000,1,1), 5)", ErrValNUM},
+		{"num_error_year_50000", "WORKDAY(DATE(50000,1,1), 0)", ErrValNUM},
+		{"num_error_year_intmax", "WORKDAY(DATE(2147483647,1,1), 0)", ErrValNUM},
+		// Positive extreme year with fractional month and day (matching fuzz test spec inputs)
+		{"pos_extreme_year_frac_month", "WORKDAY(DATE(999999999, 0.5, 1), 0)", ErrValNUM},
+		{"pos_extreme_year_frac_day", "WORKDAY(DATE(999999999, 1, 0.5), 0)", ErrValNUM},
+		// Exact test spec scenario: C1=999999999, C2=0.001, C3=3.14159265358979, C5=0.5
+		{"test_spec_sheet4_a9", "WORKDAY(DATE(999999999, 0.001, 3.14159265358979), 0.5)", ErrValNUM},
+
+		// === Empty string as argument: coerced to 0 ===
+		// (empty string coerces to 0, which is valid for both start_date and days)
 	}
 
 	for _, tc := range tests {
@@ -1615,6 +1642,110 @@ func TestWORKDAYErrorPropagation(t *testing.T) {
 		}
 		if got.Type != ValueError || got.Err != ErrValNUM {
 			t.Errorf("WORKDAY with error in holidays: got %v, want #NUM!", got)
+		}
+	})
+
+	// === Exact test spec scenario lock-in (Sheet4!A9) ===
+	// Simulates: A1 = DATE(999999999, 0.001, 3.14159265358979) → #NUM!
+	// Then WORKDAY(A1, 0.5) must return #NUM!, not #VALUE!.
+	// This is the cross-sheet scenario from the fuzz test spec.
+	t.Run("test_spec_sheet4_a9_cell_ref", func(t *testing.T) {
+		// A1 holds the #NUM! error that DATE(999999999,...) would produce
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+				{Col: 2, Row: 1}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(#NUM!, 0.5) via cell ref: got %v, want #NUM!", got)
+		}
+	})
+
+	// #VALUE! in holiday range should propagate as #VALUE!
+	t.Run("value_error_in_holiday_range", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValVALUE),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(DATE(2008,10,1), 5, A1:A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("WORKDAY with #VALUE! in holidays: got %v, want #VALUE!", got)
+		}
+	})
+
+	// Both start_date and days are errors — first error (start_date) takes precedence
+	t.Run("both_args_are_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+				{Col: 2, Row: 1}: ErrorVal(ErrValVALUE),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Fatalf("WORKDAY(#NUM!, #VALUE!): got type %v, want error", got.Type)
+		}
+		// The first error encountered (start_date) should be propagated
+		if got.Err != ErrValNUM {
+			t.Errorf("WORKDAY(#NUM!, #VALUE!): got %v, want #NUM!", got.Err)
+		}
+	})
+
+	// Empty cell as start_date: empty → 0 (serial 0) + 0 days = serial 0
+	t.Run("empty_cell_as_start_date", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				// A1 not set → EmptyVal
+				{Col: 2, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("WORKDAY(empty, 1): got type %v (%v), want number", got.Type, got)
+		}
+		// Empty cell → serial 0 (Sun Dec 31 1899) + 1 workday = serial 1 (Mon Jan 1 1900)
+		if got.Num != 1 {
+			t.Errorf("WORKDAY(empty, 1) = %g, want 1", got.Num)
+		}
+	})
+
+	// Empty cell as days: empty → 0 days, returns start_date unchanged
+	t.Run("empty_cell_as_days", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39722), // Oct 1, 2008
+				// B1 not set → EmptyVal
+			},
+		}
+		cf := evalCompile(t, "WORKDAY(A1, B1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("WORKDAY(date, empty): got type %v (%v), want number", got.Type, got)
+		}
+		if got.Num != 39722 {
+			t.Errorf("WORKDAY(date, empty) = %g, want 39722", got.Num)
 		}
 	})
 }

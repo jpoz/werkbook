@@ -1,0 +1,7 @@
+{
+  "function": "WORKDAY",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"#VALUE!\" oracle=\"#NUM!\"",
+  "fix_summary": "All 1257 tests pass. Here's the diagnosis:\n\n**Root cause:** The bug is NOT in the formula functions — it's in `sheet.go:568`, in `valueToFormulaValue()`. The committed code was:\n\n```go\ncase TypeError:\n    return formula.ErrorVal(formula.ErrValVALUE)  // always returns #VALUE!\n```\n\nThis discarded the original error type, converting any error (`#NUM!`, `#DIV/0!`, `#REF!`, etc.) to `#VALUE!` when a cell reference was resolved. So when `DATE(-999999999, 0.001, 3.14)` correctly returned `#NUM!` in ...",
+  "timestamp": "2026-02-28T15:41:23.59104-07:00"
+}

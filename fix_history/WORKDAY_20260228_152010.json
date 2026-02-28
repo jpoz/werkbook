@@ -1,0 +1,7 @@
+{
+  "function": "WORKDAY",
+  "failure_type": "bug_in_function",
+  "error_pattern": "value mismatch: werkbook=\"0\" oracle=\"#NUM!\"",
+  "fix_summary": "Both fixes are applied and all 997 tests pass. Here's the summary:\n\n**Root causes and fixes:**\n\n1. **MOD(1e15, -1) → should be `#NUM!`** (`formula/functions_math.go:381`): The precision overflow threshold was `1\u003c\u003c53` (≈9e15), which didn't catch quotients of magnitude 1e15. Lowered to `1\u003c\u003c49` (≈5.6e14). At this magnitude, floating-point doubles have insufficient fractional precision for MOD to produce reliable results.\n\n2. **DATE(2024, -2147483648, -0.5) → should be `#NUM!`** (`formula/fu...",
+  "timestamp": "2026-02-28T15:20:10.878014-07:00"
+}
