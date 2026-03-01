@@ -691,3 +691,52 @@ func TestACOSHWithLibreOffice(t *testing.T) {
 		}
 	}
 }
+
+func TestCOMBINAWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set input values.
+	s.SetValue("A1", 4)
+	s.SetValue("B1", 3)
+	s.SetValue("A2", 10)
+	s.SetValue("B2", 3)
+
+	// Set COMBINA formulas.
+	s.SetFormula("C1", "COMBINA(A1,B1)")
+	s.SetFormula("C2", "COMBINA(A2,B2)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "combina.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected2 := []struct {
+		row  int
+		want string
+	}{
+		{0, "20"},
+		{1, "220"},
+	}
+
+	for _, tt := range expected2 {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 3 {
+			t.Errorf("row %d: expected at least 3 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][2]
+		if got != tt.want {
+			t.Errorf("C%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}

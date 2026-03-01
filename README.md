@@ -8,7 +8,7 @@ import "github.com/jpoz/werkbook"
 
 ## Excel Function Support
 
-**152 of 500+ Excel functions supported** | **1,371 tests passing**
+**153 of 500+ Excel functions supported** | **1,371 tests passing**
 
 ### Math & Trigonometry
 
@@ -24,6 +24,7 @@ import "github.com/jpoz/werkbook"
 | ATANH | :white_check_mark: | 7 |
 | CEILING | :white_check_mark: | 2 |
 | COMBIN | :white_check_mark: | 6 |
+| COMBINA | :white_check_mark: | 8 |
 | COS | :white_check_mark: | 1 |
 | COSH | :white_check_mark: | 4 |
 | DEGREES | :white_check_mark: | 3 |
@@ -66,7 +67,7 @@ import "github.com/jpoz/werkbook"
 | TANH | :white_check_mark: | 4 |
 | TRUNC | :white_check_mark: | 1 |
 
-Not yet supported: ACOT, ACOTH, AGGREGATE, ARABIC, BASE, CEILING.MATH, CEILING.PRECISE, COMBINA, COT, COTH, CSC, CSCH, DECIMAL, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MULTINOMIAL, MUNIT, RANDARRAY, ROMAN, SEC, SECH, SEQUENCE, SERIESSUM, SUMX2MY2, SUMX2PY2, SUMXMY2
+Not yet supported: ACOT, ACOTH, AGGREGATE, ARABIC, BASE, CEILING.MATH, CEILING.PRECISE, COT, COTH, CSC, CSCH, DECIMAL, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MULTINOMIAL, MUNIT, RANDARRAY, ROMAN, SEC, SECH, SEQUENCE, SERIESSUM, SUMX2MY2, SUMX2PY2, SUMXMY2
 
 ### Statistical
 

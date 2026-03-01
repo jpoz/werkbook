@@ -560,6 +560,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCEILING(args)
 	case "COMBIN":
 		return fnCOMBIN(args)
+	case "COMBINA":
+		return fnCOMBINA(args)
 	case "COS":
 		return fnCOS(args)
 	case "COSH":

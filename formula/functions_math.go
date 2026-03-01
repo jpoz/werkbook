@@ -165,6 +165,39 @@ func fnCOMBIN(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnCOMBINA(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	n := int(math.Trunc(nf))
+	k := int(math.Trunc(kf))
+	if n < 0 || k < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// COMBINA(n,k) = C(n+k-1, k)
+	total := n + k - 1
+	if k == 0 {
+		return NumberVal(1), nil
+	}
+	if total < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Multiplicative formula: C(total, k)
+	result := 1.0
+	for i := 1; i <= k; i++ {
+		result = result * float64(total-k+i) / float64(i)
+	}
+	return NumberVal(result), nil
+}
+
 func fnDEGREES(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
