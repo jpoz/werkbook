@@ -275,6 +275,28 @@ func fnFACT(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnFACTDOUBLE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n := int(math.Trunc(nf))
+	if n < -1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if n <= 0 {
+		return NumberVal(1), nil
+	}
+	result := 1.0
+	for i := n; i >= 2; i -= 2 {
+		result *= float64(i)
+	}
+	return NumberVal(result), nil
+}
+
 func fnFLOOR(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil

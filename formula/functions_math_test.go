@@ -125,6 +125,12 @@ func TestMathFunctions(t *testing.T) {
 		{"SQRTPI(2)", math.Sqrt(2 * math.Pi), 1e-10},
 		{"SQRTPI(0)", 0, 0},
 		{"SQRTPI(4)", math.Sqrt(4 * math.Pi), 1e-10},
+		{"FACTDOUBLE(6)", 48, 0},
+		{"FACTDOUBLE(7)", 105, 0},
+		{"FACTDOUBLE(0)", 1, 0},
+		{"FACTDOUBLE(1)", 1, 0},
+		{"FACTDOUBLE(10)", 3840, 0},
+		{"FACTDOUBLE(-1)", 1, 0},
 	}
 
 	for _, tt := range numTests {
@@ -176,6 +182,7 @@ func TestMathErrors(t *testing.T) {
 		{"COMBIN(3,5)", ErrValNUM},
 		{"COMBIN(-1,2)", ErrValNUM},
 		{"FACT(-1)", ErrValNUM},
+		{"FACTDOUBLE(-2)", ErrValNUM},
 		{"GCD(-5,2)", ErrValNUM},
 		{"LCM(-5,2)", ErrValNUM},
 		{"MROUND(5,-2)", ErrValNUM},

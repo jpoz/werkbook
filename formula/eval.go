@@ -572,6 +572,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnEXP(args)
 	case "FACT":
 		return fnFACT(args)
+	case "FACTDOUBLE":
+		return fnFACTDOUBLE(args)
 	case "FLOOR":
 		return fnFLOOR(args)
 	case "GCD":
