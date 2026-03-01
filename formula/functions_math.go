@@ -693,6 +693,20 @@ func fnSQRT(args []Value) (Value, error) {
 	return NumberVal(math.Sqrt(n)), nil
 }
 
+func fnSQRTPI(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Sqrt(n * math.Pi)), nil
+}
+
 func fnTRUNC(args []Value) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil

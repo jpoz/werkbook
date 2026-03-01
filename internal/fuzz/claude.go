@@ -45,7 +45,7 @@ var ImplementedFunctions = map[string]bool{
 	"REPLACE": true, "REPT": true, "RIGHT": true,
 	"ROUND": true, "ROUNDDOWN": true, "ROUNDUP": true, "ROW": true, "ROWS": true,
 	"SEARCH": true, "SECOND": true, "SIGN": true, "SIN": true, "SINH": true, "SMALL": true, "SORT": true,
-	"SQRT": true, "SUBSTITUTE": true, "SUM": true, "SUMIF": true, "SUMIFS": true, "SUMPRODUCT": true,
+	"SQRT": true, "SQRTPI": true, "SUBSTITUTE": true, "SUM": true, "SUMIF": true, "SUMIFS": true, "SUMPRODUCT": true,
 	"TAN": true, "TANH": true, "TEXT": true, "TIME": true, "TODAY": true, "TRIM": true, "TRUNC": true,
 	"UPPER": true, "VALUE": true, "VLOOKUP": true, "XLOOKUP": true, "XOR": true, "YEAR": true,
 }

@@ -121,6 +121,10 @@ func TestMathFunctions(t *testing.T) {
 		{"RADIANS(180)", math.Pi, 1e-10},
 		{"RADIANS(0)", 0, 0},
 		{"RADIANS(360)", 2 * math.Pi, 1e-10},
+		{"SQRTPI(1)", math.Sqrt(math.Pi), 1e-10},
+		{"SQRTPI(2)", math.Sqrt(2 * math.Pi), 1e-10},
+		{"SQRTPI(0)", 0, 0},
+		{"SQRTPI(4)", math.Sqrt(4 * math.Pi), 1e-10},
 	}
 
 	for _, tt := range numTests {
@@ -162,6 +166,7 @@ func TestMathErrors(t *testing.T) {
 		{"LOG(-1)", ErrValNUM},
 		{"LOG(10,1)", ErrValNUM},
 		{"SQRT(-1)", ErrValNUM},
+		{"SQRTPI(-1)", ErrValNUM},
 		{"MOD(10,0)", ErrValDIV0},
 		{"MOD(100,-1e-15)", ErrValNUM},
 		{"ATANH(1)", ErrValNUM},

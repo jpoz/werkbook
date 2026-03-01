@@ -622,6 +622,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSINH(args)
 	case "SQRT":
 		return fnSQRT(args)
+	case "SQRTPI":
+		return fnSQRTPI(args)
 	case "SUBTOTAL":
 		return fnSUBTOTAL(args)
 	case "TAN":
