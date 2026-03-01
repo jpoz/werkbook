@@ -13,6 +13,7 @@ var xlfnPrefix = map[string]string{
 	"CONCAT":   "_xlfn.",
 	"COSH":     "_xlfn.",
 	"DAYS":        "_xlfn.",
+	"DECIMAL":     "_xlfn.",
 	"FACTDOUBLE":  "_xlfn.",
 	"IFERROR":    "_xlfn.",
 	"IFNA":       "_xlfn.",

@@ -566,6 +566,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOS(args)
 	case "COSH":
 		return fnCOSH(args)
+	case "DECIMAL":
+		return fnDECIMAL(args)
 	case "DEGREES":
 		return fnDEGREES(args)
 	case "EVEN":

@@ -137,6 +137,12 @@ func TestMathFunctions(t *testing.T) {
 		{"FACTDOUBLE(1)", 1, 0},
 		{"FACTDOUBLE(10)", 3840, 0},
 		{"FACTDOUBLE(-1)", 1, 0},
+		{`DECIMAL("FF",16)`, 255, 0},
+		{`DECIMAL("111",2)`, 7, 0},
+		{`DECIMAL("77",8)`, 63, 0},
+		{`DECIMAL("ZZ",36)`, 1295, 0},
+		{`DECIMAL("0",10)`, 0, 0},
+		{`DECIMAL("10",10)`, 10, 0},
 	}
 
 	for _, tt := range numTests {
@@ -197,6 +203,8 @@ func TestMathErrors(t *testing.T) {
 		{"QUOTIENT(10,0)", ErrValDIV0},
 		// MOD precision overflow: |n/d| exceeds 2^53
 		{"MOD(1e18,3)", ErrValNUM},
+		{`DECIMAL("G",16)`, ErrValNUM},
+		{`DECIMAL("FF",1)`, ErrValNUM},
 	}
 
 	for _, tt := range errTests {

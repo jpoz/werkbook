@@ -3,6 +3,8 @@ package formula
 import (
 	"math"
 	"math/rand"
+	"strconv"
+	"strings"
 )
 
 func fnABS(args []Value) (Value, error) {
@@ -196,6 +198,44 @@ func fnCOMBINA(args []Value) (Value, error) {
 		result = result * float64(total-k+i) / float64(i)
 	}
 	return NumberVal(result), nil
+}
+
+func fnDECIMAL(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Get the text
+	text := ""
+	switch args[0].Type {
+	case ValueString:
+		text = args[0].Str
+	case ValueNumber:
+		text = strconv.FormatFloat(args[0].Num, 'f', -1, 64)
+	case ValueError:
+		return args[0], nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	radix, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	r := int(math.Trunc(radix))
+	if r < 2 || r > 36 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	result, err := strconv.ParseInt(text, r, 64)
+	if err != nil {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(float64(result)), nil
 }
 
 func fnDEGREES(args []Value) (Value, error) {

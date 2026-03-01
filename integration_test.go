@@ -692,6 +692,51 @@ func TestACOSHWithLibreOffice(t *testing.T) {
 	}
 }
 
+func TestDECIMALWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", "FF")
+	s.SetValue("B1", 16)
+	s.SetValue("A2", "111")
+	s.SetValue("B2", 2)
+	s.SetFormula("C1", `DECIMAL(A1,B1)`)
+	s.SetFormula("C2", `DECIMAL(A2,B2)`)
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "decimal.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "255"},
+		{1, "7"},
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 3 {
+			t.Errorf("row %d: expected at least 3 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][2]
+		if got != tt.want {
+			t.Errorf("C%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}
+
 func TestCOMBINAWithLibreOffice(t *testing.T) {
 	soffice := requireLibreOffice(t)
 
