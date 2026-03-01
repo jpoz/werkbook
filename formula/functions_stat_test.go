@@ -5,6 +5,98 @@ import (
 	"testing"
 )
 
+// ---------------------------------------------------------------------------
+// AVEDEV — average of absolute deviations from mean
+// ---------------------------------------------------------------------------
+
+func TestAVEDEV(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "excel_example",
+			formula:   "AVEDEV(4,5,6,7,5,4,3)",
+			wantNum:   1.020408,
+			tolerance: 0.000001,
+		},
+		{
+			name:      "simple_1_to_5",
+			formula:   "AVEDEV(1,2,3,4,5)",
+			wantNum:   1.2,
+			tolerance: 0.0000001,
+		},
+		{
+			name:      "all_same",
+			formula:   "AVEDEV(10,10,10)",
+			wantNum:   0,
+			tolerance: 0,
+		},
+		{
+			name:      "outlier",
+			formula:   "AVEDEV(1,1,1,1,100)",
+			wantNum:   31.68,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}
+
+func TestAVEDEVWithRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+
+	cf := evalCompile(t, "AVEDEV(A1:A5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("AVEDEV(A1:A5): got type %v, want number", got.Type)
+	}
+	if math.Abs(got.Num-1.2) > 0.0000001 {
+		t.Errorf("AVEDEV(A1:A5): got %g, want 1.2", got.Num)
+	}
+}
+
 func TestMedian(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{

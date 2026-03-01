@@ -976,6 +976,36 @@ func TestTrigReciprocalFunctionsWithLibreOffice(t *testing.T) {
 	}
 }
 
+func TestAVEDEVWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", 1)
+	s.SetValue("A2", 2)
+	s.SetValue("A3", 3)
+	s.SetValue("A4", 4)
+	s.SetValue("A5", 5)
+	s.SetFormula("B1", "AVEDEV(A1:A5)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "avedev.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	if len(records) < 1 || len(records[0]) < 2 {
+		t.Fatalf("unexpected CSV shape: %v", records)
+	}
+	got := records[0][1]
+	if got != "1.2" {
+		t.Errorf("B1 = %q, want %q", got, "1.2")
+	}
+}
+
 func TestDAYS360WithLibreOffice(t *testing.T) {
 	soffice := requireLibreOffice(t)
 

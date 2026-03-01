@@ -658,6 +658,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnTRUNC(args)
 
 	// Statistics
+	case "AVEDEV":
+		return fnAVEDEV(args)
 	case "AVERAGE":
 		return fnAVERAGE(args)
 	case "AVERAGEIF":

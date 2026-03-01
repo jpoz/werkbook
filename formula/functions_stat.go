@@ -15,6 +15,36 @@ func fnSUM(args []Value) (Value, error) {
 	return NumberVal(sum), nil
 }
 
+func fnAVEDEV(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Compute mean
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	// Compute average of absolute deviations
+	absDevSum := 0.0
+	for _, v := range nums {
+		d := v - mean
+		if d < 0 {
+			d = -d
+		}
+		absDevSum += d
+	}
+	return NumberVal(absDevSum / float64(n)), nil
+}
+
 func fnAVERAGE(args []Value) (Value, error) {
 	sum := 0.0
 	count := 0
