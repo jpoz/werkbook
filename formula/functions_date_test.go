@@ -947,6 +947,57 @@ func TestWORKDAY(t *testing.T) {
 		{"dst_spring_forward_sunday", "WORKDAY(DATE(2020,3,8), 1)", "DATE(2020,3,9)"},
 		// DST boundary: Nov 1, 2020 (Sun) + 1 = Mon Nov 2
 		{"dst_fall_back_sunday", "WORKDAY(DATE(2020,11,1), 1)", "DATE(2020,11,2)"},
+
+		// === Mismatch lock-in: DATE floor-truncation flowing into WORKDAY ===
+		// DATE(2024,-0.5,3.14...) uses Floor(-0.5)=-1 for month →
+		// DATE(2024,-1,3) = Nov 3, 2023 (Fri, serial 45233).
+		// Verify WORKDAY uses the correct serial with various day counts.
+		{"mismatch_serial_45233_zero_days", "WORKDAY(45233, 0)", "45233"},
+		{"mismatch_serial_45233_plus_one", "WORKDAY(45233, 1)", "DATE(2023,11,6)"},
+		{"mismatch_serial_45233_plus_five", "WORKDAY(45233, 5)", "DATE(2023,11,10)"},
+		{"mismatch_serial_45233_minus_one", "WORKDAY(45233, -1)", "DATE(2023,11,2)"},
+		// DATE with negative fractional month + positive workdays (not just truncated-to-zero days)
+		{"date_neg_frac_month_plus_three", "WORKDAY(DATE(2024,-0.5,3.14159265358979), 3)", "DATE(2023,11,8)"},
+		{"date_neg_frac_month_plus_five", "WORKDAY(DATE(2024,-0.5,3.14159265358979), 5)", "DATE(2023,11,10)"},
+		{"date_neg_frac_month_minus_five", "WORKDAY(DATE(2024,-0.5,3.14159265358979), -5)", "DATE(2023,10,27)"},
+
+		// === Time preservation across weekends ===
+		// Fri at noon + 1 = Mon at noon (time component preserved)
+		{"time_preserved_across_weekend_fwd", "WORKDAY(DATE(2008,10,3)+0.5, 1)", "DATE(2008,10,6)+0.5"},
+		// Mon at noon - 1 = Fri at noon
+		{"time_preserved_across_weekend_bwd", "WORKDAY(DATE(2008,10,6)+0.5, -1)", "DATE(2008,10,3)+0.5"},
+		// Time preserved across multiple weekends
+		{"time_preserved_multi_weekend", "WORKDAY(DATE(2008,10,3)+0.25, 10)", "DATE(2008,10,17)+0.25"},
+
+		// === DATE with month floor causing year wrap ===
+		// DATE(2024,0.9,15): Floor(0.9)=0 → Dec 15, 2023 (Fri)
+		{"date_month_floor_to_zero", "WORKDAY(DATE(2024,0.9,15), 1)", "DATE(2023,12,18)"},
+		// DATE(2024,-13,1): month=-13 → Nov 1, 2022 (Tue) + 1 = Nov 2, 2022 (Wed)
+		{"date_large_neg_month_wrap", "WORKDAY(DATE(2024,-13,1), 1)", "DATE(2022,11,2)"},
+
+		// === Days truncation verification (INT not FLOOR for negative) ===
+		// -2.1 truncates to -2: Mon Oct 6 - 2 = Thu Oct 2
+		{"days_neg_2_1_truncates_to_neg_2", "WORKDAY(DATE(2008,10,6), -2.1)", "DATE(2008,10,2)"},
+		// -4.999 truncates to -4
+		{"days_neg_4_999_truncates_to_neg_4", "WORKDAY(DATE(2008,10,8), -4.999)", "DATE(2008,10,2)"},
+		// 999.99 truncates to 999 (large fractional)
+		{"large_fractional_days", "WORKDAY(DATE(2008,10,1), 999.99)", "WORKDAY(DATE(2008,10,1), 999)"},
+
+		// === Result at max serial boundary (using DATE for proper date handling) ===
+		// Dec 29, 9999 (Wed) + 2 = Dec 31, 9999 (Fri)
+		{"result_near_max_serial_via_date", "WORKDAY(DATE(9999,12,29), 2)", "DATE(9999,12,31)"},
+
+		// === Every day of week as start_date (completeness) ===
+		// Mon Oct 6 + 1 = Tue Oct 7
+		{"start_monday", "WORKDAY(DATE(2008,10,6), 1)", "DATE(2008,10,7)"},
+		// Tue Oct 7 + 1 = Wed Oct 8
+		{"start_tuesday", "WORKDAY(DATE(2008,10,7), 1)", "DATE(2008,10,8)"},
+		// Wed Oct 8 + 1 = Thu Oct 9
+		{"start_wednesday", "WORKDAY(DATE(2008,10,8), 1)", "DATE(2008,10,9)"},
+		// Thu Oct 9 + 1 = Fri Oct 10
+		{"start_thursday", "WORKDAY(DATE(2008,10,9), 1)", "DATE(2008,10,10)"},
+		// Fri Oct 10 + 1 = Mon Oct 13 (skips weekend)
+		{"start_friday", "WORKDAY(DATE(2008,10,10), 1)", "DATE(2008,10,13)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1543,6 +1594,37 @@ func TestWORKDAYWithHolidays(t *testing.T) {
 		}
 	})
 
+	// Holiday on the corrected DATE result (mismatch lock-in)
+	// DATE(2024,-0.5,3.14...) = Nov 3, 2023 (Fri). If Nov 3 is a holiday,
+	// WORKDAY(Nov 3, 1) should skip to next workday = Nov 6 (Mon).
+	t.Run("mismatch_date_result_with_holiday", func(t *testing.T) {
+		cfNov3 := evalCompile(t, "DATE(2023,11,3)")
+		nov3, _ := Eval(cfNov3, nil, nil)
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(nov3.Num),
+			},
+		}
+		// Start = DATE(2024,-0.5,3.14...) = Nov 3, 2023 (Fri).
+		// Nov 3 is a holiday, so +1 workday: skip Sat/Sun → Mon Nov 6, then Nov 6 is workday #1
+		cf := evalCompile(t, "WORKDAY(DATE(2024,-0.5,3.14159265358979), 1, A1:A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("got type %v (%v), want number", got.Type, got)
+		}
+		cfExpect := evalCompile(t, "DATE(2023,11,6)")
+		want, err := Eval(cfExpect, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval expect: %v", err)
+		}
+		if got.Num != want.Num {
+			t.Errorf("WORKDAY with holiday on mismatch date = %g, want %g", got.Num, want.Num)
+		}
+	})
+
 	// Holidays far in the future have no effect on backward counting
 	t.Run("future_holidays_no_effect_on_backward", func(t *testing.T) {
 		cfDec31 := evalCompile(t, "DATE(2008,12,31)")
@@ -1751,6 +1833,14 @@ func TestWORKDAYErrors(t *testing.T) {
 		{"bool_false_backward", "WORKDAY(FALSE, -1)", ErrValNUM},
 		// Boolean TRUE (=1, Mon Jan 1 1900) backward 1 → past epoch → #NUM!
 		{"bool_true_backward_one", "WORKDAY(TRUE, -1)", ErrValNUM},
+
+		// === Mismatch lock-in: DATE with negative fractional month producing different serial ===
+		// Verify WORKDAY(DATE(2024,-0.5,pi), 0.5) does NOT produce serial 45263
+		// (the old wrong value); it should produce 45233 (correct).
+		// We can't directly test "not equal" in this error table, but we CAN verify
+		// that WORKDAY with a truly invalid start propagates errors correctly.
+		// DATE(0,-0.5,1): Floor(-0.5)=-1 → month=-1 → Nov 1899 → serial < 0 → #NUM!
+		{"date_year0_neg_frac_month", "WORKDAY(DATE(0,-0.5,1), 0)", ErrValNUM},
 	}
 
 	for _, tc := range tests {
