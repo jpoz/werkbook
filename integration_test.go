@@ -1043,3 +1043,35 @@ func TestDAYS360WithLibreOffice(t *testing.T) {
 		}
 	}
 }
+
+func TestDEVSQWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", 4)
+	s.SetValue("A2", 5)
+	s.SetValue("A3", 8)
+	s.SetValue("A4", 7)
+	s.SetValue("A5", 11)
+	s.SetValue("A6", 4)
+	s.SetValue("A7", 3)
+	s.SetFormula("B1", "DEVSQ(A1:A7)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "devsq.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	if len(records) < 1 || len(records[0]) < 2 {
+		t.Fatalf("unexpected CSV shape: %v", records)
+	}
+	got := records[0][1]
+	if got != "48" {
+		t.Errorf("B1 = %q, want %q", got, "48")
+	}
+}

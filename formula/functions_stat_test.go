@@ -260,6 +260,57 @@ func TestMatchesCriteria(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DEVSQ — sum of squares of deviations from the mean
+// ---------------------------------------------------------------------------
+
+func TestDEVSQ(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{
+			name:    "excel_docs_example",
+			formula: "DEVSQ(4,5,8,7,11,4,3)",
+			wantNum: 48,
+		},
+		{
+			name:    "simple_1_to_5",
+			formula: "DEVSQ(1,2,3,4,5)",
+			wantNum: 10,
+		},
+		{
+			name:    "all_same",
+			formula: "DEVSQ(10,10,10)",
+			wantNum: 0,
+		},
+		{
+			name:    "single_value",
+			formula: "DEVSQ(5)",
+			wantNum: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-9 {
+				t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTA — counts all non-empty cells
 // ---------------------------------------------------------------------------
 

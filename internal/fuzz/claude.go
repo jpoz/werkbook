@@ -34,7 +34,7 @@ var ImplementedFunctions = map[string]bool{
 	"COLUMNS": true, "COMBINA": true, "CONCAT": true, "CONCATENATE": true, "COS": true, "COSH": true,
 	"COT": true, "COTH": true, "COUNT": true, "COUNTA": true, "COUNTBLANK": true, "COUNTIF": true, "COUNTIFS": true,
 	"CSC": true, "CSCH": true,
-	"DATE": true, "DAY": true, "DECIMAL": true, "EXACT": true, "EXP": true, "FACTDOUBLE": true, "FIND": true, "FLOOR": true,
+	"DATE": true, "DAY": true, "DECIMAL": true, "DEVSQ": true, "EXACT": true, "EXP": true, "FACTDOUBLE": true, "FIND": true, "FLOOR": true,
 	"HLOOKUP": true, "HOUR": true, "IF": true, "IFERROR": true, "IFNA": true,
 	"INDEX": true, "INDIRECT": true, "INT": true,
 	"ISBLANK": true, "ISERR": true, "ISERROR": true, "ISNA": true, "ISNUMBER": true, "ISTEXT": true,

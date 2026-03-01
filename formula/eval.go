@@ -668,6 +668,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnAVERAGEIFS(args)
 	case "COUNT":
 		return fnCOUNT(args)
+	case "DEVSQ":
+		return fnDEVSQ(args)
 	case "COUNTA":
 		return fnCOUNTA(args)
 	case "COUNTBLANK":
