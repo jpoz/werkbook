@@ -544,6 +544,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnABS(args)
 	case "ACOS":
 		return fnACOS(args)
+	case "ACOSH":
+		return fnACOSH(args)
 	case "ASIN":
 		return fnASIN(args)
 	case "ATAN":

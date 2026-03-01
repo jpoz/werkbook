@@ -39,6 +39,20 @@ func fnACOS(args []Value) (Value, error) {
 	return NumberVal(math.Acos(n)), nil
 }
 
+func fnACOSH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Acosh(n)), nil
+}
+
 func fnASIN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

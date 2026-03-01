@@ -17,6 +17,9 @@ func TestMathFunctions(t *testing.T) {
 		{"ABS(3)", 3, 0},
 		{"ACOS(1)", 0, 1e-10},
 		{"ACOS(0)", math.Pi / 2, 1e-10},
+		{"ACOSH(1)", 0, 1e-10},
+		{"ACOSH(2)", math.Acosh(2), 1e-10},
+		{"ACOSH(10)", math.Acosh(10), 1e-10},
 		{"ASIN(0)", 0, 1e-10},
 		{"ASIN(1)", math.Pi / 2, 1e-10},
 		{"ATAN(0)", 0, 1e-10},
@@ -131,6 +134,9 @@ func TestMathErrors(t *testing.T) {
 		errVal  ErrorValue
 	}{
 		{"ACOS(2)", ErrValNUM},
+		{"ACOSH(0)", ErrValNUM},
+		{"ACOSH(0.5)", ErrValNUM},
+		{"ACOSH(-1)", ErrValNUM},
 		{"ASIN(2)", ErrValNUM},
 		{"LN(-1)", ErrValNUM},
 		{"LOG(-1)", ErrValNUM},

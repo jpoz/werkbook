@@ -8,7 +8,7 @@ import (
 // knownFunctions lists the function names the compiler recognises.
 // The index in this slice is the function ID encoded in OpCall.
 var knownFunctions = [...]string{
-	"ABS", "ACOS", "ADDRESS", "AND", "ASIN", "ATAN", "ATAN2", "AVERAGE", "AVERAGEIF",
+	"ABS", "ACOS", "ACOSH", "ADDRESS", "AND", "ASIN", "ATAN", "ATAN2", "AVERAGE", "AVERAGEIF",
 	"AVERAGEIFS", "CEILING", "CHAR", "CHOOSE", "CLEAN", "CODE", "COLUMN",
 	"COLUMNS", "COMBIN", "CONCAT", "CONCATENATE", "COS", "COUNT", "COUNTA", "COUNTBLANK",
 	"COUNTIF", "COUNTIFS", "DATE", "DATEDIF", "DATEVALUE", "DAY", "DAYS", "DEGREES", "EDATE", "EOMONTH",

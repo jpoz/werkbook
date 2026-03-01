@@ -291,3 +291,53 @@ func TestMultiSheetFormulaWithLibreOffice(t *testing.T) {
 		t.Errorf("Sheet2 A1 = %q, want %q", val, "200")
 	}
 }
+
+func TestACOSHWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set input values.
+	s.SetValue("A1", 1)
+	s.SetValue("A2", 2)
+	s.SetValue("A3", 10)
+
+	// Set ACOSH formulas.
+	s.SetFormula("B1", "ACOSH(A1)")
+	s.SetFormula("B2", "ACOSH(A2)")
+	s.SetFormula("B3", "ACOSH(A3)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "acosh.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "0"},
+		{1, "1.31695789692482"},
+		{2, "2.99322284612638"},
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 2 {
+			t.Errorf("row %d: expected at least 2 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][1]
+		if got != tt.want {
+			t.Errorf("B%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}
