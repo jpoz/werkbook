@@ -19,6 +19,7 @@ var xlfnPrefix = map[string]string{
 	"MAXIFS":   "_xlfn.",
 	"MINIFS":      "_xlfn.",
 	"NUMBERVALUE": "_xlfn.",
+	"SINH":        "_xlfn.",
 	"SORT":        "_xlfn._xlws.",
 	"SWITCH":   "_xlfn.",
 	"TEXTJOIN": "_xlfn.",

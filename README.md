@@ -8,7 +8,7 @@ import "github.com/jpoz/werkbook"
 
 ## Excel Function Support
 
-**148 of 500+ Excel functions supported** | **1,371 tests passing**
+**149 of 500+ Excel functions supported** | **1,371 tests passing**
 
 ### Math & Trigonometry
 
@@ -52,6 +52,7 @@ import "github.com/jpoz/werkbook"
 | ROUNDUP | :white_check_mark: | 2 |
 | SIGN | :white_check_mark: | 1 |
 | SIN | :white_check_mark: | 1 |
+| SINH | :white_check_mark: | 4 |
 | SQRT | :white_check_mark: | 3 |
 | SUBTOTAL | :white_check_mark: | 10 |
 | SUM | :white_check_mark: | 37 |
@@ -62,7 +63,7 @@ import "github.com/jpoz/werkbook"
 | TAN | :white_check_mark: | 1 |
 | TRUNC | :white_check_mark: | 1 |
 
-Not yet supported: ACOT, ACOTH, AGGREGATE, ARABIC, BASE, CEILING.MATH, CEILING.PRECISE, COMBINA, COT, COTH, CSC, CSCH, DECIMAL, FACTDOUBLE, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MULTINOMIAL, MUNIT, RANDARRAY, ROMAN, SEC, SECH, SEQUENCE, SERIESSUM, SINH, SQRTPI, SUMX2MY2, SUMX2PY2, SUMXMY2, TANH
+Not yet supported: ACOT, ACOTH, AGGREGATE, ARABIC, BASE, CEILING.MATH, CEILING.PRECISE, COMBINA, COT, COTH, CSC, CSCH, DECIMAL, FACTDOUBLE, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MULTINOMIAL, MUNIT, RANDARRAY, ROMAN, SEC, SECH, SEQUENCE, SERIESSUM, SQRTPI, SUMX2MY2, SUMX2PY2, SUMXMY2, TANH
 
 ### Statistical
 

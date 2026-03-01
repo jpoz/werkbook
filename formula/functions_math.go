@@ -664,6 +664,21 @@ func fnSIN(args []Value) (Value, error) {
 	return NumberVal(math.Sin(n)), nil
 }
 
+func fnSINH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	result := math.Sinh(n)
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(result), nil
+}
+
 func fnSQRT(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
