@@ -28,7 +28,7 @@ func IsClaudeCLIError(err error) bool {
 // ImplementedFunctions is the set of functions werkbook's formula engine currently supports.
 // Sourced from formula/compiler.go knownFunctions.
 var ImplementedFunctions = map[string]bool{
-	"ABS": true, "ACOS": true, "ACOSH": true, "AND": true, "ASIN": true, "ASINH": true, "ATAN": true, "ATAN2": true, "ATANH": true,
+	"ABS": true, "ACOS": true, "ACOSH": true, "AND": true, "ARABIC": true, "ASIN": true, "ASINH": true, "ATAN": true, "ATAN2": true, "ATANH": true,
 	"AVERAGE": true, "AVERAGEIF": true, "AVERAGEIFS": true, "CEILING": true,
 	"CHAR": true, "CHOOSE": true, "CLEAN": true, "CODE": true, "COLUMN": true,
 	"COLUMNS": true, "COMBINA": true, "CONCAT": true, "CONCATENATE": true, "COS": true, "COSH": true,

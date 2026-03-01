@@ -55,6 +55,62 @@ func fnACOSH(args []Value) (Value, error) {
 	return NumberVal(math.Acosh(n)), nil
 }
 
+func fnARABIC(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	var text string
+	switch args[0].Type {
+	case ValueString:
+		text = strings.TrimSpace(strings.ToUpper(args[0].Str))
+	case ValueError:
+		return args[0], nil
+	case ValueEmpty:
+		return NumberVal(0), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if text == "" {
+		return NumberVal(0), nil
+	}
+
+	negative := false
+	if text[0] == '-' {
+		negative = true
+		text = text[1:]
+	}
+
+	romanValues := map[byte]int{
+		'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000,
+	}
+
+	result := 0
+	for i := 0; i < len(text); i++ {
+		val, ok := romanValues[text[i]]
+		if !ok {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		if i+1 < len(text) {
+			nextVal, ok2 := romanValues[text[i+1]]
+			if !ok2 {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			if val < nextVal {
+				result -= val
+			} else {
+				result += val
+			}
+		} else {
+			result += val
+		}
+	}
+
+	if negative {
+		result = -result
+	}
+	return NumberVal(float64(result)), nil
+}
+
 func fnASIN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

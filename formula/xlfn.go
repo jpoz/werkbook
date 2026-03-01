@@ -7,6 +7,7 @@ import "strings"
 // that require a special prefix in the XML to be recognized by Excel.
 var xlfnPrefix = map[string]string{
 	"ACOSH":    "_xlfn.",
+	"ARABIC":   "_xlfn.",
 	"ASINH":    "_xlfn.",
 	"ATANH":    "_xlfn.",
 	"COMBINA":  "_xlfn.",

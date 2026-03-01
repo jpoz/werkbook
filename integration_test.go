@@ -785,6 +785,49 @@ func TestMULTINOMIALWithLibreOffice(t *testing.T) {
 	}
 }
 
+func TestARABICWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", "MCMXCIX")
+	s.SetValue("A2", "XLII")
+	s.SetFormula("B1", "ARABIC(A1)")
+	s.SetFormula("B2", "ARABIC(A2)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "arabic.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "1999"},
+		{1, "42"},
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 2 {
+			t.Errorf("row %d: expected at least 2 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][1]
+		if got != tt.want {
+			t.Errorf("B%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}
+
 func TestCOMBINAWithLibreOffice(t *testing.T) {
 	soffice := requireLibreOffice(t)
 

@@ -149,6 +149,13 @@ func TestMathFunctions(t *testing.T) {
 		{"MULTINOMIAL(0,0)", 1, 0},
 		{"MULTINOMIAL(3,3)", 20, 0},
 		{"MULTINOMIAL(2,2,2)", 90, 0},
+		{`ARABIC("I")`, 1, 0},
+		{`ARABIC("IV")`, 4, 0},
+		{`ARABIC("IX")`, 9, 0},
+		{`ARABIC("MCMXCIX")`, 1999, 0},
+		{`ARABIC("MMXXVI")`, 2026, 0},
+		{`ARABIC("XLII")`, 42, 0},
+		{`ARABIC("CD")`, 400, 0},
 	}
 
 	for _, tt := range numTests {
@@ -212,6 +219,7 @@ func TestMathErrors(t *testing.T) {
 		{`DECIMAL("G",16)`, ErrValNUM},
 		{`DECIMAL("FF",1)`, ErrValNUM},
 		{"MULTINOMIAL(-1,2)", ErrValNUM},
+		{`ARABIC("ABC")`, ErrValVALUE},
 	}
 
 	for _, tt := range errTests {
