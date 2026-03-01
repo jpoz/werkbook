@@ -4,9 +4,30 @@ A Go library for reading and writing Excel XLSX files with a built-in formula en
 
 ## Install
 
+### Library
+
 ```bash
 go get github.com/werkbook/werkbook
 ```
+
+### CLI
+
+```bash
+go install github.com/werkbook/werkbook/cmd/werkbook@latest
+```
+
+This installs the `werkbook` binary, which provides commands for reading, editing, and creating XLSX files from the command line:
+
+```bash
+werkbook info file.xlsx                        # Sheet metadata
+werkbook read file.xlsx --range A1:D10         # Read cell data
+werkbook edit file.xlsx --patch '[{"cell":"A1","value":"Hello"}]'  # Edit cells
+werkbook create new.xlsx --spec '{"sheets":["Data"]}'             # Create workbook
+werkbook calc file.xlsx                        # Recalculate formulas
+werkbook formula list                          # List available functions
+```
+
+All output uses a JSON envelope by default. Use `--format markdown` or `--format csv` for other formats.
 
 ## Quick Start
 
