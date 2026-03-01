@@ -1,0 +1,162 @@
+[
+  {
+    "ref": "Sheet1!G1",
+    "value": "150",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G7",
+    "value": "30",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G13",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G19",
+    "value": "50",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G25",
+    "value": "10",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G31",
+    "value": "30",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G37",
+    "value": "12000000",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G43",
+    "value": "15.8113883008419",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G49",
+    "value": "14.142135623731",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G55",
+    "value": "250",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G61",
+    "value": "200",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G67",
+    "value": "5500",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G73",
+    "value": "12",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G79",
+    "value": "1000",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G85",
+    "value": "26.0517108469735",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G91",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G97",
+    "value": "2",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G103",
+    "value": "3",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G109",
+    "value": "40",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G115",
+    "value": "20",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G121",
+    "value": "40",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G127",
+    "value": "720",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G130",
+    "value": "3",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G136",
+    "value": "32",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G140",
+    "value": "12",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G146",
+    "value": "80",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G152",
+    "value": "3",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G158",
+    "value": "2",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G164",
+    "value": "40",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G170",
+    "value": "40",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G176",
+    "value": "50",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G182",
+    "value": "20",
+    "type": "number"
+  }
+]

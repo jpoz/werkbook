@@ -678,6 +678,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOUNTIF(args)
 	case "COUNTIFS":
 		return fnCOUNTIFS(args)
+	case "GEOMEAN":
+		return fnGEOMEAN(args)
 	case "LARGE":
 		return fnLARGE(args)
 	case "MAX":

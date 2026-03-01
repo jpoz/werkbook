@@ -904,6 +904,29 @@ func fnRANK(args []Value) (Value, error) {
 	return NumberVal(float64(rank)), nil
 }
 
+func fnGEOMEAN(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// All values must be > 0.
+	sumLn := 0.0
+	for _, v := range nums {
+		if v <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sumLn += math.Log(v)
+	}
+	return NumberVal(math.Exp(sumLn / float64(n))), nil
+}
+
 func fnSUMPRODUCT(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil

@@ -1,0 +1,424 @@
+{
+  "name": "lookup",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B1",
+          "value": "Apple",
+          "type": "string"
+        },
+        {
+          "ref": "A2",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B2",
+          "value": "Banana",
+          "type": "string"
+        },
+        {
+          "ref": "A3",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "B3",
+          "value": "Cherry",
+          "type": "string"
+        },
+        {
+          "ref": "A4",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "B4",
+          "value": "Date",
+          "type": "string"
+        },
+        {
+          "ref": "A5",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "B5",
+          "value": "Elderberry",
+          "type": "string"
+        },
+        {
+          "ref": "G1",
+          "formula": "VLOOKUP(3,A1:B5,2,FALSE)"
+        },
+        {
+          "ref": "A7",
+          "value": "Name",
+          "type": "string"
+        },
+        {
+          "ref": "B7",
+          "value": "Age",
+          "type": "string"
+        },
+        {
+          "ref": "C7",
+          "value": "Score",
+          "type": "string"
+        },
+        {
+          "ref": "A8",
+          "value": "Alice",
+          "type": "string"
+        },
+        {
+          "ref": "B8",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "C8",
+          "value": 95,
+          "type": "number"
+        },
+        {
+          "ref": "G7",
+          "formula": "HLOOKUP(\"Age\",A7:C8,2,FALSE)"
+        },
+        {
+          "ref": "A10",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "B10",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "C10",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A11",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "B11",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "C11",
+          "value": 60,
+          "type": "number"
+        },
+        {
+          "ref": "A12",
+          "value": 70,
+          "type": "number"
+        },
+        {
+          "ref": "B12",
+          "value": 80,
+          "type": "number"
+        },
+        {
+          "ref": "C12",
+          "value": 90,
+          "type": "number"
+        },
+        {
+          "ref": "G10",
+          "formula": "INDEX(A10:C12,2,3)"
+        },
+        {
+          "ref": "A14",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A15",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A16",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A17",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A18",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G14",
+          "formula": "MATCH(30,A14:A18,0)"
+        },
+        {
+          "ref": "A20",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A21",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A22",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A23",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A24",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B20",
+          "value": "ten",
+          "type": "string"
+        },
+        {
+          "ref": "B21",
+          "value": "twenty",
+          "type": "string"
+        },
+        {
+          "ref": "B22",
+          "value": "thirty",
+          "type": "string"
+        },
+        {
+          "ref": "B23",
+          "value": "forty",
+          "type": "string"
+        },
+        {
+          "ref": "B24",
+          "value": "fifty",
+          "type": "string"
+        },
+        {
+          "ref": "G20",
+          "formula": "LOOKUP(30,A20:A24,B20:B24)"
+        },
+        {
+          "ref": "A26",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B26",
+          "value": "Apple",
+          "type": "string"
+        },
+        {
+          "ref": "A27",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B27",
+          "value": "Banana",
+          "type": "string"
+        },
+        {
+          "ref": "A28",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "B28",
+          "value": "Cherry",
+          "type": "string"
+        },
+        {
+          "ref": "G26",
+          "formula": "XLOOKUP(2,A26:A28,B26:B28,\"Not found\")"
+        },
+        {
+          "ref": "G30",
+          "formula": "CHOOSE(2,\"apple\",\"banana\",\"cherry\")"
+        },
+        {
+          "ref": "A32",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G32",
+          "formula": "ROW(A34)"
+        },
+        {
+          "ref": "A34",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G34",
+          "formula": "COLUMN(C34)"
+        },
+        {
+          "ref": "A36",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A37",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A38",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G36",
+          "formula": "ROWS(A36:A40)"
+        },
+        {
+          "ref": "A40",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B40",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "C40",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G40",
+          "formula": "COLUMNS(A40:C40)"
+        },
+        {
+          "ref": "A42",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A43",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A44",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "A45",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A46",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "G42",
+          "formula": "INDEX(SORT(A42:A46),1)"
+        },
+        {
+          "ref": "G48",
+          "formula": "ADDRESS(3,2)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G10",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G14",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G20",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G26",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G30",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G32",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G34",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G36",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G40",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G42",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G48",
+      "expected": "",
+      "type": "string"
+    }
+  ]
+}

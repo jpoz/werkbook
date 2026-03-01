@@ -1,0 +1,47 @@
+[
+  {
+    "ref": "Formulas!G1",
+    "value": "150",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G3",
+    "value": "775",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G5",
+    "value": "155",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G7",
+    "value": "Gamma",
+    "type": "string"
+  },
+  {
+    "ref": "Formulas!G9",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G11",
+    "value": "10",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G13",
+    "value": "250",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G15",
+    "value": "1000",
+    "type": "number"
+  },
+  {
+    "ref": "Formulas!G17",
+    "value": "11",
+    "type": "number"
+  }
+]

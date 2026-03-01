@@ -35,7 +35,7 @@ var ImplementedFunctions = map[string]bool{
 	"COT": true, "COTH": true, "COUNT": true, "COUNTA": true, "COUNTBLANK": true, "COUNTIF": true, "COUNTIFS": true,
 	"CSC": true, "CSCH": true,
 	"DATE": true, "DAY": true, "DECIMAL": true, "DEVSQ": true, "EXACT": true, "EXP": true, "FACTDOUBLE": true, "FIND": true, "FLOOR": true,
-	"HLOOKUP": true, "HOUR": true, "IF": true, "IFERROR": true, "IFNA": true,
+	"GEOMEAN": true, "HLOOKUP": true, "HOUR": true, "IF": true, "IFERROR": true, "IFNA": true,
 	"INDEX": true, "INDIRECT": true, "INT": true,
 	"ISBLANK": true, "ISERR": true, "ISERROR": true, "ISNA": true, "ISNUMBER": true, "ISTEXT": true,
 	"LARGE": true, "LEFT": true, "LEN": true, "LN": true, "LOG": true, "LOG10": true,

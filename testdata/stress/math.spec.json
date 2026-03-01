@@ -1,0 +1,1293 @@
+{
+  "name": "math",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A2",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A3",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A4",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G1",
+          "formula": "ABS(A1)"
+        },
+        {
+          "ref": "A7",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A8",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A9",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A10",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A11",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G7",
+          "formula": "SIGN(A7)"
+        },
+        {
+          "ref": "A13",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A14",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A15",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A16",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A17",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G13",
+          "formula": "INT(A13)"
+        },
+        {
+          "ref": "A19",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A20",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A21",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A22",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A23",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G19",
+          "formula": "EVEN(A21)"
+        },
+        {
+          "ref": "A25",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A26",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A27",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A28",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A29",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G25",
+          "formula": "ODD(A27)"
+        },
+        {
+          "ref": "A31",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A32",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A33",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A34",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A35",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G31",
+          "formula": "EXP(A35)"
+        },
+        {
+          "ref": "A37",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A38",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A39",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A40",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A41",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G37",
+          "formula": "LN(A39)"
+        },
+        {
+          "ref": "A43",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A44",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A45",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A46",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A47",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G43",
+          "formula": "LOG10(A46)"
+        },
+        {
+          "ref": "A49",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A50",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A51",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A52",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A53",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G49",
+          "formula": "SQRT(A52)"
+        },
+        {
+          "ref": "A55",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A56",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A57",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A58",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A59",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G55",
+          "formula": "SQRTPI(A57)"
+        },
+        {
+          "ref": "A61",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A62",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A63",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A64",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A65",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G61",
+          "formula": "FACT(5)"
+        },
+        {
+          "ref": "A67",
+          "value": -3.5,
+          "type": "number"
+        },
+        {
+          "ref": "A68",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A69",
+          "value": 2.7,
+          "type": "number"
+        },
+        {
+          "ref": "A70",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A71",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "G67",
+          "formula": "FACTDOUBLE(7)"
+        },
+        {
+          "ref": "A73",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A74",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A75",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G73",
+          "formula": "SIN(A73)"
+        },
+        {
+          "ref": "A77",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A78",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A79",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G77",
+          "formula": "COS(A77)"
+        },
+        {
+          "ref": "A81",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A82",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A83",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G81",
+          "formula": "TAN(A83)"
+        },
+        {
+          "ref": "A85",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A86",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A87",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G85",
+          "formula": "SINH(A85)"
+        },
+        {
+          "ref": "A89",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A90",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A91",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G89",
+          "formula": "COSH(A89)"
+        },
+        {
+          "ref": "A93",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A94",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A95",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G93",
+          "formula": "TANH(A93)"
+        },
+        {
+          "ref": "A97",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A98",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A99",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G97",
+          "formula": "CSC(A98)"
+        },
+        {
+          "ref": "A101",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A102",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A103",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G101",
+          "formula": "SEC(A101)"
+        },
+        {
+          "ref": "A105",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A106",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A107",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G105",
+          "formula": "COT(A106)"
+        },
+        {
+          "ref": "A109",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A110",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A111",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G109",
+          "formula": "CSCH(A110)"
+        },
+        {
+          "ref": "A113",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A114",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A115",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G113",
+          "formula": "SECH(A113)"
+        },
+        {
+          "ref": "A117",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A118",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A119",
+          "value": 0.785398163,
+          "type": "number"
+        },
+        {
+          "ref": "G117",
+          "formula": "COTH(A118)"
+        },
+        {
+          "ref": "A121",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A122",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G121",
+          "formula": "ACOS(A121)"
+        },
+        {
+          "ref": "A124",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A125",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G124",
+          "formula": "ASIN(A124)"
+        },
+        {
+          "ref": "A127",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A128",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G127",
+          "formula": "ATAN(A127)"
+        },
+        {
+          "ref": "A130",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A131",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G130",
+          "formula": "ACOSH(A131)"
+        },
+        {
+          "ref": "A133",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A134",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G133",
+          "formula": "ASINH(A133)"
+        },
+        {
+          "ref": "A136",
+          "value": 0.5,
+          "type": "number"
+        },
+        {
+          "ref": "A137",
+          "value": 1.5,
+          "type": "number"
+        },
+        {
+          "ref": "G136",
+          "formula": "ATANH(A136)"
+        },
+        {
+          "ref": "A139",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A140",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "G139",
+          "formula": "ATAN2(A139,A140)"
+        },
+        {
+          "ref": "G142",
+          "formula": "PI()"
+        },
+        {
+          "ref": "A144",
+          "value": 3.14159265358979,
+          "type": "number"
+        },
+        {
+          "ref": "G144",
+          "formula": "DEGREES(A144)"
+        },
+        {
+          "ref": "A146",
+          "value": 180,
+          "type": "number"
+        },
+        {
+          "ref": "G146",
+          "formula": "RADIANS(A146)"
+        },
+        {
+          "ref": "A148",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A149",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A150",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G148",
+          "formula": "ROUND(A148,2)"
+        },
+        {
+          "ref": "A152",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A153",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A154",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G152",
+          "formula": "ROUNDDOWN(A152,2)"
+        },
+        {
+          "ref": "A156",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A157",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A158",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G156",
+          "formula": "ROUNDUP(A157,1)"
+        },
+        {
+          "ref": "A160",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A161",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A162",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G160",
+          "formula": "TRUNC(A160,2)"
+        },
+        {
+          "ref": "A164",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A165",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A166",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G164",
+          "formula": "CEILING(A164,0.1)"
+        },
+        {
+          "ref": "A168",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A169",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A170",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G168",
+          "formula": "FLOOR(A168,0.1)"
+        },
+        {
+          "ref": "A172",
+          "value": 3.14159,
+          "type": "number"
+        },
+        {
+          "ref": "A173",
+          "value": -2.567,
+          "type": "number"
+        },
+        {
+          "ref": "A174",
+          "value": 7.5,
+          "type": "number"
+        },
+        {
+          "ref": "G172",
+          "formula": "MROUND(A174,3)"
+        },
+        {
+          "ref": "A176",
+          "value": 64,
+          "type": "number"
+        },
+        {
+          "ref": "A177",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "G176",
+          "formula": "LOG(A176,A177)"
+        },
+        {
+          "ref": "A179",
+          "value": 17,
+          "type": "number"
+        },
+        {
+          "ref": "A180",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G179",
+          "formula": "MOD(A179,A180)"
+        },
+        {
+          "ref": "A182",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A183",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "G182",
+          "formula": "POWER(A182,A183)"
+        },
+        {
+          "ref": "A185",
+          "value": 17,
+          "type": "number"
+        },
+        {
+          "ref": "A186",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G185",
+          "formula": "QUOTIENT(A185,A186)"
+        },
+        {
+          "ref": "A188",
+          "value": 24,
+          "type": "number"
+        },
+        {
+          "ref": "A189",
+          "value": 36,
+          "type": "number"
+        },
+        {
+          "ref": "A190",
+          "value": 48,
+          "type": "number"
+        },
+        {
+          "ref": "G188",
+          "formula": "GCD(A188,A189,A190)"
+        },
+        {
+          "ref": "A192",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "A193",
+          "value": 6,
+          "type": "number"
+        },
+        {
+          "ref": "A194",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "G192",
+          "formula": "LCM(A192,A193,A194)"
+        },
+        {
+          "ref": "A196",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A197",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G196",
+          "formula": "COMBINA(A196,A197)"
+        },
+        {
+          "ref": "A199",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A200",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A201",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "G199",
+          "formula": "MULTINOMIAL(A199,A200,A201)"
+        },
+        {
+          "ref": "A203",
+          "value": "FF",
+          "type": "string"
+        },
+        {
+          "ref": "G203",
+          "formula": "DECIMAL(A203,16)"
+        },
+        {
+          "ref": "A205",
+          "value": 255,
+          "type": "number"
+        },
+        {
+          "ref": "G205",
+          "formula": "BASE(A205,2)"
+        },
+        {
+          "ref": "A207",
+          "value": 255,
+          "type": "number"
+        },
+        {
+          "ref": "G207",
+          "formula": "BASE(A207,16,4)"
+        },
+        {
+          "ref": "A209",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A210",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A211",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "G209",
+          "formula": "SUBTOTAL(9,A209:A211)"
+        },
+        {
+          "ref": "A213",
+          "value": "MCMXCIX",
+          "type": "string"
+        },
+        {
+          "ref": "G213",
+          "formula": "ARABIC(A213)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G13",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G19",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G25",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G31",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G37",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G43",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G49",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G55",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G61",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G67",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G73",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G77",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G81",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G85",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G89",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G93",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G97",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G101",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G105",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G109",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G113",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G117",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G121",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G124",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G127",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G130",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G133",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G136",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G139",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G142",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G144",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G146",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G148",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G152",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G156",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G160",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G164",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G168",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G172",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G176",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G179",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G182",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G185",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G188",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G192",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G196",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G199",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G203",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G205",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G207",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G209",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G213",
+      "expected": "",
+      "type": "number"
+    }
+  ]
+}

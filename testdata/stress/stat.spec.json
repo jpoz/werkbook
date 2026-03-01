@@ -1,0 +1,1255 @@
+{
+  "name": "stat",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A2",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A3",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A4",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G1",
+          "formula": "SUM(A1:A5)"
+        },
+        {
+          "ref": "A7",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A8",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A9",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A10",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A11",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G7",
+          "formula": "AVERAGE(A7:A11)"
+        },
+        {
+          "ref": "A13",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A14",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A15",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A16",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A17",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G13",
+          "formula": "COUNT(A13:A17)"
+        },
+        {
+          "ref": "A19",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A20",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A21",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A22",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A23",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G19",
+          "formula": "MAX(A19:A23)"
+        },
+        {
+          "ref": "A25",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A26",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A27",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A28",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A29",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G25",
+          "formula": "MIN(A25:A29)"
+        },
+        {
+          "ref": "A31",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A32",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A33",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A34",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A35",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G31",
+          "formula": "MEDIAN(A31:A35)"
+        },
+        {
+          "ref": "A37",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A38",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A39",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A40",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A41",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G37",
+          "formula": "PRODUCT(A37:A41)"
+        },
+        {
+          "ref": "A43",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A44",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A45",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A46",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A47",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G43",
+          "formula": "STDEV(A43:A47)"
+        },
+        {
+          "ref": "A49",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A50",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A51",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A52",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A53",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G49",
+          "formula": "STDEVP(A49:A53)"
+        },
+        {
+          "ref": "A55",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A56",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A57",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A58",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A59",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G55",
+          "formula": "VAR(A55:A59)"
+        },
+        {
+          "ref": "A61",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A62",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A63",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A64",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A65",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G61",
+          "formula": "VARP(A61:A65)"
+        },
+        {
+          "ref": "A67",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A68",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A69",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A70",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A71",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G67",
+          "formula": "SUMSQ(A67:A71)"
+        },
+        {
+          "ref": "A73",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A74",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A75",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A76",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A77",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G73",
+          "formula": "AVEDEV(A73:A77)"
+        },
+        {
+          "ref": "A79",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A80",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A81",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A82",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A83",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G79",
+          "formula": "DEVSQ(A79:A83)"
+        },
+        {
+          "ref": "A85",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A86",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A87",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A88",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A89",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G85",
+          "formula": "GEOMEAN(A85:A89)"
+        },
+        {
+          "ref": "A91",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A92",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "A93",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "A94",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "A95",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G91",
+          "formula": "COUNTA(A91:A95)"
+        },
+        {
+          "ref": "A97",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A99",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A101",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G97",
+          "formula": "COUNTBLANK(A97:A101)"
+        },
+        {
+          "ref": "A103",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A104",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "A105",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A106",
+          "value": 7,
+          "type": "number"
+        },
+        {
+          "ref": "A107",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G103",
+          "formula": "MODE(A103:A107)"
+        },
+        {
+          "ref": "A109",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A110",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A111",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A112",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A113",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G109",
+          "formula": "LARGE(A109:A113,2)"
+        },
+        {
+          "ref": "A115",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A116",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A117",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A118",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A119",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G115",
+          "formula": "SMALL(A115:A119,2)"
+        },
+        {
+          "ref": "A121",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A122",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A123",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A124",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A125",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G121",
+          "formula": "PERCENTILE(A121:A125,0.75)"
+        },
+        {
+          "ref": "A127",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A128",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G127",
+          "formula": "PERMUT(A127,A128)"
+        },
+        {
+          "ref": "A130",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A131",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A132",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A133",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A134",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G130",
+          "formula": "RANK(A132,A130:A134)"
+        },
+        {
+          "ref": "A136",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A137",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A138",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "B136",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "B137",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "B138",
+          "value": 6,
+          "type": "number"
+        },
+        {
+          "ref": "G136",
+          "formula": "SUMPRODUCT(A136:A138,B136:B138)"
+        },
+        {
+          "ref": "A140",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A141",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A142",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A143",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A144",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B140",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B141",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B142",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "B143",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "B144",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G140",
+          "formula": "SUMIF(A140:A144,\"\u003e25\",B140:B144)"
+        },
+        {
+          "ref": "A146",
+          "value": 100,
+          "type": "number"
+        },
+        {
+          "ref": "A147",
+          "value": 200,
+          "type": "number"
+        },
+        {
+          "ref": "A148",
+          "value": 300,
+          "type": "number"
+        },
+        {
+          "ref": "A149",
+          "value": 400,
+          "type": "number"
+        },
+        {
+          "ref": "A150",
+          "value": 500,
+          "type": "number"
+        },
+        {
+          "ref": "B146",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B147",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B148",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B149",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B150",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "C146",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "C147",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "C148",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "C149",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "C150",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G146",
+          "formula": "SUMIFS(C146:C150,A146:A150,\"\u003e200\",B146:B150,1)"
+        },
+        {
+          "ref": "A152",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A153",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A154",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A155",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A156",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G152",
+          "formula": "COUNTIF(A152:A156,\"\u003e25\")"
+        },
+        {
+          "ref": "A158",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A159",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A160",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A161",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A162",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B158",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B159",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B160",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B161",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B162",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G158",
+          "formula": "COUNTIFS(A158:A162,\"\u003e15\",B158:B162,1)"
+        },
+        {
+          "ref": "A164",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A165",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A166",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A167",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A168",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G164",
+          "formula": "AVERAGEIF(A164:A168,\"\u003e20\")"
+        },
+        {
+          "ref": "A170",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A171",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A172",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A173",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A174",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B170",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B171",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B172",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B173",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B174",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G170",
+          "formula": "AVERAGEIFS(A170:A174,A170:A174,\"\u003e15\",B170:B174,1)"
+        },
+        {
+          "ref": "A176",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A177",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A178",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A179",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A180",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B176",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B177",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B178",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B179",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B180",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G176",
+          "formula": "MAXIFS(A176:A180,B176:B180,1)"
+        },
+        {
+          "ref": "A182",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A183",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A184",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A185",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A186",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B182",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B183",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B184",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "B185",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "B186",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G182",
+          "formula": "MINIFS(A182:A186,B182:B186,2)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G13",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G19",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G25",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G31",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G37",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G43",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G49",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G55",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G61",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G67",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G73",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G79",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G85",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G91",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G97",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G103",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G109",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G115",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G121",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G127",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G130",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G136",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G140",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G146",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G152",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G158",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G164",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G170",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G176",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G182",
+      "expected": "",
+      "type": "number"
+    }
+  ]
+}

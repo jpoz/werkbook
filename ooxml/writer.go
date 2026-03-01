@@ -25,7 +25,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		for j := range data.Sheets[i].Rows {
 			for k := range data.Sheets[i].Rows[j].Cells {
 				c := &data.Sheets[i].Rows[j].Cells[k]
-				if c.Type == "s" {
+				if c.Type == "s" && c.Formula == "" {
 					idx := sst.Add(c.Value)
 					c.Value = fmt.Sprintf("%d", idx)
 				}

@@ -1075,3 +1075,30 @@ func TestDEVSQWithLibreOffice(t *testing.T) {
 		t.Errorf("B1 = %q, want %q", got, "48")
 	}
 }
+
+func TestGEOMEANWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", 2)
+	s.SetValue("A2", 8)
+	s.SetFormula("B1", "GEOMEAN(A1:A2)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "geomean.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	if len(records) < 1 || len(records[0]) < 2 {
+		t.Fatalf("unexpected CSV shape: %v", records)
+	}
+	got := records[0][1]
+	if got != "4" {
+		t.Errorf("B1 = %q, want %q", got, "4")
+	}
+}

@@ -1,0 +1,283 @@
+{
+  "name": "crosssheet",
+  "sheets": [
+    {
+      "name": "Data",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 75,
+          "type": "number"
+        },
+        {
+          "ref": "A2",
+          "value": 150,
+          "type": "number"
+        },
+        {
+          "ref": "A3",
+          "value": 200,
+          "type": "number"
+        },
+        {
+          "ref": "A4",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": 300,
+          "type": "number"
+        },
+        {
+          "ref": "A6",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A7",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A8",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "A9",
+          "value": 40,
+          "type": "number"
+        },
+        {
+          "ref": "A10",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B1",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "B2",
+          "value": 15,
+          "type": "number"
+        },
+        {
+          "ref": "B3",
+          "value": 25,
+          "type": "number"
+        },
+        {
+          "ref": "B4",
+          "value": 35,
+          "type": "number"
+        },
+        {
+          "ref": "B5",
+          "value": 45,
+          "type": "number"
+        },
+        {
+          "ref": "B6",
+          "value": 55,
+          "type": "number"
+        },
+        {
+          "ref": "B7",
+          "value": 65,
+          "type": "number"
+        },
+        {
+          "ref": "B8",
+          "value": 75,
+          "type": "number"
+        },
+        {
+          "ref": "B9",
+          "value": 85,
+          "type": "number"
+        },
+        {
+          "ref": "B10",
+          "value": 95,
+          "type": "number"
+        },
+        {
+          "ref": "C1",
+          "value": "Hello World",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "Lookup",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 75,
+          "type": "number"
+        },
+        {
+          "ref": "B1",
+          "value": "Alpha",
+          "type": "string"
+        },
+        {
+          "ref": "C1",
+          "value": 1000,
+          "type": "number"
+        },
+        {
+          "ref": "A2",
+          "value": 150,
+          "type": "number"
+        },
+        {
+          "ref": "B2",
+          "value": "Beta",
+          "type": "string"
+        },
+        {
+          "ref": "C2",
+          "value": 2000,
+          "type": "number"
+        },
+        {
+          "ref": "A3",
+          "value": 200,
+          "type": "number"
+        },
+        {
+          "ref": "B3",
+          "value": "Gamma",
+          "type": "string"
+        },
+        {
+          "ref": "C3",
+          "value": 3000,
+          "type": "number"
+        },
+        {
+          "ref": "A4",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "B4",
+          "value": "Delta",
+          "type": "string"
+        },
+        {
+          "ref": "C4",
+          "value": 4000,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": 300,
+          "type": "number"
+        },
+        {
+          "ref": "B5",
+          "value": "Epsilon",
+          "type": "string"
+        },
+        {
+          "ref": "C5",
+          "value": 5000,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "Formulas",
+      "cells": [
+        {
+          "ref": "G1",
+          "formula": "Data!A1*2"
+        },
+        {
+          "ref": "G3",
+          "formula": "SUM(Data!A1:Data!A5)"
+        },
+        {
+          "ref": "G5",
+          "formula": "AVERAGE(Data!A1:Data!A5)"
+        },
+        {
+          "ref": "G7",
+          "formula": "VLOOKUP(200,Lookup!A1:B11,2,FALSE)"
+        },
+        {
+          "ref": "G9",
+          "formula": "IF(Data!A1\u003e50,Data!B1,Data!B2)"
+        },
+        {
+          "ref": "G11",
+          "formula": "COUNTIF(Data!A1:Data!A10,\"\u003e0\")"
+        },
+        {
+          "ref": "G13",
+          "formula": "MAX(Data!A1:Data!A5)-MIN(Data!A1:Data!A5)"
+        },
+        {
+          "ref": "G15",
+          "formula": "INDEX(Lookup!A1:C19,MATCH(Data!A1,Lookup!A1:A19,0),3)"
+        },
+        {
+          "ref": "G17",
+          "formula": "LEN(Data!C1)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Formulas!G1",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G3",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G5",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G7",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Formulas!G9",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G11",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G13",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G15",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Formulas!G17",
+      "expected": "",
+      "type": "number"
+    }
+  ]
+}

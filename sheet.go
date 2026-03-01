@@ -575,7 +575,11 @@ func cellToData(ref string, v Value, f string) ooxml.CellData {
 	var cd ooxml.CellData
 	switch v.Type {
 	case TypeString:
-		cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
+		if f != "" {
+			cd = ooxml.CellData{Ref: ref, Type: "str", Value: v.String}
+		} else {
+			cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
+		}
 	case TypeNumber:
 		cd = ooxml.CellData{Ref: ref, Value: fmt.Sprintf("%g", v.Number)}
 	case TypeBool:

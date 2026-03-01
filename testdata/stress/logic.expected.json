@@ -1,0 +1,77 @@
+[
+  {
+    "ref": "Sheet1!G1",
+    "value": "big",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G3",
+    "value": "small",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G5",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G8",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G11",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G14",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G17",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G19",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G23",
+    "value": "error",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G26",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G29",
+    "value": "not found",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G33",
+    "value": "C",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G35",
+    "value": "two",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G37",
+    "value": "medium",
+    "type": "string"
+  },
+  {
+    "ref": "Sheet1!G39",
+    "value": "yes",
+    "type": "string"
+  }
+]

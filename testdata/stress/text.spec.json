@@ -1,0 +1,577 @@
+{
+  "name": "text",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A2",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A3",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A4",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A5",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G1",
+          "formula": "UPPER(A5)"
+        },
+        {
+          "ref": "A7",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A8",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A9",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A10",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A11",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G7",
+          "formula": "LOWER(A9)"
+        },
+        {
+          "ref": "A13",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A14",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A15",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A16",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A17",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G13",
+          "formula": "PROPER(A17)"
+        },
+        {
+          "ref": "A19",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A20",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A21",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A22",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A23",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G19",
+          "formula": "TRIM(A19)"
+        },
+        {
+          "ref": "A25",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A26",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A27",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A28",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A29",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G25",
+          "formula": "LEN(A26)"
+        },
+        {
+          "ref": "A31",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A32",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A33",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A34",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A35",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G31",
+          "formula": "LEFT(A32,3)"
+        },
+        {
+          "ref": "A37",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A38",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A39",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A40",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A41",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G37",
+          "formula": "RIGHT(A38,3)"
+        },
+        {
+          "ref": "A43",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A44",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A45",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A46",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A47",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G43",
+          "formula": "MID(A44,2,3)"
+        },
+        {
+          "ref": "A49",
+          "value": "  Hello World  ",
+          "type": "string"
+        },
+        {
+          "ref": "A50",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "A51",
+          "value": "Excel Formulas",
+          "type": "string"
+        },
+        {
+          "ref": "A52",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "A53",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G49",
+          "formula": "CLEAN(A49)"
+        },
+        {
+          "ref": "A55",
+          "value": 65,
+          "type": "number"
+        },
+        {
+          "ref": "G55",
+          "formula": "CHAR(A55)"
+        },
+        {
+          "ref": "A57",
+          "value": "A",
+          "type": "string"
+        },
+        {
+          "ref": "G57",
+          "formula": "CODE(A57)"
+        },
+        {
+          "ref": "A59",
+          "value": "Hello",
+          "type": "string"
+        },
+        {
+          "ref": "A60",
+          "value": " ",
+          "type": "string"
+        },
+        {
+          "ref": "A61",
+          "value": "World",
+          "type": "string"
+        },
+        {
+          "ref": "G59",
+          "formula": "CONCATENATE(A59,A60,A61)"
+        },
+        {
+          "ref": "A63",
+          "value": "Hello",
+          "type": "string"
+        },
+        {
+          "ref": "A64",
+          "value": "World",
+          "type": "string"
+        },
+        {
+          "ref": "G63",
+          "formula": "CONCAT(A63,\" \",A64)"
+        },
+        {
+          "ref": "A66",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "A67",
+          "value": "Hello",
+          "type": "string"
+        },
+        {
+          "ref": "G66",
+          "formula": "EXACT(A66,A67)"
+        },
+        {
+          "ref": "A69",
+          "value": "Hello World",
+          "type": "string"
+        },
+        {
+          "ref": "G69",
+          "formula": "FIND(\"World\",A69)"
+        },
+        {
+          "ref": "A71",
+          "value": "Hello World",
+          "type": "string"
+        },
+        {
+          "ref": "G71",
+          "formula": "SEARCH(\"world\",A71)"
+        },
+        {
+          "ref": "A73",
+          "value": "abcdef",
+          "type": "string"
+        },
+        {
+          "ref": "G73",
+          "formula": "REPLACE(A73,3,2,\"XY\")"
+        },
+        {
+          "ref": "A75",
+          "value": "Hello World Hello",
+          "type": "string"
+        },
+        {
+          "ref": "G75",
+          "formula": "SUBSTITUTE(A75,\"Hello\",\"Hi\")"
+        },
+        {
+          "ref": "A77",
+          "value": "ab",
+          "type": "string"
+        },
+        {
+          "ref": "G77",
+          "formula": "REPT(A77,3)"
+        },
+        {
+          "ref": "A79",
+          "value": 1234.567,
+          "type": "number"
+        },
+        {
+          "ref": "G79",
+          "formula": "TEXT(A79,\"0.00\")"
+        },
+        {
+          "ref": "A81",
+          "value": "123.45",
+          "type": "string"
+        },
+        {
+          "ref": "G81",
+          "formula": "VALUE(A81)"
+        },
+        {
+          "ref": "A83",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "A84",
+          "value": 42,
+          "type": "number"
+        },
+        {
+          "ref": "G83",
+          "formula": "T(A83)"
+        },
+        {
+          "ref": "A86",
+          "value": 1234567.89,
+          "type": "number"
+        },
+        {
+          "ref": "G86",
+          "formula": "FIXED(A86,2)"
+        },
+        {
+          "ref": "A88",
+          "value": "1.234,56",
+          "type": "string"
+        },
+        {
+          "ref": "G88",
+          "formula": "NUMBERVALUE(A88,\".\",\",\")"
+        },
+        {
+          "ref": "A90",
+          "value": "Hello",
+          "type": "string"
+        },
+        {
+          "ref": "A91",
+          "value": "World",
+          "type": "string"
+        },
+        {
+          "ref": "A92",
+          "value": "Test",
+          "type": "string"
+        },
+        {
+          "ref": "G90",
+          "formula": "TEXTJOIN(\", \",TRUE,A90:A92)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G13",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G19",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G25",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G31",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G37",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G43",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G49",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G55",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G57",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G59",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G63",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G66",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G69",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G71",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G73",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G75",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G77",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G79",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G81",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G83",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G86",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G88",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G90",
+      "expected": "",
+      "type": "string"
+    }
+  ]
+}

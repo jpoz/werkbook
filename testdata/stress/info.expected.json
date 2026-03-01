@@ -1,0 +1,97 @@
+[
+  {
+    "ref": "Sheet1!G1",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G3",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G5",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G7",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G9",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G11",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G13",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G15",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G17",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G20",
+    "value": "FALSE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G23",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G26",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G30",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G32",
+    "value": "TRUE",
+    "type": "bool"
+  },
+  {
+    "ref": "Sheet1!G34",
+    "value": "1",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G36",
+    "value": "#N/A",
+    "type": "error"
+  },
+  {
+    "ref": "Sheet1!G38",
+    "value": "1",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G40",
+    "value": "2",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G42",
+    "value": "2",
+    "type": "number"
+  }
+]

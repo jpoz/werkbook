@@ -1,0 +1,207 @@
+{
+  "name": "date",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "G1",
+          "formula": "DATE(2024,6,15)"
+        },
+        {
+          "ref": "G3",
+          "formula": "DAY(DATE(2024,6,15))"
+        },
+        {
+          "ref": "G5",
+          "formula": "MONTH(DATE(2024,6,15))"
+        },
+        {
+          "ref": "G7",
+          "formula": "YEAR(DATE(2024,6,15))"
+        },
+        {
+          "ref": "G9",
+          "formula": "HOUR(TIME(14,30,45))"
+        },
+        {
+          "ref": "G11",
+          "formula": "MINUTE(TIME(14,30,45))"
+        },
+        {
+          "ref": "G13",
+          "formula": "SECOND(TIME(14,30,45))"
+        },
+        {
+          "ref": "G15",
+          "formula": "TIME(14,30,0)"
+        },
+        {
+          "ref": "A17",
+          "value": 45292,
+          "type": "number"
+        },
+        {
+          "ref": "A18",
+          "value": 45474,
+          "type": "number"
+        },
+        {
+          "ref": "G17",
+          "formula": "DAYS360(DATE(2024,1,1),DATE(2024,7,1))"
+        },
+        {
+          "ref": "G20",
+          "formula": "DATEDIF(DATE(2020,1,1),DATE(2024,6,15),\"Y\")"
+        },
+        {
+          "ref": "G22",
+          "formula": "DAYS(DATE(2024,12,31),DATE(2024,1,1))"
+        },
+        {
+          "ref": "G24",
+          "formula": "EDATE(DATE(2024,1,15),3)"
+        },
+        {
+          "ref": "G26",
+          "formula": "EOMONTH(DATE(2024,1,15),2)"
+        },
+        {
+          "ref": "G28",
+          "formula": "ISOWEEKNUM(DATE(2024,1,1))"
+        },
+        {
+          "ref": "G30",
+          "formula": "WEEKDAY(DATE(2024,6,15))"
+        },
+        {
+          "ref": "G32",
+          "formula": "WEEKNUM(DATE(2024,6,15))"
+        },
+        {
+          "ref": "A34",
+          "value": "2024-06-15",
+          "type": "string"
+        },
+        {
+          "ref": "G34",
+          "formula": "DATEVALUE(A34)"
+        },
+        {
+          "ref": "G36",
+          "formula": "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,31))"
+        },
+        {
+          "ref": "G38",
+          "formula": "WORKDAY(DATE(2024,1,1),10)"
+        },
+        {
+          "ref": "G40",
+          "formula": "YEARFRAC(DATE(2024,1,1),DATE(2024,7,1))"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G3",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G5",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G9",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G11",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G13",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G15",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G17",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G20",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G22",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G24",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G26",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G28",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G30",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G32",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G34",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G36",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G38",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G40",
+      "expected": "",
+      "type": "number"
+    }
+  ]
+}

@@ -1,0 +1,303 @@
+{
+  "name": "info",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G1",
+          "formula": "ISBLANK(A2)"
+        },
+        {
+          "ref": "A3",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "G3",
+          "formula": "ISBLANK(A3)"
+        },
+        {
+          "ref": "A5",
+          "value": 42,
+          "type": "number"
+        },
+        {
+          "ref": "G5",
+          "formula": "ISNUMBER(A5)"
+        },
+        {
+          "ref": "A7",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G7",
+          "formula": "ISNUMBER(A7)"
+        },
+        {
+          "ref": "A9",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G9",
+          "formula": "ISTEXT(A9)"
+        },
+        {
+          "ref": "A11",
+          "value": 42,
+          "type": "number"
+        },
+        {
+          "ref": "G11",
+          "formula": "ISTEXT(A11)"
+        },
+        {
+          "ref": "A13",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "G13",
+          "formula": "ISLOGICAL(A13)"
+        },
+        {
+          "ref": "A15",
+          "value": 42,
+          "type": "number"
+        },
+        {
+          "ref": "G15",
+          "formula": "ISNONTEXT(A15)"
+        },
+        {
+          "ref": "A17",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A18",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "G17",
+          "formula": "ISERROR(A17/A18)"
+        },
+        {
+          "ref": "A20",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A21",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "G20",
+          "formula": "ISERROR(A20/A21)"
+        },
+        {
+          "ref": "A23",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A24",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "G23",
+          "formula": "ISERR(A23/A24)"
+        },
+        {
+          "ref": "A26",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A27",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A28",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G26",
+          "formula": "ISNA(MATCH(99,A26:A28,0))"
+        },
+        {
+          "ref": "A30",
+          "value": 4,
+          "type": "number"
+        },
+        {
+          "ref": "G30",
+          "formula": "ISEVEN(A30)"
+        },
+        {
+          "ref": "A32",
+          "value": 7,
+          "type": "number"
+        },
+        {
+          "ref": "G32",
+          "formula": "ISODD(A32)"
+        },
+        {
+          "ref": "A34",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "G34",
+          "formula": "N(A34)"
+        },
+        {
+          "ref": "G36",
+          "formula": "NA()"
+        },
+        {
+          "ref": "A38",
+          "value": 42,
+          "type": "number"
+        },
+        {
+          "ref": "G38",
+          "formula": "TYPE(A38)"
+        },
+        {
+          "ref": "A40",
+          "value": "hello",
+          "type": "string"
+        },
+        {
+          "ref": "G40",
+          "formula": "TYPE(A40)"
+        },
+        {
+          "ref": "A42",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A43",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "G42",
+          "formula": "ERROR.TYPE(A42/A43)"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G3",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G5",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G7",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G9",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G11",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G13",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G15",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G17",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G20",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G23",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G26",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G30",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G32",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G34",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G36",
+      "expected": "",
+      "type": "error"
+    },
+    {
+      "ref": "Sheet1!G38",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G40",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G42",
+      "expected": "",
+      "type": "number"
+    }
+  ]
+}

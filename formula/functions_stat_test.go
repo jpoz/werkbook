@@ -1752,3 +1752,89 @@ func TestVARP(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GEOMEAN — geometric mean of positive values
+// ---------------------------------------------------------------------------
+
+func TestGEOMEAN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		tolerance float64
+		wantErr   bool
+		errVal    ErrorValue
+	}{
+		{
+			name:      "excel_example",
+			formula:   "GEOMEAN(4,5,8,7,11,4,3)",
+			wantNum:   5.476987,
+			tolerance: 1e-4,
+		},
+		{
+			name:      "simple_1_to_5",
+			formula:   "GEOMEAN(1,2,3,4,5)",
+			wantNum:   2.6052,
+			tolerance: 1e-4,
+		},
+		{
+			name:      "all_tens",
+			formula:   "GEOMEAN(10,10,10)",
+			wantNum:   10,
+			tolerance: 1e-10,
+		},
+		{
+			name:      "two_values",
+			formula:   "GEOMEAN(2,8)",
+			wantNum:   4,
+			tolerance: 0,
+		},
+		{
+			name:      "all_ones",
+			formula:   "GEOMEAN(1,1,1)",
+			wantNum:   1,
+			tolerance: 0,
+		},
+		{
+			name:    "zero_not_allowed",
+			formula: "GEOMEAN(1,0,3)",
+			wantErr: true,
+			errVal:  ErrValNUM,
+		},
+		{
+			name:    "negative_not_allowed",
+			formula: "GEOMEAN(-1,2,3)",
+			wantErr: true,
+			errVal:  ErrValNUM,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.errVal {
+					t.Errorf("%s: got %v, want error %v", tt.formula, got, tt.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tolerance == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("%s: got %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else if math.Abs(got.Num-tt.wantNum) > tt.tolerance {
+				t.Errorf("%s: got %g, want %g (tolerance %g)", tt.formula, got.Num, tt.wantNum, tt.tolerance)
+			}
+		})
+	}
+}

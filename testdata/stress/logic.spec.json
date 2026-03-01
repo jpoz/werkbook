@@ -1,0 +1,282 @@
+{
+  "name": "logic",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "cells": [
+        {
+          "ref": "A1",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "G1",
+          "formula": "IF(A1\u003e5,\"big\",\"small\")"
+        },
+        {
+          "ref": "A3",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "G3",
+          "formula": "IF(A3\u003e5,\"big\",\"small\")"
+        },
+        {
+          "ref": "A5",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A6",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "G5",
+          "formula": "AND(A5\u003e5,A6\u003e15)"
+        },
+        {
+          "ref": "A8",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A9",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G8",
+          "formula": "AND(A8\u003e5,A9\u003e15)"
+        },
+        {
+          "ref": "A11",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A12",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "G11",
+          "formula": "OR(A11\u003e5,A12\u003e15)"
+        },
+        {
+          "ref": "A14",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "A15",
+          "value": 5,
+          "type": "number"
+        },
+        {
+          "ref": "G14",
+          "formula": "OR(A14\u003e5,A15\u003e15)"
+        },
+        {
+          "ref": "A17",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "G17",
+          "formula": "NOT(A17)"
+        },
+        {
+          "ref": "A19",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "A20",
+          "value": false,
+          "type": "bool"
+        },
+        {
+          "ref": "A21",
+          "value": true,
+          "type": "bool"
+        },
+        {
+          "ref": "G19",
+          "formula": "XOR(A19,A20,A21)"
+        },
+        {
+          "ref": "A23",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A24",
+          "value": 0,
+          "type": "number"
+        },
+        {
+          "ref": "G23",
+          "formula": "IFERROR(A23/A24,\"error\")"
+        },
+        {
+          "ref": "A26",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A27",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "G26",
+          "formula": "IFERROR(A26/A27,\"error\")"
+        },
+        {
+          "ref": "A29",
+          "value": 1,
+          "type": "number"
+        },
+        {
+          "ref": "A30",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "A31",
+          "value": 3,
+          "type": "number"
+        },
+        {
+          "ref": "G29",
+          "formula": "IFNA(MATCH(99,A29:A31,0),\"not found\")"
+        },
+        {
+          "ref": "A33",
+          "value": 75,
+          "type": "number"
+        },
+        {
+          "ref": "G33",
+          "formula": "IFS(A33\u003e=90,\"A\",A33\u003e=80,\"B\",A33\u003e=70,\"C\",TRUE,\"F\")"
+        },
+        {
+          "ref": "A35",
+          "value": 2,
+          "type": "number"
+        },
+        {
+          "ref": "G35",
+          "formula": "SWITCH(A35,1,\"one\",2,\"two\",3,\"three\",\"other\")"
+        },
+        {
+          "ref": "A37",
+          "value": 50,
+          "type": "number"
+        },
+        {
+          "ref": "G37",
+          "formula": "IF(A37\u003e100,\"big\",IF(A37\u003e10,\"medium\",IF(A37\u003e0,\"small\",\"negative\")))"
+        },
+        {
+          "ref": "A39",
+          "value": 10,
+          "type": "number"
+        },
+        {
+          "ref": "A40",
+          "value": 20,
+          "type": "number"
+        },
+        {
+          "ref": "A41",
+          "value": 30,
+          "type": "number"
+        },
+        {
+          "ref": "G39",
+          "formula": "IF(AND(OR(A39\u003e5,A40\u003e25),NOT(A41=0)),\"yes\",\"no\")"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "ref": "Sheet1!G1",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G3",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G5",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G8",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G11",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G14",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G17",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G19",
+      "expected": "",
+      "type": "bool"
+    },
+    {
+      "ref": "Sheet1!G23",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G26",
+      "expected": "",
+      "type": "number"
+    },
+    {
+      "ref": "Sheet1!G29",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G33",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G35",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G37",
+      "expected": "",
+      "type": "string"
+    },
+    {
+      "ref": "Sheet1!G39",
+      "expected": "",
+      "type": "string"
+    }
+  ]
+}

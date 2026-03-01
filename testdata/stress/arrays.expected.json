@@ -1,0 +1,122 @@
+[
+  {
+    "ref": "Sheet1!G1",
+    "value": "15",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H1",
+    "value": "15",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G7",
+    "value": "3",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H7",
+    "value": "3",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G13",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H13",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G19",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H19",
+    "value": "5",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G25",
+    "value": "1",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H25",
+    "value": "1",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G31",
+    "value": "120",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H31",
+    "value": "120",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G37",
+    "value": "1.58113883008419",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H37",
+    "value": "1.58113883008419",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G43",
+    "value": "55",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H43",
+    "value": "55",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G49",
+    "value": "1.2",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H49",
+    "value": "1.2",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G55",
+    "value": "10",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H55",
+    "value": "10",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G61",
+    "value": "2.60517108469735",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!H61",
+    "value": "2.60517108469735",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G67",
+    "value": "4",
+    "type": "number"
+  },
+  {
+    "ref": "Sheet1!G73",
+    "value": "2",
+    "type": "number"
+  }
+]
