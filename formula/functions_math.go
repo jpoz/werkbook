@@ -67,6 +67,17 @@ func fnASIN(args []Value) (Value, error) {
 	return NumberVal(math.Asin(n)), nil
 }
 
+func fnASINH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(math.Asinh(n)), nil
+}
+
 func fnATAN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
