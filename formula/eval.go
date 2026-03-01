@@ -562,6 +562,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOMBIN(args)
 	case "COS":
 		return fnCOS(args)
+	case "COSH":
+		return fnCOSH(args)
 	case "DEGREES":
 		return fnDEGREES(args)
 	case "EVEN":

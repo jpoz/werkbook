@@ -187,6 +187,21 @@ func fnCOS(args []Value) (Value, error) {
 	return NumberVal(math.Cos(n)), nil
 }
 
+func fnCOSH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	result := math.Cosh(n)
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(result), nil
+}
+
 func fnEVEN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

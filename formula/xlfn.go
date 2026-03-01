@@ -10,6 +10,7 @@ var xlfnPrefix = map[string]string{
 	"ASINH":    "_xlfn.",
 	"ATANH":    "_xlfn.",
 	"CONCAT":   "_xlfn.",
+	"COSH":     "_xlfn.",
 	"DAYS":     "_xlfn.",
 	"IFERROR":    "_xlfn.",
 	"IFNA":       "_xlfn.",
