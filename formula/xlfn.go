@@ -8,6 +8,7 @@ import "strings"
 var xlfnPrefix = map[string]string{
 	"ACOSH":    "_xlfn.",
 	"ASINH":    "_xlfn.",
+	"ATANH":    "_xlfn.",
 	"CONCAT":   "_xlfn.",
 	"DAYS":     "_xlfn.",
 	"IFERROR":    "_xlfn.",

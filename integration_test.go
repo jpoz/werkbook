@@ -342,6 +342,56 @@ func TestASINHWithLibreOffice(t *testing.T) {
 	}
 }
 
+func TestATANHWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set input values.
+	s.SetValue("A1", 0)
+	s.SetValue("A2", 0.5)
+	s.SetValue("A3", -0.5)
+
+	// Set ATANH formulas.
+	s.SetFormula("B1", "ATANH(A1)")
+	s.SetFormula("B2", "ATANH(A2)")
+	s.SetFormula("B3", "ATANH(A3)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "atanh.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "0"},
+		{1, "0.549306144334055"},
+		{2, "-0.549306144334055"},
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 2 {
+			t.Errorf("row %d: expected at least 2 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][1]
+		if got != tt.want {
+			t.Errorf("B%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}
+
 func TestACOSHWithLibreOffice(t *testing.T) {
 	soffice := requireLibreOffice(t)
 

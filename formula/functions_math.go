@@ -108,6 +108,20 @@ func fnATAN2(args []Value) (Value, error) {
 	return NumberVal(math.Atan2(y, x)), nil
 }
 
+func fnATANH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n <= -1 || n >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Atanh(n)), nil
+}
+
 func fnCEILING(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
