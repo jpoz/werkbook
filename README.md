@@ -8,7 +8,7 @@ import "github.com/jpoz/werkbook"
 
 ## Excel Function Support
 
-**163 of 500+ Excel functions supported** | **1,382 tests passing**
+**164 of 500+ Excel functions supported** | **1,382 tests passing**
 
 ### Math & Trigonometry
 
@@ -166,6 +166,7 @@ Not yet supported: ARRAYTOTEXT, ASC, BAHTTEXT, DBCS, DOLLAR, FINDB, LEFTB, LENB,
 | DATEVALUE | :white_check_mark: | 5 |
 | DAY | :white_check_mark: | 2 |
 | DAYS | :white_check_mark: | 9 |
+| DAYS360 | :white_check_mark: | 6 |
 | EDATE | :white_check_mark: | 5 |
 | EOMONTH | :white_check_mark: | 5 |
 | HOUR | :white_check_mark: | 1 |
@@ -183,7 +184,7 @@ Not yet supported: ARRAYTOTEXT, ASC, BAHTTEXT, DBCS, DOLLAR, FINDB, LEFTB, LENB,
 | YEAR | :white_check_mark: | 2 |
 | YEARFRAC | :white_check_mark: | 8 |
 
-Not yet supported: DAYS360, NETWORKDAYS.INTL, TIMEVALUE, WORKDAY.INTL
+Not yet supported: NETWORKDAYS.INTL, TIMEVALUE, WORKDAY.INTL
 
 ### Lookup & Reference
 

@@ -186,6 +186,61 @@ func fnDAYS(args []Value) (Value, error) {
 	return NumberVal(math.Trunc(end) - math.Trunc(start)), nil
 }
 
+// DAYS360(start_date, end_date, [method]) — returns the number of days between
+// two dates based on a 360-day year (twelve 30-day months). Used in accounting.
+// method: FALSE (default) = US (NASD) method, TRUE = European method.
+func fnDAYS360(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	endSerial, e2 := coerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+
+	european := false
+	if len(args) == 3 {
+		m, e3 := coerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		european = m != 0
+	}
+
+	start := excelSerialToTime(math.Trunc(startSerial))
+	end := excelSerialToTime(math.Trunc(endSerial))
+
+	sy, sm, sd := start.Year(), int(start.Month()), start.Day()
+	ey, em, ed := end.Year(), int(end.Month()), end.Day()
+
+	if european {
+		// European method: if either day is 31, change to 30.
+		if sd == 31 {
+			sd = 30
+		}
+		if ed == 31 {
+			ed = 30
+		}
+	} else {
+		// US (NASD) method:
+		// If start day is 31, change to 30.
+		if sd == 31 {
+			sd = 30
+		}
+		// If end day is 31 AND start day >= 30, change end to 30.
+		if ed == 31 && sd >= 30 {
+			ed = 30
+		}
+	}
+
+	days := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
+	return NumberVal(days), nil
+}
+
 func fnHOUR(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

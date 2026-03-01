@@ -165,6 +165,39 @@ func TestDAYSErrorPropagation(t *testing.T) {
 	}
 }
 
+func TestDAYS360(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"full_year_us", "DAYS360(DATE(2024,1,1), DATE(2024,12,31))", 360},
+		{"jan30_to_feb28", "DAYS360(DATE(2024,1,30), DATE(2024,2,28))", 28},
+		{"half_year", "DAYS360(DATE(2024,1,1), DATE(2024,7,1))", 180},
+		{"us_31_to_31", "DAYS360(DATE(2024,1,31), DATE(2024,3,31))", 60},
+		{"european_31_to_31", "DAYS360(DATE(2024,1,31), DATE(2024,3,31), TRUE)", 60},
+		{"negative_result", "DAYS360(DATE(2024,2,28), DATE(2024,1,1))", -57},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("DAYS360: got type %v, want number for %s", got.Type, tc.formula)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestWORKDAYEdgeCases(t *testing.T) {
 	tests := []struct {
 		name    string

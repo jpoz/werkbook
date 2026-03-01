@@ -836,6 +836,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnDAY(args)
 	case "DAYS":
 		return fnDAYS(args)
+	case "DAYS360":
+		return fnDAYS360(args)
 	case "EDATE":
 		return fnEDATE(args)
 	case "EOMONTH":

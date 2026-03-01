@@ -975,3 +975,41 @@ func TestTrigReciprocalFunctionsWithLibreOffice(t *testing.T) {
 		}
 	}
 }
+
+func TestDAYS360WithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "DAYS360(DATE(2024,1,1),DATE(2024,12,31))")
+	s.SetFormula("A2", "DAYS360(DATE(2024,1,1),DATE(2024,7,1))")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "days360.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := map[int]string{
+		0: "360",
+		1: "180",
+	}
+
+	for row, want := range expected {
+		if row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", row, len(records))
+			continue
+		}
+		if len(records[row]) < 1 {
+			t.Errorf("row %d: expected at least 1 column, got %d", row, len(records[row]))
+			continue
+		}
+		got := records[row][0]
+		if got != want {
+			t.Errorf("A%d = %q, want %q", row+1, got, want)
+		}
+	}
+}
