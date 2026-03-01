@@ -737,6 +737,54 @@ func TestDECIMALWithLibreOffice(t *testing.T) {
 	}
 }
 
+func TestMULTINOMIALWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 2)
+	s.SetValue("B1", 3)
+	s.SetValue("C1", 4)
+	s.SetFormula("D1", "MULTINOMIAL(A1,B1,C1)")
+
+	s.SetValue("A2", 3)
+	s.SetValue("B2", 3)
+	s.SetFormula("D2", "MULTINOMIAL(A2,B2)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "multinomial.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "1260"},
+		{1, "20"},
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 4 {
+			t.Errorf("row %d: expected at least 4 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][3]
+		if got != tt.want {
+			t.Errorf("D%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}
+
 func TestCOMBINAWithLibreOffice(t *testing.T) {
 	soffice := requireLibreOffice(t)
 

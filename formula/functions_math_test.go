@@ -143,6 +143,12 @@ func TestMathFunctions(t *testing.T) {
 		{`DECIMAL("ZZ",36)`, 1295, 0},
 		{`DECIMAL("0",10)`, 0, 0},
 		{`DECIMAL("10",10)`, 10, 0},
+		{"MULTINOMIAL(2,3,4)", 1260, 0},
+		{"MULTINOMIAL(1,2,3)", 60, 0},
+		{"MULTINOMIAL(5)", 1, 0},
+		{"MULTINOMIAL(0,0)", 1, 0},
+		{"MULTINOMIAL(3,3)", 20, 0},
+		{"MULTINOMIAL(2,2,2)", 90, 0},
 	}
 
 	for _, tt := range numTests {
@@ -205,6 +211,7 @@ func TestMathErrors(t *testing.T) {
 		{"MOD(1e18,3)", ErrValNUM},
 		{`DECIMAL("G",16)`, ErrValNUM},
 		{`DECIMAL("FF",1)`, ErrValNUM},
+		{"MULTINOMIAL(-1,2)", ErrValNUM},
 	}
 
 	for _, tt := range errTests {

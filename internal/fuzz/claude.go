@@ -40,7 +40,7 @@ var ImplementedFunctions = map[string]bool{
 	"LARGE": true, "LEFT": true, "LEN": true, "LN": true, "LOG": true, "LOG10": true,
 	"LOOKUP": true, "LOWER": true, "MATCH": true, "MAX": true, "MEDIAN": true,
 	"MID": true, "MIN": true, "MINUTE": true, "MOD": true, "MONTH": true,
-	"NOT": true, "NOW": true, "OR": true, "PI": true, "POWER": true, "PRODUCT": true,
+	"MULTINOMIAL": true, "NOT": true, "NOW": true, "OR": true, "PI": true, "POWER": true, "PRODUCT": true,
 	"PROPER": true, "RAND": true, "RANDBETWEEN": true,
 	"REPLACE": true, "REPT": true, "RIGHT": true,
 	"ROUND": true, "ROUNDDOWN": true, "ROUNDUP": true, "ROW": true, "ROWS": true,

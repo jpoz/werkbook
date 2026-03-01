@@ -596,6 +596,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnMOD(args)
 	case "MROUND":
 		return fnMROUND(args)
+	case "MULTINOMIAL":
+		return fnMULTINOMIAL(args)
 	case "ODD":
 		return fnODD(args)
 	case "PERMUT":

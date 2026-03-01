@@ -555,6 +555,39 @@ func fnMROUND(args []Value) (Value, error) {
 	return NumberVal(math.Round(n/multiple) * multiple), nil
 }
 
+func fnMULTINOMIAL(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	sum := 0
+	vals := make([]int, 0, len(args))
+	for _, arg := range args {
+		n, e := coerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
+		ni := int(math.Trunc(n))
+		if ni < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		vals = append(vals, ni)
+		sum += ni
+	}
+	// numerator = sum!
+	num := 1.0
+	for i := 2; i <= sum; i++ {
+		num *= float64(i)
+	}
+	// denominator = product of each val!
+	den := 1.0
+	for _, v := range vals {
+		for i := 2; i <= v; i++ {
+			den *= float64(i)
+		}
+	}
+	return NumberVal(num / den), nil
+}
+
 func fnPERMUT(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
