@@ -372,6 +372,84 @@ func fnCOSH(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnCOT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(1 / math.Tan(n)), nil
+}
+
+func fnCOTH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(1 / math.Tanh(n)), nil
+}
+
+func fnCSC(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(1 / math.Sin(n)), nil
+}
+
+func fnCSCH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(1 / math.Sinh(n)), nil
+}
+
+func fnSEC(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(1 / math.Cos(n)), nil
+}
+
+func fnSECH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(1 / math.Cosh(n)), nil
+}
+
 func fnEVEN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil

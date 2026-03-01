@@ -8,7 +8,7 @@ import "github.com/jpoz/werkbook"
 
 ## Excel Function Support
 
-**157 of 500+ Excel functions supported** | **1,371 tests passing**
+**163 of 500+ Excel functions supported** | **1,382 tests passing**
 
 ### Math & Trigonometry
 
@@ -29,6 +29,10 @@ import "github.com/jpoz/werkbook"
 | COMBINA | :white_check_mark: | 8 |
 | COS | :white_check_mark: | 1 |
 | COSH | :white_check_mark: | 4 |
+| COT | :white_check_mark: | 3 |
+| COTH | :white_check_mark: | 2 |
+| CSC | :white_check_mark: | 3 |
+| CSCH | :white_check_mark: | 2 |
 | DECIMAL | :white_check_mark: | 8 |
 | DEGREES | :white_check_mark: | 3 |
 | EVEN | :white_check_mark: | 6 |
@@ -56,6 +60,8 @@ import "github.com/jpoz/werkbook"
 | ROUND | :white_check_mark: | 3 |
 | ROUNDDOWN | :white_check_mark: | 2 |
 | ROUNDUP | :white_check_mark: | 2 |
+| SEC | :white_check_mark: | 2 |
+| SECH | :white_check_mark: | 2 |
 | SIGN | :white_check_mark: | 1 |
 | SIN | :white_check_mark: | 1 |
 | SINH | :white_check_mark: | 4 |
@@ -71,7 +77,7 @@ import "github.com/jpoz/werkbook"
 | TANH | :white_check_mark: | 4 |
 | TRUNC | :white_check_mark: | 1 |
 
-Not yet supported: ACOT, ACOTH, AGGREGATE, CEILING.MATH, CEILING.PRECISE, COT, COTH, CSC, CSCH, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MUNIT, RANDARRAY, ROMAN, SEC, SECH, SEQUENCE, SERIESSUM, SUMX2MY2, SUMX2PY2, SUMXMY2
+Not yet supported: ACOT, ACOTH, AGGREGATE, CEILING.MATH, CEILING.PRECISE, FLOOR.MATH, FLOOR.PRECISE, ISO.CEILING, MDETERM, MINVERSE, MMULT, MUNIT, RANDARRAY, ROMAN, SEQUENCE, SERIESSUM, SUMX2MY2, SUMX2PY2, SUMXMY2
 
 ### Statistical
 

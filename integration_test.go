@@ -921,3 +921,57 @@ func TestCOMBINAWithLibreOffice(t *testing.T) {
 		}
 	}
 }
+
+func TestTrigReciprocalFunctionsWithLibreOffice(t *testing.T) {
+	soffice := requireLibreOffice(t)
+
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set input value.
+	s.SetValue("A1", 1)
+
+	// Set reciprocal trig formulas.
+	s.SetFormula("B1", "COT(A1)")
+	s.SetFormula("B2", "COTH(A1)")
+	s.SetFormula("B3", "CSC(A1)")
+	s.SetFormula("B4", "CSCH(A1)")
+	s.SetFormula("B5", "SEC(A1)")
+	s.SetFormula("B6", "SECH(A1)")
+
+	dir := t.TempDir()
+	xlsxPath := filepath.Join(dir, "trig_reciprocal.xlsx")
+	if err := f.SaveAs(xlsxPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	csvPath := libreOfficeToCSV(t, soffice, xlsxPath)
+	records := readCSV(t, csvPath)
+
+	expected := []struct {
+		row  int
+		want string
+	}{
+		{0, "0.642092615934331"},  // COT(1)
+		{1, "1.31303528009535"},   // COTH(1)
+		{2, "1.18839510577812"},   // CSC(1)
+		{3, "0.850918128239322"},  // CSCH(1)
+		{4, "1.85081571768093"},   // SEC(1)
+		{5, "0.648054273663885"},  // SECH(1)
+	}
+
+	for _, tt := range expected {
+		if tt.row >= len(records) {
+			t.Errorf("row %d: missing (only %d rows)", tt.row, len(records))
+			continue
+		}
+		if len(records[tt.row]) < 2 {
+			t.Errorf("row %d: expected at least 2 columns, got %d", tt.row, len(records[tt.row]))
+			continue
+		}
+		got := records[tt.row][1]
+		if got != tt.want {
+			t.Errorf("B%d = %q, want %q", tt.row+1, got, tt.want)
+		}
+	}
+}

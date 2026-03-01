@@ -570,6 +570,14 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnCOS(args)
 	case "COSH":
 		return fnCOSH(args)
+	case "COT":
+		return fnCOT(args)
+	case "COTH":
+		return fnCOTH(args)
+	case "CSC":
+		return fnCSC(args)
+	case "CSCH":
+		return fnCSCH(args)
 	case "DECIMAL":
 		return fnDECIMAL(args)
 	case "DEGREES":
@@ -626,6 +634,10 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnROUNDDOWN(args)
 	case "ROUNDUP":
 		return fnROUNDUP(args)
+	case "SEC":
+		return fnSEC(args)
+	case "SECH":
+		return fnSECH(args)
 	case "SIGN":
 		return fnSIGN(args)
 	case "SIN":
