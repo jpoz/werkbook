@@ -181,6 +181,60 @@ func TestMathFunctions(t *testing.T) {
 	}
 }
 
+func TestBASE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		{`BASE(255,16)`, "FF"},
+		{`BASE(7,2)`, "111"},
+		{`BASE(255,16,4)`, "00FF"},
+		{`BASE(10,10)`, "10"},
+		{`BASE(0,2)`, "0"},
+		{`BASE(100,8)`, "144"},
+		{`BASE(15,16,1)`, "F"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString {
+				t.Errorf("Eval(%q): got type %v, want string", tt.formula, got.Type)
+			} else if got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		formula string
+		errVal  ErrorValue
+	}{
+		{"BASE(-1,16)", ErrValNUM},
+		{"BASE(255,1)", ErrValNUM},
+		{"BASE(255,37)", ErrValNUM},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}
+
 func TestMathErrors(t *testing.T) {
 	resolver := &mockResolver{}
 

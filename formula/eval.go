@@ -558,6 +558,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnATAN2(args)
 	case "ATANH":
 		return fnATANH(args)
+	case "BASE":
+		return fnBASE(args)
 	case "CEILING":
 		return fnCEILING(args)
 	case "COMBIN":

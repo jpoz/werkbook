@@ -180,6 +180,47 @@ func fnATANH(args []Value) (Value, error) {
 	return NumberVal(math.Atanh(n)), nil
 }
 
+func fnBASE(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n := int64(math.Trunc(nf))
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	rf, e := coerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	radix := int(math.Trunc(rf))
+	if radix < 2 || radix > 36 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	minLen := 0
+	if len(args) == 3 {
+		ml, e := coerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		minLen = int(math.Trunc(ml))
+		if minLen < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	result := strings.ToUpper(strconv.FormatInt(n, radix))
+	for len(result) < minLen {
+		result = "0" + result
+	}
+	return StringVal(result), nil
+}
+
 func fnCEILING(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil

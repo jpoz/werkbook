@@ -9,7 +9,7 @@ import (
 // The index in this slice is the function ID encoded in OpCall.
 var knownFunctions = [...]string{
 	"ABS", "ACOS", "ACOSH", "ADDRESS", "AND", "ARABIC", "ASIN", "ASINH", "ATAN", "ATAN2", "ATANH", "AVERAGE", "AVERAGEIF",
-	"AVERAGEIFS", "CEILING", "CHAR", "CHOOSE", "CLEAN", "CODE", "COLUMN",
+	"AVERAGEIFS", "BASE", "CEILING", "CHAR", "CHOOSE", "CLEAN", "CODE", "COLUMN",
 	"COLUMNS", "COMBIN", "COMBINA", "CONCAT", "CONCATENATE", "COS", "COSH", "COUNT", "COUNTA", "COUNTBLANK",
 	"COUNTIF", "COUNTIFS", "DATE", "DATEDIF", "DATEVALUE", "DAY", "DAYS", "DECIMAL", "DEGREES", "EDATE", "EOMONTH",
 	"ERROR.TYPE", "EVEN", "EXACT", "EXP", "FACT", "FACTDOUBLE", "FIND", "FIXED", "FLOOR",
