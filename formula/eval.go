@@ -626,6 +626,8 @@ func callFunction(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 		return fnSUBTOTAL(args)
 	case "TAN":
 		return fnTAN(args)
+	case "TANH":
+		return fnTANH(args)
 	case "TRUNC":
 		return fnTRUNC(args)
 

@@ -767,3 +767,14 @@ func fnTAN(args []Value) (Value, error) {
 	}
 	return NumberVal(math.Tan(n)), nil
 }
+
+func fnTANH(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := coerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	return NumberVal(math.Tanh(n)), nil
+}

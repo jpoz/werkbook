@@ -21,6 +21,7 @@ var xlfnPrefix = map[string]string{
 	"NUMBERVALUE": "_xlfn.",
 	"SINH":        "_xlfn.",
 	"SORT":        "_xlfn._xlws.",
+	"TANH":        "_xlfn.",
 	"SWITCH":   "_xlfn.",
 	"TEXTJOIN": "_xlfn.",
 	"XLOOKUP":  "_xlfn.",
