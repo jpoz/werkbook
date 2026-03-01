@@ -22,7 +22,7 @@ func TestAddXlfnPrefixes(t *testing.T) {
 		{name: "string containing function name", in: `CONCAT("MAXIFS",A1)`, want: `_xlfn.CONCAT("MAXIFS",A1)`},
 		{name: "already prefixed no double", in: "_xlfn.MAXIFS(A1:A5,B1:B5,1)", want: "_xlfn.MAXIFS(A1:A5,B1:B5,1)"},
 		{name: "already prefixed xlws no double", in: "_xlfn._xlws.SORT(A1:A5)", want: "_xlfn._xlws.SORT(A1:A5)"},
-		{name: "IFERROR", in: "IFERROR(A1/B1,0)", want: "_xlfn.IFERROR(A1/B1,0)"},
+		{name: "IFERROR unchanged", in: "IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
 		{name: "XOR", in: "XOR(A1,B1)", want: "_xlfn.XOR(A1,B1)"},
 		{name: "SWITCH", in: "SWITCH(A1,1,\"one\",2,\"two\")", want: "_xlfn.SWITCH(A1,1,\"one\",2,\"two\")"},
 	}

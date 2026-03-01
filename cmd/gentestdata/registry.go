@@ -105,6 +105,9 @@ func offsetFormula(formula string, rowOffset int, currentSheet string) string {
 	var result strings.Builder
 	lastEnd := 0
 
+	// prevSheetPrefix tracks the sheet context from the left side of a range (e.g. "Data!" in "Data!A1:A5")
+	prevSheetPrefix := ""
+
 	for _, m := range matches {
 		// m[0..1]: full match, m[2..3]: group 1 (sheet prefix), m[4..5]: group 2 (col), m[6..7]: group 3 (row)
 		matchStart := m[0]
@@ -127,6 +130,7 @@ func offsetFormula(formula string, rowOffset int, currentSheet string) string {
 			if (prev >= 'A' && prev <= 'Z') || (prev >= 'a' && prev <= 'z') {
 				result.WriteString(formula[lastEnd:matchEnd])
 				lastEnd = matchEnd
+				prevSheetPrefix = ""
 				continue
 			}
 		}
@@ -135,6 +139,7 @@ func offsetFormula(formula string, rowOffset int, currentSheet string) string {
 		if matchEnd < len(formula) && formula[matchEnd] == '(' {
 			result.WriteString(formula[lastEnd:matchEnd])
 			lastEnd = matchEnd
+			prevSheetPrefix = ""
 			continue
 		}
 
@@ -142,17 +147,38 @@ func offsetFormula(formula string, rowOffset int, currentSheet string) string {
 		if !isValidColumn(col) {
 			result.WriteString(formula[lastEnd:matchEnd])
 			lastEnd = matchEnd
+			prevSheetPrefix = ""
 			continue
 		}
 
+		// Determine effective sheet for this reference.
+		// If no explicit sheet prefix but preceded by ':', inherit from the left side of the range.
+		effectiveSheet := sheetPrefix
+		if effectiveSheet == "" && matchStart > 0 && formula[matchStart-1] == ':' && prevSheetPrefix != "" {
+			effectiveSheet = prevSheetPrefix
+		}
+
 		// If the reference has a sheet prefix that differs from currentSheet, don't offset
-		if sheetPrefix != "" {
-			sheetName := strings.TrimSuffix(sheetPrefix, "!")
+		if effectiveSheet != "" {
+			sheetName := strings.TrimSuffix(effectiveSheet, "!")
 			if sheetName != currentSheet {
 				result.WriteString(formula[lastEnd:matchEnd])
 				lastEnd = matchEnd
+				// Track for potential range right side
+				prevSheetPrefix = effectiveSheet
 				continue
 			}
+		}
+
+		// Track the sheet prefix for the next match (in case it's the right side of a range)
+		if sheetPrefix != "" {
+			prevSheetPrefix = sheetPrefix
+		} else if matchEnd < len(formula) && formula[matchEnd] == ':' {
+			// This ref is followed by ':', so the next ref inherits nothing new
+			// (it could only inherit from an explicit sheet prefix on this ref)
+			prevSheetPrefix = ""
+		} else {
+			prevSheetPrefix = ""
 		}
 
 		row, err := strconv.Atoi(rowStr)

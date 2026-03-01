@@ -519,12 +519,26 @@ func formatNumber(n float64, format string) string {
 		decimals := strings.Count(format[strings.Index(format, "."):], "0")
 		return fmt.Sprintf("%.*f", decimals, n)
 
-	case format == "0":
-		return fmt.Sprintf("%.0f", n)
+	case isZeroPadFormat(format):
+		width := len(format)
+		return fmt.Sprintf("%0*.0f", width, n)
 
 	default:
 		return fmt.Sprintf("%g", n)
 	}
+}
+
+// isZeroPadFormat returns true if format consists entirely of '0' characters (e.g. "0", "000000").
+func isZeroPadFormat(format string) bool {
+	if len(format) == 0 {
+		return false
+	}
+	for _, c := range format {
+		if c != '0' {
+			return false
+		}
+	}
+	return true
 }
 
 func formatWithCommas(n float64, decimals int) string {
