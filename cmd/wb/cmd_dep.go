@@ -24,8 +24,13 @@ type depCellEntry struct {
 	Value       any            `json:"value"`
 	Type        string         `json:"type"`
 	Precedents  []depCellBrief `json:"precedents,omitempty"`
-	PrecRanges  []string       `json:"precedent_ranges,omitempty"`
+	PrecRanges  []depRange     `json:"precedent_ranges,omitempty"`
 	Dependents  []depCellBrief `json:"dependents,omitempty"`
+}
+
+type depRange struct {
+	Range string         `json:"range"`
+	Cells []depCellBrief `json:"cells"`
 }
 
 type depCellBrief struct {
@@ -44,18 +49,26 @@ func cmdDep(args []string, globals globalFlags) int {
 
 Show the dependency graph for a cell or range.
 
+When neither --cell nor --range is provided, auto-discovers all formula
+cells on the target sheet and shows their dependencies.
+
 Flags:
   --cell <A1>          Show deps for a single cell
   --range <A1:D10>     Show deps for all formula cells in range
   --sheet <name>       Sheet name (default: first sheet)
   --direction <both>   "precedents", "dependents", or "both" (default)
+                       Note: "dependents" searches across ALL sheets.
   --depth <N>          Depth of transitive deps (default: 1, -1 for all)
+                       Tip: use --depth 1 for large workbooks; --depth -1
+                       is best for small dependency chains.
 
 Examples:
-  wb dep --cell A1 data.xlsx
-  wb dep --range A1:D10 --format markdown data.xlsx
-  wb dep --cell A1 --depth -1 data.xlsx
-  wb dep --cell A1 --direction precedents data.xlsx`)
+  wb dep data.xlsx                                   # all formulas on first sheet
+  wb dep --sheet Sheet2 data.xlsx                    # all formulas on Sheet2
+  wb dep --cell A1 data.xlsx                         # single cell
+  wb dep --range A1:D10 --format markdown data.xlsx  # range, markdown output
+  wb dep --cell A1 --depth -1 data.xlsx              # full transitive graph
+  wb dep --direction dependents --cell A1 data.xlsx  # dependents across all sheets`)
 		return ExitSuccess
 	}
 
@@ -119,11 +132,6 @@ Examples:
 
 	if filePath == "" {
 		writeError(cmd, errUsage("file path required"), globals)
-		return ExitUsage
-	}
-
-	if cellFlag == "" && rangeFlag == "" {
-		writeError(cmd, errUsage("--cell or --range is required"), globals)
 		return ExitUsage
 	}
 
@@ -193,7 +201,7 @@ Examples:
 			return ExitUsage
 		}
 		targets = append(targets, cellCoord{col: col, row: row, ref: cellFlag})
-	} else {
+	} else if rangeFlag != "" {
 		col1, row1, col2, row2, rerr := werkbook.RangeToCoordinates(rangeFlag)
 		if rerr != nil {
 			writeError(cmd, errInvalidRange(rangeFlag, rerr), globals)
@@ -208,6 +216,29 @@ Examples:
 				}
 			}
 		}
+	} else {
+		// Auto-discover: find all formula cells on the sheet.
+		for row := range s.Rows() {
+			for _, cell := range row.Cells() {
+				if cell.Formula() != "" {
+					ref, _ := werkbook.CoordinatesToCellName(cell.Col(), row.Num())
+					targets = append(targets, cellCoord{col: cell.Col(), row: row.Num(), ref: ref})
+				}
+			}
+		}
+	}
+
+	// resolveValue returns a display-friendly value for a werkbook.Value.
+	// Error values use the error string (e.g. "#REF!"); empty values use "".
+	resolveValue := func(v werkbook.Value) any {
+		switch v.Type {
+		case werkbook.TypeError:
+			return v.String
+		case werkbook.TypeEmpty:
+			return ""
+		default:
+			return v.Raw()
+		}
 	}
 
 	// Helper to build a depCellBrief for a qualified cell.
@@ -219,7 +250,7 @@ Examples:
 		var frm string
 		if sh != nil {
 			v, _ := sh.GetValue(ref)
-			val = v.Raw()
+			val = resolveValue(v)
 			typ = valueTypeName(v)
 			frm, _ = sh.GetFormula(ref)
 		}
@@ -271,7 +302,7 @@ Examples:
 			Ref:     tc.ref,
 			Sheet:   sheetName,
 			Formula: frm,
-			Value:   v.Raw(),
+			Value:   resolveValue(v),
 			Type:    valueTypeName(v),
 		}
 
@@ -286,11 +317,35 @@ Examples:
 				return pts
 			}, depthFlag)
 
-			// Precedent ranges as strings.
+			// Precedent ranges with expanded cell values.
 			for _, rng := range precRanges {
 				from, _ := werkbook.CoordinatesToCellName(rng.FromCol, rng.FromRow)
 				to, _ := werkbook.CoordinatesToCellName(rng.ToCol, rng.ToRow)
-				entry.PrecRanges = append(entry.PrecRanges, rng.Sheet+"!"+from+":"+to)
+				rangeStr := rng.Sheet + "!" + from + ":" + to
+
+				var cells []depCellBrief
+				rngSheet := f.Sheet(rng.Sheet)
+				if rngSheet != nil {
+					for r := rng.FromRow; r <= rng.ToRow; r++ {
+						for c := rng.FromCol; c <= rng.ToCol; c++ {
+							ref, _ := werkbook.CoordinatesToCellName(c, r)
+							v, _ := rngSheet.GetValue(ref)
+							frm, _ := rngSheet.GetFormula(ref)
+							cells = append(cells, depCellBrief{
+								Ref:     ref,
+								Sheet:   rng.Sheet,
+								Formula: frm,
+								Value:   resolveValue(v),
+								Type:    valueTypeName(v),
+							})
+						}
+					}
+				}
+
+				entry.PrecRanges = append(entry.PrecRanges, depRange{
+					Range: rangeStr,
+					Cells: cells,
+				})
 			}
 		}
 
@@ -365,8 +420,20 @@ func formatDepMarkdown(data depData) string {
 			}
 			for _, r := range cell.PrecRanges {
 				sb.WriteString("- ")
-				sb.WriteString(r)
+				sb.WriteString(r.Range)
 				sb.WriteString(" (range)\n")
+				for _, c := range r.Cells {
+					sb.WriteString("  - ")
+					sb.WriteString(c.Ref)
+					sb.WriteString(" = ")
+					sb.WriteString(fmt.Sprintf("%v", c.Value))
+					if c.Formula != "" {
+						sb.WriteString(" (formula: =")
+						sb.WriteString(c.Formula)
+						sb.WriteString(")")
+					}
+					sb.WriteString("\n")
+				}
 			}
 		}
 
