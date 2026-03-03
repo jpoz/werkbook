@@ -64,6 +64,8 @@ func run(args []string) int {
 		return cmdCreate(cmdArgs, globals)
 	case "calc":
 		return cmdCalc(cmdArgs, globals)
+	case "dep":
+		return cmdDep(cmdArgs, globals)
 	case "formula":
 		return cmdFormula(cmdArgs, globals)
 	case "version":
@@ -105,6 +107,7 @@ Commands:
   edit      Apply JSON patch array of cell changes
   create    Create new workbook from JSON spec
   calc      Force recalculation and return results
+  dep       Show cell dependency graph (precedents and dependents)
   formula   Formula-related subcommands (e.g. 'formula list')
   version   Print version info
 
@@ -141,6 +144,8 @@ func cmdHelp(args []string, globals globalFlags) int {
 		return cmdCreate([]string{"--help"}, globals)
 	case "calc":
 		return cmdCalc([]string{"--help"}, globals)
+	case "dep":
+		return cmdDep([]string{"--help"}, globals)
 	case "formula":
 		return cmdFormula([]string{"--help"}, globals)
 	case "version":

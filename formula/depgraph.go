@@ -133,6 +133,20 @@ func (g *DepGraph) DirectDependents(cell QualifiedCell) []QualifiedCell {
 	return result
 }
 
+// DependsOn returns the point cells and ranges that cell's formula reads from.
+// Returns nil slices if the cell has no registered dependencies.
+func (g *DepGraph) DependsOn(cell QualifiedCell) (points []QualifiedCell, ranges []RangeAddr) {
+	for target := range g.dependsOn[cell] {
+		points = append(points, target)
+	}
+	for _, rs := range g.rangeSubs {
+		if rs.formulaCell == cell {
+			ranges = append(ranges, rs.rng)
+		}
+	}
+	return points, ranges
+}
+
 // Dependents returns all formula cells that transitively depend on changed,
 // in BFS order (topological: dependencies before their dependents).
 func (g *DepGraph) Dependents(changed QualifiedCell) []QualifiedCell {

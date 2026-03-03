@@ -282,6 +282,28 @@ func (f *File) invalidateDependents(sheet string, col, row int) {
 	}
 }
 
+// Precedents returns the cells and ranges that the formula in the given cell reads from.
+// Returns nil slices if the cell has no formula or no registered dependencies.
+func (f *File) Precedents(sheet, cell string) ([]formula.QualifiedCell, []formula.RangeAddr, error) {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	qc := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
+	points, ranges := f.deps.DependsOn(qc)
+	return points, ranges, nil
+}
+
+// DirectDependents returns the cells whose formulas directly read the given cell.
+func (f *File) DirectDependents(sheet, cell string) ([]formula.QualifiedCell, error) {
+	col, row, err := CellNameToCoordinates(cell)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	qc := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
+	return f.deps.DirectDependents(qc), nil
+}
+
 // Recalculate evaluates all dirty formula cells. Cells are evaluated lazily
 // via GetValue, but this method forces evaluation of every dirty cell.
 func (f *File) Recalculate() {
