@@ -97,8 +97,8 @@ func TestSUBSTITUTE(t *testing.T) {
 		{name: "replace_1st", formula: `SUBSTITUTE("abab","a","X",1)`, want: "Xbab"},
 		// No match — return original
 		{name: "no_match", formula: `SUBSTITUTE("hello","z","X")`, want: "hello"},
-		// Empty old_text — Go ReplaceAll inserts between every rune
-		{name: "empty_old", formula: `SUBSTITUTE("hello","","X")`, want: "XhXeXlXlXoX"},
+		// Empty old_text — Excel returns original text unchanged
+		{name: "empty_old", formula: `SUBSTITUTE("hello","","X")`, want: "hello"},
 		// Empty new_text — delete occurrences
 		{name: "delete_all", formula: `SUBSTITUTE("hello","l","")`, want: "heo"},
 		// Empty source text
@@ -195,7 +195,7 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 		want    string
 	}{
 		// Date formatting from Excel serial numbers
-		{name: "mm-dd-yy", formula: `TEXT(17816.607951388887, "mm-dd-yy")`, want: "11-10-48"},
+		{name: "mm-dd-yy", formula: `TEXT(17816.607951388887, "mm-dd-yy")`, want: "10-10-48"},
 		{name: "yyyy-mm-dd", formula: `TEXT(44197, "yyyy-mm-dd")`, want: "2021-01-01"},
 		{name: "mm/dd/yyyy", formula: `TEXT(44197, "mm/dd/yyyy")`, want: "01/01/2021"},
 		{name: "d-mmm-yy", formula: `TEXT(44197, "d-mmm-yy")`, want: "1-Jan-21"},
@@ -401,7 +401,7 @@ func TestTEXTSections(t *testing.T) {
 	}{
 		{name: "pos_neg_sections", formula: `TEXT(-42, "0;(0)")`, want: "(42)"},
 		{name: "pos_section", formula: `TEXT(42, "0;(0)")`, want: "42"},
-		{name: "three_sections_zero", formula: `TEXT(0, "0;(0);\"zero\"")`, want: "zero"},
+		{name: "three_sections_zero", formula: `TEXT(0, "0;(0);""zero""")`, want: "zero"},
 	}
 
 	for _, tt := range tests {
@@ -426,7 +426,7 @@ func TestTEXTLiterals(t *testing.T) {
 		formula string
 		want    string
 	}{
-		{name: "quoted_literal", formula: `TEXT(12.3, "\"Value: \"0.00")`, want: "Value: 12.30"},
+		{name: "quoted_literal", formula: `TEXT(12.3, """Value: ""0.00")`, want: "Value: 12.30"},
 		{name: "general_format", formula: `TEXT(1, "General")`, want: "1"},
 		{name: "general_float", formula: `TEXT(3.14, "General")`, want: "3.14"},
 	}

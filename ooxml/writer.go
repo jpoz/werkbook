@@ -12,7 +12,6 @@ const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\
 // WriteWorkbook writes a complete XLSX file to w from the given WorkbookData.
 func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	zw := zip.NewWriter(w)
-	defer zw.Close()
 
 	sheetCount := len(data.Sheets)
 	if sheetCount == 0 {
@@ -85,7 +84,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		}
 	}
 
-	return nil
+	return zw.Close()
 }
 
 func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST bool) error {
@@ -225,6 +224,6 @@ func writeXML(zw *zip.Writer, name string, v any) error {
 	if err := enc.Encode(v); err != nil {
 		return fmt.Errorf("encode %s: %w", name, err)
 	}
-	return nil
+	return enc.Close()
 }
 

@@ -55,6 +55,9 @@ func fnCEILING(args []Value) (Value, error) {
 	if sig == 0 {
 		return NumberVal(0), nil
 	}
+	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Ceil(n/sig) * sig), nil
 }
 
@@ -72,6 +75,9 @@ func fnFLOOR(args []Value) (Value, error) {
 	}
 	if sig == 0 {
 		return NumberVal(0), nil
+	}
+	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(math.Floor(n/sig) * sig), nil
 }

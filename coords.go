@@ -76,7 +76,11 @@ func ColumnNameToNumber(name string) (int, error) {
 }
 
 // ColumnNumberToName converts a 1-based column number to a column name like "A", "Z", "AA", "XFD".
+// Returns "" for col <= 0 or col > MaxColumns.
 func ColumnNumberToName(col int) string {
+	if col < 1 || col > MaxColumns {
+		return ""
+	}
 	var buf [3]byte // max 3 letters for XFD
 	i := len(buf)
 	for col > 0 {

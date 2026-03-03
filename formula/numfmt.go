@@ -985,8 +985,10 @@ func formatNumberSection(n float64, format string) string {
 		}
 	}
 
-	// If no digit tokens existed, ensure we write the number.
-	if !intWritten {
+	// If no digit tokens existed and there are actual digit placeholders in
+	// the format, write the number. Skip if the format is all literals (e.g.
+	// the "zero" section of a multi-section format).
+	if !intWritten && intDigits > 0 {
 		result.WriteString(intStr)
 		if totalDecPlaces > 0 {
 			result.WriteByte('.')
@@ -1085,8 +1087,13 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 			if i+1 < len(format) && (format[i+1] == '+' || format[i+1] == '-') {
 				tokens = append(tokens, numFmtToken{kind: tokExponent, value: format[i : i+2]})
 				i += 2
-				// Consume the exponent digit placeholders.
+				// Emit the exponent digit placeholders as tokens so formatScientific can count them.
 				for i < len(format) && (format[i] == '0' || format[i] == '#') {
+					if format[i] == '0' {
+						tokens = append(tokens, numFmtToken{kind: tokDigit, value: "0"})
+					} else {
+						tokens = append(tokens, numFmtToken{kind: tokDigitOpt, value: "#"})
+					}
 					i++
 				}
 			} else {

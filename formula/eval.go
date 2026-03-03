@@ -213,7 +213,12 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			} else if be != nil {
 				push(*be)
 			} else {
-				push(NumberVal(math.Pow(an, bn)))
+				result := math.Pow(an, bn)
+				if math.IsNaN(result) || math.IsInf(result, 0) {
+					push(ErrorVal(ErrValNUM))
+				} else {
+					push(NumberVal(result))
+				}
 			}
 
 		case OpNeg:

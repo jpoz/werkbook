@@ -209,6 +209,9 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 		return StringVal(result), nil
 	}
 
+	if oldText == "" {
+		return StringVal(text), nil
+	}
 	return StringVal(strings.ReplaceAll(text, oldText, newText)), nil
 }
 

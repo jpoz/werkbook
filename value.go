@@ -91,7 +91,11 @@ func toValue(v any) (Value, error) {
 	case uint64:
 		return Value{Type: TypeNumber, Number: float64(val)}, nil
 	case float32:
-		return Value{Type: TypeNumber, Number: float64(val)}, nil
+		f64 := float64(val)
+		if math.IsNaN(f64) || math.IsInf(f64, 0) {
+			return Value{}, fmt.Errorf("%w: %v", ErrUnsupportedType, val)
+		}
+		return Value{Type: TypeNumber, Number: f64}, nil
 	case float64:
 		if math.IsNaN(val) || math.IsInf(val, 0) {
 			return Value{}, fmt.Errorf("%w: %v", ErrUnsupportedType, val)

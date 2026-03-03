@@ -52,7 +52,9 @@ func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		{Name: xml.Name{Local: "sheetId"}, Value: fmt.Sprintf("%d", s.SheetID)},
 		{Name: xml.Name{Space: NSOfficeDocument, Local: "id"}, Value: s.RID},
 	}
-	e.EncodeToken(start)
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
 	return e.EncodeToken(start.End())
 }
 

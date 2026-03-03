@@ -61,6 +61,19 @@ func fnAND(args []Value) (Value, error) {
 		if arg.Type == ValueError {
 			return arg, nil
 		}
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					if !IsTruthy(cell) {
+						return BoolVal(false), nil
+					}
+				}
+			}
+			continue
+		}
 		if !IsTruthy(arg) {
 			return BoolVal(false), nil
 		}
@@ -75,6 +88,19 @@ func fnOR(args []Value) (Value, error) {
 	for _, arg := range args {
 		if arg.Type == ValueError {
 			return arg, nil
+		}
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					if IsTruthy(cell) {
+						return BoolVal(true), nil
+					}
+				}
+			}
+			continue
 		}
 		if IsTruthy(arg) {
 			return BoolVal(true), nil

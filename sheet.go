@@ -386,13 +386,13 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 			cd := cellToData(ref, c.value, c.formula)
 
 			if c.style != nil {
-				sd := styleToStyleData(c.style)
-				key := styleKey(sd)
+				stData := styleToStyleData(c.style)
+				key := styleKey(stData)
 				idx, ok := styleMap[key]
 				if !ok {
 					idx = len(*styles)
 					styleMap[key] = idx
-					*styles = append(*styles, sd)
+					*styles = append(*styles, stData)
 				}
 				cd.StyleIdx = idx
 			}
@@ -623,6 +623,8 @@ func cellToData(ref string, v Value, f string) ooxml.CellData {
 			val = "1"
 		}
 		cd = ooxml.CellData{Ref: ref, Type: "b", Value: val}
+	case TypeError:
+		cd = ooxml.CellData{Ref: ref, Type: "e", Value: v.String}
 	default:
 		cd = ooxml.CellData{Ref: ref}
 	}

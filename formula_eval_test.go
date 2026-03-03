@@ -7,8 +7,6 @@ import (
 )
 
 // TestFormulaEvaluation verifies that formula cells compute their values.
-// Currently fails because the formula engine (formula/ package) is not
-// connected to the public API — cells store formula text but never evaluate it.
 func TestFormulaEvaluation(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

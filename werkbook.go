@@ -116,10 +116,13 @@ func (f *File) SaveAs(name string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
 	data := f.buildWorkbookData()
-	return ooxml.WriteWorkbook(out, data)
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // Open opens an existing XLSX file for reading.
