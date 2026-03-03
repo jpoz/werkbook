@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.1
+
+### Bug fixes
+
+- **`wb dep`: skip empty cells in range expansion**: When a formula depends on a range (e.g. `=SUM(A1:A100)`), the dep command no longer lists cells that have no value and no formula, reducing noise in the output.
+
 ## v0.4.0
 
 ### Breaking changes
