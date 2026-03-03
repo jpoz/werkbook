@@ -16,7 +16,7 @@ No external dependencies beyond the Go standard library. Module: `github.com/jpo
 
 ## Architecture
 
-Werkbook is a Go library for reading and writing Excel XLSX files with a built-in formula engine supporting 55 common functions.
+Werkbook is a Go library for reading and writing Excel XLSX files with a built-in formula engine supporting ~170 functions.
 
 ### Two-layer design
 

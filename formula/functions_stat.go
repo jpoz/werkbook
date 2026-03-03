@@ -9,20 +9,35 @@ import (
 
 func init() {
 	Register("AVERAGE", NoCtx(fnAVERAGE))
+	Register("AVEDEV", NoCtx(fnAVEDEV))
 	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
+	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
+	Register("DEVSQ", NoCtx(fnDEVSQ))
+	Register("GEOMEAN", NoCtx(fnGEOMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
 	Register("MAX", NoCtx(fnMAX))
+	Register("MAXIFS", NoCtx(fnMAXIFS))
+	Register("MEDIAN", NoCtx(fnMEDIAN))
 	Register("MIN", NoCtx(fnMIN))
+	Register("MINIFS", NoCtx(fnMINIFS))
+	Register("MODE", NoCtx(fnMODE))
+	Register("PERCENTILE", NoCtx(fnPERCENTILE))
+	Register("RANK", NoCtx(fnRANK))
 	Register("SMALL", NoCtx(fnSMALL))
+	Register("STDEV", NoCtx(fnSTDEV))
+	Register("STDEVP", NoCtx(fnSTDEVP))
 	Register("SUM", NoCtx(fnSUM))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
+	Register("SUMSQ", NoCtx(fnSUMSQ))
+	Register("VAR", NoCtx(fnVAR))
+	Register("VARP", NoCtx(fnVARP))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -512,4 +527,467 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(sum), nil
+}
+
+// collectNumeric gathers all numeric values from args into a slice.
+func collectNumeric(args []Value) ([]float64, *Value) {
+	var nums []float64
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return nil, &cell
+					}
+					if cell.Type == ValueNumber {
+						nums = append(nums, cell.Num)
+					}
+				}
+			}
+		} else {
+			if arg.Type == ValueError {
+				return nil, &arg
+			}
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return nil, e
+			}
+			nums = append(nums, n)
+		}
+	}
+	return nums, nil
+}
+
+func fnAVEDEV(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	absDevSum := 0.0
+	for _, v := range nums {
+		d := v - mean
+		if d < 0 {
+			d = -d
+		}
+		absDevSum += d
+	}
+	return NumberVal(absDevSum / float64(n)), nil
+}
+
+func fnDEVSQ(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq), nil
+}
+
+func fnAVERAGEIFS(args []Value) (Value, error) {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	avgRange := args[0]
+	if avgRange.Type != ValueArray {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	sum := 0.0
+	count := 0
+	for r, row := range avgRange.Array {
+		for c := range row {
+			allMatch := true
+			for k := 1; k < len(args); k += 2 {
+				critRange := args[k]
+				criteria := args[k+1]
+				var cellVal Value
+				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
+					cellVal = critRange.Array[r][c]
+				}
+				if !MatchesCriteria(cellVal, criteria) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				if n, e := CoerceNum(avgRange.Array[r][c]); e == nil {
+					sum += n
+					count++
+				}
+			}
+		}
+	}
+	if count == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(sum / float64(count)), nil
+}
+
+func fnMAXIFS(args []Value) (Value, error) {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	maxRange := args[0]
+	if maxRange.Type != ValueArray {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	maxVal := -math.MaxFloat64
+	found := false
+	for r, row := range maxRange.Array {
+		for c := range row {
+			allMatch := true
+			for k := 1; k < len(args); k += 2 {
+				critRange := args[k]
+				criteria := args[k+1]
+				var cellVal Value
+				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
+					cellVal = critRange.Array[r][c]
+				}
+				if !MatchesCriteria(cellVal, criteria) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				if n, e := CoerceNum(maxRange.Array[r][c]); e == nil {
+					if !found || n > maxVal {
+						maxVal = n
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(maxVal), nil
+}
+
+func fnMINIFS(args []Value) (Value, error) {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	minRange := args[0]
+	if minRange.Type != ValueArray {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	minVal := math.MaxFloat64
+	found := false
+	for r, row := range minRange.Array {
+		for c := range row {
+			allMatch := true
+			for k := 1; k < len(args); k += 2 {
+				critRange := args[k]
+				criteria := args[k+1]
+				var cellVal Value
+				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
+					cellVal = critRange.Array[r][c]
+				}
+				if !MatchesCriteria(cellVal, criteria) {
+					allMatch = false
+					break
+				}
+			}
+			if allMatch {
+				if n, e := CoerceNum(minRange.Array[r][c]); e == nil {
+					if !found || n < minVal {
+						minVal = n
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(minVal), nil
+}
+
+func fnMEDIAN(args []Value) (Value, error) {
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	n := len(nums)
+	if n%2 == 1 {
+		return NumberVal(nums[n/2]), nil
+	}
+	return NumberVal((nums[n/2-1] + nums[n/2]) / 2), nil
+}
+
+func fnMODE(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	freq := make(map[float64]int)
+	order := make([]float64, 0)
+	for _, n := range nums {
+		if freq[n] == 0 {
+			order = append(order, n)
+		}
+		freq[n]++
+	}
+	bestVal := 0.0
+	bestCount := 1
+	for _, v := range order {
+		if freq[v] > bestCount {
+			bestCount = freq[v]
+			bestVal = v
+		}
+	}
+	if bestCount < 2 {
+		return ErrorVal(ErrValNA), nil
+	}
+	return NumberVal(bestVal), nil
+}
+
+func fnPERCENTILE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	k, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	if k < 0 || k > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	n := len(nums)
+	if n == 1 {
+		return NumberVal(nums[0]), nil
+	}
+	rank := k * float64(n-1)
+	intPart := int(rank)
+	frac := rank - float64(intPart)
+	if intPart >= n-1 {
+		return NumberVal(nums[n-1]), nil
+	}
+	result := nums[intPart] + frac*(nums[intPart+1]-nums[intPart])
+	return NumberVal(result), nil
+}
+
+func fnRANK(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nums, e2 := collectNumeric(args[1:2])
+	if e2 != nil {
+		return *e2, nil
+	}
+	ascending := false
+	if len(args) == 3 {
+		order, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		ascending = order != 0
+	}
+	found := false
+	for _, v := range nums {
+		if v == num {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrorVal(ErrValNA), nil
+	}
+	rank := 1
+	for _, v := range nums {
+		if ascending {
+			if v < num {
+				rank++
+			}
+		} else {
+			if v > num {
+				rank++
+			}
+		}
+	}
+	return NumberVal(float64(rank)), nil
+}
+
+func fnSUMSQ(args []Value) (Value, error) {
+	sum := 0.0
+	if e := IterateNumeric(args, func(n float64) { sum += n * n }); e != nil {
+		return *e, nil
+	}
+	return NumberVal(sum), nil
+}
+
+func fnSTDEV(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(math.Sqrt(ssq / float64(n-1))), nil
+}
+
+func fnSTDEVP(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(math.Sqrt(ssq / float64(n))), nil
+}
+
+func fnVAR(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n-1)), nil
+}
+
+func fnVARP(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n)), nil
+}
+
+func fnGEOMEAN(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sumLn := 0.0
+	for _, v := range nums {
+		if v <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sumLn += math.Log(v)
+	}
+	return NumberVal(math.Exp(sumLn / float64(n))), nil
 }
