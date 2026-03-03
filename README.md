@@ -13,18 +13,18 @@ go get github.com/jpoz/werkbook
 ### CLI
 
 ```bash
-go install github.com/jpoz/werkbook/cmd/werkbook@latest
+go install github.com/jpoz/werkbook/cmd/wb@latest
 ```
 
-This installs the `werkbook` binary, which provides commands for reading, editing, and creating XLSX files from the command line:
+This installs the `wb` (werkbook) binary, which provides commands for reading, editing, and creating XLSX files from the command line:
 
 ```bash
-werkbook info file.xlsx                        # Sheet metadata
-werkbook read file.xlsx --range A1:D10         # Read cell data
-werkbook edit file.xlsx --patch '[{"cell":"A1","value":"Hello"}]'  # Edit cells
-werkbook create new.xlsx --spec '{"sheets":["Data"]}'             # Create workbook
-werkbook calc file.xlsx                        # Recalculate formulas
-werkbook formula list                          # List available functions
+wb info file.xlsx                        # Sheet metadata
+wb read file.xlsx --range A1:D10         # Read cell data
+wb edit file.xlsx --patch '[{"cell":"A1","value":"Hello"}]'  # Edit cells
+wb create new.xlsx --spec '{"sheets":["Data"]}'             # Create workbook
+wb calc file.xlsx                        # Recalculate formulas
+wb formula list                          # List available functions
 ```
 
 All output uses a JSON envelope by default. Use `--format markdown` or `--format csv` for other formats.
