@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0
+
+### Breaking changes
+
+- **CLI renamed from `werkbook` to `wb`**: The CLI binary is now installed as `wb` instead of `werkbook`. Update any scripts or aliases accordingly. Install with `go install github.com/jpoz/werkbook/cmd/wb@latest`.
+
+- **Module path changed**: The Go module path is now `github.com/jpoz/werkbook` (previously `github.com/werkbook/werkbook`). Update your `import` statements and `go.mod` accordingly.
+
 ## v0.3.0
 
 ### CLI
