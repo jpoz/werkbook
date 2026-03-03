@@ -331,6 +331,9 @@ Examples:
 							ref, _ := werkbook.CoordinatesToCellName(c, r)
 							v, _ := rngSheet.GetValue(ref)
 							frm, _ := rngSheet.GetFormula(ref)
+							if v.Type == werkbook.TypeEmpty && frm == "" {
+								continue
+							}
 							cells = append(cells, depCellBrief{
 								Ref:     ref,
 								Sheet:   rng.Sheet,
