@@ -5,6 +5,7 @@
 *.so
 *.dylib
 *.xlsx
+/wb
 
 # Test binary
 *.test
