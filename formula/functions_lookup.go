@@ -1,10 +1,21 @@
 package formula
 
+import (
+	"fmt"
+	"strings"
+)
+
 func init() {
+	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("HLOOKUP", NoCtx(fnHLOOKUP))
 	Register("INDEX", NoCtx(fnINDEX))
+	Register("INDIRECT", NoCtx(func([]Value) (Value, error) {
+		return ErrorVal(ErrValREF), nil
+	}))
+	Register("LOOKUP", NoCtx(fnLOOKUP))
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
+	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 }
 
 func fnVLOOKUP(args []Value) (Value, error) {
@@ -229,4 +240,217 @@ func fnMATCH(args []Value) (Value, error) {
 	}
 
 	return ErrorVal(ErrValVALUE), nil
+}
+
+func columnNumberToName(col int) string {
+	var buf [3]byte
+	i := len(buf)
+	for col > 0 {
+		col--
+		i--
+		buf[i] = byte('A' + col%26)
+		col /= 26
+	}
+	return string(buf[i:])
+}
+
+func fnADDRESS(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rowNum, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	colNum, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	row := int(rowNum)
+	col := int(colNum)
+	if row < 1 || col < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	absNum := 1
+	if len(args) >= 3 {
+		a, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		absNum = int(a)
+	}
+
+	a1Style := true
+	if len(args) >= 4 {
+		a1Style = IsTruthy(args[3])
+	}
+
+	sheetText := ""
+	if len(args) >= 5 {
+		sheetText = ValueToString(args[4])
+	}
+
+	var result string
+	if a1Style {
+		colName := columnNumberToName(col)
+		switch absNum {
+		case 1:
+			result = fmt.Sprintf("$%s$%d", colName, row)
+		case 2:
+			result = fmt.Sprintf("%s$%d", colName, row)
+		case 3:
+			result = fmt.Sprintf("$%s%d", colName, row)
+		case 4:
+			result = fmt.Sprintf("%s%d", colName, row)
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	} else {
+		switch absNum {
+		case 1:
+			result = fmt.Sprintf("R%dC%d", row, col)
+		case 2:
+			result = fmt.Sprintf("R%dC[%d]", row, col)
+		case 3:
+			result = fmt.Sprintf("R[%d]C%d", row, col)
+		case 4:
+			result = fmt.Sprintf("R[%d]C[%d]", row, col)
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	if sheetText != "" {
+		needsQuote := strings.ContainsAny(sheetText, " '[")
+		if needsQuote {
+			result = "'" + sheetText + "'!" + result
+		} else {
+			result = sheetText + "!" + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+func fnLOOKUP(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	lookup := args[0]
+	lookupArr := args[1]
+	resultArr := lookupArr
+	if len(args) == 3 {
+		resultArr = args[2]
+	}
+
+	var lookupValues []Value
+	if lookupArr.Type == ValueArray {
+		for _, row := range lookupArr.Array {
+			lookupValues = append(lookupValues, row...)
+		}
+	} else {
+		lookupValues = []Value{lookupArr}
+	}
+
+	var resultValues []Value
+	if resultArr.Type == ValueArray {
+		for _, row := range resultArr.Array {
+			resultValues = append(resultValues, row...)
+		}
+	} else {
+		resultValues = []Value{resultArr}
+	}
+
+	lastMatch := -1
+	for i, v := range lookupValues {
+		cmp := CompareValues(v, lookup)
+		if cmp <= 0 {
+			lastMatch = i
+		}
+		if cmp > 0 {
+			break
+		}
+	}
+
+	if lastMatch < 0 || lastMatch >= len(resultValues) {
+		return ErrorVal(ErrValNA), nil
+	}
+	return resultValues[lastMatch], nil
+}
+
+func fnXLOOKUP(args []Value) (Value, error) {
+	if len(args) < 3 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	lookup := args[0]
+	lookupArr := args[1]
+	returnArr := args[2]
+
+	notFound := ErrorVal(ErrValNA)
+	if len(args) >= 4 {
+		notFound = args[3]
+	}
+
+	matchMode := 0
+	if len(args) >= 5 {
+		mm, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(mm)
+	}
+
+	var lookupValues []Value
+	if lookupArr.Type == ValueArray {
+		for _, row := range lookupArr.Array {
+			lookupValues = append(lookupValues, row...)
+		}
+	} else {
+		lookupValues = []Value{lookupArr}
+	}
+
+	var returnValues []Value
+	if returnArr.Type == ValueArray {
+		for _, row := range returnArr.Array {
+			returnValues = append(returnValues, row...)
+		}
+	} else {
+		returnValues = []Value{returnArr}
+	}
+
+	switch matchMode {
+	case 0:
+		for i, v := range lookupValues {
+			if CompareValues(v, lookup) == 0 {
+				if i < len(returnValues) {
+					return returnValues[i], nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+		}
+
+	case -1:
+		lastMatch := -1
+		for i, v := range lookupValues {
+			if CompareValues(v, lookup) <= 0 {
+				lastMatch = i
+			}
+		}
+		if lastMatch >= 0 && lastMatch < len(returnValues) {
+			return returnValues[lastMatch], nil
+		}
+
+	case 1:
+		for i, v := range lookupValues {
+			if CompareValues(v, lookup) >= 0 {
+				if i < len(returnValues) {
+					return returnValues[i], nil
+				}
+				break
+			}
+		}
+	}
+
+	return notFound, nil
 }

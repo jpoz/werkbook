@@ -2,24 +2,40 @@ package formula
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 func init() {
+	Register("CHAR", NoCtx(fnCHAR))
 	Register("CHOOSE", NoCtx(fnCHOOSE))
+	Register("CLEAN", NoCtx(fnCLEAN))
+	Register("CODE", NoCtx(fnCODE))
 	Register("CONCAT", NoCtx(fnCONCATENATE))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
+	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
+	Register("FIXED", NoCtx(fnFIXED))
 	Register("LEFT", NoCtx(fnLEFT))
 	Register("LEN", NoCtx(fnLEN))
 	Register("LOWER", NoCtx(fnLOWER))
 	Register("MID", NoCtx(fnMID))
+	Register("NUMBERVALUE", NoCtx(fnNUMBERVALUE))
+	Register("PROPER", NoCtx(fnPROPER))
+	Register("REPLACE", NoCtx(fnREPLACE))
+	Register("REPT", NoCtx(fnREPT))
 	Register("RIGHT", NoCtx(fnRIGHT))
+	Register("SEARCH", NoCtx(fnSEARCH))
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
+	Register("T", NoCtx(fnT))
 	Register("TEXT", NoCtx(fnTEXT))
+	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
+	Register("VALUE", NoCtx(fnVALUEFn))
 }
 
 func fnCHOOSE(args []Value) (Value, error) {
@@ -269,4 +285,327 @@ func fnUPPER(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return StringVal(strings.ToUpper(ValueToString(args[0]))), nil
+}
+
+func fnCHAR(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	code := int(n)
+	if code < 1 || code > 255 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return StringVal(string(rune(code))), nil
+}
+
+func fnCLEAN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	s := ValueToString(args[0])
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 32 {
+			b.WriteRune(r)
+		}
+	}
+	return StringVal(b.String()), nil
+}
+
+func fnCODE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	s := ValueToString(args[0])
+	if len(s) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return NumberVal(float64(r)), nil
+}
+
+func fnEXACT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(ValueToString(args[0]) == ValueToString(args[1])), nil
+}
+
+func fnFIXED(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	decimals := 2
+	if len(args) >= 2 {
+		d, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		decimals = int(d)
+	}
+
+	noCommas := false
+	if len(args) >= 3 {
+		noCommas = IsTruthy(args[2])
+	}
+
+	if decimals < 0 {
+		factor := math.Pow(10, float64(-decimals))
+		n = math.Round(n/factor) * factor
+		decimals = 0
+	} else {
+		factor := math.Pow(10, float64(decimals))
+		n = math.Round(n*factor) / factor
+	}
+
+	if noCommas {
+		return StringVal(fmt.Sprintf("%.*f", decimals, n)), nil
+	}
+	return StringVal(FormatWithCommas(n, decimals)), nil
+}
+
+func fnNUMBERVALUE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	text := ValueToString(args[0])
+
+	decSep := "."
+	grpSep := ","
+	if len(args) >= 2 {
+		ds := ValueToString(args[1])
+		if len(ds) > 0 {
+			decSep = string(ds[0])
+		}
+	}
+	if len(args) >= 3 {
+		gs := ValueToString(args[2])
+		if len(gs) > 0 {
+			grpSep = string(gs[0])
+		}
+	}
+
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, text)
+
+	if text == "" {
+		return NumberVal(0), nil
+	}
+
+	percentCount := strings.Count(text, "%")
+	text = strings.ReplaceAll(text, "%", "")
+
+	decIdx := strings.Index(text, decSep)
+	if decIdx >= 0 {
+		after := text[decIdx+len(decSep):]
+		if strings.Contains(after, grpSep) {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	text = strings.ReplaceAll(text, grpSep, "")
+
+	if strings.Count(text, decSep) > 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	text = strings.Replace(text, decSep, ".", 1)
+
+	num, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	for i := 0; i < percentCount; i++ {
+		num /= 100
+	}
+
+	return NumberVal(num), nil
+}
+
+func fnPROPER(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	s := ValueToString(args[0])
+	var b strings.Builder
+	capitalizeNext := true
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			if capitalizeNext {
+				b.WriteRune(unicode.ToUpper(r))
+				capitalizeNext = false
+			} else {
+				b.WriteRune(unicode.ToLower(r))
+			}
+		} else {
+			b.WriteRune(r)
+			capitalizeNext = true
+		}
+	}
+	return StringVal(b.String()), nil
+}
+
+func fnREPLACE(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	oldText := ValueToString(args[0])
+	startNum, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	numChars, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	newText := ValueToString(args[3])
+
+	runes := []rune(oldText)
+	start := int(startNum) - 1
+	length := int(numChars)
+	if start < 0 || length < 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if start > len(runes) {
+		start = len(runes)
+	}
+	end := start + length
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return StringVal(string(runes[:start]) + newText + string(runes[end:])), nil
+}
+
+func fnREPT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	s := ValueToString(args[0])
+	n, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	count := int(n)
+	if count < 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return StringVal(strings.Repeat(s, count)), nil
+}
+
+func fnSEARCH(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	findText := strings.ToLower(ValueToString(args[0]))
+	withinText := strings.ToLower(ValueToString(args[1]))
+	startNum := 1
+	if len(args) == 3 {
+		sn, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		startNum = int(sn)
+	}
+	if startNum < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	runes := []rune(withinText)
+	start := startNum - 1
+	if start > len(runes) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	remaining := string(runes[start:])
+
+	idx := strings.Index(remaining, findText)
+	if idx < 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	runeIdx := utf8.RuneCountInString(remaining[:idx])
+	return NumberVal(float64(start + runeIdx + 1)), nil
+}
+
+func fnT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueString {
+		return args[0], nil
+	}
+	return StringVal(""), nil
+}
+
+func fnTEXTJOIN(args []Value) (Value, error) {
+	if len(args) < 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	delimiter := ValueToString(args[0])
+	ignoreEmpty := IsTruthy(args[1])
+
+	var parts []string
+	for _, arg := range args[2:] {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if ignoreEmpty && (cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "")) {
+						continue
+					}
+					parts = append(parts, ValueToString(cell))
+				}
+			}
+		} else {
+			if ignoreEmpty && (arg.Type == ValueEmpty || (arg.Type == ValueString && arg.Str == "")) {
+				continue
+			}
+			parts = append(parts, ValueToString(arg))
+		}
+	}
+
+	result := strings.Join(parts, delimiter)
+	if len(result) > 32767 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return StringVal(result), nil
+}
+
+func fnVALUEFn(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueNumber {
+		return args[0], nil
+	}
+	s := ValueToString(args[0])
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, ",", "")
+	s = strings.ReplaceAll(s, "$", "")
+
+	if strings.HasSuffix(s, "%") {
+		s = strings.TrimSuffix(s, "%")
+		num, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		return NumberVal(num / 100), nil
+	}
+
+	num, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return NumberVal(num), nil
 }
