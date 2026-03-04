@@ -764,6 +764,64 @@ func TestCONCATENATETypes(t *testing.T) {
 // LEN with Unicode
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SEARCH with wildcards
+// ---------------------------------------------------------------------------
+
+func TestSEARCHWildcards(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		// Basic (no wildcard)
+		{name: "basic", formula: `SEARCH("lo","hello")`, wantNum: 4},
+		{name: "case_insensitive", formula: `SEARCH("LO","hello")`, wantNum: 4},
+		// * wildcard — matches any sequence of characters
+		{name: "star_any", formula: `SEARCH("*le","Apple")`, wantNum: 1},
+		{name: "star_middle", formula: `SEARCH("A*e","Apple")`, wantNum: 1},
+		{name: "star_empty_match", formula: `SEARCH("A*p","Apple")`, wantNum: 1},
+		// ? wildcard — matches exactly one character
+		{name: "question_mark", formula: `SEARCH("A?p","Apple")`, wantNum: 1},
+		{name: "question_mid", formula: `SEARCH("?pp","Apple")`, wantNum: 1},
+		{name: "question_no_match", formula: `SEARCH("A?e","Apple")`, isErr: true},
+		// Combined wildcards
+		{name: "star_and_question", formula: `SEARCH("A?p*","Apple pie")`, wantNum: 1},
+		// Tilde escape: ~* matches literal *, ~? matches literal ?
+		{name: "tilde_star", formula: `SEARCH("~*","a*b")`, wantNum: 2},
+		{name: "tilde_question", formula: `SEARCH("~?","a?b")`, wantNum: 2},
+		{name: "tilde_tilde", formula: `SEARCH("~~","a~b")`, wantNum: 2},
+		// Start position
+		{name: "start_pos", formula: `SEARCH("l","hello world",5)`, wantNum: 10},
+		// Not found
+		{name: "not_found", formula: `SEARCH("z","hello")`, isErr: true},
+		// Empty search text matches position 1
+		{name: "empty_find", formula: `SEARCH("","hello")`, wantNum: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber || got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
+
 func TestLENUnicode(t *testing.T) {
 	resolver := &mockResolver{}
 

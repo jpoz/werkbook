@@ -3,6 +3,7 @@ package formula
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -577,12 +578,57 @@ func fnSEARCH(args []Value) (Value, error) {
 	}
 	remaining := string(runes[start:])
 
-	idx := strings.Index(remaining, findText)
-	if idx < 0 {
+	// Check if the pattern contains wildcards or tilde escapes.
+	hasSpecial := strings.ContainsAny(findText, "*?~")
+
+	if !hasSpecial {
+		idx := strings.Index(remaining, findText)
+		if idx < 0 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		runeIdx := utf8.RuneCountInString(remaining[:idx])
+		return NumberVal(float64(start + runeIdx + 1)), nil
+	}
+
+	// Convert Excel wildcard pattern to a regexp.
+	re, err := excelPatternToRegexp(findText)
+	if err != nil {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	runeIdx := utf8.RuneCountInString(remaining[:idx])
+	loc := re.FindStringIndex(remaining)
+	if loc == nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	runeIdx := utf8.RuneCountInString(remaining[:loc[0]])
 	return NumberVal(float64(start + runeIdx + 1)), nil
+}
+
+// excelPatternToRegexp converts an Excel SEARCH wildcard pattern to a Go regexp.
+// * matches any sequence of characters, ? matches exactly one character.
+// ~* and ~? match literal * and ? respectively. ~~ matches a literal ~.
+func excelPatternToRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	runes := []rune(pattern)
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
+		if ch == '~' && i+1 < len(runes) {
+			next := runes[i+1]
+			if next == '*' || next == '?' || next == '~' {
+				b.WriteString(regexp.QuoteMeta(string(next)))
+				i++
+				continue
+			}
+		}
+		switch ch {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(ch)))
+		}
+	}
+	return regexp.Compile(b.String())
 }
 
 func fnT(args []Value) (Value, error) {
