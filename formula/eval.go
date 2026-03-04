@@ -498,13 +498,33 @@ func IsTruthy(v Value) bool {
 	}
 }
 
+// arrayDims returns the maximum row and column dimensions across two values,
+// treating scalars as 1×1.
+func arrayDims(a, b Value) (rows, cols int) {
+	rows, cols = 1, 1
+	if a.Type == ValueArray {
+		rows = len(a.Array)
+		if rows > 0 {
+			cols = len(a.Array[0])
+		}
+	}
+	if b.Type == ValueArray {
+		if r := len(b.Array); r > rows {
+			rows = r
+		}
+		if len(b.Array) > 0 {
+			if c := len(b.Array[0]); c > cols {
+				cols = c
+			}
+		}
+	}
+	return
+}
+
 // binaryArith performs a binary arithmetic operation on two Values,
 // supporting element-wise array operations when one or both operands are arrays.
 func binaryArith(a, b Value, op func(float64, float64) Value) Value {
-	aArr := a.Type == ValueArray
-	bArr := b.Type == ValueArray
-
-	if !aArr && !bArr {
+	if a.Type != ValueArray && b.Type != ValueArray {
 		// Scalar case.
 		an, ae := CoerceNum(a)
 		bn, be := CoerceNum(b)
@@ -518,24 +538,7 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 	}
 
 	// At least one operand is an array — do element-wise computation.
-	rows, cols := 1, 1
-	if aArr {
-		rows = len(a.Array)
-		if rows > 0 {
-			cols = len(a.Array[0])
-		}
-	}
-	if bArr {
-		if r := len(b.Array); r > rows {
-			rows = r
-		}
-		if rows > 0 && len(b.Array) > 0 {
-			if c := len(b.Array[0]); c > cols {
-				cols = c
-			}
-		}
-	}
-
+	rows, cols := arrayDims(a, b)
 	result := make([][]Value, rows)
 	for i := 0; i < rows; i++ {
 		result[i] = make([]Value, cols)
@@ -559,10 +562,7 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 // binaryCompare performs a comparison operation on two Values, supporting
 // element-wise array operations when one or both operands are arrays.
 func binaryCompare(a, b Value, op func(int) bool) Value {
-	aArr := a.Type == ValueArray
-	bArr := b.Type == ValueArray
-
-	if !aArr && !bArr {
+	if a.Type != ValueArray && b.Type != ValueArray {
 		if a.Type == ValueError {
 			return a
 		}
@@ -573,24 +573,7 @@ func binaryCompare(a, b Value, op func(int) bool) Value {
 	}
 
 	// At least one operand is an array — do element-wise comparison.
-	rows, cols := 1, 1
-	if aArr {
-		rows = len(a.Array)
-		if rows > 0 {
-			cols = len(a.Array[0])
-		}
-	}
-	if bArr {
-		if r := len(b.Array); r > rows {
-			rows = r
-		}
-		if rows > 0 && len(b.Array) > 0 {
-			if c := len(b.Array[0]); c > cols {
-				cols = c
-			}
-		}
-	}
-
+	rows, cols := arrayDims(a, b)
 	result := make([][]Value, rows)
 	for i := 0; i < rows; i++ {
 		result[i] = make([]Value, cols)
