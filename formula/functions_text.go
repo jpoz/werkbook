@@ -238,6 +238,12 @@ func fnTEXT(args []Value) (Value, error) {
 	format := ValueToString(args[1])
 	v := args[0]
 
+	// Excel rejects format strings containing lowercase 'e+' or 'e-'
+	// (only uppercase 'E' triggers scientific notation).
+	if hasInvalidLowercaseE(format) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
 	// Check if the format has a text section (4th section).
 	sections := splitFormatSections(format)
 

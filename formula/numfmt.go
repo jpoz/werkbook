@@ -1560,8 +1560,8 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 		case '%':
 			tokens = append(tokens, numFmtToken{kind: tokPercent, value: "%"})
 			i++
-		case 'E', 'e':
-			// Scientific notation: E+ or E-.
+		case 'E':
+			// Scientific notation: E+ or E- (uppercase only; Excel treats lowercase 'e' as literal).
 			if i+1 < len(format) && (format[i+1] == '+' || format[i+1] == '-') {
 				tokens = append(tokens, numFmtToken{kind: tokExponent, value: format[i : i+2]})
 				i += 2
@@ -1605,6 +1605,32 @@ func isFormatLiteral(ch byte, upper string, i int) bool {
 	if ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' {
 		// In a pure number format, letters other than E are literals.
 		return true
+	}
+	return false
+}
+
+// hasInvalidLowercaseE checks whether a format string contains lowercase 'e'
+// followed by '+' or '-' outside of quoted strings or escape sequences.
+// Excel only recognises uppercase 'E' for scientific notation; lowercase 'e'
+// in this position makes the entire format invalid (#VALUE!).
+func hasInvalidLowercaseE(format string) bool {
+	inQuote := false
+	for i := 0; i < len(format); i++ {
+		ch := format[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == '\\' && i+1 < len(format) {
+			i++ // skip escaped character
+			continue
+		}
+		if ch == 'e' && i+1 < len(format) && (format[i+1] == '+' || format[i+1] == '-') {
+			return true
+		}
 	}
 	return false
 }

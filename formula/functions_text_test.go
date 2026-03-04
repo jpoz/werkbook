@@ -380,6 +380,35 @@ func TestTEXTScientific(t *testing.T) {
 	}
 }
 
+func TestTEXTLowercaseEReturnsVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Excel only recognises uppercase E for scientific notation.
+	// Lowercase e+/e- in format strings → #VALUE!.
+	formats := []string{
+		`"|#,e-#|"`,
+		`"|#e-#,|"`,
+		`"|#%e-#|"`,
+		`"|#,e+#|"`,
+		`"|#.####|e+|#|"`,
+		`"|#|e+|#|"`,
+		`"|#.#|e+|#|"`,
+	}
+	for _, fmt := range formats {
+		t.Run(fmt, func(t *testing.T) {
+			formula := `TEXT(123456.789, ` + fmt + `)`
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", formula, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Errorf("Eval(%q) = %v, want #VALUE!", formula, got)
+			}
+		})
+	}
+}
+
 func TestTEXTFraction(t *testing.T) {
 	resolver := &mockResolver{}
 
