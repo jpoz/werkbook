@@ -1220,3 +1220,62 @@ func TestTRANSPOSE_SquareMatrix(t *testing.T) {
 		}
 	}
 }
+
+func TestXLOOKUP_WildcardMode(t *testing.T) {
+	// Data layout: D2:D4 = lookup values, E2:E4 = return values
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 2}: StringVal("Banana Split"),
+			{Col: 4, Row: 3}: StringVal("Apple Pie"),
+			{Col: 4, Row: 4}: StringVal("Cherry Tart"),
+			{Col: 5, Row: 2}: StringVal("BS"),
+			{Col: 5, Row: 3}: StringVal("AP"),
+			{Col: 5, Row: 4}: StringVal("CT"),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{
+			name:    "wildcard star prefix",
+			formula: `XLOOKUP("*Split",D2:D4,E2:E4,"N/A",2)`,
+			want:    "BS",
+		},
+		{
+			name:    "wildcard star suffix",
+			formula: `XLOOKUP("Cherry*",D2:D4,E2:E4,"N/A",2)`,
+			want:    "CT",
+		},
+		{
+			name:    "wildcard question mark",
+			formula: `XLOOKUP("Apple Pi?",D2:D4,E2:E4,"N/A",2)`,
+			want:    "AP",
+		},
+		{
+			name:    "wildcard no match returns not_found",
+			formula: `XLOOKUP("*Mango*",D2:D4,E2:E4,"N/A",2)`,
+			want:    "N/A",
+		},
+		{
+			name:    "wildcard case insensitive",
+			formula: `XLOOKUP("*split",D2:D4,E2:E4,"N/A",2)`,
+			want:    "BS",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("got %v (type %d), want string %q", got, got.Type, tt.want)
+			}
+		})
+	}
+}

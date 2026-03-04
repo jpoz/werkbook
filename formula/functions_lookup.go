@@ -2,6 +2,7 @@ package formula
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -464,6 +465,28 @@ func fnXLOOKUP(args []Value) (Value, error) {
 					return returnValues[i], nil
 				}
 				break
+			}
+		}
+
+	case 2:
+		// Wildcard match: * matches any sequence, ? matches single char, ~ escapes.
+		pattern := ValueToString(lookup)
+		re, err := excelPatternToRegexp(pattern)
+		if err != nil {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		// Anchor the pattern for full-string matching.
+		anchored, err := regexp.Compile("(?i)^" + re.String() + "$")
+		if err != nil {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		for i, v := range lookupValues {
+			s := ValueToString(v)
+			if anchored.MatchString(s) {
+				if i < len(returnValues) {
+					return returnValues[i], nil
+				}
+				return ErrorVal(ErrValNA), nil
 			}
 		}
 	}
