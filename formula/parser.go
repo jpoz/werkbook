@@ -262,19 +262,30 @@ func (p *Parser) parseFunc() (Node, error) {
 	}
 
 	var args []Node
-	arg, err := p.parseExpression(0)
-	if err != nil {
-		return nil, err
-	}
-	args = append(args, arg)
 
-	for p.peek().Type == TokComma {
-		p.advance()
+	// Handle first argument: may be empty (e.g. SUM(,1))
+	if p.peek().Type == TokComma {
+		args = append(args, &EmptyArg{})
+	} else {
 		arg, err := p.parseExpression(0)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, arg)
+	}
+
+	for p.peek().Type == TokComma {
+		p.advance()
+		// Handle empty argument (e.g. ADDRESS(1,1,,"Data"))
+		if p.peek().Type == TokComma || p.peek().Type == TokRParen {
+			args = append(args, &EmptyArg{})
+		} else {
+			arg, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+		}
 	}
 
 	if _, err := p.expect(TokRParen); err != nil {
