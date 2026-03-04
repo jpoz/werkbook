@@ -1766,11 +1766,23 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 		result.WriteByte('-')
 	}
 
-	// Build prefix literals.
+	// Partition pre-E tokens into: prefix literals, mantissa digits, middle literals.
+	// Find the first and last digit/decimal token before E.
+	firstDigit, lastDigit := -1, -1
 	for i := 0; i < sciIdx; i++ {
-		tok := tokens[i]
-		if tok.kind == tokLiteral {
-			result.WriteString(tok.value)
+		k := tokens[i].kind
+		if k == tokDigit || k == tokDigitOpt || k == tokDigitSpace || k == tokDecimal {
+			if firstDigit < 0 {
+				firstDigit = i
+			}
+			lastDigit = i
+		}
+	}
+
+	// Prefix literals: before the first coefficient digit.
+	for i := 0; i < firstDigit; i++ {
+		if tokens[i].kind == tokLiteral {
+			result.WriteString(tokens[i].value)
 		}
 	}
 
@@ -1778,31 +1790,61 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 	mStr := fmt.Sprintf("%.*f", decPlaces, mantissa)
 	result.WriteString(mStr)
 
-	// Format exponent.
+	// Middle literals: after the last coefficient digit, before E.
+	for i := lastDigit + 1; i < sciIdx; i++ {
+		if tokens[i].kind == tokLiteral {
+			result.WriteString(tokens[i].value)
+		}
+	}
+
+	// Format exponent: E, then any pre-exponent literals, then sign, then digits.
 	result.WriteByte('E')
+
+	// Pre-exponent literals: between E token and first exponent digit.
+	firstExpDigit := -1
+	for i := sciIdx + 1; i < len(tokens); i++ {
+		k := tokens[i].kind
+		if k == tokDigit || k == tokDigitOpt || k == tokDigitSpace {
+			firstExpDigit = i
+			break
+		}
+	}
+	if firstExpDigit > sciIdx+1 {
+		for i := sciIdx + 1; i < firstExpDigit; i++ {
+			if tokens[i].kind == tokLiteral {
+				result.WriteString(tokens[i].value)
+			}
+		}
+	}
+
+	// Exponent sign: E- shows sign only if negative; E+ always shows sign.
 	if exp >= 0 {
-		result.WriteString(expSign)
+		if expSign == "+" {
+			result.WriteByte('+')
+		}
 	} else {
 		result.WriteByte('-')
 		exp = -exp
 	}
+
 	expStr := strconv.Itoa(exp)
 	for len(expStr) < expDigits {
 		expStr = "0" + expStr
 	}
 	result.WriteString(expStr)
 
-	// Suffix literals.
-	pastExpDigits := false
+	// Suffix literals: after the last exponent digit placeholder.
+	lastExpDigit := -1
 	for i := sciIdx + 1; i < len(tokens); i++ {
-		tok := tokens[i]
-		if !pastExpDigits && (tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace) {
-			continue // skip exponent digit placeholders
+		k := tokens[i].kind
+		if k == tokDigit || k == tokDigitOpt || k == tokDigitSpace {
+			lastExpDigit = i
 		}
-		pastExpDigits = true
-		if tok.kind == tokLiteral {
-			result.WriteString(tok.value)
-		} else if tok.kind == tokPercent {
+	}
+	for i := lastExpDigit + 1; i < len(tokens); i++ {
+		if tokens[i].kind == tokLiteral {
+			result.WriteString(tokens[i].value)
+		} else if tokens[i].kind == tokPercent {
 			result.WriteByte('%')
 		}
 	}
