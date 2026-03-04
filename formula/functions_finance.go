@@ -1,6 +1,10 @@
 package formula
 
-import "math"
+import (
+	"math"
+	"strings"
+	"time"
+)
 
 func init() {
 	Register("FV", NoCtx(fnFV))
@@ -579,7 +583,7 @@ func fnXNPV(args []Value) (Value, error) {
 	if len(values) != len(dates) || len(values) == 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
-	d0, e := CoerceNum(dates[0])
+	d0, e := coerceDateNum(dates[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -589,7 +593,7 @@ func fnXNPV(args []Value) (Value, error) {
 		if ev != nil {
 			return *ev, nil
 		}
-		di, ed := CoerceNum(dates[i])
+		di, ed := coerceDateNum(dates[i])
 		if ed != nil {
 			return *ed, nil
 		}
@@ -601,6 +605,36 @@ func fnXNPV(args []Value) (Value, error) {
 		xnpv += v / denom
 	}
 	return NumberVal(xnpv), nil
+}
+
+// coerceDateNum converts a Value to a float64, treating date strings as Excel
+// serial numbers. It first tries CoerceNum, and if that fails on a string
+// value, it attempts to parse the string as a date using common date formats.
+func coerceDateNum(v Value) (float64, *Value) {
+	n, e := CoerceNum(v)
+	if e == nil {
+		return n, nil
+	}
+	// If the value is a string that couldn't be parsed as a number, try date parsing.
+	if v.Type == ValueString {
+		text := strings.TrimSpace(v.Str)
+		layouts := []string{
+			"1/2/2006",
+			"01/02/2006",
+			"2-Jan-2006",
+			"02-Jan-2006",
+			"2006/01/02",
+			"2006-01-02",
+			"January 2, 2006",
+		}
+		for _, layout := range layouts {
+			t, err := time.Parse(layout, text)
+			if err == nil {
+				return math.Floor(TimeToExcelSerial(t)), nil
+			}
+		}
+	}
+	return 0, e
 }
 
 // fnXIRR implements XIRR(values, dates, [guess]).
@@ -618,7 +652,7 @@ func fnXIRR(args []Value) (Value, error) {
 	var cashFlows []float64
 	var dayOffsets []float64
 
-	d0, e := CoerceNum(dates[0])
+	d0, e := coerceDateNum(dates[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -629,7 +663,7 @@ func fnXIRR(args []Value) (Value, error) {
 		if ev != nil {
 			return *ev, nil
 		}
-		di, ed := CoerceNum(dates[i])
+		di, ed := coerceDateNum(dates[i])
 		if ed != nil {
 			return *ed, nil
 		}
