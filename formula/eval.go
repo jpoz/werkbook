@@ -563,7 +563,30 @@ func typeRank(t ValueType) int {
 	}
 }
 
+// roundTo15SigFigs rounds a float64 to 15 significant digits, matching
+// Excel's internal precision. This ensures that small floating-point
+// discrepancies (e.g. 0.1+0.2 vs 0.3) are eliminated.
+func roundTo15SigFigs(f float64) float64 {
+	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return f
+	}
+	// For very large or very small numbers where scaling could overflow
+	// or underflow, return the value unchanged.
+	abs := math.Abs(f)
+	if abs > 1e292 || abs < 1e-292 {
+		return f
+	}
+	// Determine the order of magnitude, then round to 15 significant digits.
+	d := math.Ceil(math.Log10(abs))
+	pow := math.Pow(10, 15-d)
+	return math.Round(f*pow) / pow
+}
+
 func cmpFloat(a, b float64) int {
+	// Round both operands to 15 significant digits before comparing,
+	// matching Excel's comparison semantics.
+	a = roundTo15SigFigs(a)
+	b = roundTo15SigFigs(b)
 	if a < b {
 		return -1
 	}
@@ -659,7 +682,7 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 		if be != nil {
 			return *be
 		}
-		return op(an, bn)
+		return roundArithResult(op(an, bn))
 	}
 
 	// At least one operand is an array — do element-wise computation.
@@ -677,11 +700,20 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 			} else if be != nil {
 				result[i][j] = *be
 			} else {
-				result[i][j] = op(an, bn)
+				result[i][j] = roundArithResult(op(an, bn))
 			}
 		}
 	}
 	return Value{Type: ValueArray, Array: result}
+}
+
+// roundArithResult applies 15 significant digit rounding to arithmetic
+// results, matching Excel's internal precision model.
+func roundArithResult(v Value) Value {
+	if v.Type == ValueNumber {
+		v.Num = roundTo15SigFigs(v.Num)
+	}
+	return v
 }
 
 // binaryCompare performs a comparison operation on two Values, supporting

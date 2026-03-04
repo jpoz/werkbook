@@ -565,7 +565,7 @@ func TestEvalCompareValues(t *testing.T) {
 		{name: "negative_lt", formula: "-5<0", want: true},
 		{name: "negative_gt", formula: "0>-10", want: true},
 		// Decimal comparisons
-		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: false}, // floating point!
+		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: true}, // Excel rounds to 15 sig figs
 		{name: "decimal_lt", formula: "0.1<0.2", want: true},
 	}
 
