@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook Community supports **198** Excel formula functions.
+Werkbook supports **198** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
