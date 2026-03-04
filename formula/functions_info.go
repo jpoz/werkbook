@@ -197,6 +197,16 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
 		row := int(args[0].Num) / 100_000
 		return NumberVal(float64(row)), nil
 	}
+	// Handle array with RangeOrigin (e.g. from INDIRECT): return column of row numbers.
+	if len(args) == 1 && args[0].Type == ValueArray && args[0].RangeOrigin != nil {
+		ro := args[0].RangeOrigin
+		nRows := ro.ToRow - ro.FromRow + 1
+		rows := make([][]Value, nRows)
+		for i := 0; i < nRows; i++ {
+			rows[i] = []Value{NumberVal(float64(ro.FromRow + i))}
+		}
+		return Value{Type: ValueArray, Array: rows}, nil
+	}
 	return ErrorVal(ErrValVALUE), nil
 }
 
