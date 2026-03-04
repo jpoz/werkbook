@@ -128,7 +128,7 @@ func fnFLOOR(args []Value) (Value, error) {
 		return *e, nil
 	}
 	if sig == 0 {
-		return NumberVal(0), nil
+		return ErrorVal(ErrValDIV0), nil
 	}
 	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
 		return ErrorVal(ErrValNUM), nil
