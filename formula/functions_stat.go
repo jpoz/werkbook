@@ -51,6 +51,7 @@ func init() {
 	Register("SUMSQ", NoCtx(fnSUMSQ))
 	Register("VAR", NoCtx(fnVAR))
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
+	Register("SKEW", NoCtx(fnSKEW))
 	Register("VARP", NoCtx(fnVARP))
 }
 
@@ -1310,6 +1311,48 @@ func fnHARMEAN(args []Value) (Value, error) {
 		sumReciprocals += 1.0 / v
 	}
 	return NumberVal(float64(n) / sumReciprocals), nil
+}
+
+func fnSKEW(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 3 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute mean.
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+
+	// Compute sample standard deviation (n-1 denominator).
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	s := math.Sqrt(ssq / float64(n-1))
+	if s == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute skewness: (n / ((n-1)*(n-2))) * sum((xi - mean) / s)^3
+	sumCubed := 0.0
+	for _, v := range nums {
+		z := (v - mean) / s
+		sumCubed += z * z * z
+	}
+	nf := float64(n)
+	skew := (nf / ((nf - 1) * (nf - 2))) * sumCubed
+	return NumberVal(skew), nil
 }
 
 func fnFISHER(args []Value) (Value, error) {

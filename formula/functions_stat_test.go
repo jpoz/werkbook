@@ -2725,3 +2725,281 @@ func TestPERCENTRANK(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// SKEW
+// ---------------------------------------------------------------------------
+
+func TestSKEW(t *testing.T) {
+	// Resolver with {3,4,5,2,3,4,5,6,4,7} in A1:A10 (Excel docs example)
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:  NumberVal(3),
+			{Col: 1, Row: 2}:  NumberVal(4),
+			{Col: 1, Row: 3}:  NumberVal(5),
+			{Col: 1, Row: 4}:  NumberVal(2),
+			{Col: 1, Row: 5}:  NumberVal(3),
+			{Col: 1, Row: 6}:  NumberVal(4),
+			{Col: 1, Row: 7}:  NumberVal(5),
+			{Col: 1, Row: 8}:  NumberVal(6),
+			{Col: 1, Row: 9}:  NumberVal(4),
+			{Col: 1, Row: 10}: NumberVal(7),
+		},
+	}
+
+	// Symmetric data {1,2,3,4,5} in B1:B5
+	symResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// Right-skewed {1,1,1,1,1,1,1,1,1,100} in C1:C10
+	rightSkewResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}:  NumberVal(1),
+			{Col: 3, Row: 2}:  NumberVal(1),
+			{Col: 3, Row: 3}:  NumberVal(1),
+			{Col: 3, Row: 4}:  NumberVal(1),
+			{Col: 3, Row: 5}:  NumberVal(1),
+			{Col: 3, Row: 6}:  NumberVal(1),
+			{Col: 3, Row: 7}:  NumberVal(1),
+			{Col: 3, Row: 8}:  NumberVal(1),
+			{Col: 3, Row: 9}:  NumberVal(1),
+			{Col: 3, Row: 10}: NumberVal(100),
+		},
+	}
+
+	// Left-skewed {1,100,100,100,100,100,100,100,100,100} in D1:D10
+	leftSkewResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}:  NumberVal(1),
+			{Col: 4, Row: 2}:  NumberVal(100),
+			{Col: 4, Row: 3}:  NumberVal(100),
+			{Col: 4, Row: 4}:  NumberVal(100),
+			{Col: 4, Row: 5}:  NumberVal(100),
+			{Col: 4, Row: 6}:  NumberVal(100),
+			{Col: 4, Row: 7}:  NumberVal(100),
+			{Col: 4, Row: 8}:  NumberVal(100),
+			{Col: 4, Row: 9}:  NumberVal(100),
+			{Col: 4, Row: 10}: NumberVal(100),
+		},
+	}
+
+	// Exactly 3 data points {1,2,3} in E1:E3
+	threeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(1),
+			{Col: 5, Row: 2}: NumberVal(2),
+			{Col: 5, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Two data points {1,2} in F1:F2
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(1),
+			{Col: 6, Row: 2}: NumberVal(2),
+		},
+	}
+
+	// Single value {5} in G1
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(5),
+		},
+	}
+
+	// All same values {4,4,4,4} in H1:H4
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 8, Row: 1}: NumberVal(4),
+			{Col: 8, Row: 2}: NumberVal(4),
+			{Col: 8, Row: 3}: NumberVal(4),
+			{Col: 8, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Negative numbers {-5,-3,-1,0,2} in I1:I5
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 9, Row: 1}: NumberVal(-5),
+			{Col: 9, Row: 2}: NumberVal(-3),
+			{Col: 9, Row: 3}: NumberVal(-1),
+			{Col: 9, Row: 4}: NumberVal(0),
+			{Col: 9, Row: 5}: NumberVal(2),
+		},
+	}
+
+	// Large dataset 1..20 in J1:J20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 10, Row: i}] = NumberVal(float64(i))
+	}
+
+	// Mixed types: numbers, strings, booleans in K1:K6
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 11, Row: 1}: NumberVal(1),
+			{Col: 11, Row: 2}: StringVal("hello"),
+			{Col: 11, Row: 3}: NumberVal(2),
+			{Col: 11, Row: 4}: BoolVal(true),
+			{Col: 11, Row: 5}: NumberVal(3),
+			{Col: 11, Row: 6}: NumberVal(10),
+		},
+	}
+
+	// Error in array in L1:L4
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 12, Row: 1}: NumberVal(1),
+			{Col: 12, Row: 2}: NumberVal(2),
+			{Col: 12, Row: 3}: ErrorVal(ErrValNUM),
+			{Col: 12, Row: 4}: NumberVal(4),
+		},
+	}
+
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		wantNum  float64
+		wantErr  ErrorValue
+		isErr    bool
+		tol      float64
+	}{
+		// Excel docs example: {3,4,5,2,3,4,5,6,4,7} → 0.359543
+		{"excel_example", "SKEW(A1:A10)", excelResolver, 0.359543, 0, false, 1e-4},
+
+		// Symmetric data {1,2,3,4,5} → skew = 0
+		{"symmetric", "SKEW(B1:B5)", symResolver, 0, 0, false, 1e-9},
+
+		// Right-skewed data → positive skew
+		{"right_skewed", "SKEW(C1:C10)", rightSkewResolver, 3.16227766, 0, false, 1e-4},
+
+		// Left-skewed data → negative skew
+		{"left_skewed", "SKEW(D1:D10)", leftSkewResolver, -3.16227766, 0, false, 1e-4},
+
+		// Exactly 3 data points {1,2,3} → 0
+		{"three_points", "SKEW(E1:E3)", threeResolver, 0, 0, false, 1e-9},
+
+		// Two data points → #DIV/0!
+		{"two_points_div0", "SKEW(F1:F2)", twoResolver, 0, ErrValDIV0, true, 0},
+
+		// Single value → #DIV/0!
+		{"single_value_div0", "SKEW(G1)", singleResolver, 0, ErrValDIV0, true, 0},
+
+		// All same values → #DIV/0! (std dev = 0)
+		{"all_same_div0", "SKEW(H1:H4)", sameResolver, 0, ErrValDIV0, true, 0},
+
+		// Negative numbers {-5,-3,-1,0,2}
+		{"negative_numbers", "SKEW(I1:I5)", negResolver, -0.18252326, 0, false, 1e-4},
+
+		// Large dataset 1..20 → 0 (symmetric)
+		{"large_symmetric", "SKEW(J1:J20)", largeResolver, 0, 0, false, 1e-9},
+
+		// Mixed types in array: text and bool are ignored → only {1,2,3,10}
+		{"mixed_types_array", "SKEW(K1:K6)", mixedResolver, 1.76363261, 0, false, 1e-4},
+
+		// Direct boolean args are counted: TRUE=1 → SKEW(1,2,3,TRUE) = SKEW(1,2,3,1)
+		{"direct_bool_true", "SKEW(1,2,3,TRUE)", emptyResolver, 0.85456304, 0, false, 1e-4},
+
+		// Direct string number args are counted: "5" → 5
+		{"direct_string_num", `SKEW(1,2,3,"5")`, emptyResolver, 0.75283720, 0, false, 1e-4},
+
+		// Error propagation from array
+		{"error_propagation", "SKEW(L1:L4)", errResolver, 0, ErrValNUM, true, 0},
+
+		// Direct error arg
+		{"direct_error", "SKEW(1,2,3,1/0)", emptyResolver, 0, ErrValDIV0, true, 0},
+
+		// Empty range → #DIV/0! (0 values < 3)
+		{"empty_range", "SKEW(Z1:Z5)", emptyResolver, 0, ErrValDIV0, true, 0},
+
+		// Direct args: SKEW(1,2,3) with all different → 0
+		{"direct_three_sym", "SKEW(1,2,3)", emptyResolver, 0, 0, false, 1e-9},
+
+		// Direct args with more values
+		{"direct_many", "SKEW(1,1,1,1,1,100)", emptyResolver, 2.44948975, 0, false, 1e-4},
+
+		// {1,2,3,4,100} right-skewed
+		{"moderate_right_skew", "SKEW(1,2,3,4,100)", emptyResolver, 2.23239591, 0, false, 1e-4},
+
+		// Decimals {0.5, 1.5, 2.5, 3.5, 4.5}
+		{"decimals", "SKEW(0.5,1.5,2.5,3.5,4.5)", emptyResolver, 0, 0, false, 1e-9},
+
+		// Large positive values
+		{"large_values", "SKEW(1000000,2000000,3000000)", emptyResolver, 0, 0, false, 1e-9},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			tol := tt.tol
+			if tol == 0 {
+				tol = 1e-9
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %g, want %g (diff %g)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+
+	// 0 args → should error
+	t.Run("zero_args", func(t *testing.T) {
+		got, err := fnSKEW([]Value{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	// Verify sign: right-skewed > 0
+	t.Run("right_skew_positive", func(t *testing.T) {
+		cf := evalCompile(t, "SKEW(C1:C10)")
+		got, err := Eval(cf, rightSkewResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num <= 0 {
+			t.Errorf("expected positive skew, got %v", got)
+		}
+	})
+
+	// Verify sign: left-skewed < 0
+	t.Run("left_skew_negative", func(t *testing.T) {
+		cf := evalCompile(t, "SKEW(D1:D10)")
+		got, err := Eval(cf, leftSkewResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num >= 0 {
+			t.Errorf("expected negative skew, got %v", got)
+		}
+	})
+}
