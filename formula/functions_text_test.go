@@ -1021,8 +1021,88 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// LEN with Unicode
+// LEN comprehensive tests
 // ---------------------------------------------------------------------------
+
+func TestLEN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_hello", formula: `LEN("hello")`, wantNum: 5},
+		{name: "basic_word", formula: `LEN("world")`, wantNum: 5},
+		{name: "basic_sentence", formula: `LEN("hello world")`, wantNum: 11},
+
+		// Empty string
+		{name: "empty_string", formula: `LEN("")`, wantNum: 0},
+
+		// Single character
+		{name: "single_char", formula: `LEN("A")`, wantNum: 1},
+		{name: "single_space", formula: `LEN(" ")`, wantNum: 1},
+
+		// Strings with spaces
+		{name: "leading_trailing_spaces", formula: `LEN("  hello  ")`, wantNum: 9},
+		{name: "only_spaces", formula: `LEN("   ")`, wantNum: 3},
+		{name: "internal_spaces", formula: `LEN("a b c")`, wantNum: 5},
+
+		// Numeric input coerced to string
+		{name: "integer", formula: `LEN(123)`, wantNum: 3},
+		{name: "negative_integer", formula: `LEN(-42)`, wantNum: 3},
+		{name: "decimal", formula: `LEN(1.5)`, wantNum: 3},
+		{name: "zero", formula: `LEN(0)`, wantNum: 1},
+		{name: "large_number", formula: `LEN(123456789)`, wantNum: 9},
+
+		// Boolean input
+		{name: "bool_true", formula: `LEN(TRUE)`, wantNum: 4},
+		{name: "bool_false", formula: `LEN(FALSE)`, wantNum: 5},
+
+		// Special characters
+		{name: "tab_char", formula: "LEN(\"\t\")", wantNum: 1},
+		{name: "newline_in_string", formula: "LEN(\"a\nb\")", wantNum: 3},
+		{name: "punctuation", formula: `LEN("!@#$%")`, wantNum: 5},
+
+		// Unicode characters
+		{name: "unicode_accented", formula: `LEN("caf` + "\u00e9" + `")`, wantNum: 4},
+		{name: "unicode_emoji", formula: `LEN("` + "\U0001F600" + `")`, wantNum: 1},
+		{name: "unicode_chinese", formula: `LEN("` + "\u4F60\u597D" + `")`, wantNum: 2},
+		{name: "unicode_mixed", formula: `LEN("a` + "\u00e9\u4F60" + `b")`, wantNum: 4},
+
+		// Long string
+		{name: "long_string", formula: `LEN("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")`, wantNum: 52},
+
+		// Wrong argument count
+		{name: "no_args", formula: `LEN()`, isErr: true},
+		{name: "two_args", formula: `LEN("a","b")`, isErr: true},
+
+		// Nested formula
+		{name: "nested_concat", formula: `LEN(CONCATENATE("ab","cd"))`, wantNum: 4},
+		{name: "nested_upper", formula: `LEN(UPPER("hello"))`, wantNum: 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber || got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
 
 // ---------------------------------------------------------------------------
 // SEARCH with wildcards
@@ -1079,20 +1159,6 @@ func TestSEARCHWildcards(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestLENUnicode(t *testing.T) {
-	resolver := &mockResolver{}
-
-	cf := evalCompile(t, `LEN("caf`+"\u00e9"+`")`)
-	got, err := Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
-	}
-	// "caf\u00e9" is 4 runes
-	if got.Type != ValueNumber || got.Num != 4 {
-		t.Errorf("LEN unicode: got %g, want 4", got.Num)
 	}
 }
 
