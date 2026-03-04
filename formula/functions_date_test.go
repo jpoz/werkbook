@@ -180,3 +180,41 @@ func TestDAYS360(t *testing.T) {
 		})
 	}
 }
+
+func TestDATEDIF(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic units
+		{"Y", `DATEDIF(45307,45736,"Y")`, 1},
+		{"M", `DATEDIF(45307,45736,"M")`, 14},
+		{"D", `DATEDIF(45307,45736,"D")`, 429},
+		{"MD", `DATEDIF(45307,45736,"MD")`, 4},
+		{"YM", `DATEDIF(45307,45736,"YM")`, 2},
+
+		// YD unit — days ignoring year difference
+		{"YD_cross_year", `DATEDIF(45307,45736,"YD")`, 64},
+		{"YD_within_year", `DATEDIF(45307,45672,"YD")`, 365},
+		{"YD_same_date", `DATEDIF(45307,45307,"YD")`, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
