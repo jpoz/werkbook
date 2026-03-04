@@ -616,23 +616,45 @@ func typeRank(t ValueType) int {
 	}
 }
 
+// roundTo15SigFigs rounds a float64 to 15 significant decimal digits,
+// matching Excel's internal precision model.
+func roundTo15SigFigs(f float64) float64 {
+	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return f
+	}
+	a := math.Abs(f)
+	if a > 1e292 || a < 1e-292 {
+		return f // avoid overflow in the computation
+	}
+	d := math.Ceil(math.Log10(a))
+	pow := math.Pow(10, 15-d)
+	rounded := math.Round(a*pow) / pow
+	if f < 0 {
+		return -rounded
+	}
+	return rounded
+}
+
+// roundArithResult rounds a numeric Value to 15 significant digits.
+func roundArithResult(v Value) Value {
+	if v.Type == ValueNumber {
+		return NumberVal(roundTo15SigFigs(v.Num))
+	}
+	return v
+}
+
 func cmpFloat(a, b float64) int {
-	// Excel's = operator treats two numbers as equal when their relative
-	// difference is within ~1 ULP at 15-digit decimal precision (≈1e-15).
-	// This handles cases like (1/3)*3 = 1.
-	diff := a - b
-	if diff == 0 {
-		return 0
-	}
-	abs := math.Abs(diff)
-	scale := math.Max(1, math.Max(math.Abs(a), math.Abs(b)))
-	if abs < 1e-15*scale {
-		return 0
-	}
-	if a < b {
+	// Excel compares numbers after rounding both to 15 significant digits.
+	// This makes (1/3*3)=1 evaluate to TRUE while (1-1e-15)=1 is FALSE.
+	ra := roundTo15SigFigs(a)
+	rb := roundTo15SigFigs(b)
+	if ra < rb {
 		return -1
 	}
-	return 1
+	if ra > rb {
+		return 1
+	}
+	return 0
 }
 
 // cmpFloatExact compares two float64 values without tolerance.
