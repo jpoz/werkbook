@@ -20,6 +20,8 @@ func init() {
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
+	Register("FORECAST", NoCtx(fnFORECAST))
+	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
 	Register("GEOMEAN", NoCtx(fnGEOMEAN))
 	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
@@ -1163,6 +1165,21 @@ func fnINTERCEPT(args []Value) (Value, error) {
 		return errVal, nil
 	}
 	return NumberVal(intercept), nil
+}
+
+func fnFORECAST(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	slope, intercept, errVal, ok := linearRegression([]Value{args[1], args[2]})
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(intercept + slope*x), nil
 }
 
 func fnGEOMEAN(args []Value) (Value, error) {

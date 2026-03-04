@@ -2074,3 +2074,200 @@ func TestINTERCEPT(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FORECAST / FORECAST.LINEAR
+// ---------------------------------------------------------------------------
+
+func TestFORECAST(t *testing.T) {
+	// Excel example: y={6,7,9,15,21}, x_known={20,28,31,38,40}
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(6), {Col: 2, Row: 1}: NumberVal(20),
+			{Col: 1, Row: 2}: NumberVal(7), {Col: 2, Row: 2}: NumberVal(28),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(31),
+			{Col: 1, Row: 4}: NumberVal(15), {Col: 2, Row: 4}: NumberVal(38),
+			{Col: 1, Row: 5}: NumberVal(21), {Col: 2, Row: 5}: NumberVal(40),
+		},
+	}
+
+	// y=2x+1: y={3,5,7}, x={1,2,3}
+	linearResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(7), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Two data points: y={1,3}, x={2,4} -> slope=1, intercept=-1
+	twoPairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+
+	// Constant x: y={1,2,3}, x={5,5,5} -> #DIV/0!
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Different lengths: A1:A3, B1:B5
+	diffLenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	// Empty resolver
+	emptyResolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	// Single pair: y={3}, x={7} -> #DIV/0!
+	singlePairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(7),
+		},
+	}
+
+	// Mixed types: skip non-numeric pairs
+	// row1: y=1(num), x="a"(str) -> skip
+	// row2: y=2(num), x=4(num) -> keep
+	// row3: y=true(bool), x=6(num) -> skip
+	// row4: y=8(num), x=8(num) -> keep
+	// pairs: (2,4),(8,8) -> slope=1.5, intercept=-4
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: BoolVal(true), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(8), {Col: 2, Row: 4}: NumberVal(8),
+		},
+	}
+
+	// Error propagation: y contains #VALUE!
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: ErrorVal(ErrValVALUE), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Large dataset: y = 2x+1 for x=1..20
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(2*i + 1))
+		largeCells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	// Negative values: y={-6,-4,-2}, x={1,2,3} -> slope=2, intercept=-8
+	negValsResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-6), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(-4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(-2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// String x that parses as number: "30" -> 30
+	stringXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(6), {Col: 2, Row: 1}: NumberVal(20),
+			{Col: 1, Row: 2}: NumberVal(7), {Col: 2, Row: 2}: NumberVal(28),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(31),
+			{Col: 1, Row: 4}: NumberVal(15), {Col: 2, Row: 4}: NumberVal(38),
+			{Col: 1, Row: 5}: NumberVal(21), {Col: 2, Row: 5}: NumberVal(40),
+			{Col: 3, Row: 1}: StringVal("30"),
+		},
+	}
+
+	tol := 1e-6
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Excel example
+		{"excel_example", "FORECAST(30,A1:A5,B1:B5)", excelResolver, 10.607253, false, 0},
+		// FORECAST.LINEAR identical
+		{"forecast_linear_same", "FORECAST.LINEAR(30,A1:A5,B1:B5)", excelResolver, 10.607253, false, 0},
+		// Simple y=2x+1, predict x=5 -> 11
+		{"linear_2x_plus_1", "FORECAST(5,A1:A3,B1:B3)", linearResolver, 11.0, false, 0},
+		// x=0 should return intercept (y=2x+1 -> intercept=1)
+		{"x_zero_intercept", "FORECAST(0,A1:A3,B1:B3)", linearResolver, 1.0, false, 0},
+		// Negative x value: x=-3 -> 2*(-3)+1 = -5
+		{"negative_x", "FORECAST(-3,A1:A3,B1:B3)", linearResolver, -5.0, false, 0},
+		// x already in known data: x=2 -> 2*2+1 = 5
+		{"x_in_known_data", "FORECAST(2,A1:A3,B1:B3)", linearResolver, 5.0, false, 0},
+		// Extrapolation beyond range: x=100 -> 2*100+1 = 201
+		{"extrapolation", "FORECAST(100,A1:A3,B1:B3)", linearResolver, 201.0, false, 0},
+		// Non-numeric x -> #VALUE!
+		{"non_numeric_x", "FORECAST(\"abc\",A1:A3,B1:B3)", linearResolver, 0, true, ErrValVALUE},
+		// String x that can be coerced: "30"
+		{"string_x_coerced", "FORECAST(C1,A1:A5,B1:B5)", stringXResolver, 10.607253, false, 0},
+		// Empty arrays -> #DIV/0!
+		{"empty_arrays", "FORECAST(5,A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		// Different length arrays -> #N/A
+		{"different_lengths", "FORECAST(5,A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		// Constant x values -> #DIV/0!
+		{"constant_x_div0", "FORECAST(5,A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		// Single data point -> #DIV/0!
+		{"single_point_div0", "FORECAST(5,A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		// Two data points: slope=1, intercept=-1, predict x=10 -> 9
+		{"two_points", "FORECAST(10,A1:A2,B1:B2)", twoPairResolver, 9.0, false, 0},
+		// Large dataset: y=2x+1, predict x=25 -> 51
+		{"large_dataset", "FORECAST(25,A1:A20,B1:B20)", largeResolver, 51.0, false, 0},
+		// Mixed types: slope=1.5, intercept=-4, predict x=10 -> 11
+		{"mixed_types_skip", "FORECAST(10,A1:A4,B1:B4)", mixedResolver, 11.0, false, 0},
+		// Error propagation from arrays
+		{"error_propagation", "FORECAST(5,A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		// Negative values: slope=2, intercept=-8, predict x=5 -> 2
+		{"negative_values", "FORECAST(5,A1:A3,B1:B3)", negValsResolver, 2.0, false, 0},
+		// Too few args
+		{"too_few_args", "FORECAST(5,A1:A3)", linearResolver, 0, true, ErrValVALUE},
+		// Too many args
+		{"too_many_args", "FORECAST(5,A1:A3,B1:B3,A1:A3)", linearResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR too few args
+		{"linear_too_few_args", "FORECAST.LINEAR(5)", linearResolver, 0, true, ErrValVALUE},
+		// Fractional x value: x=2.5 -> 2*2.5+1 = 6
+		{"fractional_x", "FORECAST(2.5,A1:A3,B1:B3)", linearResolver, 6.0, false, 0},
+		// FORECAST.LINEAR with two points
+		{"linear_two_points", "FORECAST.LINEAR(10,A1:A2,B1:B2)", twoPairResolver, 9.0, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
