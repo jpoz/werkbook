@@ -37,6 +37,8 @@ func init() {
 	Register("MODE", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
+	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
+	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("RANK", NoCtx(fnRANK))
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
@@ -907,6 +909,86 @@ func fnRANK(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(float64(rank)), nil
+}
+
+func fnPERCENTRANK(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Collect numeric values from the array argument.
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// x must be numeric.
+	x, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+
+	// Optional significance (default 3).
+	sig := 3.0
+	if len(args) == 3 {
+		s, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		sig = math.Trunc(s)
+		if sig < 1 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	sort.Float64s(nums)
+	n := len(nums)
+
+	// x outside data range → #N/A
+	if x < nums[0] || x > nums[n-1] {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Single element: if x matches, return 1.
+	if n == 1 {
+		return NumberVal(truncToSig(1, int(sig))), nil
+	}
+
+	// Find position of x in sorted data.
+	var rank float64
+	if x <= nums[0] {
+		rank = 0
+	} else if x >= nums[n-1] {
+		rank = 1
+	} else {
+		// Find the two adjacent values x falls between (or equals).
+		lo := 0
+		for i := 0; i < n; i++ {
+			if nums[i] == x {
+				rank = float64(i) / float64(n-1)
+				return NumberVal(truncToSig(rank, int(sig))), nil
+			}
+			if nums[i] < x {
+				lo = i
+			}
+		}
+		// Interpolate between nums[lo] and nums[lo+1].
+		loRank := float64(lo) / float64(n-1)
+		hiRank := float64(lo+1) / float64(n-1)
+		frac := (x - nums[lo]) / (nums[lo+1] - nums[lo])
+		rank = loRank + frac*(hiRank-loRank)
+	}
+
+	return NumberVal(truncToSig(rank, int(sig))), nil
+}
+
+// truncToSig truncates a float to sig decimal digits.
+func truncToSig(v float64, sig int) float64 {
+	pow := math.Pow(10, float64(sig))
+	return math.Floor(v*pow) / pow
 }
 
 func fnSUMSQ(args []Value) (Value, error) {
