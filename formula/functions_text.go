@@ -15,7 +15,7 @@ func init() {
 	Register("CHOOSE", NoCtx(fnCHOOSE))
 	Register("CLEAN", NoCtx(fnCLEAN))
 	Register("CODE", NoCtx(fnCODE))
-	Register("CONCAT", NoCtx(fnCONCATENATE))
+	Register("CONCAT", NoCtx(fnCONCAT))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
 	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
@@ -52,6 +52,28 @@ func fnCHOOSE(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return args[i], nil
+}
+
+func fnCONCAT(args []Value) (Value, error) {
+	var b strings.Builder
+	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					b.WriteString(ValueToString(cell))
+				}
+			}
+		} else {
+			b.WriteString(ValueToString(arg))
+		}
+	}
+	return StringVal(b.String()), nil
 }
 
 func fnCONCATENATE(args []Value) (Value, error) {

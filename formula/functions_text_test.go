@@ -744,6 +744,55 @@ func TestCHOOSEEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CONCAT with range arguments
+// ---------------------------------------------------------------------------
+
+func TestCONCATRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("hello"),
+			{Col: 1, Row: 2}: StringVal("world"),
+		},
+	}
+
+	cf := evalCompile(t, `CONCAT(A1:A2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "helloworld" {
+		t.Errorf("CONCAT(A1:A2): got %q, want 'helloworld'", got.Str)
+	}
+
+	// CONCAT with a range and a scalar
+	cf2 := evalCompile(t, `CONCAT(A1:A2,"!")`)
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got2.Type != ValueString || got2.Str != "helloworld!" {
+		t.Errorf("CONCAT(A1:A2,\"!\"): got %q, want 'helloworld!'", got2.Str)
+	}
+
+	// CONCAT with numbers in range
+	resolver2 := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf3 := evalCompile(t, `CONCAT(A1:A3)`)
+	got3, err := Eval(cf3, resolver2, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got3.Type != ValueString || got3.Str != "123" {
+		t.Errorf("CONCAT(A1:A3) numbers: got %q, want '123'", got3.Str)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // CONCATENATE / CONCAT with multiple types
 // ---------------------------------------------------------------------------
 
