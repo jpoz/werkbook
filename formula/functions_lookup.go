@@ -14,6 +14,7 @@ func init() {
 	Register("LOOKUP", NoCtx(fnLOOKUP))
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
+	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 }
 
@@ -683,4 +684,44 @@ func isAllLetters(s string) bool {
 		}
 	}
 	return true
+}
+
+func fnTRANSPOSE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	v := args[0]
+	if v.Type != ValueArray {
+		return v, nil
+	}
+
+	rows := len(v.Array)
+	if rows == 0 {
+		return Value{Type: ValueArray, Array: nil}, nil
+	}
+
+	// Find the maximum column count (handle ragged arrays).
+	cols := 0
+	for _, row := range v.Array {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	if cols == 0 {
+		return Value{Type: ValueArray, Array: nil}, nil
+	}
+
+	// Transpose: result has cols rows and rows columns.
+	result := make([][]Value, cols)
+	for c := 0; c < cols; c++ {
+		result[c] = make([]Value, rows)
+		for r := 0; r < rows; r++ {
+			if c < len(v.Array[r]) {
+				result[c][r] = v.Array[r][c]
+			} else {
+				result[c][r] = EmptyVal()
+			}
+		}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
