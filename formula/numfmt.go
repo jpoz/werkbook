@@ -804,52 +804,100 @@ func formatFraction(n float64, format string) string {
 		n = -n
 	}
 
-	stripped := stripLiterals(format)
+	tokens := tokenizeNumberFormat(format)
 
-	// Find the '/' in the stripped format.
-	slashIdx := strings.Index(stripped, "/")
-	if slashIdx < 0 {
+	// Find the '/' literal token that separates numerator from denominator.
+	slashTokIdx := -1
+	for i, tok := range tokens {
+		if tok.kind == tokLiteral && tok.value == "/" {
+			slashTokIdx = i
+			break
+		}
+	}
+	if slashTokIdx < 0 {
 		return fmt.Sprintf("%g", n)
 	}
 
-	// Determine if there's a whole number part (# before the numerator digits).
-	beforeSlash := stripped[:slashIdx]
-	afterSlash := stripped[slashIdx+1:]
-
-	// Check if the denominator is a fixed number.
-	denomStr := strings.TrimSpace(afterSlash)
-	// Strip trailing format characters
-	denom := 0
-	fixedDenom := false
-	if d, err := strconv.Atoi(strings.TrimRight(denomStr, " #0?")); err == nil && d > 0 {
-		denom = d
-		fixedDenom = true
+	isDigitTok := func(k numFmtTokenKind) bool {
+		return k == tokDigit || k == tokDigitOpt || k == tokDigitSpace
 	}
 
-	// Check if there's a whole number part: look for a space or '#' before the numerator.
-	hasWhole := strings.Contains(beforeSlash, " ")
+	// Identify digit groups before the slash (separated by non-digit tokens).
+	type digitGroup struct {
+		start, end int // token indices [start, end)
+		count      int
+	}
+	var beforeGroups []digitGroup
+	inGroup := false
+	var cur digitGroup
+	for i := 0; i < slashTokIdx; i++ {
+		if isDigitTok(tokens[i].kind) {
+			if !inGroup {
+				cur = digitGroup{start: i}
+				inGroup = true
+			}
+			cur.count++
+			cur.end = i + 1
+		} else if inGroup {
+			beforeGroups = append(beforeGroups, cur)
+			inGroup = false
+		}
+	}
+	if inGroup {
+		beforeGroups = append(beforeGroups, cur)
+	}
 
+	hasWhole := len(beforeGroups) >= 2
+
+	// Count denominator digit placeholders and detect fixed denominator.
+	denomDigits := 0
+	var denomFixedParts []byte
+	for i := slashTokIdx + 1; i < len(tokens); i++ {
+		tok := tokens[i]
+		if isDigitTok(tok.kind) {
+			denomDigits++
+			if tok.kind == tokDigit && tok.value[0] >= '1' && tok.value[0] <= '9' {
+				denomFixedParts = append(denomFixedParts, tok.value[0])
+			} else {
+				denomFixedParts = nil // not a fixed denominator
+			}
+		}
+	}
+	if denomDigits == 0 {
+		denomDigits = 1
+	}
+
+	denom := 0
+	fixedDenom := false
+	if len(denomFixedParts) > 0 {
+		if d, err := strconv.Atoi(string(denomFixedParts)); err == nil && d > 0 {
+			denom = d
+			fixedDenom = true
+		}
+	}
+	// Fallback: try from stripped format.
+	if !fixedDenom {
+		stripped := stripLiterals(format)
+		if si := strings.Index(stripped, "/"); si >= 0 {
+			ds := strings.TrimSpace(stripped[si+1:])
+			if d, err := strconv.Atoi(strings.TrimRight(ds, " #0?")); err == nil && d > 0 {
+				denom = d
+				fixedDenom = true
+			}
+		}
+	}
+
+	// Compute whole and fractional parts.
 	var wholePart int
 	var fracPart float64
 	if hasWhole {
 		wholePart = int(n)
 		fracPart = n - float64(wholePart)
 	} else {
-		wholePart = 0
 		fracPart = n
 	}
 
-	// Determine denominator digits count.
-	denomDigits := 0
-	for _, c := range denomStr {
-		if c == '#' || c == '0' || c == '?' {
-			denomDigits++
-		}
-	}
-	if denomDigits == 0 && !fixedDenom {
-		denomDigits = 1
-	}
-
+	// Find best fraction.
 	var bestNum, bestDen int
 	if fixedDenom {
 		bestDen = denom
@@ -866,29 +914,150 @@ func formatFraction(n float64, format string) string {
 		bestNum, bestDen = bestFraction(fracPart, maxDen)
 	}
 
-	// Handle carry-over: if numerator equals denominator.
+	// Handle carry-over.
 	if bestDen > 0 && bestNum >= bestDen {
 		wholePart += bestNum / bestDen
 		bestNum = bestNum % bestDen
 	}
 
+	// Classify token regions:
+	//   prefix | whole-digits | middle | numerator-digits | pre-slash | / | post-slash | denom-digits | suffix
+	// If !hasWhole, whole-digits and middle are absent.
+
+	// Find region boundaries.
+	prefixEnd := 0 // tokens[0..prefixEnd) are prefix literals
+	if len(beforeGroups) > 0 {
+		prefixEnd = beforeGroups[0].start
+	} else {
+		prefixEnd = slashTokIdx
+	}
+
+	var wholeEnd int               // whole digit group end
+	var middleStart, middleEnd int // literals between whole and numerator
+	var numStart, numEnd int       // numerator digit group
+	if hasWhole {
+		_ = beforeGroups[0].start
+		wholeEnd = beforeGroups[0].end
+		middleStart = wholeEnd
+		numStart = beforeGroups[len(beforeGroups)-1].start
+		middleEnd = numStart
+		numEnd = beforeGroups[len(beforeGroups)-1].end
+	} else if len(beforeGroups) > 0 {
+		numStart = beforeGroups[0].start
+		numEnd = beforeGroups[0].end
+	}
+
+	preSlashStart := numEnd // literals between numerator and /
+	// postSlash: between / and first denom digit
+	postSlashEnd := len(tokens) // suffix starts after last denom digit
+	denomStart := -1
+	denomEnd := -1
+	for i := slashTokIdx + 1; i < len(tokens); i++ {
+		if isDigitTok(tokens[i].kind) {
+			if denomStart < 0 {
+				denomStart = i
+			}
+			denomEnd = i + 1
+		}
+	}
+	if denomEnd > 0 {
+		postSlashEnd = denomStart
+	}
+
+	// Find suffix start (after last denom digit).
+	suffixStart := len(tokens)
+	if denomEnd > 0 {
+		suffixStart = denomEnd
+	}
+
+	// Helper to collect literal values from a token range.
+	collectLiterals := func(from, to int) string {
+		var b strings.Builder
+		for i := from; i < to; i++ {
+			if tokens[i].kind == tokLiteral {
+				b.WriteString(tokens[i].value)
+			}
+		}
+		return b.String()
+	}
+
+	prefix := collectLiterals(0, prefixEnd)
+	middle := collectLiterals(middleStart, middleEnd)
+	preSlash := collectLiterals(preSlashStart, slashTokIdx)
+	postSlash := collectLiterals(slashTokIdx+1, postSlashEnd)
+	suffix := collectLiterals(suffixStart, len(tokens))
+
+	// Count ? placeholders in numerator and denominator for space padding.
+	numPlaces := 0
+	for i := numStart; i < numEnd; i++ {
+		if isDigitTok(tokens[i].kind) {
+			numPlaces++
+		}
+	}
+	denPlaces := denomDigits
+
+	padFrac := func(s string, places int, hasQMark bool) string {
+		if !hasQMark || len(s) >= places {
+			return s
+		}
+		return strings.Repeat(" ", places-len(s)) + s
+	}
+
+	// Check if numerator or denominator have ? placeholders.
+	numHasQ := false
+	for i := numStart; i < numEnd; i++ {
+		if tokens[i].kind == tokDigitSpace {
+			numHasQ = true
+			break
+		}
+	}
+	denHasQ := false
+	for i := slashTokIdx + 1; i < len(tokens); i++ {
+		if tokens[i].kind == tokDigitSpace {
+			denHasQ = true
+			break
+		}
+	}
+
+	// Build output.
 	var result strings.Builder
 	if negative {
 		result.WriteByte('-')
 	}
-	if hasWhole {
-		if wholePart != 0 || bestNum == 0 {
-			result.WriteString(strconv.Itoa(wholePart))
-			result.WriteByte(' ')
+
+	if hasWhole && bestNum == 0 {
+		// Fraction is zero — show just the whole number with surrounding literals.
+		// If the format has '?' placeholders, the fraction section becomes spaces
+		// to maintain consistent width. With '#' placeholders, it's suppressed.
+		result.WriteString(prefix)
+		result.WriteString(strconv.Itoa(wholePart))
+		if numHasQ || denHasQ {
+			// Replace middle + numerator + pre-slash + slash + post-slash + denominator with spaces.
+			fracWidth := len(middle) + numPlaces + len(preSlash) + 1 + len(postSlash) + denPlaces
+			result.WriteString(strings.Repeat(" ", fracWidth))
 		}
-		result.WriteString(strconv.Itoa(bestNum))
+		result.WriteString(suffix)
+	} else if hasWhole {
+		result.WriteString(prefix)
+		if wholePart != 0 {
+			result.WriteString(strconv.Itoa(wholePart))
+			result.WriteString(middle)
+		}
+		result.WriteString(padFrac(strconv.Itoa(bestNum), numPlaces, numHasQ))
+		result.WriteString(preSlash)
 		result.WriteByte('/')
-		result.WriteString(strconv.Itoa(bestDen))
+		result.WriteString(postSlash)
+		result.WriteString(padFrac(strconv.Itoa(bestDen), denPlaces, denHasQ))
+		result.WriteString(suffix)
 	} else {
 		totalNum := wholePart*bestDen + bestNum
-		result.WriteString(strconv.Itoa(totalNum))
+		result.WriteString(prefix)
+		result.WriteString(padFrac(strconv.Itoa(totalNum), numPlaces, numHasQ))
+		result.WriteString(preSlash)
 		result.WriteByte('/')
-		result.WriteString(strconv.Itoa(bestDen))
+		result.WriteString(postSlash)
+		result.WriteString(padFrac(strconv.Itoa(bestDen), denPlaces, denHasQ))
+		result.WriteString(suffix)
 	}
 	return result.String()
 }
