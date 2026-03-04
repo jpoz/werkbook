@@ -965,6 +965,139 @@ func TestEvalLargeNumberArithmetic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CompareValues — empty cell type adaptation
+// ---------------------------------------------------------------------------
+
+func TestCompareValues(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b Value
+		want int
+	}{
+		// empty vs empty
+		{name: "empty_empty", a: EmptyVal(), b: EmptyVal(), want: 0},
+
+		// empty adapts to number
+		{name: "empty_vs_zero", a: EmptyVal(), b: NumberVal(0), want: 0},
+		{name: "zero_vs_empty", a: NumberVal(0), b: EmptyVal(), want: 0},
+		{name: "empty_vs_positive", a: EmptyVal(), b: NumberVal(5), want: -1},
+		{name: "positive_vs_empty", a: NumberVal(5), b: EmptyVal(), want: 1},
+		{name: "empty_vs_negative", a: EmptyVal(), b: NumberVal(-3), want: 1},
+		{name: "negative_vs_empty", a: NumberVal(-3), b: EmptyVal(), want: -1},
+
+		// empty adapts to string
+		{name: "empty_vs_empty_string", a: EmptyVal(), b: StringVal(""), want: 0},
+		{name: "empty_string_vs_empty", a: StringVal(""), b: EmptyVal(), want: 0},
+		{name: "empty_vs_nonempty_string", a: EmptyVal(), b: StringVal("hello"), want: -1},
+		{name: "nonempty_string_vs_empty", a: StringVal("hello"), b: EmptyVal(), want: 1},
+
+		// empty adapts to bool
+		{name: "empty_vs_false", a: EmptyVal(), b: BoolVal(false), want: 0},
+		{name: "false_vs_empty", a: BoolVal(false), b: EmptyVal(), want: 0},
+		{name: "empty_vs_true", a: EmptyVal(), b: BoolVal(true), want: -1},
+		{name: "true_vs_empty", a: BoolVal(true), b: EmptyVal(), want: 1},
+
+		// same-type comparisons (sanity)
+		{name: "num_eq", a: NumberVal(10), b: NumberVal(10), want: 0},
+		{name: "num_lt", a: NumberVal(3), b: NumberVal(7), want: -1},
+		{name: "num_gt", a: NumberVal(7), b: NumberVal(3), want: 1},
+		{name: "str_eq", a: StringVal("abc"), b: StringVal("ABC"), want: 0},
+		{name: "str_lt", a: StringVal("abc"), b: StringVal("def"), want: -1},
+		{name: "bool_eq_true", a: BoolVal(true), b: BoolVal(true), want: 0},
+		{name: "bool_eq_false", a: BoolVal(false), b: BoolVal(false), want: 0},
+		{name: "bool_false_lt_true", a: BoolVal(false), b: BoolVal(true), want: -1},
+		{name: "bool_true_gt_false", a: BoolVal(true), b: BoolVal(false), want: 1},
+
+		// cross-type (different typeRank)
+		{name: "num_vs_str", a: NumberVal(0), b: StringVal(""), want: -1},
+		{name: "str_vs_bool", a: StringVal(""), b: BoolVal(false), want: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CompareValues(tt.a, tt.b)
+			if tt.want == 0 && got != 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want 0", tt.a, tt.b, got)
+			} else if tt.want < 0 && got >= 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want < 0", tt.a, tt.b, got)
+			} else if tt.want > 0 && got <= 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want > 0", tt.a, tt.b, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Empty cell comparison via formulas — Excel behavior
+// ---------------------------------------------------------------------------
+
+func TestEvalEmptyCellComparisons(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: StringVal(""),
+			{Col: 1, Row: 3}: BoolVal(false),
+			{Col: 1, Row: 4}: NumberVal(5),
+			{Col: 1, Row: 5}: StringVal("hello"),
+			{Col: 1, Row: 6}: BoolVal(true),
+			// B1 is empty
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// empty = 0 → TRUE (empty adapts to number 0)
+		{name: "empty_eq_zero", formula: "B1=A1", want: true},
+		{name: "zero_eq_empty", formula: "A1=B1", want: true},
+		// empty = "" → TRUE (empty adapts to string "")
+		{name: "empty_eq_empty_str", formula: `B1=A2`, want: true},
+		{name: "empty_str_eq_empty", formula: `A2=B1`, want: true},
+		// empty = FALSE → TRUE (empty adapts to bool false)
+		{name: "empty_eq_false", formula: "B1=A3", want: true},
+		{name: "false_eq_empty", formula: "A3=B1", want: true},
+		// empty <> positive number
+		{name: "empty_ne_positive", formula: "B1=A4", want: false},
+		{name: "empty_lt_positive", formula: "B1<A4", want: true},
+		// empty <> non-empty string
+		{name: "empty_ne_nonempty_str", formula: `B1=A5`, want: false},
+		{name: "empty_lt_nonempty_str", formula: `B1<A5`, want: true},
+		// empty <> TRUE
+		{name: "empty_ne_true", formula: "B1=A6", want: false},
+		{name: "empty_lt_true", formula: "B1<A6", want: true},
+		// empty = empty
+		{name: "empty_eq_empty", formula: "B1=B2", want: true},
+		// empty comparisons with literals
+		{name: "empty_eq_zero_lit", formula: "B1=0", want: true},
+		{name: "empty_eq_empty_str_lit", formula: `B1=""`, want: true},
+		{name: "empty_eq_false_lit", formula: "B1=FALSE", want: true},
+		{name: "empty_ne_true_lit", formula: "B1=TRUE", want: false},
+		{name: "empty_ne_one_lit", formula: "B1=1", want: false},
+		{name: "empty_ne_str_lit", formula: `B1="x"`, want: false},
+		// inequality operators
+		{name: "empty_le_zero", formula: "B1<=0", want: true},
+		{name: "empty_ge_zero", formula: "B1>=0", want: true},
+		{name: "empty_le_false", formula: "B1<=FALSE", want: true},
+		{name: "empty_ge_false", formula: "B1>=FALSE", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Empty cell handling in various contexts
 // ---------------------------------------------------------------------------
 
