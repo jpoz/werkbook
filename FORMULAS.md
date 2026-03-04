@@ -148,7 +148,7 @@ Werkbook supports **198** Excel formula functions.
 | REPLACE | Text | - |
 | REPT | Text | - |
 | RIGHT | Text | 5 |
-| ROUND | Math & Trig | 3 |
+| ROUND | Math & Trig | 38 |
 | ROUNDDOWN | Math & Trig | 2 |
 | ROUNDUP | Math & Trig | 2 |
 | ROW | Information | 6 |
