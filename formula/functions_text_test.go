@@ -63,6 +63,10 @@ func TestTEXTFormat(t *testing.T) {
 		{`TEXT(0.75,"0%")`, "75%"},
 		{`TEXT(1234,"#,##0")`, "1,234"},
 		{`TEXT(42,"0")`, "42"},
+		// Cases from NumberFormatTests.xlsx audit
+		{`TEXT(12.344,"0.00")`, "12.34"},
+		{`TEXT(12.344,"0.0")`, "12.3"},
+		{`TEXT(12.3,"###.##")`, "12.3"},
 	}
 
 	for _, tt := range tests {

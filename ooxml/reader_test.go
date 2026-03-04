@@ -12,9 +12,9 @@ func TestParseCellData_NumericSharedString(t *testing.T) {
 		wantVal  string
 	}{
 		{
-			name:     "large negative integer SST is numeric",
+			name:     "large negative integer SST is string",
 			cell:     xlsxC{R: "A1", T: "s", V: "0"},
-			wantType: "",
+			wantType: "s",
 			wantVal:  "-8086931554011838357",
 		},
 		{
@@ -24,15 +24,15 @@ func TestParseCellData_NumericSharedString(t *testing.T) {
 			wantVal:  "hello",
 		},
 		{
-			name:     "decimal SST is numeric",
+			name:     "decimal SST is string",
 			cell:     xlsxC{R: "A3", T: "s", V: "2"},
-			wantType: "",
+			wantType: "s",
 			wantVal:  "3.14",
 		},
 		{
-			name:     "scientific notation SST is numeric",
+			name:     "scientific notation SST is string",
 			cell:     xlsxC{R: "A4", T: "s", V: "3"},
-			wantType: "",
+			wantType: "s",
 			wantVal:  "1e10",
 		},
 		{

@@ -203,7 +203,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 
 func cellDataToValue(cd ooxml.CellData) Value {
 	switch cd.Type {
-	case "s", "inlineStr":
+	case "s", "str", "inlineStr":
 		return Value{Type: TypeString, String: cd.Value}
 	case "b":
 		return Value{Type: TypeBool, Bool: cd.Value == "1"}

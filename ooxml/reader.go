@@ -123,20 +123,13 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 
 	switch xc.T {
 	case "s":
-		// Shared string: value is the SST index.
+		// Shared string: value is the SST index. Per the OOXML spec,
+		// t="s" means the cell value is a string. The formula engine's
+		// CoerceNum handles numeric coercion when arithmetic needs it.
 		idx, err := strconv.Atoi(xc.V)
 		if err == nil && idx >= 0 && idx < len(sst) {
-			str := sst[idx]
-			// Some writers store large numbers as shared strings.
-			// If the string is a valid number, treat it as numeric so
-			// formula references return a number (matching Excel).
-			if _, numErr := strconv.ParseFloat(str, 64); numErr == nil {
-				// Leave cd.Type as "" (number) so cellDataToValue parses it.
-				cd.Value = str
-			} else {
-				cd.Type = "s"
-				cd.Value = str
-			}
+			cd.Type = "s"
+			cd.Value = sst[idx]
 		}
 	case "inlineStr":
 		cd.Type = "inlineStr"
