@@ -634,6 +634,103 @@ func TestFINDEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// LEFT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestLEFT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_2_chars", formula: `LEFT("hello",2)`, want: "he"},
+		{name: "basic_3_chars", formula: `LEFT("hello",3)`, want: "hel"},
+		{name: "basic_5_chars", formula: `LEFT("hello",5)`, want: "hello"},
+		{name: "basic_1_char", formula: `LEFT("hello",1)`, want: "h"},
+
+		// Default num_chars (1 when omitted)
+		{name: "default_num_chars", formula: `LEFT("hello")`, want: "h"},
+		{name: "default_single_char", formula: `LEFT("A")`, want: "A"},
+		{name: "default_space", formula: `LEFT(" hello")`, want: " "},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_chars", formula: `LEFT("hello",0)`, want: ""},
+		{name: "zero_chars_empty", formula: `LEFT("",0)`, want: ""},
+
+		// num_chars greater than string length returns full string
+		{name: "exceeds_length", formula: `LEFT("hi",10)`, want: "hi"},
+		{name: "exceeds_length_single", formula: `LEFT("A",100)`, want: "A"},
+
+		// Empty string input
+		{name: "empty_string", formula: `LEFT("")`, want: ""},
+		{name: "empty_string_with_n", formula: `LEFT("",5)`, want: ""},
+
+		// Numeric first argument coerced to string
+		{name: "numeric_input", formula: `LEFT(12345,3)`, want: "123"},
+		{name: "numeric_input_default", formula: `LEFT(12345)`, want: "1"},
+		{name: "numeric_float", formula: `LEFT(3.14,3)`, want: "3.1"},
+		{name: "numeric_zero", formula: `LEFT(0)`, want: "0"},
+
+		// Boolean first argument coerced to string
+		{name: "bool_true", formula: `LEFT(TRUE,2)`, want: "TR"},
+		{name: "bool_false", formula: `LEFT(FALSE,3)`, want: "FAL"},
+		{name: "bool_true_default", formula: `LEFT(TRUE)`, want: "T"},
+		{name: "bool_false_full", formula: `LEFT(FALSE,5)`, want: "FALSE"},
+
+		// Negative num_chars should error
+		{name: "negative_num_chars", formula: `LEFT("hello",-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `LEFT("hello",-100)`, isErr: true},
+
+		// Non-numeric num_chars should error
+		{name: "non_numeric_num_chars", formula: `LEFT("hello","abc")`, isErr: true},
+
+		// num_chars as float (truncated to int)
+		{name: "float_num_chars", formula: `LEFT("hello",2.9)`, want: "he"},
+		{name: "float_num_chars_1_5", formula: `LEFT("hello",1.5)`, want: "h"},
+
+		// Special characters and spaces
+		{name: "spaces", formula: `LEFT("  hello  ",4)`, want: "  he"},
+		{name: "leading_space", formula: `LEFT(" a",2)`, want: " a"},
+		{name: "backslash_t", formula: "LEFT(\"\\thello\",2)", want: "\\t"}, // formula parser treats \t as literal characters
+		{name: "punctuation", formula: `LEFT("!@#$%",3)`, want: "!@#"},
+		{name: "digits_in_string", formula: `LEFT("123abc",4)`, want: "123a"},
+		{name: "mixed_case", formula: `LEFT("AbCdEf",3)`, want: "AbC"},
+
+		// Unicode / multibyte characters
+		{name: "unicode_chars", formula: "LEFT(\"日本語\",2)", want: "日本"},
+		{name: "unicode_single", formula: "LEFT(\"日本語\",1)", want: "日"},
+		{name: "unicode_exceeds", formula: "LEFT(\"日本語\",10)", want: "日本語"},
+
+		// Wrong argument count
+		{name: "no_args", formula: `LEFT()`, isErr: true},
+		{name: "three_args", formula: `LEFT("hello",2,3)`, isErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q (type=%d), want %q", tt.formula, got.Str, got.Type, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LEFT/RIGHT/MID edge cases
 // ---------------------------------------------------------------------------
 
