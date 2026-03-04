@@ -119,6 +119,100 @@ func TestEmptyRefReturnsZero(t *testing.T) {
 	}
 }
 
+// TestWholeColumnRefSUMIF verifies that SUMIF with whole-column references
+// like A:A correctly sums matching rows instead of returning 0.
+func TestWholeColumnRefSUMIF(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Column A: categories, Column B: values
+	s.SetValue("A1", "apple")
+	s.SetValue("A2", "banana")
+	s.SetValue("A3", "apple")
+	s.SetValue("A4", "cherry")
+	s.SetValue("A5", "apple")
+
+	s.SetValue("B1", 10)
+	s.SetValue("B2", 20)
+	s.SetValue("B3", 30)
+	s.SetValue("B4", 40)
+	s.SetValue("B5", 50)
+
+	// SUMIF with whole-column references: sum column B where column A = "apple"
+	s.SetFormula("C1", `SUMIF(A:A,"apple",B:B)`)
+
+	val, err := s.GetValue("C1")
+	if err != nil {
+		t.Fatalf("GetValue(C1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("C1 type = %v, want TypeNumber", val.Type)
+	}
+	// apple rows: B1=10, B3=30, B5=50 → total 90
+	if val.Number != 90 {
+		t.Errorf("SUMIF(A:A,\"apple\",B:B) = %g, want 90", val.Number)
+	}
+}
+
+// TestWholeColumnRefMATCH verifies that MATCH with a whole-column reference
+// correctly finds the matching row.
+func TestWholeColumnRefMATCH(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", "cat")
+	s.SetValue("A2", "dog")
+	s.SetValue("A3", "bird")
+
+	// MATCH with whole-column reference
+	s.SetFormula("B1", `MATCH("dog",A:A,0)`)
+
+	val, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatalf("GetValue(B1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("B1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 2 {
+		t.Errorf("MATCH(\"dog\",A:A,0) = %g, want 2", val.Number)
+	}
+}
+
+// TestWholeColumnRefCrossSheet verifies that whole-column references work
+// correctly with cross-sheet references like Sheet2!R:R.
+func TestWholeColumnRefCrossSheet(t *testing.T) {
+	f := werkbook.New()
+	s1 := f.Sheet("Sheet1")
+	s2, err := f.NewSheet("Sheet2")
+	if err != nil {
+		t.Fatalf("NewSheet: %v", err)
+	}
+
+	// Set up data on Sheet2
+	s2.SetValue("A1", "x")
+	s2.SetValue("A2", "y")
+	s2.SetValue("A3", "x")
+	s2.SetValue("B1", 100)
+	s2.SetValue("B2", 200)
+	s2.SetValue("B3", 300)
+
+	// SUMIF on Sheet1 referencing whole columns on Sheet2
+	s1.SetFormula("A1", `SUMIF(Sheet2!A:A,"x",Sheet2!B:B)`)
+
+	val, err := s1.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("A1 type = %v, want TypeNumber", val.Type)
+	}
+	// x rows: B1=100, B3=300 → total 400
+	if val.Number != 400 {
+		t.Errorf("SUMIF(Sheet2!A:A,\"x\",Sheet2!B:B) = %g, want 400", val.Number)
+	}
+}
+
 // TestCrossSheetEmptyRefReturnsZero verifies that a cross-sheet reference to
 // an empty cell returns 0, not empty. This matches Excel behavior where
 // formulas like ='Sheet2'!A1 (with A1 empty) cache 0.

@@ -89,7 +89,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			// Implicit intersection: when a full-column or full-row range is
 			// used in a non-array formula, reduce to the single cell at the
 			// formula's own row/column rather than loading the entire range.
-			if ctx != nil && !ctx.IsArrayFormula {
+			// Skip implicit intersection when inside an array-forcing function
+			// (arrayCtxDepth > 0), since those functions need the full range.
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
 				isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
 				isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
 				if isFullCol && addr.FromCol == addr.ToCol && ctx.CurrentRow >= addr.FromRow {
