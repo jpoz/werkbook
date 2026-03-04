@@ -717,7 +717,7 @@ func fnXIRR(args []Value) (Value, error) {
 		if math.IsNaN(newRate) || math.IsInf(newRate, 0) {
 			return ErrorVal(ErrValNUM), nil
 		}
-		if math.Abs(newRate-rate) < 1e-10 {
+		if math.Abs(newRate-rate) < 1e-12 {
 			return NumberVal(newRate), nil
 		}
 		rate = newRate
