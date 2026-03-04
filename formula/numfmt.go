@@ -1178,9 +1178,7 @@ func formatNumberSection(n float64, format string) string {
 			}
 		}
 	}
-	_ = decSpaces
-
-	totalDecPlaces := decZeros + decHashes
+	totalDecPlaces := decZeros + decHashes + decSpaces
 	_ = decIdx
 
 	// Check for trailing commas (scaling): commas at end of digit sequence divide by 1000.
@@ -1223,12 +1221,24 @@ func formatNumberSection(n float64, format string) string {
 		for len(decStr) < totalDecPlaces {
 			decStr += "0"
 		}
-		// Trim trailing zeros for '#' positions.
+		// Trim trailing zeros for '#' positions, then replace trailing
+		// zeros with spaces for '?' positions.
 		if decHashes > 0 {
-			minLen := decZeros
+			minLen := decZeros + decSpaces
 			for len(decStr) > minLen && decStr[len(decStr)-1] == '0' {
 				decStr = decStr[:len(decStr)-1]
 			}
+		}
+		if decSpaces > 0 {
+			buf := []byte(decStr)
+			for i := len(buf) - 1; i >= decZeros && i >= len(buf)-decSpaces; i-- {
+				if buf[i] == '0' {
+					buf[i] = ' '
+				} else {
+					break
+				}
+			}
+			decStr = string(buf)
 		}
 	}
 
