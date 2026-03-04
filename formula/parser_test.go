@@ -87,8 +87,8 @@ func TestParsePrecedence(t *testing.T) {
 		{"2*3*4", "(* (* 2 3) 4)"},
 		{"12/3/2", "(/ (/ 12 3) 2)"},
 
-		// Right-associative ^
-		{"2^3^4", "(^ 2 (^ 3 4))"},
+		// Left-associative ^ (matches Excel)
+		{"2^3^4", "(^ (^ 2 3) 4)"},
 
 		// Mixed precedence
 		{"1+2*3^4", "(+ 1 (* 2 (^ 3 4)))"},

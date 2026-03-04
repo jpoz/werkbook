@@ -73,7 +73,7 @@ var infixBP = map[string]bindingPower{
 	"-":  {6, 7},
 	"*":  {8, 9},
 	"/":  {8, 9},
-	"^":  {10, 10}, // right-associative
+	"^":  {10, 11}, // left-associative (matches Excel)
 }
 
 const (
