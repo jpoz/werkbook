@@ -1770,7 +1770,6 @@ type numFmtToken struct {
 // tokenizeNumberFormat breaks a number format string into tokens.
 func tokenizeNumberFormat(format string) []numFmtToken {
 	var tokens []numFmtToken
-	upper := strings.ToUpper(format)
 	i := 0
 
 	for i < len(format) {
@@ -1851,7 +1850,7 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 			}
 		default:
 			// Check for common literal characters.
-			if isFormatLiteral(ch, upper, i) {
+			if isFormatLiteral(ch) {
 				tokens = append(tokens, numFmtToken{kind: tokLiteral, value: string(ch)})
 				i++
 			} else {
@@ -1866,7 +1865,7 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 }
 
 // isFormatLiteral determines if a character should be treated as a literal in a number format.
-func isFormatLiteral(ch byte, upper string, i int) bool {
+func isFormatLiteral(ch byte) bool {
 	switch ch {
 	case '$', '-', '+', '/', '(', ')', ':', '!', '^', '&', '\'', '~',
 		'{', '}', '=', '<', '>', ' ', '@':
