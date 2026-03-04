@@ -1453,6 +1453,37 @@ func TestEvalSUMPRODUCTArrayContext(t *testing.T) {
 	}
 }
 
+func TestEvalSUMPRODUCTBooleanArrayDoubleNeg(t *testing.T) {
+	// SUMPRODUCT(--(A1:A5="East")) should count cells equal to "East".
+	// The comparison produces a boolean array, -- converts TRUE→1 / FALSE→0,
+	// then SUMPRODUCT sums the values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("East"),
+			{Col: 1, Row: 2}: StringVal("West"),
+			{Col: 1, Row: 3}: StringVal("East"),
+			{Col: 1, Row: 4}: StringVal("East"),
+			{Col: 1, Row: 5}: StringVal("North"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, `SUMPRODUCT(--(A1:A5="East"))`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf(`SUMPRODUCT(--(A1:A5="East")) = %v (%g), want 3`, got.Type, got.Num)
+	}
+}
+
 func TestEvalImplicitIntersectionRowVector(t *testing.T) {
 	// Row vector implicit intersection: single-row range intersects at formula's column.
 	resolver := &mockResolver{

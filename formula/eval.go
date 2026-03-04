@@ -266,11 +266,21 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			if ae != nil {
-				push(*ae)
+			if a.Type == ValueArray {
+				push(LiftUnary(a, func(v Value) Value {
+					n, e := CoerceNum(v)
+					if e != nil {
+						return *e
+					}
+					return NumberVal(-n)
+				}))
 			} else {
-				push(NumberVal(-an))
+				an, ae := CoerceNum(a)
+				if ae != nil {
+					push(*ae)
+				} else {
+					push(NumberVal(-an))
+				}
 			}
 
 		case OpPercent:
