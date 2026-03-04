@@ -366,10 +366,10 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 	for _, rn := range rowNums {
 		r := s.rows[rn]
-		if len(r.cells) == 0 && r.height == 0 {
+		if len(r.cells) == 0 && r.height == 0 && !r.hidden {
 			continue
 		}
-		rd := ooxml.RowData{Num: rn, Height: r.height}
+		rd := ooxml.RowData{Num: rn, Height: r.height, Hidden: r.hidden}
 
 		// Sort cells by column.
 		colNums := make([]int, 0, len(r.cells))
@@ -402,7 +402,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 			rd.Cells = append(rd.Cells, cd)
 		}
-		if len(rd.Cells) > 0 || rd.Height != 0 {
+		if len(rd.Cells) > 0 || rd.Height != 0 || rd.Hidden {
 			sd.Rows = append(sd.Rows, rd)
 		}
 	}
@@ -589,6 +589,45 @@ func (fr *fileResolver) IsSubtotalCell(sheet string, col, row int) bool {
 		return false
 	}
 	return isSubtotalFormula(c.formula)
+}
+
+// IsRowHidden reports whether the given row on the given sheet is hidden.
+func (fr *fileResolver) IsRowHidden(sheet string, row int) bool {
+	s := fr.resolveSheet(sheet)
+	if s == nil {
+		return false
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return false
+	}
+	return r.hidden
+}
+
+// IsRowFilteredByAutoFilter reports whether the given row is hidden AND falls
+// within a table that has an active autoFilter (with filterColumn elements).
+// This is used by SUBTOTAL(1-11) which excludes filtered rows but not manually
+// hidden rows.
+func (fr *fileResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
+	if !fr.IsRowHidden(sheet, row) {
+		return false
+	}
+	// Check if the row falls within any table on this sheet that has an active filter.
+	sheetLower := strings.ToLower(sheet)
+	for _, t := range fr.file.tables {
+		if strings.ToLower(t.SheetName) != sheetLower {
+			continue
+		}
+		if !t.HasActiveFilter {
+			continue
+		}
+		dataFirst := t.DataFirstRow()
+		dataLast := t.DataLastRow()
+		if row >= dataFirst && row <= dataLast {
+			return true
+		}
+	}
+	return false
 }
 
 // isSubtotalFormula returns true if the formula string starts with "SUBTOTAL("

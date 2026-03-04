@@ -177,10 +177,11 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 		}
 
 		for _, rd := range sd.Rows {
-			// Restore row height.
-			if rd.Height != 0 {
+			// Restore row height and hidden state.
+			if rd.Height != 0 || rd.Hidden {
 				r := s.ensureRow(rd.Num)
 				r.height = rd.Height
+				r.hidden = rd.Hidden
 			}
 
 			for _, cd := range rd.Cells {
@@ -216,15 +217,16 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 			sheetName = data.Sheets[td.SheetIndex].Name
 		}
 		ti := formula.TableInfo{
-			Name:       td.DisplayName,
-			SheetName:  sheetName,
-			Columns:    td.Columns,
-			FirstCol:   col1,
-			FirstRow:   row1,
-			LastCol:    col2,
-			LastRow:    row2,
-			HeaderRows: td.HeaderRowCount,
-			TotalRows:  td.TotalsRowCount,
+			Name:            td.DisplayName,
+			SheetName:       sheetName,
+			Columns:         td.Columns,
+			FirstCol:        col1,
+			FirstRow:        row1,
+			LastCol:         col2,
+			LastRow:         row2,
+			HeaderRows:      td.HeaderRowCount,
+			TotalRows:       td.TotalsRowCount,
+			HasActiveFilter: td.HasActiveFilter,
 		}
 		f.tables = append(f.tables, ti)
 	}

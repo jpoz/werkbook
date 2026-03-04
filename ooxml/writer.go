@@ -203,7 +203,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 	}
 
 	for _, rd := range sd.Rows {
-		row := xlsxRow{R: rd.Num}
+		row := xlsxRow{R: rd.Num, Hidden: rd.Hidden}
 		if rd.Height != 0 {
 			row.Ht = rd.Height
 			row.CustomHeight = true

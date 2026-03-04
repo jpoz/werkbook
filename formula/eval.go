@@ -35,6 +35,16 @@ type SubtotalChecker interface {
 	IsSubtotalCell(sheet string, col, row int) bool
 }
 
+// HiddenRowChecker is an optional interface that a CellResolver may implement
+// to allow SUBTOTAL to exclude hidden rows. IsRowHidden returns true if the
+// row is hidden for any reason. IsRowFilteredByAutoFilter returns true only
+// if the row is hidden AND falls within a table with an active autoFilter
+// (used by SUBTOTAL function numbers 1-11 to exclude auto-filtered rows).
+type HiddenRowChecker interface {
+	IsRowHidden(sheet string, row int) bool
+	IsRowFilteredByAutoFilter(sheet string, row int) bool
+}
+
 // SheetListProvider is an optional interface that a CellResolver may implement
 // to support 3D sheet references (e.g. Sheet2:Sheet5!A1). It returns the
 // ordered list of all sheet names in the workbook.

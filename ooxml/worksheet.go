@@ -28,6 +28,7 @@ type xlsxRow struct {
 	R            int     `xml:"r,attr"`
 	Ht           float64 `xml:"ht,attr,omitempty"`
 	CustomHeight bool    `xml:"customHeight,attr,omitempty"`
+	Hidden       bool    `xml:"hidden,attr,omitempty"`
 	Cells        []xlsxC `xml:"c"`
 }
 
