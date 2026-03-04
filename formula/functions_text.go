@@ -31,7 +31,7 @@ func init() {
 	Register("SEARCH", NoCtx(fnSEARCH))
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
 	Register("T", NoCtx(fnT))
-	Register("TEXT", NoCtx(fnTEXT))
+	Register("TEXT", fnTEXTCtx)
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
@@ -231,16 +231,62 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 	return StringVal(strings.ReplaceAll(text, oldText, newText)), nil
 }
 
-func fnTEXT(args []Value) (Value, error) {
+// fnTEXTCtx is the context-aware TEXT function that respects the 1904 date system.
+func fnTEXTCtx(args []Value, ctx *EvalContext) (Value, error) {
+	d1904 := ctx != nil && ctx.Date1904
+	return fnTEXTWith1904(args, d1904)
+}
+
+func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	format := ValueToString(args[1])
+	v := args[0]
+
+	// Excel rejects format strings containing lowercase 'e+' or 'e-'
+	// (only uppercase 'E' triggers scientific notation).
+	if hasInvalidLowercaseE(format) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Check if the format has a text section (4th section).
+	sections := splitFormatSections(format)
+
+	// For non-numeric string values, use the text section if available.
+	if v.Type == ValueString && v.Str != "" {
+		n, e := CoerceNum(v)
+		if e != nil {
+			// Can't coerce to number — use text section if available.
+			if len(sections) >= 4 {
+				return StringVal(formatTextSection(v.Str, sections[3])), nil
+			}
+			return *e, nil
+		}
+		return StringVal(formatExcelNumber(n, format, date1904)), nil
+	}
+
+	// Booleans: "General" format preserves TRUE/FALSE text.
+	// A 4-section format uses the text section for booleans.
+	// Other numeric formats coerce TRUE→1, FALSE→0.
+	if v.Type == ValueBool {
+		text := "TRUE"
+		if !v.Bool {
+			text = "FALSE"
+		}
+		if strings.EqualFold(format, "General") {
+			return StringVal(text), nil
+		}
+		if len(sections) >= 4 {
+			return StringVal(formatTextSection(text, sections[3])), nil
+		}
+	}
+
+	n, e := CoerceNum(v)
 	if e != nil {
 		return *e, nil
 	}
-	format := ValueToString(args[1])
-	return StringVal(formatExcelNumber(n, format)), nil
+	return StringVal(formatExcelNumber(n, format, date1904)), nil
 }
 
 func FormatWithCommas(n float64, decimals int) string {

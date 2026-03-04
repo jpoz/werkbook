@@ -103,24 +103,27 @@ func TestParseCellRefTokenErrors(t *testing.T) {
 	}
 }
 
-func TestParseCellRefToken3DRefError(t *testing.T) {
-	// 3D sheet references (multi-sheet ranges) are not supported and must
-	// return an error instead of panicking.
+func TestParseCellRefToken3DRef(t *testing.T) {
+	// 3D sheet references (multi-sheet ranges) should parse successfully.
 	tests := []struct {
 		name  string
 		input string
+		want  CellRef
 	}{
-		{"quoted_3d", "'Sheet2:Sheet5'!A11"},
-		{"quoted_3d_spaces", "'My Sheet:Other Sheet'!B2"},
+		{"quoted_3d", "'Sheet2:Sheet5'!A11", CellRef{Sheet: "Sheet2", SheetEnd: "Sheet5", Col: 1, Row: 11}},
+		{"quoted_3d_spaces", "'My Sheet:Other Sheet'!B2", CellRef{Sheet: "My Sheet", SheetEnd: "Other Sheet", Col: 2, Row: 2}},
+		{"unquoted_3d", "Sheet2:Sheet5!A11", CellRef{Sheet: "Sheet2", SheetEnd: "Sheet5", Col: 1, Row: 11}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseCellRefToken(tt.input)
-			if err == nil {
-				t.Fatalf("parseCellRefToken(%q) expected error for 3D ref, got nil", tt.input)
+			got, err := parseCellRefToken(tt.input)
+			if err != nil {
+				t.Fatalf("parseCellRefToken(%q) error: %v", tt.input, err)
 			}
-			t.Logf("parseCellRefToken(%q) correctly returned error: %v", tt.input, err)
+			if *got != tt.want {
+				t.Errorf("parseCellRefToken(%q)\n  got:  %+v\n  want: %+v", tt.input, *got, tt.want)
+			}
 		})
 	}
 }

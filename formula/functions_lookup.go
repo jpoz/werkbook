@@ -2,6 +2,7 @@ package formula
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -9,9 +10,7 @@ func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("HLOOKUP", NoCtx(fnHLOOKUP))
 	Register("INDEX", NoCtx(fnINDEX))
-	Register("INDIRECT", NoCtx(func([]Value) (Value, error) {
-		return ErrorVal(ErrValREF), nil
-	}))
+	Register("INDIRECT", fnINDIRECT)
 	Register("LOOKUP", NoCtx(fnLOOKUP))
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
@@ -153,17 +152,45 @@ func fnINDEX(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	ri := int(rowNum) - 1
+	ri := int(rowNum)
 
-	colNum := 0
+	// Default col_num: if not provided, default to 1 (first column).
+	colNum := 1
 	if len(args) == 3 {
 		cn, e := CoerceNum(args[2])
 		if e != nil {
 			return *e, nil
 		}
-		colNum = int(cn) - 1
+		colNum = int(cn)
 	}
 
+	// row_num=0 means return the entire column (or array if col_num=0 too).
+	if ri == 0 && colNum == 0 {
+		return arr, nil
+	}
+	if ri == 0 {
+		// Return entire column as a single-column array.
+		ci := colNum - 1
+		var col [][]Value
+		for _, row := range arr.Array {
+			if ci < 0 || ci >= len(row) {
+				return ErrorVal(ErrValREF), nil
+			}
+			col = append(col, []Value{row[ci]})
+		}
+		return Value{Type: ValueArray, Array: col}, nil
+	}
+	if colNum == 0 {
+		// Return entire row as a single-row array.
+		ri--
+		if ri < 0 || ri >= len(arr.Array) {
+			return ErrorVal(ErrValREF), nil
+		}
+		return Value{Type: ValueArray, Array: [][]Value{arr.Array[ri]}}, nil
+	}
+
+	ri--
+	colNum--
 	if ri < 0 || ri >= len(arr.Array) {
 		return ErrorVal(ErrValREF), nil
 	}
@@ -242,18 +269,6 @@ func fnMATCH(args []Value) (Value, error) {
 	return ErrorVal(ErrValVALUE), nil
 }
 
-func columnNumberToName(col int) string {
-	var buf [3]byte
-	i := len(buf)
-	for col > 0 {
-		col--
-		i--
-		buf[i] = byte('A' + col%26)
-		col /= 26
-	}
-	return string(buf[i:])
-}
-
 func fnADDRESS(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 5 {
 		return ErrorVal(ErrValVALUE), nil
@@ -293,7 +308,7 @@ func fnADDRESS(args []Value) (Value, error) {
 
 	var result string
 	if a1Style {
-		colName := columnNumberToName(col)
+		colName := colNumberToLetters(col)
 		switch absNum {
 		case 1:
 			result = fmt.Sprintf("$%s$%d", colName, row)
@@ -453,4 +468,219 @@ func fnXLOOKUP(args []Value) (Value, error) {
 	}
 
 	return notFound, nil
+}
+
+// fnINDIRECT implements INDIRECT(ref_text, [a1]).
+// It converts a text string into a cell or range reference and resolves it.
+func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	refText := ValueToString(args[0])
+	if refText == "" {
+		return ErrorVal(ErrValREF), nil
+	}
+
+	// a1 parameter: default true (A1 style). R1C1 style not implemented.
+	a1Style := true
+	if len(args) == 2 {
+		a1Style = IsTruthy(args[1])
+	}
+	if !a1Style {
+		// R1C1 style not supported; return #REF!
+		return ErrorVal(ErrValREF), nil
+	}
+
+	if ctx == nil || ctx.Resolver == nil {
+		return ErrorVal(ErrValREF), nil
+	}
+
+	// Strip dollar signs (absolute markers) for parsing.
+	cleaned := strings.ReplaceAll(refText, "$", "")
+
+	// Extract optional sheet prefix.
+	sheet := ""
+	cellPart := cleaned
+	if idx := strings.LastIndex(cleaned, "!"); idx >= 0 {
+		sheetPart := cleaned[:idx]
+		// Remove surrounding quotes from sheet name.
+		if len(sheetPart) >= 2 && sheetPart[0] == '\'' && sheetPart[len(sheetPart)-1] == '\'' {
+			sheetPart = sheetPart[1 : len(sheetPart)-1]
+		}
+		sheet = sheetPart
+		cellPart = cleaned[idx+1:]
+	}
+
+	// Check if it's a range (contains colon).
+	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
+		left := cellPart[:colonIdx]
+		right := cellPart[colonIdx+1:]
+		addr, err := indirectParseRange(left, right, sheet)
+		if err != nil {
+			return ErrorVal(ErrValREF), nil
+		}
+		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
+		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
+		// For full-row or full-column ranges (e.g. "1:20", "A:C"), return
+		// only the RangeOrigin metadata without resolving cell values.
+		// Functions like ROW() and COLUMN() only need the metadata, and
+		// resolving all cells in such large ranges causes false circular
+		// reference errors when the calling cell falls within the range.
+		if isFullCol || isFullRow {
+			nRows := addr.ToRow - addr.FromRow + 1
+			nCols := addr.ToCol - addr.FromCol + 1
+			if isFullRow {
+				nCols = 1 // placeholder; actual columns determined by consumer
+			}
+			if isFullCol {
+				nRows = 1 // placeholder; actual rows determined by consumer
+			}
+			rows := make([][]Value, nRows)
+			for i := range rows {
+				rows[i] = make([]Value, nCols)
+				for j := range rows[i] {
+					rows[i][j] = EmptyVal()
+				}
+			}
+			return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
+		}
+		rows := ctx.Resolver.GetRangeValues(addr)
+		// Pad trailing blank rows for bounded ranges.
+		expectedRows := addr.ToRow - addr.FromRow + 1
+		cols := addr.ToCol - addr.FromCol + 1
+		for len(rows) < expectedRows {
+			emptyRow := make([]Value, cols)
+			for j := range emptyRow {
+				emptyRow[j] = EmptyVal()
+			}
+			rows = append(rows, emptyRow)
+		}
+		return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
+	}
+
+	// Single cell reference.
+	col, row, err := indirectParseCell(cellPart)
+	if err != nil {
+		return ErrorVal(ErrValREF), nil
+	}
+	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
+	return ctx.Resolver.GetCellValue(addr), nil
+}
+
+// indirectParseCell parses a cell reference like "A1" or "B3" into (col, row).
+func indirectParseCell(s string) (col, row int, err error) {
+	if s == "" {
+		return 0, 0, fmt.Errorf("empty cell reference")
+	}
+	i := 0
+	for i < len(s) && ((s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z')) {
+		i++
+	}
+	if i == 0 || i == len(s) {
+		return 0, 0, fmt.Errorf("invalid cell reference %q", s)
+	}
+	col = colLettersToNumber(s[:i])
+	if col < 1 || col > maxExcelCols {
+		return 0, 0, fmt.Errorf("column out of range in %q", s)
+	}
+	row, err = strconv.Atoi(s[i:])
+	if err != nil || row < 1 || row > maxExcelRows {
+		return 0, 0, fmt.Errorf("invalid row in %q", s)
+	}
+	return col, row, nil
+}
+
+// indirectParseRange parses the left and right parts of a range reference.
+// Supports cell:cell (A1:C5), row:row (1:20), and col:col (A:C).
+func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
+	leftIsRowOnly := isAllDigits(left)
+	rightIsRowOnly := isAllDigits(right)
+	leftIsColOnly := isAllLetters(left)
+	rightIsColOnly := isAllLetters(right)
+
+	// Row-only range like "1:20"
+	if leftIsRowOnly && rightIsRowOnly {
+		r1, err := strconv.Atoi(left)
+		if err != nil || r1 < 1 {
+			return RangeAddr{}, fmt.Errorf("invalid row %q", left)
+		}
+		r2, err := strconv.Atoi(right)
+		if err != nil || r2 < 1 {
+			return RangeAddr{}, fmt.Errorf("invalid row %q", right)
+		}
+		if r1 > r2 {
+			r1, r2 = r2, r1
+		}
+		return RangeAddr{
+			Sheet:   sheet,
+			FromCol: 1, FromRow: r1,
+			ToCol: maxExcelCols, ToRow: r2,
+		}, nil
+	}
+
+	// Column-only range like "A:C"
+	if leftIsColOnly && rightIsColOnly {
+		c1 := colLettersToNumber(left)
+		c2 := colLettersToNumber(right)
+		if c1 < 1 || c2 < 1 {
+			return RangeAddr{}, fmt.Errorf("invalid column range")
+		}
+		if c1 > c2 {
+			c1, c2 = c2, c1
+		}
+		return RangeAddr{
+			Sheet:   sheet,
+			FromCol: c1, FromRow: 1,
+			ToCol: c2, ToRow: maxExcelRows,
+		}, nil
+	}
+
+	// Standard cell:cell range like "A1:C5"
+	c1, r1, err := indirectParseCell(left)
+	if err != nil {
+		return RangeAddr{}, err
+	}
+	c2, r2, err := indirectParseCell(right)
+	if err != nil {
+		return RangeAddr{}, err
+	}
+	if c1 > c2 {
+		c1, c2 = c2, c1
+	}
+	if r1 > r2 {
+		r1, r2 = r2, r1
+	}
+	return RangeAddr{
+		Sheet:   sheet,
+		FromCol: c1, FromRow: r1,
+		ToCol: c2, ToRow: r2,
+	}, nil
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAllLetters(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+			return false
+		}
+	}
+	return true
 }

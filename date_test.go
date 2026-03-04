@@ -88,6 +88,31 @@ func TestIsDateFormat(t *testing.T) {
 	}
 }
 
+func TestExcelSerialToTime1904(t *testing.T) {
+	tests := []struct {
+		name   string
+		serial float64
+		want   time.Time
+	}{
+		// In the 1904 system, serial 0 = Jan 1, 1904.
+		{"serial 0", 0, time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{"serial 1", 1, time.Date(1904, 1, 2, 0, 0, 0, 0, time.UTC)},
+		// No leap year bug in 1904 system.
+		{"serial 59", 59, time.Date(1904, 2, 29, 0, 0, 0, 0, time.UTC)},
+		{"serial 60", 60, time.Date(1904, 3, 1, 0, 0, 0, 0, time.UTC)},
+		// Verified against Excel: serial 17816 in 1904 = Oct 11, 1952.
+		{"serial 17816", 17816, time.Date(1952, 10, 11, 0, 0, 0, 0, time.UTC)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := excelSerialToTime1904(tt.serial)
+			if !got.Equal(tt.want) {
+				t.Errorf("excelSerialToTime1904(%f) = %v, want %v", tt.serial, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDateRoundTrip(t *testing.T) {
 	dates := []time.Time{
 		time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC),

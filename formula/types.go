@@ -153,16 +153,18 @@ func ErrorValueFromString(s string) ErrorValue {
 
 // CellAddr is a compiled cell address.
 type CellAddr struct {
-	Sheet string // sheet name (empty if unqualified)
-	Col   int    // 1-based column
-	Row   int    // 1-based row
+	Sheet    string // sheet name (empty if unqualified)
+	SheetEnd string // non-empty for 3D references (Sheet2:Sheet5!A1)
+	Col      int    // 1-based column
+	Row      int    // 1-based row
 }
 
 // RangeAddr is a compiled range address.
 type RangeAddr struct {
-	Sheet   string // sheet name (empty if unqualified)
-	FromCol int
-	FromRow int
-	ToCol   int
-	ToRow   int
+	Sheet    string // sheet name (empty if unqualified)
+	SheetEnd string // non-empty for 3D references (Sheet2:Sheet5!A1:B2)
+	FromCol  int
+	FromRow  int
+	ToCol    int
+	ToRow    int
 }

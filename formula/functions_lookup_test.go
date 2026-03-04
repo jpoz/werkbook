@@ -537,3 +537,192 @@ func TestINDEXMATCHCombo(t *testing.T) {
 		t.Errorf("INDEX/MATCH: got %g, want 200", got.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// INDIRECT tests
+// ---------------------------------------------------------------------------
+
+func TestINDIRECTSingleCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(42),
+			{Col: 2, Row: 3}: StringVal("hello"),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("A1")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("INDIRECT(A1): got %v, want 42", got)
+	}
+
+	cf = evalCompile(t, `INDIRECT("B3")`)
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "hello" {
+		t.Errorf("INDIRECT(B3): got %v, want hello", got)
+	}
+}
+
+func TestINDIRECTWithDollarSigns(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(99),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("$A$1")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 99 {
+		t.Errorf("INDIRECT($A$1): got %v, want 99", got)
+	}
+}
+
+func TestINDIRECTRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("A1:A3")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("INDIRECT(A1:A3): expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("INDIRECT(A1:A3): expected 3 rows, got %d", len(got.Array))
+	}
+	for i, want := range []float64{1, 2, 3} {
+		if got.Array[i][0].Num != want {
+			t.Errorf("INDIRECT(A1:A3)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+		}
+	}
+	if got.RangeOrigin == nil {
+		t.Error("INDIRECT(A1:A3): expected RangeOrigin to be set")
+	}
+}
+
+func TestINDIRECTRowRange(t *testing.T) {
+	// INDIRECT("1:3") creates a full-row range from row 1 to 3.
+	// ROW(INDIRECT("1:3")) should produce {1,2,3} in array context.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+	cf := evalCompile(t, `INDIRECT("1:3")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("INDIRECT(1:3): expected array, got %v", got.Type)
+	}
+	if got.RangeOrigin == nil {
+		t.Fatal("INDIRECT(1:3): expected RangeOrigin to be set")
+	}
+	if got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Errorf("INDIRECT(1:3): range rows = %d:%d, want 1:3",
+			got.RangeOrigin.FromRow, got.RangeOrigin.ToRow)
+	}
+	if got.RangeOrigin.FromCol != 1 || got.RangeOrigin.ToCol != maxExcelCols {
+		t.Errorf("INDIRECT(1:3): range cols = %d:%d, want 1:%d",
+			got.RangeOrigin.FromCol, got.RangeOrigin.ToCol, maxExcelCols)
+	}
+}
+
+func TestINDIRECTRowRangeWithROW(t *testing.T) {
+	// The critical pattern from bond pricing: ROW(INDIRECT("1:5"))
+	resolver := &mockResolver{}
+	ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+	cf := evalCompile(t, `ROW(INDIRECT("1:5"))`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("ROW(INDIRECT(1:5)): expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 5 {
+		t.Fatalf("ROW(INDIRECT(1:5)): expected 5 rows, got %d", len(got.Array))
+	}
+	for i := 0; i < 5; i++ {
+		want := float64(i + 1)
+		if got.Array[i][0].Num != want {
+			t.Errorf("ROW(INDIRECT(1:5))[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestINDIRECTEmptyString(t *testing.T) {
+	resolver := &mockResolver{}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("INDIRECT empty: got %v, want #REF!", got)
+	}
+}
+
+func TestINDIRECTWithSheetName(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "Sheet2", Col: 1, Row: 1}: NumberVal(77),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("Sheet2!A1")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 77 {
+		t.Errorf("INDIRECT(Sheet2!A1): got %v, want 77", got)
+	}
+}
+
+func TestINDIRECTDynamic(t *testing.T) {
+	// Test INDIRECT with a dynamically constructed reference: INDIRECT("A"&"1")
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(55),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("A"&"1")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 55 {
+		t.Errorf(`INDIRECT("A"&"1"): got %v, want 55`, got)
+	}
+}

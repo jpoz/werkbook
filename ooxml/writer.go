@@ -129,12 +129,29 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		Xmlns:  NSSpreadsheetML,
 		XmlnsR: NSOfficeDocument,
 	}
+	if data.Date1904 {
+		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
+	}
 	for i, sd := range data.Sheets {
 		wb.Sheets.Sheet = append(wb.Sheets.Sheet, xlsxSheet{
 			Name:    sd.Name,
 			SheetID: i + 1,
 			RID:     fmt.Sprintf("rId%d", i+1),
 		})
+	}
+	if len(data.DefinedNames) > 0 {
+		wb.DefinedNames = &xlsxDefinedNames{}
+		for _, dn := range data.DefinedNames {
+			xdn := xlsxDefinedName{
+				Name:  dn.Name,
+				Value: dn.Value,
+			}
+			if dn.LocalSheetID >= 0 {
+				id := dn.LocalSheetID
+				xdn.LocalSheetID = &id
+			}
+			wb.DefinedNames.DefinedName = append(wb.DefinedNames.DefinedName, xdn)
+		}
 	}
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
@@ -186,7 +203,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 	}
 
 	for _, rd := range sd.Rows {
-		row := xlsxRow{R: rd.Num}
+		row := xlsxRow{R: rd.Num, Hidden: rd.Hidden}
 		if rd.Height != 0 {
 			row.Ht = rd.Height
 			row.CustomHeight = true
@@ -195,8 +212,10 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 			c := xlsxC{
 				R: cd.Ref,
 				T: cd.Type,
-				F: cd.Formula,
 				V: cd.Value,
+			}
+			if cd.Formula != "" {
+				c.FE = &xlsxF{Text: cd.Formula}
 			}
 			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
 				c.S = styleIndexMap[cd.StyleIdx]

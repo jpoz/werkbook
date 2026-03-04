@@ -63,6 +63,10 @@ func TestTEXTFormat(t *testing.T) {
 		{`TEXT(0.75,"0%")`, "75%"},
 		{`TEXT(1234,"#,##0")`, "1,234"},
 		{`TEXT(42,"0")`, "42"},
+		// Cases from NumberFormatTests.xlsx audit
+		{`TEXT(12.344,"0.00")`, "12.34"},
+		{`TEXT(12.344,"0.0")`, "12.3"},
+		{`TEXT(12.3,"###.##")`, "12.3"},
 	}
 
 	for _, tt := range tests {
@@ -159,6 +163,15 @@ func TestTEXTFormatExtended(t *testing.T) {
 		// Percent with decimals
 		{name: "percent_2dec", formula: `TEXT(0.1234,"0.00%")`, want: "12.34%"},
 		{name: "percent_nodec", formula: `TEXT(0.5,"0%")`, want: "50%"},
+		{name: "percent_fp_rounding", formula: `TEXT(0.00035,"#,##0.00%")`, want: "0.04%"},
+		// Question mark (space-padded digit) formatting
+		{name: "qmark_pad_comma", formula: `TEXT(1234567,"?,?????????")`, want: "    1,234,567"},
+		{name: "qmark_pad_simple", formula: `TEXT(5,"???")`, want: "  5"},
+		{name: "qmark_pad_exact", formula: `TEXT(123,"???")`, want: "123"},
+		// Question mark in decimal positions
+		{name: "qmark_dec_11", formula: `TEXT(1.1,"?.?")`, want: "1.1"},
+		{name: "qmark_dec_10", formula: `TEXT(1,"?.?")`, want: "1. "},
+		{name: "qmark_dec_pipe", formula: `TEXT(1.1,"|?.?|")`, want: "|1.1|"},
 		// Comma formatting
 		{name: "comma_thousands", formula: `TEXT(1234567,"#,##0")`, want: "1,234,567"},
 		{name: "comma_with_dec", formula: `TEXT(1234.56,"#,##0.00")`, want: "1,234.56"},
@@ -229,6 +242,37 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 	}
 }
 
+func TestTEXTDateTime1904(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// In the 1904 date system, serial 0 = 1904-01-01.
+	// Serial 17816.607951388887 in the 1904 system = Oct 10, 1952 (vs Oct 10, 1948 in 1900).
+	ctx1904 := &EvalContext{Date1904: true}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "mm-dd-yy 1904", formula: `TEXT(17816.607951388887, "mm-dd-yy")`, want: "10-11-52"},
+		{name: "yyyy-mm-dd 1904", formula: `TEXT(1, "yyyy-mm-dd")`, want: "1904-01-02"},
+		{name: "yyyy-mm-dd serial 0", formula: `TEXT(0, "yyyy-mm-dd hh:mm:ss.000")`, want: "1904-01-01 00:00:00.000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx1904)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
 func TestTEXTElapsedTime(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -241,6 +285,16 @@ func TestTEXTElapsedTime(t *testing.T) {
 		{name: "elapsed_with_frac", formula: `TEXT(3.14159, "[h]:mm:ss.000")`, want: "75:23:53.376"},
 		{name: "simple_elapsed", formula: `TEXT(1.5, "[h]:mm:ss")`, want: "36:00:00"},
 		{name: "zero_elapsed", formula: `TEXT(0, "[h]:mm:ss")`, want: "0:00:00"},
+		// [ss].000 — fractional seconds after elapsed bracket code
+		{name: "elapsed_sec_frac", formula: `TEXT(3.14159, "[ss].000")`, want: "271433.376"},
+		// bare ss with [s] present — bare ss should show total seconds
+		{name: "elapsed_sec_bare_ss", formula: `TEXT(3.14159, "[s]"" [yes, ""ss""] seconds""")`, want: `271433 [yes, 271433] seconds`},
+		// [s] with small value
+		{name: "elapsed_sec_small", formula: `TEXT(0.08546296296296296, "[s]"" [yes, ""ss""] seconds""")`, want: `7384 [yes, 7384] seconds`},
+		// s:m with [hh] — bare s/m show seconds/minutes within the hour, [hh] shows total hours
+		{name: "elapsed_hh_with_bare_sm", formula: `TEXT(3.14159, "s:m"" @ hour ""[hh]")`, want: `53:23 @ hour 75`},
+		// [h] with literal brackets in quoted text
+		{name: "elapsed_h_with_quotes", formula: `TEXT(3.14159, """It was ""[h]"" [yes, ""h""] hours and ""mm:ss")`, want: `It was 75 [yes, 75] hours and 23:53`},
 	}
 
 	for _, tt := range tests {
@@ -349,6 +403,13 @@ func TestTEXTScientific(t *testing.T) {
 		{name: "sci_basic", formula: `TEXT(123456.789, "0.00E+00")`, want: "1.23E+05"},
 		{name: "sci_small", formula: `TEXT(0.00123, "0.00E+00")`, want: "1.23E-03"},
 		{name: "sci_negative", formula: `TEXT(-5678, "0.0E+0")`, want: "-5.7E+3"},
+		// E- format: no sign for positive exponents.
+		{name: "sci_eminus_pos", formula: `TEXT(123456.789, "0.0E-0")`, want: "1.2E5"},
+		{name: "sci_eminus_neg", formula: `TEXT(0.00123, "0.0E-0")`, want: "1.2E-3"},
+		// Pipe literals around coefficient and exponent.
+		{name: "sci_pipe_eminus", formula: `TEXT(123456.789, "|#.#|E-|#|")`, want: "|1.2|E|5|"},
+		{name: "sci_pipe_eplus", formula: `TEXT(123456.789, "|#.#|E+|#|")`, want: "|1.2|E|+5|"},
+		{name: "sci_pipe_eplus_neg", formula: `TEXT(0.0000123456789, "|#.#|E+|#|")`, want: "|1.2|E|-5|"},
 	}
 
 	for _, tt := range tests {
@@ -365,6 +426,35 @@ func TestTEXTScientific(t *testing.T) {
 	}
 }
 
+func TestTEXTLowercaseEReturnsVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Excel only recognises uppercase E for scientific notation.
+	// Lowercase e+/e- in format strings → #VALUE!.
+	formats := []string{
+		`"|#,e-#|"`,
+		`"|#e-#,|"`,
+		`"|#%e-#|"`,
+		`"|#,e+#|"`,
+		`"|#.####|e+|#|"`,
+		`"|#|e+|#|"`,
+		`"|#.#|e+|#|"`,
+	}
+	for _, fmt := range formats {
+		t.Run(fmt, func(t *testing.T) {
+			formula := `TEXT(123456.789, ` + fmt + `)`
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", formula, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Errorf("Eval(%q) = %v, want #VALUE!", formula, got)
+			}
+		})
+	}
+}
+
 func TestTEXTFraction(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -375,6 +465,26 @@ func TestTEXTFraction(t *testing.T) {
 	}{
 		{name: "simple_fraction", formula: `TEXT(0.5, "# #/#")`, want: "1/2"},
 		{name: "mixed_fraction", formula: `TEXT(3.25, "# #/#")`, want: "3 1/4"},
+		// Fraction with literal characters
+		{name: "frac_literal_pipe", formula: `TEXT(0.75, "|#\:#/#|")`, want: "|3/4|"},
+		{name: "frac_literal_whole", formula: `TEXT(-23.75, "|#\:#/#|")`, want: "-|23:3/4|"},
+		{name: "frac_literal_zero", formula: `TEXT(0, "|#\:#/#|")`, want: "|0|"},
+		{name: "frac_literal_eq", formula: `TEXT(0.75, "|#\:#=/=#|")`, want: "|3=/=4|"},
+		{name: "frac_literal_eq_whole", formula: `TEXT(1, "|#\:#=/=#|")`, want: "|1|"},
+		// ? padding in fractions (space-padded when fraction is zero)
+		{name: "frac_qmark_zero", formula: `TEXT(1, "|#\:?=/=?|")`, want: "|1      |"},
+		{name: "frac_qmark_zero_val0", formula: `TEXT(0, "|#\:? ?=/=?|")`, want: "|:0      |"},
+		{name: "frac_underscore", formula: `TEXT(0.75, "|#_#/#|")`, want: "|3 /4|"},
+		{name: "frac_underscore_neg", formula: `TEXT(-3.75, "|#_#/#|")`, want: "-|15 /4|"},
+		{name: "frac_underscore_zero", formula: `TEXT(0, "|#_#/#|")`, want: "|0 /1|"},
+		// Multi-digit whole part with interleaved literals
+		{name: "frac_multi_whole", formula: `TEXT(23.75, "|#-#-#\:#/#|")`, want: "|-2-3:3/4|"},
+		{name: "frac_multi_whole_neg", formula: `TEXT(-23.75, "|#-#-#\:#/#|")`, want: "-|-2-3:3/4|"},
+		{name: "frac_multi_whole_zero", formula: `TEXT(0.75, "|#-#-#\:#/#|")`, want: "|--3/4|"},
+		{name: "frac_multi_whole_neg_zero", formula: `TEXT(-0.75, "|#-#-#\:#/#|")`, want: "-|--3/4|"},
+		// Zero-padded numerator and denominator
+		{name: "frac_zero_pad", formula: `TEXT(23.75, "|#\:? ?0#/000")`, want: "|2:3  03/004"},
+		{name: "frac_zero_pad_val1", formula: `TEXT(1, "|#\:? ?0#/000")`, want: "|:1  00/001"},
 	}
 
 	for _, tt := range tests {
@@ -429,6 +539,17 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "quoted_literal", formula: `TEXT(12.3, """Value: ""0.00")`, want: "Value: 12.30"},
 		{name: "general_format", formula: `TEXT(1, "General")`, want: "1"},
 		{name: "general_float", formula: `TEXT(3.14, "General")`, want: "3.14"},
+		{name: "general_true", formula: `TEXT(TRUE, "General")`, want: "TRUE"},
+		{name: "general_false", formula: `TEXT(FALSE, "General")`, want: "FALSE"},
+		{name: "general_large_1.1e11", formula: `TEXT(110000000000, "General")`, want: "1.1E+11"},
+		{name: "general_large_1.12345e11", formula: `TEXT(112345000000, "General")`, want: "1.12345E+11"},
+		{name: "general_large_1e11", formula: `TEXT(100000000000, "General")`, want: "1E+11"},
+		{name: "general_small_1.123e-10", formula: `TEXT(1.123E-10, "General")`, want: "1.123E-10"},
+		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "1E-5"},
+		{name: "general_not_sci_1e10", formula: `TEXT(10000000000, "General")`, want: "10000000000"},
+		{name: "general_negative_large", formula: `TEXT(-110000000000, "General")`, want: "-1.1E+11"},
+		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "1"},
+		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "0"},
 	}
 
 	for _, tt := range tests {

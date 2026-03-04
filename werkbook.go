@@ -11,11 +11,14 @@ import (
 
 // File represents an XLSX workbook.
 type File struct {
-	sheets     []*Sheet
-	sheetNames []string
-	calcGen    uint64              // incremented on any cell mutation; starts at 1
-	evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
-	deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
+	sheets       []*Sheet
+	sheetNames   []string
+	date1904     bool                       // true if the workbook uses the 1904 date system (Mac Excel)
+	calcGen      uint64                     // incremented on any cell mutation; starts at 1
+	evaluating   map[cellKey]bool           // tracks cells being evaluated (circular ref detection)
+	deps         *formula.DepGraph          // cell dependency graph for incremental recalculation
+	tables       []formula.TableInfo        // table definitions for structured reference expansion
+	definedNames []formula.DefinedNameInfo  // defined names (named ranges) for formula expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -49,6 +52,11 @@ func New(opts ...Option) *File {
 	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
 	f.addSheet(o.firstSheet)
 	return f
+}
+
+// Date1904 reports whether the workbook uses the 1904 date system (Mac Excel).
+func (f *File) Date1904() bool {
+	return f.date1904
 }
 
 // Sheet returns the sheet with the given name, or nil if not found.
@@ -147,7 +155,7 @@ func Open(name string) (*File, error) {
 }
 
 func fileFromData(data *ooxml.WorkbookData) *File {
-	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
+	f := &File{calcGen: 1, date1904: data.Date1904, deps: formula.NewDepGraph()}
 
 	// Convert StyleData slice to *Style slice for assignment.
 	var parsedStyles []*Style
@@ -169,10 +177,11 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 		}
 
 		for _, rd := range sd.Rows {
-			// Restore row height.
-			if rd.Height != 0 {
+			// Restore row height and hidden state.
+			if rd.Height != 0 || rd.Hidden {
 				r := s.ensureRow(rd.Num)
 				r.height = rd.Height
+				r.hidden = rd.Hidden
 			}
 
 			for _, cd := range rd.Cells {
@@ -185,6 +194,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				c := r.ensureCell(col)
 				c.value = v
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
+				c.isArrayFormula = cd.IsArrayFormula
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
 					c.cachedGen = f.calcGen
@@ -196,13 +206,56 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 			}
 		}
 	}
+	// Build table info from parsed table definitions.
+	for _, td := range data.Tables {
+		col1, row1, col2, row2, err := RangeToCoordinates(td.Ref)
+		if err != nil {
+			continue
+		}
+		sheetName := ""
+		if td.SheetIndex >= 0 && td.SheetIndex < len(data.Sheets) {
+			sheetName = data.Sheets[td.SheetIndex].Name
+		}
+		ti := formula.TableInfo{
+			Name:            td.DisplayName,
+			SheetName:       sheetName,
+			Columns:         td.Columns,
+			FirstCol:        col1,
+			FirstRow:        row1,
+			LastCol:         col2,
+			LastRow:         row2,
+			HeaderRows:      td.HeaderRowCount,
+			TotalRows:       td.TotalsRowCount,
+			HasActiveFilter: td.HasActiveFilter,
+		}
+		f.tables = append(f.tables, ti)
+	}
+
+	// Build defined name info from parsed defined names.
+	for _, dn := range data.DefinedNames {
+		f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
+			Name:         dn.Name,
+			Value:        dn.Value,
+			LocalSheetID: dn.LocalSheetID,
+		})
+	}
+
 	f.registerAllFormulas()
 	return f
 }
 
 func cellDataToValue(cd ooxml.CellData) Value {
 	switch cd.Type {
-	case "s", "inlineStr":
+	case "s":
+		// Shared-string cells: some writers (e.g. calamine) store numbers in
+		// the shared string table. If the resolved string is a valid float64,
+		// treat it as a number so that formulas referencing the cell see the
+		// correct type (matching Excel behaviour).
+		if n, err := strconv.ParseFloat(cd.Value, 64); err == nil {
+			return Value{Type: TypeNumber, Number: n}
+		}
+		return Value{Type: TypeString, String: cd.Value}
+	case "str", "inlineStr":
 		return Value{Type: TypeString, String: cd.Value}
 	case "b":
 		return Value{Type: TypeBool, Bool: cd.Value == "1"}
@@ -223,7 +276,7 @@ func cellDataToValue(cd ooxml.CellData) Value {
 }
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
-	data := &ooxml.WorkbookData{}
+	data := &ooxml.WorkbookData{Date1904: f.date1904}
 
 	// Style dedup: index 0 is always the default (empty StyleData).
 	styles := []ooxml.StyleData{{}}
@@ -233,11 +286,38 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 		data.Sheets = append(data.Sheets, s.toSheetData(styleMap, &styles))
 	}
 	data.Styles = styles
+
+	// Preserve defined names.
+	for _, dn := range f.definedNames {
+		data.DefinedNames = append(data.DefinedNames, ooxml.DefinedName{
+			Name:         dn.Name,
+			Value:        dn.Value,
+			LocalSheetID: dn.LocalSheetID,
+		})
+	}
+
 	return data
 }
 
 // registerAllFormulas iterates all cells and registers compiled formulas in
 // the dependency graph. Called at the end of fileFromData.
+// sheetIndex returns the 0-based index of the named sheet, or -1 if not found.
+func (f *File) sheetIndex(name string) int {
+	for i, n := range f.sheetNames {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// expandFormula expands table refs and defined names in a formula string.
+func (f *File) expandFormula(src string, sheetName string, row int) string {
+	src = formula.ExpandTableRefs(src, f.tables, row)
+	src = formula.ExpandDefinedNames(src, f.definedNames, f.sheetIndex(sheetName))
+	return src
+}
+
 func (f *File) registerAllFormulas() {
 	for _, s := range f.sheets {
 		for _, r := range s.rows {
@@ -245,11 +325,13 @@ func (f *File) registerAllFormulas() {
 				if c.formula == "" {
 					continue
 				}
-				node, err := formula.Parse(c.formula)
+				// Expand table structured references and defined names before parsing.
+				src := f.expandFormula(c.formula, s.name, r.num)
+				node, err := formula.Parse(src)
 				if err != nil {
 					continue
 				}
-				cf, err := formula.Compile(c.formula, node)
+				cf, err := formula.Compile(src, node)
 				if err != nil {
 					continue
 				}

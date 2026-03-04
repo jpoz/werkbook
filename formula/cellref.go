@@ -29,19 +29,27 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 			return nil, fmt.Errorf("unterminated quoted sheet name in %q", raw)
 		}
 		// Extract sheet name, un-escaping doubled quotes.
-		ref.Sheet = strings.ReplaceAll(s[1:i], "''", "'")
-		// Reject 3D sheet references like 'Sheet2:Sheet5'!A1 — the colon
-		// between two sheet names is an unsupported multi-sheet range syntax.
-		if strings.ContainsRune(ref.Sheet, ':') {
-			return nil, fmt.Errorf("3D sheet references are not supported in %q", raw)
+		sheetName := strings.ReplaceAll(s[1:i], "''", "'")
+		// Handle 3D sheet references like 'Sheet2:Sheet5'!A1.
+		if colonIdx := strings.IndexByte(sheetName, ':'); colonIdx > 0 {
+			ref.Sheet = sheetName[:colonIdx]
+			ref.SheetEnd = sheetName[colonIdx+1:]
+		} else {
+			ref.Sheet = sheetName
 		}
 		if i+1 >= len(s) || s[i+1] != '!' {
 			return nil, fmt.Errorf("expected '!' after quoted sheet name in %q", raw)
 		}
 		s = s[i+2:] // skip past closing quote and !
 	} else if idx := strings.IndexByte(s, '!'); idx > 0 {
-		// Unquoted sheet: Sheet1!A1
-		ref.Sheet = s[:idx]
+		// Unquoted sheet: Sheet1!A1 or 3D: Sheet2:Sheet5!A1
+		sheetPart := s[:idx]
+		if colonIdx := strings.IndexByte(sheetPart, ':'); colonIdx > 0 {
+			ref.Sheet = sheetPart[:colonIdx]
+			ref.SheetEnd = sheetPart[colonIdx+1:]
+		} else {
+			ref.Sheet = sheetPart
+		}
 		s = s[idx+1:]
 	} else if idx := findDotSheetSeparator(s); idx > 0 {
 		// Dot notation: Sheet1.A1 (LibreOffice style; Excel returns #NAME? for this)

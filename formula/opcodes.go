@@ -30,6 +30,9 @@ const (
 	OpCall                    // operand: funcID<<8 | argc
 	OpMakeArray               // operand: rows<<16 | cols
 	OpLoadCellRef             // operand: index into Refs; pushes ValueRef (no cell lookup)
+	OpEnterArrayCtx           // operand: unused; pushes array context (suppresses implicit intersection)
+	OpLeaveArrayCtx           // operand: unused; pops array context
+	OpLoad3DRange             // operand: index into Ranges; loads values across multiple sheets
 )
 
 var opNames = [...]string{
@@ -56,7 +59,10 @@ var opNames = [...]string{
 	OpGe:        "Ge",
 	OpCall:        "Call",
 	OpMakeArray:   "MakeArray",
-	OpLoadCellRef: "LoadCellRef",
+	OpLoadCellRef:   "LoadCellRef",
+	OpEnterArrayCtx: "EnterArrayCtx",
+	OpLeaveArrayCtx: "LeaveArrayCtx",
+	OpLoad3DRange:   "Load3DRange",
 }
 
 func (op OpCode) String() string {

@@ -299,6 +299,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	alpha := string(l.src[alphaStart:l.pos])
 
 	// Check for pure-alpha sheet reference: Name!CellRef (e.g. Sheet!A1)
+	// Also check for 3D reference: Name:Name!CellRef (e.g. Sheet:Sheet5!A1)
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == '!' {
 		l.pos++ // skip !
 		refStart := l.pos
@@ -307,6 +308,17 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 			return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
 		}
 		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+	}
+	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
+		if bangPos := l.find3DSheetBang(); bangPos > 0 {
+			l.pos = bangPos + 1 // skip past !
+			refStart := l.pos
+			l.consumeCellRefChars()
+			if l.pos == refStart {
+				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+			}
+			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		}
 	}
 
 	// Check for booleans (only if no $ prefix and pure alpha).
@@ -334,6 +346,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	hasDigits := l.pos > digitStart
 
 	// Check for sheet-qualified reference with digits in sheet name: Sheet1!A1
+	// Also check for 3D reference: Sheet1:Sheet5!A1
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == '!' {
 		l.pos++ // skip !
 		refStart := l.pos
@@ -342,6 +355,17 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 			return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
 		}
 		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+	}
+	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
+		if bangPos := l.find3DSheetBang(); bangPos > 0 {
+			l.pos = bangPos + 1 // skip past !
+			refStart := l.pos
+			l.consumeCellRefChars()
+			if l.pos == refStart {
+				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+			}
+			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		}
 	}
 
 	if hasDigits && len(alpha) > 0 {
@@ -378,6 +402,17 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		}
 		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 	}
+	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
+		if bangPos := l.find3DSheetBang(); bangPos > 0 {
+			l.pos = bangPos + 1 // skip past !
+			refStart := l.pos
+			l.consumeCellRefChars()
+			if l.pos == refStart {
+				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+			}
+			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		}
+	}
 
 	word := string(l.src[start:l.pos])
 
@@ -401,6 +436,29 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	// Anything else is treated as a cell ref / named range.
 	// The parser can disambiguate further.
 	return Token{Type: TokCellRef, Value: word, Pos: start}, nil
+}
+
+// find3DSheetBang checks whether the lexer is sitting on a ':' that is part of
+// a 3D sheet reference (e.g. Sheet2:Sheet5!A1). If so, it returns the position
+// of the '!' character. If not, it returns -1 and does not advance the lexer.
+func (l *Lexer) find3DSheetBang() int {
+	if l.pos >= len(l.src) || l.src[l.pos] != ':' {
+		return -1
+	}
+	// Scan past ':' and look for an identifier followed by '!'.
+	p := l.pos + 1
+	// The second sheet name can contain letters, digits, underscores, dots.
+	nameStart := p
+	for p < len(l.src) && isIdentContinue(l.src[p]) {
+		p++
+	}
+	if p == nameStart {
+		return -1
+	}
+	if p < len(l.src) && l.src[p] == '!' {
+		return p
+	}
+	return -1
 }
 
 // consumeCellRefChars advances past characters valid in a cell reference ($, letters, digits).
