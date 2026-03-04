@@ -38,6 +38,7 @@ func init() {
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
 	Register("SUMSQ", NoCtx(fnSUMSQ))
 	Register("VAR", NoCtx(fnVAR))
+	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("VARP", NoCtx(fnVARP))
 }
 
@@ -964,6 +965,38 @@ func fnVARP(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 	return NumberVal(ssq / float64(n)), nil
+}
+
+func fnTRIMMEAN(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	percent, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if percent < 0 || percent >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	nums, ev := collectNumeric(args[:1])
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	trim := int(math.Floor(float64(n) * percent / 2))
+	remaining := nums[trim : n-trim]
+	if len(remaining) == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range remaining {
+		sum += v
+	}
+	return NumberVal(sum / float64(len(remaining))), nil
 }
 
 func fnGEOMEAN(args []Value) (Value, error) {
