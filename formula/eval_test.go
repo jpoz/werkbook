@@ -625,8 +625,8 @@ func TestEvalIsTruthy(t *testing.T) {
 		{name: "bool_false", formula: `IF(FALSE,"yes","no")`, want: "no"},
 		{name: "num_zero", formula: `IF(A1,"yes","no")`, want: "no"},
 		{name: "num_nonzero", formula: `IF(A2,"yes","no")`, want: "yes"},
-		{name: "str_empty", formula: `IF(A3,"yes","no")`, want: "no"},
-		{name: "str_nonempty", formula: `IF(A4,"yes","no")`, want: "yes"},
+		{name: "str_empty", formula: `IF(A3,"yes","no")`, want: "#VALUE!"},
+		{name: "str_nonempty", formula: `IF(A4,"yes","no")`, want: "#VALUE!"},
 		{name: "empty_cell", formula: `IF(A5,"yes","no")`, want: "no"},
 		{name: "num_negative", formula: `IF(-1,"yes","no")`, want: "yes"},
 		{name: "num_fraction", formula: `IF(0.001,"yes","no")`, want: "yes"},
@@ -639,8 +639,9 @@ func TestEvalIsTruthy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Eval(%q): %v", tt.formula, err)
 			}
-			if got.Type != ValueString || got.Str != tt.want {
-				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			gotStr := ValueToString(got)
+			if gotStr != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, gotStr, tt.want)
 			}
 		})
 	}
