@@ -932,12 +932,13 @@ func formatFraction(n float64, format string) string {
 		prefixEnd = slashTokIdx
 	}
 
-	var wholeEnd int               // whole digit group end
+	var wholeStart, wholeEnd int   // whole digit section (all groups except last)
 	var middleStart, middleEnd int // literals between whole and numerator
 	var numStart, numEnd int       // numerator digit group
 	if hasWhole {
-		_ = beforeGroups[0].start
-		wholeEnd = beforeGroups[0].end
+		wholeStart = beforeGroups[0].start
+		lastWholeIdx := len(beforeGroups) - 2
+		wholeEnd = beforeGroups[lastWholeIdx].end
 		middleStart = wholeEnd
 		numStart = beforeGroups[len(beforeGroups)-1].start
 		middleEnd = numStart
@@ -987,6 +988,16 @@ func formatFraction(n float64, format string) string {
 	postSlash := collectLiterals(slashTokIdx+1, postSlashEnd)
 	suffix := collectLiterals(suffixStart, len(tokens))
 
+	// Count whole-part digit placeholders.
+	wholePlaces := 0
+	if hasWhole {
+		for i := wholeStart; i < wholeEnd; i++ {
+			if isDigitTok(tokens[i].kind) {
+				wholePlaces++
+			}
+		}
+	}
+
 	// Count ? placeholders in numerator and denominator for space padding.
 	numPlaces := 0
 	for i := numStart; i < numEnd; i++ {
@@ -1019,6 +1030,70 @@ func formatFraction(n float64, format string) string {
 		}
 	}
 
+	// formatWholeDigits writes the whole-part section digit-by-digit.
+	// Each digit placeholder (#, 0, ?) is matched to a digit of wholePart
+	// (right-aligned), and interleaved literals are always emitted.
+	formatWholeDigits := func(buf *strings.Builder) {
+		wholeStr := strconv.Itoa(wholePart)
+		for len(wholeStr) < wholePlaces {
+			wholeStr = "0" + wholeStr
+		}
+		// Right-align: if more digits than placeholders, leading digits go
+		// into the first placeholder position.
+		digitIdx := 0
+		overflow := len(wholeStr) - wholePlaces
+		for i := wholeStart; i < wholeEnd; i++ {
+			tok := tokens[i]
+			if isDigitTok(tok.kind) {
+				if digitIdx == 0 && overflow > 0 {
+					// First placeholder absorbs overflow digits.
+					chunk := wholeStr[:overflow+1]
+					allZero := true
+					for _, c := range chunk {
+						if c != '0' {
+							allZero = false
+							break
+						}
+					}
+					switch tok.kind {
+					case tokDigitOpt:
+						if !allZero {
+							buf.WriteString(chunk)
+						}
+					case tokDigitSpace:
+						if allZero {
+							buf.WriteString(strings.Repeat(" ", len(chunk)))
+						} else {
+							buf.WriteString(chunk)
+						}
+					default:
+						buf.WriteString(chunk)
+					}
+					digitIdx += overflow + 1
+				} else {
+					ch := wholeStr[overflow+digitIdx]
+					switch tok.kind {
+					case tokDigitOpt:
+						if ch != '0' {
+							buf.WriteByte(ch)
+						}
+					case tokDigitSpace:
+						if ch == '0' {
+							buf.WriteByte(' ')
+						} else {
+							buf.WriteByte(ch)
+						}
+					default:
+						buf.WriteByte(ch)
+					}
+					digitIdx++
+				}
+			} else if tok.kind == tokLiteral {
+				buf.WriteString(tok.value)
+			}
+		}
+	}
+
 	// Build output.
 	var result strings.Builder
 	if negative {
@@ -1030,7 +1105,12 @@ func formatFraction(n float64, format string) string {
 		// If the format has '?' placeholders, the fraction section becomes spaces
 		// to maintain consistent width. With '#' placeholders, it's suppressed.
 		result.WriteString(prefix)
-		result.WriteString(strconv.Itoa(wholePart))
+		if wholePart == 0 {
+			// Value is exactly zero — show "0" regardless of placeholder type.
+			result.WriteString("0")
+		} else {
+			formatWholeDigits(&result)
+		}
 		if numHasQ || denHasQ {
 			// Replace middle + numerator + pre-slash + slash + post-slash + denominator with spaces.
 			fracWidth := len(middle) + numPlaces + len(preSlash) + 1 + len(postSlash) + denPlaces
@@ -1039,8 +1119,8 @@ func formatFraction(n float64, format string) string {
 		result.WriteString(suffix)
 	} else if hasWhole {
 		result.WriteString(prefix)
+		formatWholeDigits(&result)
 		if wholePart != 0 {
-			result.WriteString(strconv.Itoa(wholePart))
 			result.WriteString(middle)
 		}
 		result.WriteString(padFrac(strconv.Itoa(bestNum), numPlaces, numHasQ))
