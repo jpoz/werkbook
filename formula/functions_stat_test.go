@@ -1713,3 +1713,364 @@ func TestCORREL(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SLOPE
+// ---------------------------------------------------------------------------
+
+func TestSLOPE(t *testing.T) {
+	// Excel example: y={2,3,9,1,8,7,5}, x={6,5,11,7,5,4,4}
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(6),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(11),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(8), {Col: 2, Row: 5}: NumberVal(5),
+			{Col: 1, Row: 6}: NumberVal(7), {Col: 2, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(5), {Col: 2, Row: 7}: NumberVal(4),
+		},
+	}
+
+	// Perfect slope: y={2,4,6}, x={1,2,3} → slope=2
+	perfectResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(6), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Negative slope: y={6,4,2}, x={1,2,3} → slope=-2
+	negSlopeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(6), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Zero slope: y={5,5,5}, x={1,2,3} → slope=0
+	zeroSlopeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Constant x: y={1,2,3}, x={5,5,5} → #DIV/0!
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Different lengths: A1:A3, B1:B5
+	diffLenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	// Empty resolver
+	emptyResolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	// Single pair: y={3}, x={7} → #DIV/0!
+	singlePairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(7),
+		},
+	}
+
+	// Two pairs: y={1,3}, x={2,4} → slope=1
+	twoPairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+
+	// Mixed types: some non-numeric skipped
+	// row1: y=1(num), x="a"(str) → skip
+	// row2: y=2(num), x=4(num) → keep
+	// row3: y=true(bool), x=6(num) → skip
+	// row4: y=8(num), x=8(num) → keep
+	// pairs: (2,4),(8,8) → slope = (8-2)/(8-4) = 1.5
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: BoolVal(true), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(8), {Col: 2, Row: 4}: NumberVal(8),
+		},
+	}
+
+	// Error propagation: y contains #VALUE!
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: ErrorVal(ErrValVALUE), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Large dataset: y = 2x+1 for x=1..20
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(2*i + 1))
+		largeCells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	// Fractional slope: y={1.5, 3.0, 4.5}, x={1,2,3} → slope=1.5
+	fracResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1.5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(3.0), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4.5), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Negative values: y={-6,-4,-2}, x={1,2,3} → slope=2
+	negValsResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-6), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(-4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(-2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	tol := 1e-6
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"excel_example", "SLOPE(A1:A7,B1:B7)", excelResolver, 0.305555556, false, 0},
+		{"perfect_slope_2", "SLOPE(A1:A3,B1:B3)", perfectResolver, 2.0, false, 0},
+		{"negative_slope", "SLOPE(A1:A3,B1:B3)", negSlopeResolver, -2.0, false, 0},
+		{"zero_slope", "SLOPE(A1:A3,B1:B3)", zeroSlopeResolver, 0.0, false, 0},
+		{"constant_x_div0", "SLOPE(A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		{"different_lengths_na", "SLOPE(A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		{"empty_div0", "SLOPE(A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		{"single_pair_div0", "SLOPE(A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		{"two_pairs", "SLOPE(A1:A2,B1:B2)", twoPairResolver, 1.0, false, 0},
+		{"mixed_types_skip", "SLOPE(A1:A4,B1:B4)", mixedResolver, 1.5, false, 0},
+		{"error_propagation", "SLOPE(A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		{"large_dataset", "SLOPE(A1:A20,B1:B20)", largeResolver, 2.0, false, 0},
+		{"fractional_slope", "SLOPE(A1:A3,B1:B3)", fracResolver, 1.5, false, 0},
+		{"negative_values", "SLOPE(A1:A3,B1:B3)", negValsResolver, 2.0, false, 0},
+		{"too_few_args", "SLOPE(A1:A3)", perfectResolver, 0, true, ErrValVALUE},
+		{"too_many_args", "SLOPE(A1:A3,B1:B3,A1:A3)", perfectResolver, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// INTERCEPT
+// ---------------------------------------------------------------------------
+
+func TestINTERCEPT(t *testing.T) {
+	// Excel example: y={2,3,9,1,8}, x={6,5,11,7,5}
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(6),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(11),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(8), {Col: 2, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// y=2x+3: y={5,7,9}, x={1,2,3} → intercept=3
+	interceptResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(7), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Negative intercept: y=2x-3: y={-1,1,3}, x={1,2,3} → intercept=-3
+	negInterceptResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(1), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Zero intercept: y={2,4,6}, x={1,2,3} → intercept=0
+	zeroInterceptResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(6), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Constant x → #DIV/0!
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Different lengths → #N/A
+	diffLenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	// Empty → #DIV/0!
+	emptyResolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	// Single pair → #DIV/0!
+	singlePairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(7),
+		},
+	}
+
+	// Two pairs: y={1,5}, x={2,4} → slope=2, intercept=-3
+	twoPairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+
+	// Mixed types: non-numeric skipped → pairs (2,4),(8,8) → slope=1.5, intercept=-4
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: BoolVal(true), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(8), {Col: 2, Row: 4}: NumberVal(8),
+		},
+	}
+
+	// Error propagation
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: ErrorVal(ErrValVALUE),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Large dataset: y = 3x+10 for x=1..20 → intercept=10
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(3*i + 10))
+		largeCells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	// Fractional intercept: y=0.5x+2.5: y={3.0, 3.5, 4.0}, x={1,2,3} → intercept=2.5
+	fracResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3.0), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(3.5), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4.0), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Negative values: y={-6,-4,-2}, x={1,2,3} → slope=2, intercept=-8
+	negValsResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-6), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(-4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(-2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	tol := 1e-6
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"excel_example", "INTERCEPT(A1:A5,B1:B5)", excelResolver, 0.0483871, false, 0},
+		{"intercept_3", "INTERCEPT(A1:A3,B1:B3)", interceptResolver, 3.0, false, 0},
+		{"negative_intercept", "INTERCEPT(A1:A3,B1:B3)", negInterceptResolver, -3.0, false, 0},
+		{"zero_intercept", "INTERCEPT(A1:A3,B1:B3)", zeroInterceptResolver, 0.0, false, 0},
+		{"constant_x_div0", "INTERCEPT(A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		{"different_lengths_na", "INTERCEPT(A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		{"empty_div0", "INTERCEPT(A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		{"single_pair_div0", "INTERCEPT(A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		{"two_pairs", "INTERCEPT(A1:A2,B1:B2)", twoPairResolver, -3.0, false, 0},
+		{"mixed_types_skip", "INTERCEPT(A1:A4,B1:B4)", mixedResolver, -4.0, false, 0},
+		{"error_propagation", "INTERCEPT(A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		{"large_dataset", "INTERCEPT(A1:A20,B1:B20)", largeResolver, 10.0, false, 0},
+		{"fractional_intercept", "INTERCEPT(A1:A3,B1:B3)", fracResolver, 2.5, false, 0},
+		{"negative_values", "INTERCEPT(A1:A3,B1:B3)", negValsResolver, -8.0, false, 0},
+		{"too_few_args", "INTERCEPT(A1:A3)", interceptResolver, 0, true, ErrValVALUE},
+		{"too_many_args", "INTERCEPT(A1:A3,B1:B3,A1:A3)", interceptResolver, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}

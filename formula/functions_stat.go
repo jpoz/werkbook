@@ -15,6 +15,7 @@ func init() {
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
 	Register("CORREL", NoCtx(fnCORREL))
+	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
@@ -31,6 +32,7 @@ func init() {
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
 	Register("RANK", NoCtx(fnRANK))
+	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
 	Register("STDEVP", NoCtx(fnSTDEVP))
@@ -1080,6 +1082,87 @@ func flattenValuesGeneric(arg Value) []Value {
 		return out
 	}
 	return []Value{arg}
+}
+
+// linearRegression computes the slope and intercept of the least-squares
+// regression line for paired y/x arrays.  It returns (slope, intercept, ok).
+// On error it returns (0, 0, false) and an error Value.
+func linearRegression(args []Value) (slope, intercept float64, errVal Value, ok bool) {
+	if len(args) != 2 {
+		return 0, 0, ErrorVal(ErrValVALUE), false
+	}
+
+	flatY := flattenValuesGeneric(args[0])
+	flatX := flattenValuesGeneric(args[1])
+
+	if len(flatY) != len(flatX) {
+		return 0, 0, ErrorVal(ErrValNA), false
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flatY {
+		vy, vx := flatY[i], flatX[i]
+		if vy.Type == ValueError {
+			return 0, 0, vy, false
+		}
+		if vx.Type == ValueError {
+			return 0, 0, vx, false
+		}
+		if vy.Type != ValueNumber || vx.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, vx.Num)
+		ys = append(ys, vy.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return 0, 0, ErrorVal(ErrValDIV0), false
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute covariance numerator and sum-of-squared-deviations for x.
+	cov := 0.0
+	ssqX := 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		cov += dx * dy
+		ssqX += dx * dx
+	}
+
+	if ssqX == 0 {
+		return 0, 0, ErrorVal(ErrValDIV0), false
+	}
+
+	slope = cov / ssqX
+	intercept = meanY - slope*meanX
+	return slope, intercept, Value{}, true
+}
+
+func fnSLOPE(args []Value) (Value, error) {
+	slope, _, errVal, ok := linearRegression(args)
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(slope), nil
+}
+
+func fnINTERCEPT(args []Value) (Value, error) {
+	_, intercept, errVal, ok := linearRegression(args)
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(intercept), nil
 }
 
 func fnGEOMEAN(args []Value) (Value, error) {
