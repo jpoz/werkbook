@@ -14,11 +14,20 @@ func init() {
 	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
+	Register("CORREL", NoCtx(fnCORREL))
+	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
+	Register("FISHER", NoCtx(fnFISHER))
+	Register("FISHERINV", NoCtx(fnFISHERINV))
+	Register("FORECAST", NoCtx(fnFORECAST))
+	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
+	Register("GAMMALN", NoCtx(fnGAMMALN))
+	Register("GAMMALN.PRECISE", NoCtx(fnGAMMALN))
 	Register("GEOMEAN", NoCtx(fnGEOMEAN))
+	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
 	Register("MAX", NoCtx(fnMAX))
 	Register("MAXIFS", NoCtx(fnMAXIFS))
@@ -27,7 +36,11 @@ func init() {
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
+	Register("QUARTILE", NoCtx(fnQUARTILE))
+	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
+	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("RANK", NoCtx(fnRANK))
+	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
 	Register("STDEVP", NoCtx(fnSTDEVP))
@@ -37,6 +50,8 @@ func init() {
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
 	Register("SUMSQ", NoCtx(fnSUMSQ))
 	Register("VAR", NoCtx(fnVAR))
+	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
+	Register("SKEW", NoCtx(fnSKEW))
 	Register("VARP", NoCtx(fnVARP))
 }
 
@@ -837,6 +852,21 @@ func fnPERCENTILE(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnQUARTILE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	q, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	q = math.Trunc(q)
+	if q < 0 || q > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return fnPERCENTILE([]Value{args[0], NumberVal(q * 0.25)})
+}
+
 func fnRANK(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
@@ -880,6 +910,86 @@ func fnRANK(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(float64(rank)), nil
+}
+
+func fnPERCENTRANK(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Collect numeric values from the array argument.
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// x must be numeric.
+	x, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+
+	// Optional significance (default 3).
+	sig := 3.0
+	if len(args) == 3 {
+		s, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		sig = math.Trunc(s)
+		if sig < 1 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	sort.Float64s(nums)
+	n := len(nums)
+
+	// x outside data range → #N/A
+	if x < nums[0] || x > nums[n-1] {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Single element: if x matches, return 1.
+	if n == 1 {
+		return NumberVal(truncToSig(1, int(sig))), nil
+	}
+
+	// Find position of x in sorted data.
+	var rank float64
+	if x <= nums[0] {
+		rank = 0
+	} else if x >= nums[n-1] {
+		rank = 1
+	} else {
+		// Find the two adjacent values x falls between (or equals).
+		lo := 0
+		for i := 0; i < n; i++ {
+			if nums[i] == x {
+				rank = float64(i) / float64(n-1)
+				return NumberVal(truncToSig(rank, int(sig))), nil
+			}
+			if nums[i] < x {
+				lo = i
+			}
+		}
+		// Interpolate between nums[lo] and nums[lo+1].
+		loRank := float64(lo) / float64(n-1)
+		hiRank := float64(lo+1) / float64(n-1)
+		frac := (x - nums[lo]) / (nums[lo+1] - nums[lo])
+		rank = loRank + frac*(hiRank-loRank)
+	}
+
+	return NumberVal(truncToSig(rank, int(sig))), nil
+}
+
+// truncToSig truncates a float to sig decimal digits.
+func truncToSig(v float64, sig int) float64 {
+	pow := math.Pow(10, float64(sig))
+	return math.Floor(v*pow) / pow
 }
 
 func fnSUMSQ(args []Value) (Value, error) {
@@ -950,6 +1060,215 @@ func fnVARP(args []Value) (Value, error) {
 	return NumberVal(ssq / float64(n)), nil
 }
 
+func fnTRIMMEAN(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	percent, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if percent < 0 || percent >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	nums, ev := collectNumeric(args[:1])
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	trim := int(math.Floor(float64(n) * percent / 2))
+	remaining := nums[trim : n-trim]
+	if len(remaining) == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range remaining {
+		sum += v
+	}
+	return NumberVal(sum / float64(len(remaining))), nil
+}
+
+func fnCORREL(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten both arrays to 1D slices of Value.
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	// Arrays must have the same number of positions.
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		if v1.Type != ValueNumber || v2.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, v1.Num)
+		ys = append(ys, v2.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute covariance numerator and both sum-of-squared-deviations.
+	cov := 0.0
+	ssqX := 0.0
+	ssqY := 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		cov += dx * dy
+		ssqX += dx * dx
+		ssqY += dy * dy
+	}
+
+	denom := math.Sqrt(ssqX * ssqY)
+	if denom == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	return NumberVal(cov / denom), nil
+}
+
+// flattenValuesGeneric flattens a Value (possibly an array) into a 1D slice of Value.
+func flattenValuesGeneric(arg Value) []Value {
+	if arg.Type == ValueArray {
+		total := 0
+		for _, row := range arg.Array {
+			total += len(row)
+		}
+		out := make([]Value, 0, total)
+		for _, row := range arg.Array {
+			out = append(out, row...)
+		}
+		return out
+	}
+	return []Value{arg}
+}
+
+// linearRegression computes the slope and intercept of the least-squares
+// regression line for paired y/x arrays.  It returns (slope, intercept, ok).
+// On error it returns (0, 0, false) and an error Value.
+func linearRegression(args []Value) (slope, intercept float64, errVal Value, ok bool) {
+	if len(args) != 2 {
+		return 0, 0, ErrorVal(ErrValVALUE), false
+	}
+
+	flatY := flattenValuesGeneric(args[0])
+	flatX := flattenValuesGeneric(args[1])
+
+	if len(flatY) != len(flatX) {
+		return 0, 0, ErrorVal(ErrValNA), false
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flatY {
+		vy, vx := flatY[i], flatX[i]
+		if vy.Type == ValueError {
+			return 0, 0, vy, false
+		}
+		if vx.Type == ValueError {
+			return 0, 0, vx, false
+		}
+		if vy.Type != ValueNumber || vx.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, vx.Num)
+		ys = append(ys, vy.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return 0, 0, ErrorVal(ErrValDIV0), false
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute covariance numerator and sum-of-squared-deviations for x.
+	cov := 0.0
+	ssqX := 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		cov += dx * dy
+		ssqX += dx * dx
+	}
+
+	if ssqX == 0 {
+		return 0, 0, ErrorVal(ErrValDIV0), false
+	}
+
+	slope = cov / ssqX
+	intercept = meanY - slope*meanX
+	return slope, intercept, Value{}, true
+}
+
+func fnSLOPE(args []Value) (Value, error) {
+	slope, _, errVal, ok := linearRegression(args)
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(slope), nil
+}
+
+func fnINTERCEPT(args []Value) (Value, error) {
+	_, intercept, errVal, ok := linearRegression(args)
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(intercept), nil
+}
+
+func fnFORECAST(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	slope, intercept, errVal, ok := linearRegression([]Value{args[1], args[2]})
+	if !ok {
+		return errVal, nil
+	}
+	return NumberVal(intercept + slope*x), nil
+}
+
 func fnGEOMEAN(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -970,4 +1289,144 @@ func fnGEOMEAN(args []Value) (Value, error) {
 		sumLn += math.Log(v)
 	}
 	return NumberVal(math.Exp(sumLn / float64(n))), nil
+}
+
+func fnHARMEAN(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sumReciprocals := 0.0
+	for _, v := range nums {
+		if v <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sumReciprocals += 1.0 / v
+	}
+	return NumberVal(float64(n) / sumReciprocals), nil
+}
+
+func fnSKEW(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 3 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute mean.
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+
+	// Compute sample standard deviation (n-1 denominator).
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	s := math.Sqrt(ssq / float64(n-1))
+	if s == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute skewness: (n / ((n-1)*(n-2))) * sum((xi - mean) / s)^3
+	sumCubed := 0.0
+	for _, v := range nums {
+		z := (v - mean) / s
+		sumCubed += z * z * z
+	}
+	nf := float64(n)
+	skew := (nf / ((nf - 1) * (nf - 2))) * sumCubed
+	return NumberVal(skew), nil
+}
+
+func fnFISHER(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			if n <= -1 || n >= 1 {
+				return ErrorVal(ErrValNUM)
+			}
+			return NumberVal(0.5 * math.Log((1+n)/(1-n)))
+		}), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if x <= -1 || x >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(0.5 * math.Log((1+x)/(1-x))), nil
+}
+
+func fnGAMMALN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			if n <= 0 {
+				return ErrorVal(ErrValNUM)
+			}
+			lg, _ := math.Lgamma(n)
+			return NumberVal(lg)
+		}), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if x <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	lg, _ := math.Lgamma(x)
+	return NumberVal(lg), nil
+}
+
+func fnFISHERINV(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			e2y := math.Exp(2 * n)
+			return NumberVal((e2y - 1) / (e2y + 1))
+		}), nil
+	}
+	y, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	e2y := math.Exp(2 * y)
+	return NumberVal((e2y - 1) / (e2y + 1)), nil
 }
