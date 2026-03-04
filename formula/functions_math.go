@@ -8,7 +8,7 @@ import (
 )
 
 // subtotalFuncNames maps SUBTOTAL function_num (1-11) to the aggregate function name.
-var subtotalFuncNames = map[int]string{
+var subtotalFuncNames = [12]string{
 	1: "AVERAGE", 2: "COUNT", 3: "COUNTA", 4: "MAX", 5: "MIN",
 	6: "PRODUCT", 7: "STDEV", 8: "STDEVP", 9: "SUM", 10: "VAR", 11: "VARP",
 }
@@ -722,6 +722,12 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 		// Build a filtered copy of the array, replacing SUBTOTAL cells
 		// and hidden-row cells with empty.
 		var filtered [][]Value
+		initFiltered := func(upTo int) {
+			filtered = make([][]Value, len(arg.Array))
+			for k := 0; k < upTo; k++ {
+				filtered[k] = arg.Array[k]
+			}
+		}
 		for ri, row := range arg.Array {
 			rowNum := origin.FromRow + ri
 			// Determine if this row should be excluded based on hidden state.
@@ -734,15 +740,10 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 				}
 			}
 			if rowExcluded {
-				// Lazily allocate on first change.
 				if filtered == nil {
-					filtered = make([][]Value, len(arg.Array))
-					for k := 0; k < ri; k++ {
-						filtered[k] = arg.Array[k]
-					}
+					initFiltered(ri)
 				}
-				emptyRow := make([]Value, len(row))
-				filtered[ri] = emptyRow
+				filtered[ri] = make([]Value, len(row))
 				continue
 			}
 			// Check individual cells for SUBTOTAL formulas.
@@ -761,10 +762,7 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 			}
 			if filteredRow != nil {
 				if filtered == nil {
-					filtered = make([][]Value, len(arg.Array))
-					for k := 0; k < ri; k++ {
-						filtered[k] = arg.Array[k]
-					}
+					initFiltered(ri)
 				}
 				filtered[ri] = filteredRow
 			} else if filtered != nil {
