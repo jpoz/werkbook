@@ -276,7 +276,8 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	// Check if the format has a text section (4th section).
 	sections := splitFormatSections(format)
 
-	// For non-numeric string values, use the text section if available.
+	// For non-numeric string values, use the text section if available,
+	// or the @ placeholder in the format string.
 	if v.Type == ValueString && v.Str != "" {
 		n, e := CoerceNum(v)
 		if e != nil {
@@ -284,31 +285,38 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 			if len(sections) >= 4 {
 				return StringVal(formatTextSection(v.Str, sections[3])), nil
 			}
+			// Check if any section contains the @ text placeholder.
+			for _, sec := range sections {
+				if sectionContainsAt(sec) {
+					return StringVal(formatTextSection(v.Str, sec)), nil
+				}
+			}
 			return *e, nil
 		}
 		return StringVal(formatExcelNumber(n, format, date1904)), nil
 	}
 
-	// Booleans: "General" format preserves TRUE/FALSE text.
-	// A 4-section format uses the text section for booleans.
-	// Other numeric formats coerce TRUE→1, FALSE→0.
+	// Booleans: Excel's TEXT function always returns "TRUE" or "FALSE"
+	// regardless of the format string — booleans are never formatted numerically.
 	if v.Type == ValueBool {
 		text := "TRUE"
 		if !v.Bool {
 			text = "FALSE"
 		}
-		if strings.EqualFold(format, "General") {
-			return StringVal(text), nil
-		}
-		if len(sections) >= 4 {
-			return StringVal(formatTextSection(text, sections[3])), nil
-		}
+		return StringVal(text), nil
 	}
 
 	n, e := CoerceNum(v)
 	if e != nil {
 		return *e, nil
 	}
+
+	// If no section contains any number format codes (0, #, ?, E) or
+	// date/time codes, the format is invalid for numeric values.
+	if !strings.EqualFold(format, "General") && !anyNumberFormatCodes(sections) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
 	return StringVal(formatExcelNumber(n, format, date1904)), nil
 }
 

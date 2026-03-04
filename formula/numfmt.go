@@ -81,6 +81,10 @@ func formatExcelNumber(n float64, format string, date1904 bool) string {
 		return ""
 	}
 
+	// Strip color codes like [Red], [Blue], [Green], etc. — they are display
+	// hints only and do not affect the formatted text output.
+	section = stripColorCodes(section)
+
 	// Check for elapsed time format [h], [m], [s] — must be checked before
 	// general date/time because [h]:mm:ss also contains h/m/s tokens.
 	if isElapsedTimeFormat(section) {
@@ -99,6 +103,117 @@ func formatExcelNumber(n float64, format string, date1904 bool) string {
 
 	// Number format.
 	return formatNumberSection(n, section)
+}
+
+// anyNumberFormatCodes returns true if at least one section contains a number,
+// date/time, or fraction format code. Sections that are purely literal text
+// (like "pos", "neg", "zero") do not count.
+func anyNumberFormatCodes(sections []string) bool {
+	for _, sec := range sections {
+		if sectionHasFormatCodes(sec) {
+			return true
+		}
+	}
+	return false
+}
+
+// sectionHasFormatCodes returns true if the section contains number format
+// codes (0, #, ?, %, E+/E-), the @ placeholder, elapsed time codes ([h], [m], [s]),
+// or date/time tokens (y, d, h, m, s), outside of quoted strings, escape
+// sequences, and bracketed color codes.
+func sectionHasFormatCodes(section string) bool {
+	stripped := stripColorCodes(section)
+	// Check for elapsed time [h], [m], [s].
+	if isElapsedTimeFormat(stripped) {
+		return true
+	}
+	// Check for fraction format.
+	if isFractionFormat(stripped) {
+		return true
+	}
+	// Scan for unquoted, unescaped format codes.
+	inQuote := false
+	for i := 0; i < len(stripped); i++ {
+		ch := stripped[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == '\\' && i+1 < len(stripped) {
+			i++ // skip escaped char
+			continue
+		}
+		// Skip bracketed expressions.
+		if ch == '[' {
+			for i < len(stripped) && stripped[i] != ']' {
+				i++
+			}
+			continue
+		}
+		upper := ch
+		if upper >= 'a' && upper <= 'z' {
+			upper -= 32
+		}
+		switch upper {
+		case '0', '#', '?', '%', '@':
+			return true
+		case 'E':
+			if i+1 < len(stripped) && (stripped[i+1] == '+' || stripped[i+1] == '-') {
+				return true
+			}
+		// Date/time codes — Y, D, H are unambiguous; M could be month or minute
+		// but is always a date/time code in Excel formats.
+		case 'Y', 'D', 'H', 'M':
+			return true
+		}
+	}
+	return false
+}
+
+// excelColorCodes is the set of color names recognised inside square brackets.
+var excelColorCodes = map[string]bool{
+	"BLACK":   true,
+	"BLUE":    true,
+	"CYAN":    true,
+	"GREEN":   true,
+	"MAGENTA": true,
+	"RED":     true,
+	"WHITE":   true,
+	"YELLOW":  true,
+}
+
+// stripColorCodes removes Excel color codes like [Red], [Blue], [Color 3], etc.
+// from a format section. These are display hints and do not affect text output.
+func stripColorCodes(format string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(format) {
+		if format[i] == '[' {
+			// Find the closing bracket.
+			j := i + 1
+			for j < len(format) && format[j] != ']' {
+				j++
+			}
+			if j < len(format) {
+				inner := format[i+1 : j]
+				upperInner := strings.ToUpper(strings.TrimSpace(inner))
+				// Check for named colors or "Color N" syntax.
+				if excelColorCodes[upperInner] || strings.HasPrefix(upperInner, "COLOR ") || strings.HasPrefix(upperInner, "COLOR") && len(upperInner) > 5 && upperInner[5] >= '0' && upperInner[5] <= '9' {
+					i = j + 1 // skip past ']'
+					continue
+				}
+			}
+			result.WriteByte(format[i])
+			i++
+		} else {
+			result.WriteByte(format[i])
+			i++
+		}
+	}
+	return result.String()
 }
 
 // formatTextSection formats a text value using the text section (4th section)
@@ -127,6 +242,25 @@ func formatTextSection(text string, section string) string {
 		}
 	}
 	return result.String()
+}
+
+// sectionContainsAt returns true if the format section contains an unquoted,
+// unescaped '@' placeholder.
+func sectionContainsAt(section string) bool {
+	for i := 0; i < len(section); i++ {
+		ch := section[i]
+		if ch == '"' {
+			i++
+			for i < len(section) && section[i] != '"' {
+				i++
+			}
+		} else if ch == '\\' && i+1 < len(section) {
+			i++
+		} else if ch == '@' {
+			return true
+		}
+	}
+	return false
 }
 
 // formatGeneral returns the "General" format representation.
@@ -1463,43 +1597,143 @@ func formatNumberSection(n float64, format string) string {
 		}
 	}
 
-	for _, tok := range tokens {
-		switch tok.kind {
-		case tokLiteral:
-			result.WriteString(tok.value)
-		case tokDigit, tokDigitOpt, tokDigitSpace:
-			if !intWritten {
-				result.WriteString(intStr)
-				intWritten = true
+	// Check if literals are interleaved between integer digit placeholders
+	// (e.g. phone format "(###) ###-####" or SSN "000-00-0000").
+	// In this case, distribute digits right-to-left across placeholders.
+	hasInterleavedLiterals := false
+	if !hasCommaGrouping && totalDecPlaces == 0 {
+		seenDigit := false
+		seenLiteralAfterDigit := false
+		for _, tok := range tokens {
+			if tok.kind == tokDecimal {
+				break
 			}
-			// Skip subsequent digit tokens as intStr was already written.
-		case tokDecimal:
-			if totalDecPlaces > 0 && decStr != "" {
-				result.WriteByte('.')
-				result.WriteString(decStr)
-			} else if decZeros > 0 {
-				result.WriteByte('.')
-				result.WriteString(decStr)
+			switch tok.kind {
+			case tokDigit, tokDigitOpt, tokDigitSpace:
+				if seenLiteralAfterDigit {
+					hasInterleavedLiterals = true
+				}
+				seenDigit = true
+			case tokLiteral:
+				if seenDigit {
+					// Only non-empty non-space-only literals count for interleaving detection.
+					// Actually, any literal (including space) between digit groups counts.
+					seenLiteralAfterDigit = true
+				}
 			}
-			decWritten = true
-			_ = decWritten
-		case tokComma:
-			// Already handled via comma grouping; skip.
-		case tokPercent:
-			result.WriteByte('%')
-		case tokExponent:
-			// Handled in formatScientific.
 		}
 	}
 
-	// If no digit tokens existed and there are actual digit placeholders in
-	// the format, write the number. Skip if the format is all literals (e.g.
-	// the "zero" section of a multi-section format).
-	if !intWritten && intDigits > 0 {
-		result.WriteString(intStr)
-		if totalDecPlaces > 0 {
-			result.WriteByte('.')
-			result.WriteString(decStr)
+	if hasInterleavedLiterals {
+		// Distribute digits right-to-left across individual placeholder positions.
+		// First, collect the integer digit positions in the token stream.
+		rawDigits := strings.ReplaceAll(intStr, ",", "")
+		// Pad with leading zeros if we have more placeholders than digits.
+		for len(rawDigits) < intZeros {
+			rawDigits = "0" + rawDigits
+		}
+
+		// Build a list of token indices that are integer digit placeholders.
+		var digitTokenIdxs []int
+		for ti, tok := range tokens {
+			if tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace {
+				digitTokenIdxs = append(digitTokenIdxs, ti)
+			}
+		}
+
+		// Map digits right-to-left onto placeholder positions.
+		digitChars := make([]byte, len(digitTokenIdxs))
+		di := len(rawDigits) - 1
+		for pi := len(digitTokenIdxs) - 1; pi >= 0; pi-- {
+			if di >= 0 {
+				digitChars[pi] = rawDigits[di]
+				di--
+			} else {
+				// No more digits; use '0' for tokDigit, skip for tokDigitOpt.
+				tok := tokens[digitTokenIdxs[pi]]
+				if tok.kind == tokDigit {
+					digitChars[pi] = '0'
+				} else if tok.kind == tokDigitSpace {
+					digitChars[pi] = ' '
+				} else {
+					digitChars[pi] = 0 // skip
+				}
+			}
+		}
+
+		// If there are extra digits that don't fit in placeholders, prepend them.
+		var overflow string
+		if di >= 0 {
+			overflow = rawDigits[:di+1]
+		}
+
+		// Now build result from tokens.
+		placeholderIdx := 0
+		for _, tok := range tokens {
+			switch tok.kind {
+			case tokLiteral:
+				result.WriteString(tok.value)
+			case tokDigit, tokDigitOpt, tokDigitSpace:
+				if placeholderIdx == 0 && overflow != "" {
+					result.WriteString(overflow)
+				}
+				ch := digitChars[placeholderIdx]
+				if ch != 0 {
+					result.WriteByte(ch)
+				}
+				placeholderIdx++
+			case tokComma:
+				// skip
+			case tokPercent:
+				result.WriteByte('%')
+			case tokDecimal:
+				// should not happen in interleaved int-only format
+			case tokExponent:
+				// should not happen
+			}
+		}
+		intWritten = true
+	}
+
+	if !hasInterleavedLiterals {
+		for _, tok := range tokens {
+			switch tok.kind {
+			case tokLiteral:
+				result.WriteString(tok.value)
+			case tokDigit, tokDigitOpt, tokDigitSpace:
+				if !intWritten {
+					result.WriteString(intStr)
+					intWritten = true
+				}
+				// Skip subsequent digit tokens as intStr was already written.
+			case tokDecimal:
+				if totalDecPlaces > 0 && decStr != "" {
+					result.WriteByte('.')
+					result.WriteString(decStr)
+				} else if decZeros > 0 {
+					result.WriteByte('.')
+					result.WriteString(decStr)
+				}
+				decWritten = true
+				_ = decWritten
+			case tokComma:
+				// Already handled via comma grouping; skip.
+			case tokPercent:
+				result.WriteByte('%')
+			case tokExponent:
+				// Handled in formatScientific.
+			}
+		}
+
+		// If no digit tokens existed and there are actual digit placeholders in
+		// the format, write the number. Skip if the format is all literals (e.g.
+		// the "zero" section of a multi-section format).
+		if !intWritten && intDigits > 0 {
+			result.WriteString(intStr)
+			if totalDecPlaces > 0 {
+				result.WriteByte('.')
+				result.WriteString(decStr)
+			}
 		}
 	}
 

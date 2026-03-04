@@ -548,8 +548,8 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "1E-5"},
 		{name: "general_not_sci_1e10", formula: `TEXT(10000000000, "General")`, want: "10000000000"},
 		{name: "general_negative_large", formula: `TEXT(-110000000000, "General")`, want: "-1.1E+11"},
-		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "1"},
-		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "0"},
+		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "TRUE"},
+		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "FALSE"},
 	}
 
 	for _, tt := range tests {
@@ -882,5 +882,147 @@ func TestLENUnicode(t *testing.T) {
 	// "caf\u00e9" is 4 runes
 	if got.Type != ValueNumber || got.Num != 4 {
 		t.Errorf("LEN unicode: got %g, want 4", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEXT — boolean, @, color code, and digit placeholder fixes
+// ---------------------------------------------------------------------------
+
+func TestTEXTBooleanAlwaysText(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "true_zero_fmt", formula: `TEXT(TRUE,"0")`, want: "TRUE"},
+		{name: "false_zero_fmt", formula: `TEXT(FALSE,"0")`, want: "FALSE"},
+		{name: "true_general", formula: `TEXT(TRUE,"General")`, want: "TRUE"},
+		{name: "false_general", formula: `TEXT(FALSE,"General")`, want: "FALSE"},
+		{name: "true_decimal", formula: `TEXT(TRUE,"0.00")`, want: "TRUE"},
+		{name: "false_decimal", formula: `TEXT(FALSE,"0.00")`, want: "FALSE"},
+		{name: "true_percent", formula: `TEXT(TRUE,"0%")`, want: "TRUE"},
+		{name: "false_percent", formula: `TEXT(FALSE,"0%")`, want: "FALSE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTAtFormat(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "at_format", formula: `TEXT("hello","@")`, want: "hello"},
+		{name: "at_with_prefix", formula: `TEXT("world","@ rocks")`, want: "world rocks"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTColorCodes(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "red_positive", formula: `TEXT(5,"[Red]0.00")`, want: "5.00"},
+		{name: "red_negative", formula: `TEXT(-5,"[Red]0.00")`, want: "-5.00"},
+		{name: "blue_integer", formula: `TEXT(42,"[Blue]0")`, want: "42"},
+		{name: "green_percent", formula: `TEXT(0.5,"[Green]0%")`, want: "50%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTNoFormatCodesReturnsVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "pos_neg_zero_pos", formula: `TEXT(42,"pos;neg;zero")`},
+		{name: "pos_neg_zero_neg", formula: `TEXT(-42,"pos;neg;zero")`},
+		{name: "pos_neg_zero_zero", formula: `TEXT(0,"pos;neg;zero")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Errorf("Eval(%q) = %v, want #VALUE!", tt.formula, got)
+			}
+		})
+	}
+}
+
+func TestTEXTDigitPlaceholders(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "phone_format", formula: `TEXT(5551234567,"(###) ###-####")`, want: "(555) 123-4567"},
+		{name: "ssn_format", formula: `TEXT(123456789,"000-00-0000")`, want: "123-45-6789"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
 	}
 }
