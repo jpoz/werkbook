@@ -247,12 +247,12 @@ func fnDATEDIF(args []Value) (Value, error) {
 		}
 		return NumberVal(float64(m)), nil
 	case "YD":
-		startInEndYear := time.Date(end.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
-		days := int(end.Sub(startInEndYear).Hours() / 24)
-		if days < 0 {
-			startInEndYear = time.Date(end.Year()-1, start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
-			days = int(end.Sub(startInEndYear).Hours() / 24)
+		totalDays := int(endSerial - startSerial)
+		years := end.Year() - start.Year()
+		if end.Month() < start.Month() || (end.Month() == start.Month() && end.Day() < start.Day()) {
+			years--
 		}
+		days := totalDays - years*365
 		return NumberVal(float64(days)), nil
 	default:
 		return ErrorVal(ErrValNUM), nil
