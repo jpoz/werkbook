@@ -690,7 +690,7 @@ func fnXIRR(args []Value) (Value, error) {
 	}
 
 	rate := guess
-	for iter := 0; iter < 100; iter++ {
+	for iter := 0; iter < 300; iter++ {
 		if rate <= -1 {
 			rate = -0.99
 		}
@@ -707,7 +707,7 @@ func fnXIRR(args []Value) (Value, error) {
 				dxnpv -= t * cf / (denom * (1 + rate))
 			}
 		}
-		if math.Abs(xnpv) < 1e-10 {
+		if math.Abs(xnpv) < 1e-14 {
 			return NumberVal(rate), nil
 		}
 		if dxnpv == 0 {
