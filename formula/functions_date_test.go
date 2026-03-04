@@ -218,3 +218,43 @@ func TestDATEDIF(t *testing.T) {
 		})
 	}
 }
+
+func TestSerial60Boundary(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Serial 60 = Excel's fictional Feb 29, 1900
+		{"DAY_60", "DAY(60)", 29},
+		{"MONTH_60", "MONTH(60)", 2},
+		{"YEAR_60", "YEAR(60)", 1900},
+		// Neighbors: serial 59 = Feb 28, serial 61 = Mar 1
+		{"DAY_59", "DAY(59)", 28},
+		{"MONTH_59", "MONTH(59)", 2},
+		{"DAY_61", "DAY(61)", 1},
+		{"MONTH_61", "MONTH(61)", 3},
+		// DATE(1900,2,29) should return serial 60
+		{"DATE_1900_2_29", "DATE(1900,2,29)", 60},
+		// TIME(25,0,0) should wrap to fractional part only
+		{"TIME_25_0_0", "TIME(25,0,0)", 1.0 / 24.0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}

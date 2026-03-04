@@ -62,6 +62,17 @@ func ExcelSerialToTime(serial float64) time.Time {
 	return t
 }
 
+// excelSerialDateParts returns the year, month, day for an Excel serial number,
+// correctly handling serial 60 (Excel's fictional Feb 29, 1900).
+func excelSerialDateParts(serial float64) (int, time.Month, int) {
+	s := int(serial)
+	if s == 60 {
+		return 1900, time.February, 29
+	}
+	t := ExcelSerialToTime(serial)
+	return t.Year(), t.Month(), t.Day()
+}
+
 // ExcelSerialToTime1904 converts an Excel serial date number to a time.Time
 // using the 1904 date system (Mac Excel). No leap-year bug adjustment is needed.
 func ExcelSerialToTime1904(serial float64) time.Time {
@@ -120,6 +131,13 @@ func fnDATE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 
+	// Special-case: DATE(1900,2,29) should return serial 60 (Excel's fictional
+	// leap day). Go's time.Date normalizes Feb 29, 1900 to Mar 1, 1900, which
+	// would produce serial 61 via TimeToExcelSerial, so we intercept it here.
+	if y == 1900 && m == 2 && d == 29 {
+		return NumberVal(60), nil
+	}
+
 	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
 	serial := TimeToExcelSerial(t)
 	if serial < 0 || serial > MaxExcelSerial {
@@ -139,8 +157,8 @@ func fnDAY(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Day())), nil
+	_, _, day := excelSerialDateParts(n)
+	return NumberVal(float64(day)), nil
 }
 
 func fnMONTH(args []Value) (Value, error) {
@@ -154,8 +172,8 @@ func fnMONTH(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Month())), nil
+	_, month, _ := excelSerialDateParts(n)
+	return NumberVal(float64(month)), nil
 }
 
 func fnNOW(args []Value) (Value, error) {
@@ -185,8 +203,8 @@ func fnYEAR(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Year())), nil
+	year, _, _ := excelSerialDateParts(n)
+	return NumberVal(float64(year)), nil
 }
 
 func isLeapYear(year int) bool {
@@ -399,7 +417,11 @@ func fnTIME(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	return NumberVal((hour*3600 + minute*60 + second) / 86400), nil
+	result := (hour*3600 + minute*60 + second) / 86400
+	// TIME returns only the fractional part (time of day).
+	// Values >= 1.0 wrap; e.g. TIME(25,0,0) = 0.04167 (just the 1-hour fraction).
+	result = result - math.Floor(result)
+	return NumberVal(result), nil
 }
 
 func fnWEEKDAY(args []Value) (Value, error) {
