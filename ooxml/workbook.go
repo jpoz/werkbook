@@ -11,11 +11,22 @@ type xlsxWorkbookPr struct {
 }
 
 type xlsxWorkbook struct {
-	XMLName    xml.Name          `xml:"workbook"`
-	Xmlns      string            `xml:"xmlns,attr"`
-	XmlnsR     string            `xml:"xmlns:r,attr"`
-	WorkbookPr *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
-	Sheets     xlsxSheets        `xml:"sheets"`
+	XMLName      xml.Name             `xml:"workbook"`
+	Xmlns        string               `xml:"xmlns,attr"`
+	XmlnsR       string               `xml:"xmlns:r,attr"`
+	WorkbookPr   *xlsxWorkbookPr      `xml:"workbookPr,omitempty"`
+	Sheets       xlsxSheets           `xml:"sheets"`
+	DefinedNames *xlsxDefinedNames    `xml:"definedNames,omitempty"`
+}
+
+type xlsxDefinedNames struct {
+	DefinedName []xlsxDefinedName `xml:"definedName"`
+}
+
+type xlsxDefinedName struct {
+	Name         string `xml:"name,attr"`
+	LocalSheetID *int   `xml:"localSheetId,attr"`
+	Value        string `xml:",chardata"`
 }
 
 type xlsxSheets struct {
@@ -63,12 +74,20 @@ func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeToken(start.End())
 }
 
+// DefinedName represents a named range or named formula from the workbook.
+type DefinedName struct {
+	Name         string // the defined name (e.g. "OneRange")
+	Value        string // the reference or expression (e.g. "Sheet1!$A$10")
+	LocalSheetID int    // -1 for global; otherwise 0-based sheet index
+}
+
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Date1904 bool        // true if the workbook uses the 1904 date system (Mac Excel)
-	Sheets   []SheetData
-	Styles   []StyleData // index 0 = default (empty)
-	Tables   []TableDef  // table definitions parsed from xl/tables/table*.xml
+	Date1904     bool          // true if the workbook uses the 1904 date system (Mac Excel)
+	Sheets       []SheetData
+	Styles       []StyleData   // index 0 = default (empty)
+	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
+	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
 }
 
 // StyleData is the intermediate representation of a cell style,

@@ -11,13 +11,14 @@ import (
 
 // File represents an XLSX workbook.
 type File struct {
-	sheets     []*Sheet
-	sheetNames []string
-	date1904   bool                // true if the workbook uses the 1904 date system (Mac Excel)
-	calcGen    uint64              // incremented on any cell mutation; starts at 1
-	evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
-	deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
-	tables     []formula.TableInfo // table definitions for structured reference expansion
+	sheets       []*Sheet
+	sheetNames   []string
+	date1904     bool                       // true if the workbook uses the 1904 date system (Mac Excel)
+	calcGen      uint64                     // incremented on any cell mutation; starts at 1
+	evaluating   map[cellKey]bool           // tracks cells being evaluated (circular ref detection)
+	deps         *formula.DepGraph          // cell dependency graph for incremental recalculation
+	tables       []formula.TableInfo        // table definitions for structured reference expansion
+	definedNames []formula.DefinedNameInfo  // defined names (named ranges) for formula expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -228,6 +229,15 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 		f.tables = append(f.tables, ti)
 	}
 
+	// Build defined name info from parsed defined names.
+	for _, dn := range data.DefinedNames {
+		f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
+			Name:         dn.Name,
+			Value:        dn.Value,
+			LocalSheetID: dn.LocalSheetID,
+		})
+	}
+
 	f.registerAllFormulas()
 	return f
 }
@@ -265,11 +275,38 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 		data.Sheets = append(data.Sheets, s.toSheetData(styleMap, &styles))
 	}
 	data.Styles = styles
+
+	// Preserve defined names.
+	for _, dn := range f.definedNames {
+		data.DefinedNames = append(data.DefinedNames, ooxml.DefinedName{
+			Name:         dn.Name,
+			Value:        dn.Value,
+			LocalSheetID: dn.LocalSheetID,
+		})
+	}
+
 	return data
 }
 
 // registerAllFormulas iterates all cells and registers compiled formulas in
 // the dependency graph. Called at the end of fileFromData.
+// sheetIndex returns the 0-based index of the named sheet, or -1 if not found.
+func (f *File) sheetIndex(name string) int {
+	for i, n := range f.sheetNames {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// expandFormula expands table refs and defined names in a formula string.
+func (f *File) expandFormula(src string, sheetName string, row int) string {
+	src = formula.ExpandTableRefs(src, f.tables, row)
+	src = formula.ExpandDefinedNames(src, f.definedNames, f.sheetIndex(sheetName))
+	return src
+}
+
 func (f *File) registerAllFormulas() {
 	for _, s := range f.sheets {
 		for _, r := range s.rows {
@@ -277,8 +314,8 @@ func (f *File) registerAllFormulas() {
 				if c.formula == "" {
 					continue
 				}
-				// Expand table structured references before parsing.
-				src := formula.ExpandTableRefs(c.formula, f.tables, r.num)
+				// Expand table structured references and defined names before parsing.
+				src := f.expandFormula(c.formula, s.name, r.num)
 				node, err := formula.Parse(src)
 				if err != nil {
 					continue

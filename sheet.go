@@ -82,7 +82,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.dirty = true
 	s.file.calcGen++
 	// Compile and register in dep graph.
-	src := formula.ExpandTableRefs(f, s.file.tables, row)
+	src := s.file.expandFormula(f, s.name, row)
 	node, parseErr := formula.Parse(src)
 	if parseErr == nil {
 		cf, compErr := formula.Compile(src, node)
@@ -436,8 +436,8 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	cf := c.compiled
 	if cf == nil {
-		// Expand table structured references before parsing.
-		src := formula.ExpandTableRefs(c.formula, f.tables, row)
+		// Expand table structured references and defined names before parsing.
+		src := f.expandFormula(c.formula, s.name, row)
 		node, err := formula.Parse(src)
 		if err != nil {
 			return Value{Type: TypeError, String: "#NAME?"}

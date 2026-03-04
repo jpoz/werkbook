@@ -139,6 +139,20 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 			RID:     fmt.Sprintf("rId%d", i+1),
 		})
 	}
+	if len(data.DefinedNames) > 0 {
+		wb.DefinedNames = &xlsxDefinedNames{}
+		for _, dn := range data.DefinedNames {
+			xdn := xlsxDefinedName{
+				Name:  dn.Name,
+				Value: dn.Value,
+			}
+			if dn.LocalSheetID >= 0 {
+				id := dn.LocalSheetID
+				xdn.LocalSheetID = &id
+			}
+			wb.DefinedNames.DefinedName = append(wb.DefinedNames.DefinedName, xdn)
+		}
+	}
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
 

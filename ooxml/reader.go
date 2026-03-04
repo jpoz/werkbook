@@ -76,6 +76,21 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		v := wb.WorkbookPr.Date1904
 		data.Date1904 = v == "1" || v == "true"
 	}
+
+	// Parse defined names.
+	if wb.DefinedNames != nil {
+		for _, dn := range wb.DefinedNames.DefinedName {
+			localID := -1
+			if dn.LocalSheetID != nil {
+				localID = *dn.LocalSheetID
+			}
+			data.DefinedNames = append(data.DefinedNames, DefinedName{
+				Name:         dn.Name,
+				Value:        dn.Value,
+				LocalSheetID: localID,
+			})
+		}
+	}
 	for _, s := range wb.Sheets.Sheet {
 		target, ok := sheetRels[s.RID]
 		if !ok {
