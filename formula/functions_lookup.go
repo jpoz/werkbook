@@ -153,17 +153,45 @@ func fnINDEX(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	ri := int(rowNum) - 1
+	ri := int(rowNum)
 
-	colNum := 0
+	// Default col_num: if not provided, default to 1 (first column).
+	colNum := 1
 	if len(args) == 3 {
 		cn, e := CoerceNum(args[2])
 		if e != nil {
 			return *e, nil
 		}
-		colNum = int(cn) - 1
+		colNum = int(cn)
 	}
 
+	// row_num=0 means return the entire column (or array if col_num=0 too).
+	if ri == 0 && colNum == 0 {
+		return arr, nil
+	}
+	if ri == 0 {
+		// Return entire column as a single-column array.
+		ci := colNum - 1
+		var col [][]Value
+		for _, row := range arr.Array {
+			if ci < 0 || ci >= len(row) {
+				return ErrorVal(ErrValREF), nil
+			}
+			col = append(col, []Value{row[ci]})
+		}
+		return Value{Type: ValueArray, Array: col}, nil
+	}
+	if colNum == 0 {
+		// Return entire row as a single-row array.
+		ri--
+		if ri < 0 || ri >= len(arr.Array) {
+			return ErrorVal(ErrValREF), nil
+		}
+		return Value{Type: ValueArray, Array: [][]Value{arr.Array[ri]}}, nil
+	}
+
+	ri--
+	colNum--
 	if ri < 0 || ri >= len(arr.Array) {
 		return ErrorVal(ErrValREF), nil
 	}

@@ -235,13 +235,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) == 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c == 0 }))
 
 		case OpNe:
 			b, err := pop()
@@ -252,13 +246,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) != 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c != 0 }))
 
 		case OpLt:
 			b, err := pop()
@@ -269,13 +257,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) < 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c < 0 }))
 
 		case OpLe:
 			b, err := pop()
@@ -286,13 +268,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) <= 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c <= 0 }))
 
 		case OpGt:
 			b, err := pop()
@@ -303,13 +279,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) > 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c > 0 }))
 
 		case OpGe:
 			b, err := pop()
@@ -320,13 +290,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) >= 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c >= 0 }))
 
 		case OpCall:
 			funcID := int(inst.Operand >> 8)
@@ -586,6 +550,59 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 				result[i][j] = *be
 			} else {
 				result[i][j] = op(an, bn)
+			}
+		}
+	}
+	return Value{Type: ValueArray, Array: result}
+}
+
+// binaryCompare performs a comparison operation on two Values, supporting
+// element-wise array operations when one or both operands are arrays.
+func binaryCompare(a, b Value, op func(int) bool) Value {
+	aArr := a.Type == ValueArray
+	bArr := b.Type == ValueArray
+
+	if !aArr && !bArr {
+		if a.Type == ValueError {
+			return a
+		}
+		if b.Type == ValueError {
+			return b
+		}
+		return BoolVal(op(CompareValues(a, b)))
+	}
+
+	// At least one operand is an array — do element-wise comparison.
+	rows, cols := 1, 1
+	if aArr {
+		rows = len(a.Array)
+		if rows > 0 {
+			cols = len(a.Array[0])
+		}
+	}
+	if bArr {
+		if r := len(b.Array); r > rows {
+			rows = r
+		}
+		if rows > 0 && len(b.Array) > 0 {
+			if c := len(b.Array[0]); c > cols {
+				cols = c
+			}
+		}
+	}
+
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			av := ArrayElement(a, i, j)
+			bv := ArrayElement(b, i, j)
+			if av.Type == ValueError {
+				result[i][j] = av
+			} else if bv.Type == ValueError {
+				result[i][j] = bv
+			} else {
+				result[i][j] = BoolVal(op(CompareValues(av, bv)))
 			}
 		}
 	}
