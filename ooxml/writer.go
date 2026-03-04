@@ -195,8 +195,10 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 			c := xlsxC{
 				R: cd.Ref,
 				T: cd.Type,
-				F: cd.Formula,
 				V: cd.Value,
+			}
+			if cd.Formula != "" {
+				c.FE = &xlsxF{Text: cd.Formula}
 			}
 			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
 				c.S = styleIndexMap[cd.StyleIdx]

@@ -194,10 +194,17 @@ func (c *compiler) compileNode(node Node) error {
 				return nil
 			}
 		}
+		arrayCtx := IsArrayFunc(name)
+		if arrayCtx {
+			c.emit(OpEnterArrayCtx, 0)
+		}
 		for _, arg := range n.Args {
 			if err := c.compileNode(arg); err != nil {
 				return err
 			}
+		}
+		if arrayCtx {
+			c.emit(OpLeaveArrayCtx, 0)
 		}
 		operand := uint32(funcID)<<8 | uint32(argc)
 		c.emit(OpCall, operand)
