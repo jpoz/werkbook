@@ -129,8 +129,31 @@ func formatTextSection(text string, section string) string {
 }
 
 // formatGeneral returns the "General" format representation.
+// Excel's General format uses scientific notation (uppercase E) for:
+//   - numbers with absolute value >= 1e11
+//   - very small nonzero numbers with absolute value < 1e-4
+//
+// It displays at most ~11 significant digits.
 func formatGeneral(n float64) string {
-	if n == math.Trunc(n) && math.Abs(n) < 1e15 {
+	abs := math.Abs(n)
+	// Very large or very small numbers use scientific notation.
+	if abs >= 1e11 || (abs > 0 && abs < 1e-4) {
+		s := strconv.FormatFloat(n, 'E', -1, 64)
+		// Go produces "E+11"; ensure "+" sign is present for positive exponents
+		// and strip unnecessary leading zeros from the exponent.
+		// Go's 'E' format already uses uppercase E and includes +/-.
+		// Trim leading zeros in exponent: E+011 -> E+11, E-010 -> E-10
+		if idx := strings.IndexByte(s, 'E'); idx >= 0 {
+			sign := s[idx+1] // '+' or '-'
+			exp := strings.TrimLeft(s[idx+2:], "0")
+			if exp == "" {
+				exp = "0"
+			}
+			s = s[:idx+1] + string(sign) + exp
+		}
+		return s
+	}
+	if n == math.Trunc(n) && abs < 1e15 {
 		return strconv.FormatFloat(n, 'f', -1, 64)
 	}
 	// Use %g-like formatting but with up to 10 significant digits like Excel.

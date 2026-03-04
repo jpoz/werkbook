@@ -506,6 +506,13 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "general_float", formula: `TEXT(3.14, "General")`, want: "3.14"},
 		{name: "general_true", formula: `TEXT(TRUE, "General")`, want: "TRUE"},
 		{name: "general_false", formula: `TEXT(FALSE, "General")`, want: "FALSE"},
+		{name: "general_large_1.1e11", formula: `TEXT(110000000000, "General")`, want: "1.1E+11"},
+		{name: "general_large_1.12345e11", formula: `TEXT(112345000000, "General")`, want: "1.12345E+11"},
+		{name: "general_large_1e11", formula: `TEXT(100000000000, "General")`, want: "1E+11"},
+		{name: "general_small_1.123e-10", formula: `TEXT(1.123E-10, "General")`, want: "1.123E-10"},
+		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "1E-5"},
+		{name: "general_not_sci_1e10", formula: `TEXT(10000000000, "General")`, want: "10000000000"},
+		{name: "general_negative_large", formula: `TEXT(-110000000000, "General")`, want: "-1.1E+11"},
 		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "1"},
 		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "0"},
 	}
