@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"math"
 	"testing"
 )
 
@@ -776,4 +777,196 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// QUARTILE
+// ---------------------------------------------------------------------------
+
+func TestQUARTILE(t *testing.T) {
+	// Standard dataset from Excel docs: {1,2,4,7,8,9,10,12}
+	stdResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4),
+			{Col: 1, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(8),
+			{Col: 1, Row: 6}: NumberVal(9),
+			{Col: 1, Row: 7}: NumberVal(10),
+			{Col: 1, Row: 8}: NumberVal(12),
+		},
+	}
+
+	// Single element in B1
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Two elements in C1:C2
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(15),
+		},
+	}
+
+	// Mixed types: numbers, strings, booleans in D1:D5
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(10),
+			{Col: 4, Row: 2}: StringVal("hello"),
+			{Col: 4, Row: 3}: NumberVal(20),
+			{Col: 4, Row: 4}: BoolVal(true),
+			{Col: 4, Row: 5}: NumberVal(30),
+		},
+	}
+
+	// Negative numbers in E1:E4
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(-10),
+			{Col: 5, Row: 2}: NumberVal(-5),
+			{Col: 5, Row: 3}: NumberVal(0),
+			{Col: 5, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// All same values in F1:F4
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(7),
+			{Col: 6, Row: 2}: NumberVal(7),
+			{Col: 6, Row: 3}: NumberVal(7),
+			{Col: 6, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Large dataset in G1:G20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 7, Row: i}] = NumberVal(float64(i))
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		wantNum  float64
+		wantErr  ErrorValue
+	}{
+		// quart=0 (minimum)
+		{"q0_min", "QUARTILE(A1:A8,0)", stdResolver, 1, 0},
+		// quart=1 (25th percentile) - Excel example
+		{"q1_25th", "QUARTILE(A1:A8,1)", stdResolver, 3.5, 0},
+		// quart=2 (median)
+		{"q2_median", "QUARTILE(A1:A8,2)", stdResolver, 7.5, 0},
+		// quart=3 (75th percentile)
+		{"q3_75th", "QUARTILE(A1:A8,3)", stdResolver, 9.25, 0},
+		// quart=4 (maximum)
+		{"q4_max", "QUARTILE(A1:A8,4)", stdResolver, 12, 0},
+		// quart as float truncated to integer
+		{"q_float_1.7_truncates_to_1", "QUARTILE(A1:A8,1.7)", stdResolver, 3.5, 0},
+		{"q_float_3.9_truncates_to_3", "QUARTILE(A1:A8,3.9)", stdResolver, 9.25, 0},
+		// quart < 0 → #NUM!
+		{"q_negative", "QUARTILE(A1:A8,-1)", stdResolver, 0, ErrValNUM},
+		// quart > 4 → #NUM!
+		{"q_over_4", "QUARTILE(A1:A8,5)", stdResolver, 0, ErrValNUM},
+		// Empty array → #NUM!
+		{"empty_array", "QUARTILE(Z1:Z3,1)", emptyResolver, 0, ErrValNUM},
+		// Single element
+		{"single_q0", "QUARTILE(B1:B1,0)", singleResolver, 42, 0},
+		{"single_q1", "QUARTILE(B1:B1,1)", singleResolver, 42, 0},
+		{"single_q2", "QUARTILE(B1:B1,2)", singleResolver, 42, 0},
+		{"single_q3", "QUARTILE(B1:B1,3)", singleResolver, 42, 0},
+		{"single_q4", "QUARTILE(B1:B1,4)", singleResolver, 42, 0},
+		// Two element array
+		{"two_q0", "QUARTILE(C1:C2,0)", twoResolver, 5, 0},
+		{"two_q1", "QUARTILE(C1:C2,1)", twoResolver, 7.5, 0},
+		{"two_q2", "QUARTILE(C1:C2,2)", twoResolver, 10, 0},
+		{"two_q3", "QUARTILE(C1:C2,3)", twoResolver, 12.5, 0},
+		{"two_q4", "QUARTILE(C1:C2,4)", twoResolver, 15, 0},
+		// Mixed types (non-numeric ignored) → only 10, 20, 30
+		{"mixed_q1", "QUARTILE(D1:D5,1)", mixedResolver, 15, 0},
+		{"mixed_q2", "QUARTILE(D1:D5,2)", mixedResolver, 20, 0},
+		// Negative numbers
+		{"neg_q0", "QUARTILE(E1:E4,0)", negResolver, -10, 0},
+		{"neg_q1", "QUARTILE(E1:E4,1)", negResolver, -6.25, 0},
+		{"neg_q2", "QUARTILE(E1:E4,2)", negResolver, -2.5, 0},
+		{"neg_q4", "QUARTILE(E1:E4,4)", negResolver, 5, 0},
+		// All same values
+		{"same_q0", "QUARTILE(F1:F4,0)", sameResolver, 7, 0},
+		{"same_q1", "QUARTILE(F1:F4,1)", sameResolver, 7, 0},
+		{"same_q2", "QUARTILE(F1:F4,2)", sameResolver, 7, 0},
+		{"same_q4", "QUARTILE(F1:F4,4)", sameResolver, 7, 0},
+		// Large dataset
+		{"large_q1", "QUARTILE(G1:G20,1)", largeResolver, 5.75, 0},
+		{"large_q2", "QUARTILE(G1:G20,2)", largeResolver, 10.5, 0},
+		{"large_q3", "QUARTILE(G1:G20,3)", largeResolver, 15.25, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	// QUARTILE(x,q) == PERCENTILE(x, q*0.25) equivalence check
+	t.Run("equivalence_with_PERCENTILE", func(t *testing.T) {
+		for q := 0; q <= 4; q++ {
+			qf := evalCompile(t, "QUARTILE(A1:A8,"+string(rune('0'+q))+")")
+			qv, err := Eval(qf, stdResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval QUARTILE q=%d: %v", q, err)
+			}
+
+			pctStr := []string{"0", "0.25", "0.5", "0.75", "1"}[q]
+			pf := evalCompile(t, "PERCENTILE(A1:A8,"+pctStr+")")
+			pv, err := Eval(pf, stdResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval PERCENTILE q=%d: %v", q, err)
+			}
+
+			if math.Abs(qv.Num-pv.Num) > 1e-9 {
+				t.Errorf("QUARTILE(q=%d)=%g != PERCENTILE(k=%s)=%g", q, qv.Num, pctStr, pv.Num)
+			}
+		}
+	})
+
+	// Wrong number of arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "QUARTILE(A1:A8)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
 }

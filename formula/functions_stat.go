@@ -27,6 +27,7 @@ func init() {
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
+	Register("QUARTILE", NoCtx(fnQUARTILE))
 	Register("RANK", NoCtx(fnRANK))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
@@ -835,6 +836,21 @@ func fnPERCENTILE(args []Value) (Value, error) {
 	}
 	result := nums[intPart] + frac*(nums[intPart+1]-nums[intPart])
 	return NumberVal(result), nil
+}
+
+func fnQUARTILE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	q, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	q = math.Trunc(q)
+	if q < 0 || q > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return fnPERCENTILE([]Value{args[0], NumberVal(q * 0.25)})
 }
 
 func fnRANK(args []Value) (Value, error) {
