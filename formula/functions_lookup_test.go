@@ -728,6 +728,103 @@ func TestINDIRECTDynamic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// INDIRECT R1C1-style tests
+// ---------------------------------------------------------------------------
+
+func TestINDIRECT_R1C1_SingleCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Test"),
+			{Col: 3, Row: 5}: NumberVal(99),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// R1C1 means row 1, col 1 = A1
+	cf := evalCompile(t, `INDIRECT("R1C1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "Test" {
+		t.Errorf(`INDIRECT("R1C1",FALSE): got %v, want "Test"`, got)
+	}
+
+	// R5C3 means row 5, col 3 = C5
+	cf = evalCompile(t, `INDIRECT("R5C3",FALSE)`)
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 99 {
+		t.Errorf(`INDIRECT("R5C3",FALSE): got %v, want 99`, got)
+	}
+}
+
+func TestINDIRECT_R1C1_Range(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// R1C1:R3C1 = A1:A3
+	cf := evalCompile(t, `INDIRECT("R1C1:R3C1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf(`INDIRECT("R1C1:R3C1",FALSE): expected array, got %v`, got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf(`INDIRECT("R1C1:R3C1",FALSE): expected 3 rows, got %d`, len(got.Array))
+	}
+	for i, want := range []float64{10, 20, 30} {
+		if got.Array[i][0].Num != want {
+			t.Errorf(`INDIRECT("R1C1:R3C1",FALSE)[%d]: got %g, want %g`, i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestINDIRECT_R1C1_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(42),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// lowercase r1c1 should also work
+	cf := evalCompile(t, `INDIRECT("r1c1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf(`INDIRECT("r1c1",FALSE): got %v, want 42`, got)
+	}
+}
+
+func TestINDIRECT_R1C1_Invalid(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// Invalid R1C1 reference should return #REF!
+	cf := evalCompile(t, `INDIRECT("RXCY",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf(`INDIRECT("RXCY",FALSE): got %v, want error`, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TRANSPOSE tests
 // ---------------------------------------------------------------------------
 
