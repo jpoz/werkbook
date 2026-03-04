@@ -276,3 +276,58 @@ func TestXIRR_Basic(t *testing.T) {
 	}
 	assertClose(t, "XIRR basic", v, 0.3734)
 }
+
+func TestXIRR_DateStrings(t *testing.T) {
+	// XIRR with date strings instead of serial numbers (fa.xlsx scenario).
+	// Cash flows: -245000, 8196.57, 18829.92, 27082.48, 19123.73, 51711
+	// Dates: 10/17/2017, 04/29/2022, 08/02/2024, 03/31/2025, 07/14/2025, 03/04/2026
+	// Excel: ~-0.08442739386111497
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-245000), NumberVal(8196.57), NumberVal(18829.92), NumberVal(27082.48), NumberVal(19123.73), NumberVal(51711)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("10/17/2017"), StringVal("04/29/2022"), StringVal("08/02/2024"), StringVal("03/31/2025"), StringVal("07/14/2025"), StringVal("03/04/2026")},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(-0.01)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR date strings: expected number, got type %v (str=%q)", v.Type, v.Str)
+	}
+	if math.Abs(v.Num-(-0.08442739386111497)) > 0.001 {
+		t.Errorf("XIRR date strings: got %f, want ~-0.0844", v.Num)
+	}
+}
+
+func TestXIRR_NegativeRate(t *testing.T) {
+	// XIRR with guess parameter and negative expected rate.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-245000), NumberVal(8196.57), NumberVal(18829.92), NumberVal(27082.48), NumberVal(19123.73), NumberVal(51711)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(43025), NumberVal(44680), NumberVal(45505), NumberVal(45747), NumberVal(45852), NumberVal(46080)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(-0.01)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR negative rate: expected number, got type %v (str=%q)", v.Type, v.Str)
+	}
+	if v.Num >= 0 {
+		t.Errorf("XIRR negative rate: expected negative rate, got %f", v.Num)
+	}
+}
