@@ -100,6 +100,34 @@ func formatExcelNumber(n float64, format string) string {
 	return formatNumberSection(n, section)
 }
 
+// formatTextSection formats a text value using the text section (4th section)
+// of an Excel format string. The '@' placeholder is replaced with the text value.
+func formatTextSection(text string, section string) string {
+	if section == "" {
+		return text
+	}
+	var result strings.Builder
+	for i := 0; i < len(section); i++ {
+		ch := section[i]
+		switch {
+		case ch == '@':
+			result.WriteString(text)
+		case ch == '"':
+			i++
+			for i < len(section) && section[i] != '"' {
+				result.WriteByte(section[i])
+				i++
+			}
+		case ch == '\\' && i+1 < len(section):
+			i++
+			result.WriteByte(section[i])
+		default:
+			result.WriteByte(ch)
+		}
+	}
+	return result.String()
+}
+
 // formatGeneral returns the "General" format representation.
 func formatGeneral(n float64) string {
 	if n == math.Trunc(n) && math.Abs(n) < 1e15 {
@@ -830,7 +858,7 @@ func formatNumberSection(n float64, format string) string {
 	tokens := tokenizeNumberFormat(format)
 
 	// Determine format properties.
-	hasPercent := false
+	percentCount := 0
 	hasScientific := false
 	hasCommaGrouping := false
 	sciIdx := -1
@@ -838,7 +866,7 @@ func formatNumberSection(n float64, format string) string {
 	for i, tok := range tokens {
 		switch tok.kind {
 		case tokPercent:
-			hasPercent = true
+			percentCount++
 		case tokExponent:
 			hasScientific = true
 			sciIdx = i
@@ -848,8 +876,8 @@ func formatNumberSection(n float64, format string) string {
 		}
 	}
 
-	// Apply percentage.
-	if hasPercent {
+	// Apply percentage: each % multiplies by 100.
+	for pc := 0; pc < percentCount; pc++ {
 		n *= 100
 	}
 

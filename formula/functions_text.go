@@ -235,11 +235,38 @@ func fnTEXT(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	format := ValueToString(args[1])
+	v := args[0]
+
+	// Check if the format has a text section (4th section).
+	sections := splitFormatSections(format)
+
+	// For non-numeric string values, use the text section if available.
+	if v.Type == ValueString && v.Str != "" {
+		n, e := CoerceNum(v)
+		if e != nil {
+			// Can't coerce to number — use text section if available.
+			if len(sections) >= 4 {
+				return StringVal(formatTextSection(v.Str, sections[3])), nil
+			}
+			return *e, nil
+		}
+		return StringVal(formatExcelNumber(n, format)), nil
+	}
+
+	// Booleans with a 4-section format use the text section as "TRUE"/"FALSE".
+	if v.Type == ValueBool && len(sections) >= 4 {
+		text := "TRUE"
+		if !v.Bool {
+			text = "FALSE"
+		}
+		return StringVal(formatTextSection(text, sections[3])), nil
+	}
+
+	n, e := CoerceNum(v)
 	if e != nil {
 		return *e, nil
 	}
-	format := ValueToString(args[1])
 	return StringVal(formatExcelNumber(n, format)), nil
 }
 
