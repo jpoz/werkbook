@@ -40,6 +40,21 @@ func fnIF(args []Value) (Value, error) {
 	if args[0].Type == ValueError {
 		return args[0], nil
 	}
+	// Excel's IF requires a numeric or boolean condition.
+	// Strings that can be coerced to numbers are allowed; others cause #VALUE!.
+	if args[0].Type == ValueString {
+		n, e := CoerceNum(args[0])
+		if e != nil {
+			return *e, nil
+		}
+		if n != 0 {
+			return args[1], nil
+		}
+		if len(args) == 3 {
+			return args[2], nil
+		}
+		return BoolVal(false), nil
+	}
 	if IsTruthy(args[0]) {
 		return args[1], nil
 	}

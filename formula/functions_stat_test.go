@@ -43,22 +43,62 @@ func TestLargeSmall(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCountBlank(t *testing.T) {
-	resolver := &mockResolver{
-		cells: map[CellAddr]Value{
-			{Col: 1, Row: 1}: NumberVal(1),
-			// A2 is empty
-			{Col: 1, Row: 3}: NumberVal(3),
-		},
-	}
+	t.Run("empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				// A2 is empty
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+		}
 
-	cf := evalCompile(t, "COUNTBLANK(A1:A3)")
-	got, err := Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
-	}
-	if got.Type != ValueNumber || got.Num != 1 {
-		t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
-	}
+		cf := evalCompile(t, "COUNTBLANK(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
+		}
+	})
+
+	t.Run("empty string counts as blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				// A2 is empty (missing)
+				{Col: 1, Row: 3}: StringVal(""),    // empty string = blank
+				{Col: 1, Row: 4}: StringVal("hello"),
+				{Col: 1, Row: 5}: NumberVal(0),      // zero is not blank
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("COUNTBLANK: got %g, want 2", got.Num)
+		}
+	})
+
+	t.Run("single empty string cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +121,52 @@ func TestSUMIF(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 50 {
 		t.Errorf("SUMIF >15: got %g, want 50", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUNT – boolean handling
+// ---------------------------------------------------------------------------
+
+func TestCOUNTBooleanDirectArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	// Direct boolean args should be counted (Excel behavior).
+	cf := evalCompile(t, "COUNT(TRUE,FALSE,10,20)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("COUNT(TRUE,FALSE,10,20): got %g, want 4", got.Num)
+	}
+
+	cf = evalCompile(t, "COUNT(TRUE)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNT(TRUE): got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTBooleanInRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+		},
+	}
+
+	// Booleans in a range should NOT be counted.
+	cf := evalCompile(t, "COUNT(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("COUNT(A1:A2) with booleans: got %g, want 0", got.Num)
 	}
 }
 

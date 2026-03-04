@@ -73,7 +73,7 @@ var infixBP = map[string]bindingPower{
 	"-":  {6, 7},
 	"*":  {8, 9},
 	"/":  {8, 9},
-	"^":  {10, 10}, // right-associative
+	"^":  {10, 11}, // left-associative (matches Excel)
 }
 
 const (
@@ -144,11 +144,36 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					}
 					fromRef = &CellRef{Col: 0, Row: fromRow}
 					toRef = &CellRef{Col: 0, Row: toRow}
-				} else if !fromOK {
-					return nil, fmt.Errorf("left side of ':' must be a cell reference, got %s", left)
 				} else {
+					// If one side is already an error (e.g. from a cross-sheet
+					// range that produced #VALUE!), propagate it instead of
+					// returning a parse error. This allows COUNT(#VALUE!) to
+					// return 0 instead of failing the entire formula.
+					if _, leftIsErr := left.(*ErrorLit); leftIsErr {
+						for p.peek().Type == TokPercent {
+							p.advance()
+							left = &PostfixExpr{Op: "%", Operand: left}
+						}
+						continue
+					}
+					if !fromOK {
+						return nil, fmt.Errorf("left side of ':' must be a cell reference, got %s", left)
+					}
 					return nil, fmt.Errorf("right side of ':' must be a cell reference, got %s", right)
 				}
+			}
+
+			// If the right side has an explicit sheet qualifier that differs
+			// from the left side, this is a cross-sheet range which is invalid
+			// in Excel (e.g. S1:S3!A1 or Sheet1!A1:Sheet2!B5). Return #VALUE!.
+			// Note: Sheet1!A1:B5 is valid — B5 has no sheet and inherits Sheet1.
+			if toRef.Sheet != "" && toRef.Sheet != fromRef.Sheet {
+				left = &ErrorLit{Code: ErrVALUE}
+				for p.peek().Type == TokPercent {
+					p.advance()
+					left = &PostfixExpr{Op: "%", Operand: left}
+				}
+				continue
 			}
 
 			// Expand column-only references (Row==0) into full-column ranges.
@@ -262,19 +287,30 @@ func (p *Parser) parseFunc() (Node, error) {
 	}
 
 	var args []Node
-	arg, err := p.parseExpression(0)
-	if err != nil {
-		return nil, err
-	}
-	args = append(args, arg)
 
-	for p.peek().Type == TokComma {
-		p.advance()
+	// Handle first argument: may be empty (e.g. SUM(,1))
+	if p.peek().Type == TokComma {
+		args = append(args, &EmptyArg{})
+	} else {
 		arg, err := p.parseExpression(0)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, arg)
+	}
+
+	for p.peek().Type == TokComma {
+		p.advance()
+		// Handle empty argument (e.g. ADDRESS(1,1,,"Data"))
+		if p.peek().Type == TokComma || p.peek().Type == TokRParen {
+			args = append(args, &EmptyArg{})
+		} else {
+			arg, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+		}
 	}
 
 	if _, err := p.expect(TokRParen); err != nil {

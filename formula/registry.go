@@ -77,6 +77,21 @@ var arrayForcingFuncs = map[string]bool{
 	"LOGEST":     true,
 	"FREQUENCY":  true,
 	"TRANSPOSE":  true,
+	// Functions that accept range arguments and must not have them
+	// implicitly intersected to a single cell.
+	"SUMIF":      true,
+	"SUMIFS":     true,
+	"COUNTIF":    true,
+	"COUNTIFS":   true,
+	"AVERAGEIF":  true,
+	"AVERAGEIFS": true,
+	"MAXIFS":     true,
+	"MINIFS":     true,
+	"MATCH":      true,
+	"INDEX":      true,
+	"LOOKUP":     true,
+	"VLOOKUP":    true,
+	"HLOOKUP":    true,
 }
 
 // IsArrayFunc reports whether the named function forces array evaluation of

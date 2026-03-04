@@ -62,6 +62,17 @@ func ExcelSerialToTime(serial float64) time.Time {
 	return t
 }
 
+// excelSerialDateParts returns the year, month, day for an Excel serial number,
+// correctly handling serial 60 (Excel's fictional Feb 29, 1900).
+func excelSerialDateParts(serial float64) (int, time.Month, int) {
+	s := int(serial)
+	if s == 60 {
+		return 1900, time.February, 29
+	}
+	t := ExcelSerialToTime(serial)
+	return t.Year(), t.Month(), t.Day()
+}
+
 // ExcelSerialToTime1904 converts an Excel serial date number to a time.Time
 // using the 1904 date system (Mac Excel). No leap-year bug adjustment is needed.
 func ExcelSerialToTime1904(serial float64) time.Time {
@@ -120,6 +131,13 @@ func fnDATE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 
+	// Special-case: DATE(1900,2,29) should return serial 60 (Excel's fictional
+	// leap day). Go's time.Date normalizes Feb 29, 1900 to Mar 1, 1900, which
+	// would produce serial 61 via TimeToExcelSerial, so we intercept it here.
+	if y == 1900 && m == 2 && d == 29 {
+		return NumberVal(60), nil
+	}
+
 	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
 	serial := TimeToExcelSerial(t)
 	if serial < 0 || serial > MaxExcelSerial {
@@ -139,8 +157,8 @@ func fnDAY(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Day())), nil
+	_, _, day := excelSerialDateParts(n)
+	return NumberVal(float64(day)), nil
 }
 
 func fnMONTH(args []Value) (Value, error) {
@@ -154,8 +172,8 @@ func fnMONTH(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Month())), nil
+	_, month, _ := excelSerialDateParts(n)
+	return NumberVal(float64(month)), nil
 }
 
 func fnNOW(args []Value) (Value, error) {
@@ -185,8 +203,8 @@ func fnYEAR(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Year())), nil
+	year, _, _ := excelSerialDateParts(n)
+	return NumberVal(float64(year)), nil
 }
 
 func isLeapYear(year int) bool {
@@ -247,12 +265,12 @@ func fnDATEDIF(args []Value) (Value, error) {
 		}
 		return NumberVal(float64(m)), nil
 	case "YD":
-		startInEndYear := time.Date(end.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
-		days := int(end.Sub(startInEndYear).Hours() / 24)
-		if days < 0 {
-			startInEndYear = time.Date(end.Year()-1, start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
-			days = int(end.Sub(startInEndYear).Hours() / 24)
+		totalDays := int(endSerial - startSerial)
+		years := end.Year() - start.Year()
+		if end.Month() < start.Month() || (end.Month() == start.Month() && end.Day() < start.Day()) {
+			years--
 		}
+		days := totalDays - years*365
 		return NumberVal(float64(days)), nil
 	default:
 		return ErrorVal(ErrValNUM), nil
@@ -274,6 +292,17 @@ func fnDAYS(args []Value) (Value, error) {
 	return NumberVal(math.Trunc(end) - math.Trunc(start)), nil
 }
 
+// isLastDayOfFeb reports whether the given date is the last day of February.
+func isLastDayOfFeb(year, month, day int) bool {
+	if month != 2 {
+		return false
+	}
+	if isLeapYear(year) {
+		return day == 29
+	}
+	return day == 28
+}
+
 // days360Calc computes the number of days between two dates using the 30/360 convention.
 func days360Calc(sy, sm, sd, ey, em, ed int, european bool) float64 {
 	if european {
@@ -284,11 +313,22 @@ func days360Calc(sy, sm, sd, ey, em, ed int, european bool) float64 {
 			ed = 30
 		}
 	} else {
-		if sd == 31 {
+		// US (NASD) method — order of checks matters:
+		// 1. If both dates are last day of February, set D2 to 30.
+		if isLastDayOfFeb(sy, sm, sd) && isLastDayOfFeb(ey, em, ed) {
+			ed = 30
+		}
+		// 2. If start date is last day of February, set D1 to 30.
+		if isLastDayOfFeb(sy, sm, sd) {
 			sd = 30
 		}
+		// 3. If D2 is 31 and D1 is 30 or 31, set D2 to 30.
 		if ed == 31 && sd >= 30 {
 			ed = 30
+		}
+		// 4. If D1 is 31, set D1 to 30.
+		if sd == 31 {
+			sd = 30
 		}
 	}
 	return float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
@@ -377,7 +417,11 @@ func fnTIME(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	return NumberVal((hour*3600 + minute*60 + second) / 86400), nil
+	result := (hour*3600 + minute*60 + second) / 86400
+	// TIME returns only the fractional part (time of day).
+	// Values >= 1.0 wrap; e.g. TIME(25,0,0) = 0.04167 (just the 1-hour fraction).
+	result = result - math.Floor(result)
+	return NumberVal(result), nil
 }
 
 func fnWEEKDAY(args []Value) (Value, error) {

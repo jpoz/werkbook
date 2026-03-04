@@ -3,6 +3,7 @@ package formula
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -14,7 +15,7 @@ func init() {
 	Register("CHOOSE", NoCtx(fnCHOOSE))
 	Register("CLEAN", NoCtx(fnCLEAN))
 	Register("CODE", NoCtx(fnCODE))
-	Register("CONCAT", NoCtx(fnCONCATENATE))
+	Register("CONCAT", NoCtx(fnCONCAT))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
 	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
@@ -51,6 +52,28 @@ func fnCHOOSE(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return args[i], nil
+}
+
+func fnCONCAT(args []Value) (Value, error) {
+	var b strings.Builder
+	for _, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return cell, nil
+					}
+					b.WriteString(ValueToString(cell))
+				}
+			}
+		} else {
+			b.WriteString(ValueToString(arg))
+		}
+	}
+	return StringVal(b.String()), nil
 }
 
 func fnCONCATENATE(args []Value) (Value, error) {
@@ -253,7 +276,8 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	// Check if the format has a text section (4th section).
 	sections := splitFormatSections(format)
 
-	// For non-numeric string values, use the text section if available.
+	// For non-numeric string values, use the text section if available,
+	// or the @ placeholder in the format string.
 	if v.Type == ValueString && v.Str != "" {
 		n, e := CoerceNum(v)
 		if e != nil {
@@ -261,31 +285,47 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 			if len(sections) >= 4 {
 				return StringVal(formatTextSection(v.Str, sections[3])), nil
 			}
+			// Check if any section contains the @ text placeholder.
+			for _, sec := range sections {
+				if sectionContainsAt(sec) {
+					return StringVal(formatTextSection(v.Str, sec)), nil
+				}
+			}
 			return *e, nil
 		}
 		return StringVal(formatExcelNumber(n, format, date1904)), nil
 	}
 
-	// Booleans: "General" format preserves TRUE/FALSE text.
-	// A 4-section format uses the text section for booleans.
-	// Other numeric formats coerce TRUE→1, FALSE→0.
+	// Booleans: Excel's TEXT function returns "TRUE" or "FALSE" for numeric
+	// formats, but uses the text section (4th section) if the format has one.
 	if v.Type == ValueBool {
 		text := "TRUE"
 		if !v.Bool {
 			text = "FALSE"
 		}
-		if strings.EqualFold(format, "General") {
-			return StringVal(text), nil
-		}
 		if len(sections) >= 4 {
 			return StringVal(formatTextSection(text, sections[3])), nil
 		}
+		return StringVal(text), nil
 	}
 
 	n, e := CoerceNum(v)
 	if e != nil {
 		return *e, nil
 	}
+
+	// If no section contains any number format codes (0, #, ?, E) or
+	// date/time codes, the format is invalid for numeric values.
+	if !strings.EqualFold(format, "General") && !anyNumberFormatCodes(sections) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// "@" format with a numeric value: convert number to string using
+	// the text section (@ is the text placeholder).
+	if sectionContainsAt(format) && !strings.ContainsAny(format, "0#?") {
+		return StringVal(formatTextSection(excelNumberToString(n), format)), nil
+	}
+
 	return StringVal(formatExcelNumber(n, format, date1904)), nil
 }
 
@@ -577,12 +617,57 @@ func fnSEARCH(args []Value) (Value, error) {
 	}
 	remaining := string(runes[start:])
 
-	idx := strings.Index(remaining, findText)
-	if idx < 0 {
+	// Check if the pattern contains wildcards or tilde escapes.
+	hasSpecial := strings.ContainsAny(findText, "*?~")
+
+	if !hasSpecial {
+		idx := strings.Index(remaining, findText)
+		if idx < 0 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		runeIdx := utf8.RuneCountInString(remaining[:idx])
+		return NumberVal(float64(start + runeIdx + 1)), nil
+	}
+
+	// Convert Excel wildcard pattern to a regexp.
+	re, err := excelPatternToRegexp(findText)
+	if err != nil {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	runeIdx := utf8.RuneCountInString(remaining[:idx])
+	loc := re.FindStringIndex(remaining)
+	if loc == nil {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	runeIdx := utf8.RuneCountInString(remaining[:loc[0]])
 	return NumberVal(float64(start + runeIdx + 1)), nil
+}
+
+// excelPatternToRegexp converts an Excel SEARCH wildcard pattern to a Go regexp.
+// * matches any sequence of characters, ? matches exactly one character.
+// ~* and ~? match literal * and ? respectively. ~~ matches a literal ~.
+func excelPatternToRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	runes := []rune(pattern)
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
+		if ch == '~' && i+1 < len(runes) {
+			next := runes[i+1]
+			if next == '*' || next == '?' || next == '~' {
+				b.WriteString(regexp.QuoteMeta(string(next)))
+				i++
+				continue
+			}
+		}
+		switch ch {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(ch)))
+		}
+	}
+	return regexp.Compile(b.String())
 }
 
 func fnT(args []Value) (Value, error) {

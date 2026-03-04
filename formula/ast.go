@@ -72,6 +72,14 @@ func (n *ErrorLit) String() string {
 	return string(n.Code)
 }
 
+// EmptyArg represents an omitted function argument (e.g. the missing 3rd arg in ADDRESS(1,1,,"Data")).
+type EmptyArg struct{}
+
+func (n *EmptyArg) nodeMarker() {}
+func (n *EmptyArg) String() string {
+	return "<empty>"
+}
+
 // CellRef represents a cell reference, possibly sheet-qualified.
 type CellRef struct {
 	Sheet       string // empty if not sheet-qualified

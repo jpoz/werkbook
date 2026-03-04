@@ -548,8 +548,8 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "1E-5"},
 		{name: "general_not_sci_1e10", formula: `TEXT(10000000000, "General")`, want: "10000000000"},
 		{name: "general_negative_large", formula: `TEXT(-110000000000, "General")`, want: "-1.1E+11"},
-		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "1"},
-		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "0"},
+		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "TRUE"},
+		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "FALSE"},
 	}
 
 	for _, tt := range tests {
@@ -744,6 +744,55 @@ func TestCHOOSEEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CONCAT with range arguments
+// ---------------------------------------------------------------------------
+
+func TestCONCATRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("hello"),
+			{Col: 1, Row: 2}: StringVal("world"),
+		},
+	}
+
+	cf := evalCompile(t, `CONCAT(A1:A2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "helloworld" {
+		t.Errorf("CONCAT(A1:A2): got %q, want 'helloworld'", got.Str)
+	}
+
+	// CONCAT with a range and a scalar
+	cf2 := evalCompile(t, `CONCAT(A1:A2,"!")`)
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got2.Type != ValueString || got2.Str != "helloworld!" {
+		t.Errorf("CONCAT(A1:A2,\"!\"): got %q, want 'helloworld!'", got2.Str)
+	}
+
+	// CONCAT with numbers in range
+	resolver2 := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf3 := evalCompile(t, `CONCAT(A1:A3)`)
+	got3, err := Eval(cf3, resolver2, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got3.Type != ValueString || got3.Str != "123" {
+		t.Errorf("CONCAT(A1:A3) numbers: got %q, want '123'", got3.Str)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // CONCATENATE / CONCAT with multiple types
 // ---------------------------------------------------------------------------
 
@@ -764,6 +813,64 @@ func TestCONCATENATETypes(t *testing.T) {
 // LEN with Unicode
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SEARCH with wildcards
+// ---------------------------------------------------------------------------
+
+func TestSEARCHWildcards(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		// Basic (no wildcard)
+		{name: "basic", formula: `SEARCH("lo","hello")`, wantNum: 4},
+		{name: "case_insensitive", formula: `SEARCH("LO","hello")`, wantNum: 4},
+		// * wildcard — matches any sequence of characters
+		{name: "star_any", formula: `SEARCH("*le","Apple")`, wantNum: 1},
+		{name: "star_middle", formula: `SEARCH("A*e","Apple")`, wantNum: 1},
+		{name: "star_empty_match", formula: `SEARCH("A*p","Apple")`, wantNum: 1},
+		// ? wildcard — matches exactly one character
+		{name: "question_mark", formula: `SEARCH("A?p","Apple")`, wantNum: 1},
+		{name: "question_mid", formula: `SEARCH("?pp","Apple")`, wantNum: 1},
+		{name: "question_no_match", formula: `SEARCH("A?e","Apple")`, isErr: true},
+		// Combined wildcards
+		{name: "star_and_question", formula: `SEARCH("A?p*","Apple pie")`, wantNum: 1},
+		// Tilde escape: ~* matches literal *, ~? matches literal ?
+		{name: "tilde_star", formula: `SEARCH("~*","a*b")`, wantNum: 2},
+		{name: "tilde_question", formula: `SEARCH("~?","a?b")`, wantNum: 2},
+		{name: "tilde_tilde", formula: `SEARCH("~~","a~b")`, wantNum: 2},
+		// Start position
+		{name: "start_pos", formula: `SEARCH("l","hello world",5)`, wantNum: 10},
+		// Not found
+		{name: "not_found", formula: `SEARCH("z","hello")`, isErr: true},
+		// Empty search text matches position 1
+		{name: "empty_find", formula: `SEARCH("","hello")`, wantNum: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber || got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
+
 func TestLENUnicode(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -775,5 +882,147 @@ func TestLENUnicode(t *testing.T) {
 	// "caf\u00e9" is 4 runes
 	if got.Type != ValueNumber || got.Num != 4 {
 		t.Errorf("LEN unicode: got %g, want 4", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEXT — boolean, @, color code, and digit placeholder fixes
+// ---------------------------------------------------------------------------
+
+func TestTEXTBooleanAlwaysText(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "true_zero_fmt", formula: `TEXT(TRUE,"0")`, want: "TRUE"},
+		{name: "false_zero_fmt", formula: `TEXT(FALSE,"0")`, want: "FALSE"},
+		{name: "true_general", formula: `TEXT(TRUE,"General")`, want: "TRUE"},
+		{name: "false_general", formula: `TEXT(FALSE,"General")`, want: "FALSE"},
+		{name: "true_decimal", formula: `TEXT(TRUE,"0.00")`, want: "TRUE"},
+		{name: "false_decimal", formula: `TEXT(FALSE,"0.00")`, want: "FALSE"},
+		{name: "true_percent", formula: `TEXT(TRUE,"0%")`, want: "TRUE"},
+		{name: "false_percent", formula: `TEXT(FALSE,"0%")`, want: "FALSE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTAtFormat(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "at_format", formula: `TEXT("hello","@")`, want: "hello"},
+		{name: "at_with_prefix", formula: `TEXT("world","@ rocks")`, want: "world rocks"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTColorCodes(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "red_positive", formula: `TEXT(5,"[Red]0.00")`, want: "5.00"},
+		{name: "red_negative", formula: `TEXT(-5,"[Red]0.00")`, want: "-5.00"},
+		{name: "blue_integer", formula: `TEXT(42,"[Blue]0")`, want: "42"},
+		{name: "green_percent", formula: `TEXT(0.5,"[Green]0%")`, want: "50%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestTEXTNoFormatCodesReturnsVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "pos_neg_zero_pos", formula: `TEXT(42,"pos;neg;zero")`},
+		{name: "pos_neg_zero_neg", formula: `TEXT(-42,"pos;neg;zero")`},
+		{name: "pos_neg_zero_zero", formula: `TEXT(0,"pos;neg;zero")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Errorf("Eval(%q) = %v, want #VALUE!", tt.formula, got)
+			}
+		})
+	}
+}
+
+func TestTEXTDigitPlaceholders(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "phone_format", formula: `TEXT(5551234567,"(###) ###-####")`, want: "(555) 123-4567"},
+		{name: "ssn_format", formula: `TEXT(123456789,"000-00-0000")`, want: "123-45-6789"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
 	}
 }

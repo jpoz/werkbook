@@ -89,7 +89,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			// Implicit intersection: when a full-column or full-row range is
 			// used in a non-array formula, reduce to the single cell at the
 			// formula's own row/column rather than loading the entire range.
-			if ctx != nil && !ctx.IsArrayFormula {
+			// Skip implicit intersection when inside an array-forcing function
+			// (arrayCtxDepth > 0), since those functions need the full range.
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
 				isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
 				isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
 				if isFullCol && addr.FromCol == addr.ToCol && ctx.CurrentRow >= addr.FromRow {
@@ -266,11 +268,21 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			if ae != nil {
-				push(*ae)
+			if a.Type == ValueArray {
+				push(LiftUnary(a, func(v Value) Value {
+					n, e := CoerceNum(v)
+					if e != nil {
+						return *e
+					}
+					return NumberVal(-n)
+				}))
 			} else {
-				push(NumberVal(-an))
+				an, ae := CoerceNum(a)
+				if ae != nil {
+					push(*ae)
+				} else {
+					push(NumberVal(-an))
+				}
 			}
 
 		case OpPercent:
@@ -294,7 +306,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(StringVal(ValueToString(a) + ValueToString(b)))
+			// Error propagation: if either operand is an error, return that error.
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(StringVal(ValueToString(a) + ValueToString(b)))
+			}
 
 		case OpEq:
 			b, err := pop()
@@ -428,10 +447,12 @@ func CoerceNum(v Value) (float64, *Value) {
 		}
 		return 0, nil
 	case ValueString:
-		if v.Str == "" {
-			return 0, nil
+		trimmed := strings.TrimSpace(v.Str)
+		if trimmed == "" {
+			e := ErrorVal(ErrValVALUE)
+			return 0, &e
 		}
-		n, err := strconv.ParseFloat(v.Str, 64)
+		n, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
 			e := ErrorVal(ErrValVALUE)
 			return 0, &e
@@ -445,10 +466,38 @@ func CoerceNum(v Value) (float64, *Value) {
 	}
 }
 
+// excelNumberToString formats a number the way Excel does for concatenation:
+// - At most 15 significant digits
+// - Scientific notation (capital E with +/- sign) for abs >= 1e15 or abs < 1e-4 (nonzero)
+func excelNumberToString(f float64) string {
+	if f == 0 {
+		return "0"
+	}
+
+	abs := math.Abs(f)
+
+	// Use scientific notation for very large or very small numbers.
+	if abs >= 1e15 || (abs < 1e-4 && abs > 0) {
+		s := strconv.FormatFloat(f, 'E', -1, 64)
+		// FormatFloat 'E' already uses capital E and +/- sign.
+		// Trim to 15 significant digits if needed.
+		// Re-format with 'G' precision 15 then convert to E notation.
+		s = strconv.FormatFloat(f, 'G', 15, 64)
+		// Go's 'G' uses 'E' notation automatically for large/small, with capital E.
+		// But we need to ensure the format matches Excel: capital E with explicit sign.
+		// 'G' may output e.g. "1E+15" or "1E-06" which is what we want.
+		return s
+	}
+
+	// For normal range numbers, use up to 15 significant digits.
+	s := strconv.FormatFloat(f, 'G', 15, 64)
+	return s
+}
+
 func ValueToString(v Value) string {
 	switch v.Type {
 	case ValueNumber:
-		return strconv.FormatFloat(v.Num, 'f', -1, 64)
+		return excelNumberToString(v.Num)
 	case ValueString:
 		return v.Str
 	case ValueBool:
@@ -538,6 +587,55 @@ func CompareValues(a, b Value) int {
 	return typeRank(a.Type) - typeRank(b.Type)
 }
 
+// CompareValuesExact is like CompareValues but uses bit-exact float
+// comparison (no tolerance). Used by lookup functions for exact-match
+// mode, where Excel does not apply the ≈1e-15 tolerance that the =
+// operator uses.
+func CompareValuesExact(a, b Value) int {
+	if a.Type == ValueEmpty && b.Type == ValueEmpty {
+		return 0
+	}
+	if a.Type == ValueEmpty {
+		switch b.Type {
+		case ValueString:
+			a = StringVal("")
+		case ValueBool:
+			a = BoolVal(false)
+		default:
+			a = NumberVal(0)
+		}
+	}
+	if b.Type == ValueEmpty {
+		switch a.Type {
+		case ValueString:
+			b = StringVal("")
+		case ValueBool:
+			b = BoolVal(false)
+		default:
+			b = NumberVal(0)
+		}
+	}
+
+	if a.Type == b.Type {
+		switch a.Type {
+		case ValueNumber:
+			return cmpFloatExact(a.Num, b.Num)
+		case ValueString:
+			return strings.Compare(strings.ToLower(a.Str), strings.ToLower(b.Str))
+		case ValueBool:
+			if a.Bool == b.Bool {
+				return 0
+			}
+			if !a.Bool {
+				return -1
+			}
+			return 1
+		}
+	}
+
+	return typeRank(a.Type) - typeRank(b.Type)
+}
+
 func typeRank(t ValueType) int {
 	switch t {
 	case ValueError:
@@ -553,7 +651,51 @@ func typeRank(t ValueType) int {
 	}
 }
 
+// roundTo15SigFigs rounds a float64 to 15 significant decimal digits,
+// matching Excel's internal precision model.
+func roundTo15SigFigs(f float64) float64 {
+	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return f
+	}
+	a := math.Abs(f)
+	if a > 1e292 || a < 1e-292 {
+		return f // avoid overflow in the computation
+	}
+	d := math.Ceil(math.Log10(a))
+	pow := math.Pow(10, 15-d)
+	rounded := math.Round(a*pow) / pow
+	if f < 0 {
+		return -rounded
+	}
+	return rounded
+}
+
+// roundArithResult rounds a numeric Value to 15 significant digits.
+func roundArithResult(v Value) Value {
+	if v.Type == ValueNumber {
+		return NumberVal(roundTo15SigFigs(v.Num))
+	}
+	return v
+}
+
 func cmpFloat(a, b float64) int {
+	// Excel compares numbers after rounding both to 15 significant digits.
+	// This makes (1/3*3)=1 evaluate to TRUE while (1-1e-15)=1 is FALSE.
+	ra := roundTo15SigFigs(a)
+	rb := roundTo15SigFigs(b)
+	if ra < rb {
+		return -1
+	}
+	if ra > rb {
+		return 1
+	}
+	return 0
+}
+
+// cmpFloatExact compares two float64 values without tolerance.
+// Used by lookup functions (MATCH, VLOOKUP, etc.) for exact-match mode,
+// where Excel requires bit-exact equality.
+func cmpFloatExact(a, b float64) int {
 	if a < b {
 		return -1
 	}

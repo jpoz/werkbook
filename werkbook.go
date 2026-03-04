@@ -189,7 +189,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				if err != nil {
 					continue
 				}
-				v := cellDataToValue(cd)
+				v := cellDataToValue(cd, parsedStyles)
 				r := s.ensureRow(row)
 				c := r.ensureCell(col)
 				c.value = v
@@ -244,13 +244,29 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 	return f
 }
 
-func cellDataToValue(cd ooxml.CellData) Value {
+// isTextFormat reports whether the cell's number format indicates a text cell.
+// Text format is either the built-in format ID 49 or a custom format of "@".
+func isTextFormat(cd ooxml.CellData, styles []*Style) bool {
+	if cd.StyleIdx > 0 && cd.StyleIdx < len(styles) && styles[cd.StyleIdx] != nil {
+		s := styles[cd.StyleIdx]
+		if s.NumFmtID == 49 || s.NumFmt == "@" {
+			return true
+		}
+	}
+	return false
+}
+
+func cellDataToValue(cd ooxml.CellData, styles []*Style) Value {
 	switch cd.Type {
 	case "s":
-		// Shared-string cells: some writers (e.g. calamine) store numbers in
-		// the shared string table. If the resolved string is a valid float64,
-		// treat it as a number so that formulas referencing the cell see the
-		// correct type (matching Excel behaviour).
+		// Shared-string cells whose number format is text (format "@" or ID 49)
+		// are genuinely text — preserve as string even if the content looks numeric.
+		// Otherwise, some third-party libraries store numbers as shared strings,
+		// so coerce numeric-looking values back to numbers.
+		if isTextFormat(cd, styles) {
+			return Value{Type: TypeString, String: cd.Value}
+		}
+		// Try to coerce to number.
 		if n, err := strconv.ParseFloat(cd.Value, 64); err == nil {
 			return Value{Type: TypeNumber, Number: n}
 		}

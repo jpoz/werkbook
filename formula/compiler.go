@@ -103,6 +103,9 @@ func (c *compiler) compileNode(node Node) error {
 		}
 		c.emit(OpPushBool, v)
 
+	case *EmptyArg:
+		c.emit(OpPushEmpty, 0)
+
 	case *ErrorLit:
 		c.emit(OpPushError, uint32(errorCodeFromAST(n.Code)))
 

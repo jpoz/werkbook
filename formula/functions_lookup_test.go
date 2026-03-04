@@ -457,6 +457,135 @@ func TestMATCHDescending(t *testing.T) {
 	}
 }
 
+func TestMATCHAscendingSkipsEmpty(t *testing.T) {
+	// Simulate a whole-column ref where data is sparse: rows 1-3 have
+	// sorted ascending values, rows 4-8 are empty. MATCH(matchType=1)
+	// must skip the trailing empty cells rather than treating them as 0.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			// rows 4-8 are empty (not in map)
+		},
+	}
+
+	// MATCH(20,A1:A8,1) should find row 2, not be confused by trailing empties
+	cf := evalCompile(t, "MATCH(20,A1:A8,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH asc skip empty: got %v, want 2", got)
+	}
+
+	// MATCH(25,A1:A8,1) should find row 2 (last <= 25)
+	cf = evalCompile(t, "MATCH(25,A1:A8,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH asc between skip empty: got %v, want 2", got)
+	}
+}
+
+func TestMATCHDescendingSkipsEmpty(t *testing.T) {
+	// Descending data with trailing empties.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(10),
+			// rows 4-6 are empty
+		},
+	}
+
+	cf := evalCompile(t, "MATCH(20,A1:A6,-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH desc skip empty: got %v, want 2", got)
+	}
+}
+
+func TestMATCHAscendingWithLeadingEmpty(t *testing.T) {
+	// Leading empty row (e.g. header row is empty in lookup column),
+	// followed by sorted data. MATCH should skip the empty and find the value.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// row 1 is empty
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(20),
+			{Col: 1, Row: 4}: NumberVal(30),
+		},
+	}
+
+	cf := evalCompile(t, "MATCH(20,A1:A6,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("MATCH asc leading empty: got %v, want 3", got)
+	}
+}
+
+func TestMATCHDefaultUnsortedStringsWithEmpty(t *testing.T) {
+	// Real-world scenario from fa.xlsx: MATCH(A10,lfy!Q:Q) where Q:Q has
+	// a header row, then unsorted string names, with leading empties.
+	// match_type defaults to 1. The implementation must still find an
+	// exact match among the non-empty values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// rows 1-2 empty
+			{Col: 1, Row: 3}: StringVal("LPs name"),          // header
+			{Col: 1, Row: 4}: StringVal("Brian Schechter"),    // target
+			{Col: 1, Row: 5}: StringVal("Foundation Capital"), // after target
+			// rows 6-10 empty
+		},
+	}
+
+	// Default match_type=1, lookup="Brian Schechter"
+	cf := evalCompile(t, `MATCH("Brian Schechter",A1:A10)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("MATCH default unsorted strings: got %v, want 4", got)
+	}
+}
+
+func TestINDEXMATCHWholeColumnPattern(t *testing.T) {
+	// Simulates INDEX(D:D,MATCH(val,Q:Q)) with sparse data — the
+	// pattern that was failing in the fa.xlsx audit.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Q column (col 17) — lookup array
+			{Col: 17, Row: 3}: StringVal("LPs name"),
+			{Col: 17, Row: 4}: StringVal("Brian Schechter"),
+			{Col: 17, Row: 5}: StringVal("Foundation Capital"),
+			// D column (col 4) — result array
+			{Col: 4, Row: 3}: StringVal("Header"),
+			{Col: 4, Row: 4}: NumberVal(1055),
+			{Col: 4, Row: 5}: NumberVal(2000),
+		},
+	}
+
+	cf := evalCompile(t, `INDEX(D1:D10,MATCH("Brian Schechter",Q1:Q10))`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1055 {
+		t.Errorf("INDEX/MATCH whole-column pattern: got %v, want 1055", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // INDEX edge cases
 // ---------------------------------------------------------------------------
@@ -724,6 +853,103 @@ func TestINDIRECTDynamic(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 55 {
 		t.Errorf(`INDIRECT("A"&"1"): got %v, want 55`, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// INDIRECT R1C1-style tests
+// ---------------------------------------------------------------------------
+
+func TestINDIRECT_R1C1_SingleCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Test"),
+			{Col: 3, Row: 5}: NumberVal(99),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// R1C1 means row 1, col 1 = A1
+	cf := evalCompile(t, `INDIRECT("R1C1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "Test" {
+		t.Errorf(`INDIRECT("R1C1",FALSE): got %v, want "Test"`, got)
+	}
+
+	// R5C3 means row 5, col 3 = C5
+	cf = evalCompile(t, `INDIRECT("R5C3",FALSE)`)
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 99 {
+		t.Errorf(`INDIRECT("R5C3",FALSE): got %v, want 99`, got)
+	}
+}
+
+func TestINDIRECT_R1C1_Range(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// R1C1:R3C1 = A1:A3
+	cf := evalCompile(t, `INDIRECT("R1C1:R3C1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf(`INDIRECT("R1C1:R3C1",FALSE): expected array, got %v`, got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf(`INDIRECT("R1C1:R3C1",FALSE): expected 3 rows, got %d`, len(got.Array))
+	}
+	for i, want := range []float64{10, 20, 30} {
+		if got.Array[i][0].Num != want {
+			t.Errorf(`INDIRECT("R1C1:R3C1",FALSE)[%d]: got %g, want %g`, i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestINDIRECT_R1C1_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(42),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// lowercase r1c1 should also work
+	cf := evalCompile(t, `INDIRECT("r1c1",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf(`INDIRECT("r1c1",FALSE): got %v, want 42`, got)
+	}
+}
+
+func TestINDIRECT_R1C1_Invalid(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	// Invalid R1C1 reference should return #REF!
+	cf := evalCompile(t, `INDIRECT("RXCY",FALSE)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf(`INDIRECT("RXCY",FALSE): got %v, want error`, got)
 	}
 }
 
@@ -1218,5 +1444,64 @@ func TestTRANSPOSE_SquareMatrix(t *testing.T) {
 				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, w)
 			}
 		}
+	}
+}
+
+func TestXLOOKUP_WildcardMode(t *testing.T) {
+	// Data layout: D2:D4 = lookup values, E2:E4 = return values
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 2}: StringVal("Banana Split"),
+			{Col: 4, Row: 3}: StringVal("Apple Pie"),
+			{Col: 4, Row: 4}: StringVal("Cherry Tart"),
+			{Col: 5, Row: 2}: StringVal("BS"),
+			{Col: 5, Row: 3}: StringVal("AP"),
+			{Col: 5, Row: 4}: StringVal("CT"),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{
+			name:    "wildcard star prefix",
+			formula: `XLOOKUP("*Split",D2:D4,E2:E4,"N/A",2)`,
+			want:    "BS",
+		},
+		{
+			name:    "wildcard star suffix",
+			formula: `XLOOKUP("Cherry*",D2:D4,E2:E4,"N/A",2)`,
+			want:    "CT",
+		},
+		{
+			name:    "wildcard question mark",
+			formula: `XLOOKUP("Apple Pi?",D2:D4,E2:E4,"N/A",2)`,
+			want:    "AP",
+		},
+		{
+			name:    "wildcard no match returns not_found",
+			formula: `XLOOKUP("*Mango*",D2:D4,E2:E4,"N/A",2)`,
+			want:    "N/A",
+		},
+		{
+			name:    "wildcard case insensitive",
+			formula: `XLOOKUP("*split",D2:D4,E2:E4,"N/A",2)`,
+			want:    "BS",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("got %v (type %d), want string %q", got, got.Type, tt.want)
+			}
+		})
 	}
 }
