@@ -274,6 +274,17 @@ func fnDAYS(args []Value) (Value, error) {
 	return NumberVal(math.Trunc(end) - math.Trunc(start)), nil
 }
 
+// isLastDayOfFeb reports whether the given date is the last day of February.
+func isLastDayOfFeb(year, month, day int) bool {
+	if month != 2 {
+		return false
+	}
+	if isLeapYear(year) {
+		return day == 29
+	}
+	return day == 28
+}
+
 // days360Calc computes the number of days between two dates using the 30/360 convention.
 func days360Calc(sy, sm, sd, ey, em, ed int, european bool) float64 {
 	if european {
@@ -284,11 +295,22 @@ func days360Calc(sy, sm, sd, ey, em, ed int, european bool) float64 {
 			ed = 30
 		}
 	} else {
-		if sd == 31 {
+		// US (NASD) method — order of checks matters:
+		// 1. If both dates are last day of February, set D2 to 30.
+		if isLastDayOfFeb(sy, sm, sd) && isLastDayOfFeb(ey, em, ed) {
+			ed = 30
+		}
+		// 2. If start date is last day of February, set D1 to 30.
+		if isLastDayOfFeb(sy, sm, sd) {
 			sd = 30
 		}
+		// 3. If D2 is 31 and D1 is 30 or 31, set D2 to 30.
 		if ed == 31 && sd >= 30 {
 			ed = 30
+		}
+		// 4. If D1 is 31, set D1 to 30.
+		if sd == 31 {
+			sd = 30
 		}
 	}
 	return float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))

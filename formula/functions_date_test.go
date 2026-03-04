@@ -130,3 +130,53 @@ func TestNOWTODAY(t *testing.T) {
 		t.Errorf("TODAY() = %g, expected integer (no fractional time)", got.Num)
 	}
 }
+
+func TestDAYS360(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic US method: Jan 1 to Feb 1 = 30 days
+		{"us_jan1_feb1", "DAYS360(DATE(2025,1,1),DATE(2025,2,1),FALSE)", 30},
+		// US method: Feb 28 (last day of Feb, non-leap) to Mar 31
+		// Feb 28 → D1=30 (last-of-Feb rule), Mar 31 → D2=30 (D2==31 && D1>=30)
+		// Result: (3-2)*30 + (30-30) = 30
+		{"us_feb28_mar31", "DAYS360(45716,45747,FALSE)", 30},
+		// US method: Jan 31 to Mar 31
+		// Jan 31 → D1=30, Mar 31 → D2=30 (D2==31 && D1>=30)
+		// Result: (3-1)*30 + (30-30) = 60
+		{"us_jan31_mar31", "DAYS360(DATE(2025,1,31),DATE(2025,3,31),FALSE)", 60},
+		// US method: both dates last day of Feb (leap year 2024)
+		// Feb 29 2024 → D1=30, Feb 29 2024 → D2=30 (both last-of-Feb)
+		// Result: 0
+		{"us_both_feb_leap", "DAYS360(DATE(2024,2,29),DATE(2024,2,29),FALSE)", 0},
+		// US method: Feb 29 (leap) to Mar 31
+		// Feb 29 → D1=30, Mar 31 → D2=30
+		// Result: (3-2)*30 + (30-30) = 30
+		{"us_feb29_mar31_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,31),FALSE)", 30},
+		// European method: same dates
+		// European: D1=28, D2=31→30. (3-2)*30 + (30-28) = 32
+		{"eu_feb28_mar31", "DAYS360(45716,45747,TRUE)", 32},
+		// US method: regular dates, no adjustments needed
+		{"us_jan15_mar15", "DAYS360(DATE(2025,1,15),DATE(2025,3,15),FALSE)", 60},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
