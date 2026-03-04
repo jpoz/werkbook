@@ -42,36 +42,55 @@ func TestToValue(t *testing.T) {
 }
 
 func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
+	// Styles slice: index 0 = default, index 1 = text format (@).
+	textStyle := &Style{NumFmtID: 49}
+	styles := []*Style{nil, textStyle}
+
 	tests := []struct {
 		name     string
 		cd       ooxml.CellData
+		styles   []*Style
 		wantType ValueType
 		wantNum  float64
 		wantStr  string
 	}{
 		{
-			name:     "shared string with large negative integer stays string",
+			name:     "shared string numeric coerced to number",
 			cd:       ooxml.CellData{Type: "s", Value: "-8086931554011838357"},
-			wantType: TypeString,
-			wantStr:  "-8086931554011838357",
+			wantType: TypeNumber,
+			wantNum:  -8086931554011838357,
 		},
 		{
-			name:     "shared string with positive integer stays string",
+			name:     "shared string positive integer coerced to number",
 			cd:       ooxml.CellData{Type: "s", Value: "42"},
-			wantType: TypeString,
-			wantStr:  "42",
+			wantType: TypeNumber,
+			wantNum:  42,
 		},
 		{
-			name:     "shared string with float stays string",
+			name:     "shared string float coerced to number",
 			cd:       ooxml.CellData{Type: "s", Value: "3.14"},
-			wantType: TypeString,
-			wantStr:  "3.14",
+			wantType: TypeNumber,
+			wantNum:  3.14,
 		},
 		{
 			name:     "shared string with non-numeric text",
 			cd:       ooxml.CellData{Type: "s", Value: "hello"},
 			wantType: TypeString,
 			wantStr:  "hello",
+		},
+		{
+			name:     "shared string numeric with text format stays string",
+			cd:       ooxml.CellData{Type: "s", Value: "42", StyleIdx: 1},
+			styles:   styles,
+			wantType: TypeString,
+			wantStr:  "42",
+		},
+		{
+			name:     "shared string float with text format stays string",
+			cd:       ooxml.CellData{Type: "s", Value: "3.14", StyleIdx: 1},
+			styles:   styles,
+			wantType: TypeString,
+			wantStr:  "3.14",
 		},
 		{
 			name:     "str type stays string even if numeric",
@@ -88,7 +107,7 @@ func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := cellDataToValue(tt.cd)
+			got := cellDataToValue(tt.cd, tt.styles)
 			if got.Type != tt.wantType {
 				t.Fatalf("cellDataToValue(%+v).Type = %v, want %v", tt.cd, got.Type, tt.wantType)
 			}
