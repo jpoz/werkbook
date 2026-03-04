@@ -1453,6 +1453,373 @@ func TestMIN(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// MAX comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestMAX(t *testing.T) {
+	// Helper to build a resolver with numeric values in column A.
+	numResolver := func(nums ...float64) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, n := range nums {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = NumberVal(n)
+		}
+		return m
+	}
+
+	// Helper for resolvers with arbitrary values in column A.
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("single number", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(42)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("two numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(10,20)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("multiple numbers picks largest", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(5,3,8,1,9)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 9 {
+			t.Errorf("got %v, want 9", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(7,7,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("all negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(-5,-3,-10,-1)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -1 {
+			t.Errorf("got %v, want -1", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(10,-5,3,-20,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("zero is maximum", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(-5,-10,0,-3)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("decimal numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(1.5,0.5,2.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	t.Run("large numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(1000000,2000000,500000)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2000000 {
+			t.Errorf("got %v, want 2000000", got)
+		}
+	})
+
+	t.Run("very small numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(0.001,0.002,0.0005)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.002) > 1e-15 {
+			t.Errorf("got %v, want 0.002", got)
+		}
+	})
+
+	t.Run("boolean TRUE as direct arg coerces to 1", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(TRUE,-5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// TRUE=1, so max(1,-5) = 1
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("boolean FALSE as direct arg coerces to 0", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(FALSE,-5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// FALSE=0, so max(0,-5) = 0
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("boolean TRUE and FALSE as direct args", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(TRUE,FALSE)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// TRUE=1, FALSE=0, so max = 1
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("string number as direct arg coerces", func(t *testing.T) {
+		cf := evalCompile(t, `MAX("3",10)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// "3" coerced to 3, so max(3,10) = 10
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("non-numeric string as direct arg errors", func(t *testing.T) {
+		cf := evalCompile(t, `MAX("hello",10)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("error propagation NA from range", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(10),
+			ErrorVal(ErrValNA),
+			NumberVal(5),
+		)
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("error propagation DIV0", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(10),
+			ErrorVal(ErrValDIV0),
+			NumberVal(5),
+		)
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("no args returns 0", func(t *testing.T) {
+		// MAX with empty range => no numbers found => returns 0
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("range with numbers", func(t *testing.T) {
+		resolver := numResolver(10, 20, 5, 15)
+		cf := evalCompile(t, "MAX(A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range ignores strings", func(t *testing.T) {
+		// In a range, strings are ignored (only ValueNumber counted).
+		resolver := valResolver(
+			NumberVal(10),
+			StringVal("hello"),
+			NumberVal(5),
+		)
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("range ignores booleans", func(t *testing.T) {
+		// In a range, booleans are ignored (only ValueNumber counted).
+		resolver := valResolver(
+			NumberVal(10),
+			BoolVal(true),
+			NumberVal(5),
+		)
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// TRUE is ignored in range, so max(10,5) = 10
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("range ignores empty cells", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(10),
+			EmptyVal(),
+			NumberVal(5),
+		)
+		cf := evalCompile(t, "MAX(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("range with only strings returns 0", func(t *testing.T) {
+		// All non-numeric => no numbers found => returns 0
+		resolver := valResolver(
+			StringVal("foo"),
+			StringVal("bar"),
+		)
+		cf := evalCompile(t, "MAX(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("mixed direct args and range", func(t *testing.T) {
+		resolver := numResolver(10, 20)
+		cf := evalCompile(t, "MAX(A1:A2,30)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// max(10, 20, 30) = 30
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("negative decimal", func(t *testing.T) {
+		cf := evalCompile(t, "MAX(-0.5,0.5,-1.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0.5 {
+			t.Errorf("got %v, want 0.5", got)
+		}
+	})
+
+	t.Run("Excel example from docs", func(t *testing.T) {
+		// Data: 10, 7, 9, 27, 2 => MAX = 27
+		resolver := numResolver(10, 7, 9, 27, 2)
+		cf := evalCompile(t, "MAX(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 27 {
+			t.Errorf("got %v, want 27", got)
+		}
+	})
+
+	t.Run("Excel example with 30", func(t *testing.T) {
+		// MAX(A1:A5, 30) where data is 10, 7, 9, 27, 2 => 30
+		resolver := numResolver(10, 7, 9, 27, 2)
+		cf := evalCompile(t, "MAX(A1:A5,30)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // LARGE/SMALL edge cases
 // ---------------------------------------------------------------------------
 
