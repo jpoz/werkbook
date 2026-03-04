@@ -671,8 +671,7 @@ func TestEvalValueToString(t *testing.T) {
 		{name: "empty_to_str", formula: `A4&"x"`, want: "x"},
 		{name: "string_concat", formula: `"hello"&" "&"world"`, want: "hello world"},
 		{name: "float_to_str", formula: `3.14&""`, want: "3.14"},
-		{name: "error_to_str", formula: `#N/A&""`, want: "#N/A"},
-		{name: "div0_to_str", formula: `#DIV/0!&""`, want: "#DIV/0!"},
+		// error concat cases moved to TestEvalConcatErrorPropagation
 	}
 
 	for _, tt := range tests {
@@ -690,10 +689,50 @@ func TestEvalValueToString(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// errorValueToString — exercised through concat with error literals
+// Error propagation in concat — errors must propagate, not stringify
 // ---------------------------------------------------------------------------
 
-func TestEvalErrorValueToString(t *testing.T) {
+func TestEvalConcatErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{name: "DIV0_left", formula: `#DIV/0!&""`, wantErr: ErrValDIV0},
+		{name: "NA_left", formula: `#N/A&""`, wantErr: ErrValNA},
+		{name: "NAME_left", formula: `#NAME?&""`, wantErr: ErrValNAME},
+		{name: "NULL_left", formula: `#NULL!&""`, wantErr: ErrValNULL},
+		{name: "NUM_left", formula: `#NUM!&""`, wantErr: ErrValNUM},
+		{name: "REF_left", formula: `#REF!&""`, wantErr: ErrValREF},
+		{name: "VALUE_left", formula: `#VALUE!&""`, wantErr: ErrValVALUE},
+		{name: "DIV0_right", formula: `"test"&#DIV/0!`, wantErr: ErrValDIV0},
+		{name: "DIV0_from_expr", formula: `1/0&"test"`, wantErr: ErrValDIV0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Fatalf("Eval(%q) = type %v, want error", tt.formula, got.Type)
+			}
+			if got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = error %v, want %v", tt.formula, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Number formatting in concat — Excel uses 15 significant digits
+// ---------------------------------------------------------------------------
+
+func TestEvalConcatNumberFormatting(t *testing.T) {
 	resolver := &mockResolver{}
 
 	tests := []struct {
@@ -701,13 +740,12 @@ func TestEvalErrorValueToString(t *testing.T) {
 		formula string
 		want    string
 	}{
-		{name: "DIV0", formula: `#DIV/0!&""`, want: "#DIV/0!"},
-		{name: "NA", formula: `#N/A&""`, want: "#N/A"},
-		{name: "NAME", formula: `#NAME?&""`, want: "#NAME?"},
-		{name: "NULL", formula: `#NULL!&""`, want: "#NULL!"},
-		{name: "NUM", formula: `#NUM!&""`, want: "#NUM!"},
-		{name: "REF", formula: `#REF!&""`, want: "#REF!"},
-		{name: "VALUE", formula: `#VALUE!&""`, want: "#VALUE!"},
+		{name: "one_third", formula: `1/3&""`, want: "0.333333333333333"},
+		{name: "small_number", formula: `0.000001&""`, want: "1E-06"},
+		{name: "large_number", formula: `1000000000000000&""`, want: "1E+15"},
+		{name: "normal_number", formula: `3.14&""`, want: "3.14"},
+		{name: "integer", formula: `42&""`, want: "42"},
+		{name: "zero", formula: `0&""`, want: "0"},
 	}
 
 	for _, tt := range tests {
@@ -718,7 +756,7 @@ func TestEvalErrorValueToString(t *testing.T) {
 				t.Fatalf("Eval(%q): %v", tt.formula, err)
 			}
 			if got.Type != ValueString || got.Str != tt.want {
-				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				t.Errorf("Eval(%q) = %q (type %v), want %q", tt.formula, got.Str, got.Type, tt.want)
 			}
 		})
 	}

@@ -306,7 +306,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			push(StringVal(ValueToString(a) + ValueToString(b)))
+			// Error propagation: if either operand is an error, return that error.
+			if a.Type == ValueError {
+				push(a)
+			} else if b.Type == ValueError {
+				push(b)
+			} else {
+				push(StringVal(ValueToString(a) + ValueToString(b)))
+			}
 
 		case OpEq:
 			b, err := pop()
@@ -459,10 +466,38 @@ func CoerceNum(v Value) (float64, *Value) {
 	}
 }
 
+// excelNumberToString formats a number the way Excel does for concatenation:
+// - At most 15 significant digits
+// - Scientific notation (capital E with +/- sign) for abs >= 1e15 or abs < 1e-4 (nonzero)
+func excelNumberToString(f float64) string {
+	if f == 0 {
+		return "0"
+	}
+
+	abs := math.Abs(f)
+
+	// Use scientific notation for very large or very small numbers.
+	if abs >= 1e15 || (abs < 1e-4 && abs > 0) {
+		s := strconv.FormatFloat(f, 'E', -1, 64)
+		// FormatFloat 'E' already uses capital E and +/- sign.
+		// Trim to 15 significant digits if needed.
+		// Re-format with 'G' precision 15 then convert to E notation.
+		s = strconv.FormatFloat(f, 'G', 15, 64)
+		// Go's 'G' uses 'E' notation automatically for large/small, with capital E.
+		// But we need to ensure the format matches Excel: capital E with explicit sign.
+		// 'G' may output e.g. "1E+15" or "1E-06" which is what we want.
+		return s
+	}
+
+	// For normal range numbers, use up to 15 significant digits.
+	s := strconv.FormatFloat(f, 'G', 15, 64)
+	return s
+}
+
 func ValueToString(v Value) string {
 	switch v.Type {
 	case ValueNumber:
-		return strconv.FormatFloat(v.Num, 'f', -1, 64)
+		return excelNumberToString(v.Num)
 	case ValueString:
 		return v.Str
 	case ValueBool:
