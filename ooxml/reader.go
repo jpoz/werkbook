@@ -126,8 +126,17 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		// Shared string: value is the SST index.
 		idx, err := strconv.Atoi(xc.V)
 		if err == nil && idx >= 0 && idx < len(sst) {
-			cd.Type = "s"
-			cd.Value = sst[idx]
+			str := sst[idx]
+			// Some writers store large numbers as shared strings.
+			// If the string is a valid number, treat it as numeric so
+			// formula references return a number (matching Excel).
+			if _, numErr := strconv.ParseFloat(str, 64); numErr == nil {
+				// Leave cd.Type as "" (number) so cellDataToValue parses it.
+				cd.Value = str
+			} else {
+				cd.Type = "s"
+				cd.Value = str
+			}
 		}
 	case "inlineStr":
 		cd.Type = "inlineStr"
