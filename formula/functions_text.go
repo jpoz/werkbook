@@ -296,12 +296,15 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 		return StringVal(formatExcelNumber(n, format, date1904)), nil
 	}
 
-	// Booleans: Excel's TEXT function always returns "TRUE" or "FALSE"
-	// regardless of the format string — booleans are never formatted numerically.
+	// Booleans: Excel's TEXT function returns "TRUE" or "FALSE" for numeric
+	// formats, but uses the text section (4th section) if the format has one.
 	if v.Type == ValueBool {
 		text := "TRUE"
 		if !v.Bool {
 			text = "FALSE"
+		}
+		if len(sections) >= 4 {
+			return StringVal(formatTextSection(text, sections[3])), nil
 		}
 		return StringVal(text), nil
 	}
