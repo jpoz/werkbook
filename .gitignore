@@ -27,3 +27,6 @@ go.work.sum
 .DS_Store
 
 .env
+
+# Claude
+.claude/
