@@ -1007,13 +1007,6 @@ func formatFraction(n float64, format string) string {
 	}
 	denPlaces := denomDigits
 
-	padFrac := func(s string, places int, hasQMark bool) string {
-		if !hasQMark || len(s) >= places {
-			return s
-		}
-		return strings.Repeat(" ", places-len(s)) + s
-	}
-
 	// Check if numerator or denominator have ? placeholders.
 	numHasQ := false
 	for i := numStart; i < numEnd; i++ {
@@ -1033,7 +1026,9 @@ func formatFraction(n float64, format string) string {
 	// formatWholeDigits writes the whole-part section digit-by-digit.
 	// Each digit placeholder (#, 0, ?) is matched to a digit of wholePart
 	// (right-aligned), and interleaved literals are always emitted.
-	formatWholeDigits := func(buf *strings.Builder) {
+	// When forceZero is true, the last digit position always shows '0' even
+	// for # or ? placeholders (used when the entire value is exactly zero).
+	formatWholeDigits := func(buf *strings.Builder, forceZero bool) {
 		wholeStr := strconv.Itoa(wholePart)
 		for len(wholeStr) < wholePlaces {
 			wholeStr = "0" + wholeStr
@@ -1045,6 +1040,7 @@ func formatFraction(n float64, format string) string {
 		for i := wholeStart; i < wholeEnd; i++ {
 			tok := tokens[i]
 			if isDigitTok(tok.kind) {
+				isLast := digitIdx == wholePlaces-1
 				if digitIdx == 0 && overflow > 0 {
 					// First placeholder absorbs overflow digits.
 					chunk := wholeStr[:overflow+1]
@@ -1072,13 +1068,14 @@ func formatFraction(n float64, format string) string {
 					digitIdx += overflow + 1
 				} else {
 					ch := wholeStr[overflow+digitIdx]
+					forceThis := forceZero && isLast && ch == '0'
 					switch tok.kind {
 					case tokDigitOpt:
-						if ch != '0' {
+						if ch != '0' || forceThis {
 							buf.WriteByte(ch)
 						}
 					case tokDigitSpace:
-						if ch == '0' {
+						if ch == '0' && !forceThis {
 							buf.WriteByte(' ')
 						} else {
 							buf.WriteByte(ch)
@@ -1094,49 +1091,131 @@ func formatFraction(n float64, format string) string {
 		}
 	}
 
+	// Check if numerator has any '0' (mandatory) digit placeholders.
+	numHasZero := false
+	for i := numStart; i < numEnd; i++ {
+		if tokens[i].kind == tokDigit {
+			numHasZero = true
+			break
+		}
+	}
+
+	// formatFracDigits formats a number across the digit placeholders in
+	// the token range [from, to), respecting each placeholder type.
+	// When forceZero is true, the last digit shows '0' even for # or ? placeholders.
+	formatFracDigits := func(n, from, to int, forceZero bool) string {
+		places := 0
+		for i := from; i < to; i++ {
+			if isDigitTok(tokens[i].kind) {
+				places++
+			}
+		}
+		s := strconv.Itoa(n)
+		for len(s) < places {
+			s = "0" + s
+		}
+		var buf strings.Builder
+		digitIdx := 0
+		overflow := len(s) - places
+		for i := from; i < to; i++ {
+			tok := tokens[i]
+			if isDigitTok(tok.kind) {
+				isLast := digitIdx == places-1
+				if digitIdx == 0 && overflow > 0 {
+					// First placeholder absorbs overflow digits.
+					chunk := s[:overflow+1]
+					allZero := true
+					for _, c := range chunk {
+						if c != '0' {
+							allZero = false
+							break
+						}
+					}
+					switch tok.kind {
+					case tokDigitOpt:
+						if !allZero {
+							buf.WriteString(chunk)
+						}
+					case tokDigitSpace:
+						if allZero {
+							buf.WriteString(strings.Repeat(" ", len(chunk)))
+						} else {
+							buf.WriteString(chunk)
+						}
+					default:
+						buf.WriteString(chunk)
+					}
+					digitIdx += overflow + 1
+				} else {
+					ch := s[overflow+digitIdx]
+					forceThis := forceZero && isLast && ch == '0'
+					switch tok.kind {
+					case tokDigitOpt: // #
+						if ch != '0' || forceThis {
+							buf.WriteByte(ch)
+						}
+					case tokDigitSpace: // ?
+						if ch == '0' && !forceThis {
+							buf.WriteByte(' ')
+						} else {
+							buf.WriteByte(ch)
+						}
+					default: // 0
+						buf.WriteByte(ch)
+					}
+					digitIdx++
+				}
+			} else if tok.kind == tokLiteral {
+				buf.WriteString(tok.value)
+			}
+		}
+		return buf.String()
+	}
+
 	// Build output.
 	var result strings.Builder
 	if negative {
 		result.WriteByte('-')
 	}
 
+	writeFrac := func(num int, forceNum bool) {
+		result.WriteString(formatFracDigits(num, numStart, numEnd, forceNum))
+		result.WriteString(preSlash)
+		result.WriteByte('/')
+		result.WriteString(postSlash)
+		if denomEnd > 0 {
+			result.WriteString(formatFracDigits(bestDen, denomStart, denomEnd, true))
+		} else {
+			result.WriteString(strconv.Itoa(bestDen))
+		}
+	}
+
 	if hasWhole && bestNum == 0 {
 		// Fraction is zero — show just the whole number with surrounding literals.
-		// If the format has '?' placeholders, the fraction section becomes spaces
-		// to maintain consistent width. With '#' placeholders, it's suppressed.
 		result.WriteString(prefix)
-		if wholePart == 0 {
-			// Value is exactly zero — show "0" regardless of placeholder type.
-			result.WriteString("0")
-		} else {
-			formatWholeDigits(&result)
-		}
-		if numHasQ || denHasQ {
-			// Replace middle + numerator + pre-slash + slash + post-slash + denominator with spaces.
+		formatWholeDigits(&result, true)
+		if numHasZero {
+			// Numerator has mandatory '0' digits — show the fraction with zeros.
+			result.WriteString(middle)
+			writeFrac(0, true)
+		} else if numHasQ || denHasQ {
+			// Replace middle + fraction with spaces to maintain width.
 			fracWidth := len(middle) + numPlaces + len(preSlash) + 1 + len(postSlash) + denPlaces
 			result.WriteString(strings.Repeat(" ", fracWidth))
 		}
 		result.WriteString(suffix)
 	} else if hasWhole {
 		result.WriteString(prefix)
-		formatWholeDigits(&result)
+		formatWholeDigits(&result, false)
 		if wholePart != 0 {
 			result.WriteString(middle)
 		}
-		result.WriteString(padFrac(strconv.Itoa(bestNum), numPlaces, numHasQ))
-		result.WriteString(preSlash)
-		result.WriteByte('/')
-		result.WriteString(postSlash)
-		result.WriteString(padFrac(strconv.Itoa(bestDen), denPlaces, denHasQ))
+		writeFrac(bestNum, false)
 		result.WriteString(suffix)
 	} else {
 		totalNum := wholePart*bestDen + bestNum
 		result.WriteString(prefix)
-		result.WriteString(padFrac(strconv.Itoa(totalNum), numPlaces, numHasQ))
-		result.WriteString(preSlash)
-		result.WriteByte('/')
-		result.WriteString(postSlash)
-		result.WriteString(padFrac(strconv.Itoa(bestDen), denPlaces, denHasQ))
+		writeFrac(totalNum, totalNum == 0)
 		result.WriteString(suffix)
 	}
 	return result.String()
