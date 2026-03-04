@@ -6,11 +6,27 @@ import (
 	"strconv"
 )
 
+type xlsxWorkbookPr struct {
+	Date1904 string `xml:"date1904,attr,omitempty"`
+}
+
 type xlsxWorkbook struct {
-	XMLName xml.Name   `xml:"workbook"`
-	Xmlns   string     `xml:"xmlns,attr"`
-	XmlnsR  string     `xml:"xmlns:r,attr"`
-	Sheets  xlsxSheets `xml:"sheets"`
+	XMLName      xml.Name             `xml:"workbook"`
+	Xmlns        string               `xml:"xmlns,attr"`
+	XmlnsR       string               `xml:"xmlns:r,attr"`
+	WorkbookPr   *xlsxWorkbookPr      `xml:"workbookPr,omitempty"`
+	Sheets       xlsxSheets           `xml:"sheets"`
+	DefinedNames *xlsxDefinedNames    `xml:"definedNames,omitempty"`
+}
+
+type xlsxDefinedNames struct {
+	DefinedName []xlsxDefinedName `xml:"definedName"`
+}
+
+type xlsxDefinedName struct {
+	Name         string `xml:"name,attr"`
+	LocalSheetID *int   `xml:"localSheetId,attr"`
+	Value        string `xml:",chardata"`
 }
 
 type xlsxSheets struct {
@@ -58,10 +74,20 @@ func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeToken(start.End())
 }
 
+// DefinedName represents a named range or named formula from the workbook.
+type DefinedName struct {
+	Name         string // the defined name (e.g. "OneRange")
+	Value        string // the reference or expression (e.g. "Sheet1!$A$10")
+	LocalSheetID int    // -1 for global; otherwise 0-based sheet index
+}
+
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Sheets []SheetData
-	Styles []StyleData // index 0 = default (empty)
+	Date1904     bool          // true if the workbook uses the 1904 date system (Mac Excel)
+	Sheets       []SheetData
+	Styles       []StyleData   // index 0 = default (empty)
+	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
+	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
 }
 
 // StyleData is the intermediate representation of a cell style,
@@ -93,6 +119,18 @@ type StyleData struct {
 	NumFmt   string // custom format string
 }
 
+// TableDef holds the definition of an Excel table (ListObject).
+type TableDef struct {
+	Name            string   // internal name
+	DisplayName     string   // display name (used in structured references)
+	Ref             string   // range reference, e.g. "A1:E20"
+	SheetIndex      int      // 0-based index into WorkbookData.Sheets
+	Columns         []string // column names in order
+	HeaderRowCount  int      // number of header rows (default 1)
+	TotalsRowCount  int      // number of totals rows (default 0)
+	HasActiveFilter bool     // true if table has autoFilter with active filterColumn elements
+}
+
 // ColWidthData holds the width for a range of columns.
 type ColWidthData struct {
 	Min   int     // 1-based first column
@@ -111,14 +149,16 @@ type SheetData struct {
 type RowData struct {
 	Num    int // 1-based
 	Height float64
+	Hidden bool
 	Cells  []CellData
 }
 
 // CellData holds the data for a single cell.
 type CellData struct {
-	Ref      string // e.g. "A1"
-	Type     string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
-	Value    string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
-	Formula  string // formula text (empty = no formula)
-	StyleIdx int    // index into WorkbookData.Styles; 0 = default
+	Ref            string // e.g. "A1"
+	Type           string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
+	Value          string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
+	Formula        string // formula text (empty = no formula)
+	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
+	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

@@ -79,10 +79,10 @@ var infixBP = map[string]bindingPower{
 const (
 	colonLeftBP  = 14
 	colonRightBP = 15
-	prefixRBP    = 9 // unary - and + bind tighter than * but looser than ^
+	prefixRBP    = 11 // unary - and + bind tighter than ^ (Excel convention: -2^2 = 4)
 
-	maxExcelRow = 1048576 // maximum row number in Excel
-	maxExcelCol = 16384   // maximum column number in Excel (XFD)
+	maxExcelRow = maxExcelRows // maximum row number in Excel
+	maxExcelCol = maxExcelCols // maximum column number in Excel (XFD)
 )
 
 // parseExpression is the core Pratt parsing loop.

@@ -965,6 +965,139 @@ func TestEvalLargeNumberArithmetic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CompareValues — empty cell type adaptation
+// ---------------------------------------------------------------------------
+
+func TestCompareValues(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b Value
+		want int
+	}{
+		// empty vs empty
+		{name: "empty_empty", a: EmptyVal(), b: EmptyVal(), want: 0},
+
+		// empty adapts to number
+		{name: "empty_vs_zero", a: EmptyVal(), b: NumberVal(0), want: 0},
+		{name: "zero_vs_empty", a: NumberVal(0), b: EmptyVal(), want: 0},
+		{name: "empty_vs_positive", a: EmptyVal(), b: NumberVal(5), want: -1},
+		{name: "positive_vs_empty", a: NumberVal(5), b: EmptyVal(), want: 1},
+		{name: "empty_vs_negative", a: EmptyVal(), b: NumberVal(-3), want: 1},
+		{name: "negative_vs_empty", a: NumberVal(-3), b: EmptyVal(), want: -1},
+
+		// empty adapts to string
+		{name: "empty_vs_empty_string", a: EmptyVal(), b: StringVal(""), want: 0},
+		{name: "empty_string_vs_empty", a: StringVal(""), b: EmptyVal(), want: 0},
+		{name: "empty_vs_nonempty_string", a: EmptyVal(), b: StringVal("hello"), want: -1},
+		{name: "nonempty_string_vs_empty", a: StringVal("hello"), b: EmptyVal(), want: 1},
+
+		// empty adapts to bool
+		{name: "empty_vs_false", a: EmptyVal(), b: BoolVal(false), want: 0},
+		{name: "false_vs_empty", a: BoolVal(false), b: EmptyVal(), want: 0},
+		{name: "empty_vs_true", a: EmptyVal(), b: BoolVal(true), want: -1},
+		{name: "true_vs_empty", a: BoolVal(true), b: EmptyVal(), want: 1},
+
+		// same-type comparisons (sanity)
+		{name: "num_eq", a: NumberVal(10), b: NumberVal(10), want: 0},
+		{name: "num_lt", a: NumberVal(3), b: NumberVal(7), want: -1},
+		{name: "num_gt", a: NumberVal(7), b: NumberVal(3), want: 1},
+		{name: "str_eq", a: StringVal("abc"), b: StringVal("ABC"), want: 0},
+		{name: "str_lt", a: StringVal("abc"), b: StringVal("def"), want: -1},
+		{name: "bool_eq_true", a: BoolVal(true), b: BoolVal(true), want: 0},
+		{name: "bool_eq_false", a: BoolVal(false), b: BoolVal(false), want: 0},
+		{name: "bool_false_lt_true", a: BoolVal(false), b: BoolVal(true), want: -1},
+		{name: "bool_true_gt_false", a: BoolVal(true), b: BoolVal(false), want: 1},
+
+		// cross-type (different typeRank)
+		{name: "num_vs_str", a: NumberVal(0), b: StringVal(""), want: -1},
+		{name: "str_vs_bool", a: StringVal(""), b: BoolVal(false), want: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CompareValues(tt.a, tt.b)
+			if tt.want == 0 && got != 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want 0", tt.a, tt.b, got)
+			} else if tt.want < 0 && got >= 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want < 0", tt.a, tt.b, got)
+			} else if tt.want > 0 && got <= 0 {
+				t.Errorf("CompareValues(%v, %v) = %d, want > 0", tt.a, tt.b, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Empty cell comparison via formulas — Excel behavior
+// ---------------------------------------------------------------------------
+
+func TestEvalEmptyCellComparisons(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: StringVal(""),
+			{Col: 1, Row: 3}: BoolVal(false),
+			{Col: 1, Row: 4}: NumberVal(5),
+			{Col: 1, Row: 5}: StringVal("hello"),
+			{Col: 1, Row: 6}: BoolVal(true),
+			// B1 is empty
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// empty = 0 → TRUE (empty adapts to number 0)
+		{name: "empty_eq_zero", formula: "B1=A1", want: true},
+		{name: "zero_eq_empty", formula: "A1=B1", want: true},
+		// empty = "" → TRUE (empty adapts to string "")
+		{name: "empty_eq_empty_str", formula: `B1=A2`, want: true},
+		{name: "empty_str_eq_empty", formula: `A2=B1`, want: true},
+		// empty = FALSE → TRUE (empty adapts to bool false)
+		{name: "empty_eq_false", formula: "B1=A3", want: true},
+		{name: "false_eq_empty", formula: "A3=B1", want: true},
+		// empty <> positive number
+		{name: "empty_ne_positive", formula: "B1=A4", want: false},
+		{name: "empty_lt_positive", formula: "B1<A4", want: true},
+		// empty <> non-empty string
+		{name: "empty_ne_nonempty_str", formula: `B1=A5`, want: false},
+		{name: "empty_lt_nonempty_str", formula: `B1<A5`, want: true},
+		// empty <> TRUE
+		{name: "empty_ne_true", formula: "B1=A6", want: false},
+		{name: "empty_lt_true", formula: "B1<A6", want: true},
+		// empty = empty
+		{name: "empty_eq_empty", formula: "B1=B2", want: true},
+		// empty comparisons with literals
+		{name: "empty_eq_zero_lit", formula: "B1=0", want: true},
+		{name: "empty_eq_empty_str_lit", formula: `B1=""`, want: true},
+		{name: "empty_eq_false_lit", formula: "B1=FALSE", want: true},
+		{name: "empty_ne_true_lit", formula: "B1=TRUE", want: false},
+		{name: "empty_ne_one_lit", formula: "B1=1", want: false},
+		{name: "empty_ne_str_lit", formula: `B1="x"`, want: false},
+		// inequality operators
+		{name: "empty_le_zero", formula: "B1<=0", want: true},
+		{name: "empty_ge_zero", formula: "B1>=0", want: true},
+		{name: "empty_le_false", formula: "B1<=FALSE", want: true},
+		{name: "empty_ge_false", formula: "B1>=FALSE", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Empty cell handling in various contexts
 // ---------------------------------------------------------------------------
 
@@ -1019,6 +1152,51 @@ func TestEvalArrayLiteral(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Array binary operations — SUM(range*range)
+// ---------------------------------------------------------------------------
+
+func TestEvalArrayBinaryOps(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: NumberVal(3),
+			{Col: 3, Row: 2}: NumberVal(4),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{name: "SUM(range*range)", formula: "SUM(B1:C1*B2:C2)", want: 11}, // 1*3 + 2*4
+		{name: "SUM(range+range)", formula: "SUM(B1:C1+B2:C2)", want: 10}, // (1+3) + (2+4)
+		{name: "SUM(range-range)", formula: "SUM(B1:C1-B2:C2)", want: -4}, // (1-3) + (2-4)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v (%g), want %g", tt.formula, got.Type, got.Num, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // IFNA
 // ---------------------------------------------------------------------------
 
@@ -1057,42 +1235,79 @@ func TestEvalIFNA(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 3D sheet references — must return parse error, not panic
+// 3D sheet references — parse, compile, and evaluate correctly
 // ---------------------------------------------------------------------------
 
-func TestEval3DSheetRefNoPanic(t *testing.T) {
+func TestEval3DSheetRef(t *testing.T) {
 	// SUM(Sheet2:Sheet5!A11) is a 3D sheet reference (multi-sheet range).
-	// The formula engine does not support 3D references, but it must return
-	// a graceful error instead of panicking.
-	formulas := []string{
-		"SUM(Sheet2:Sheet5!A11)",
-		"SUM('Sheet2:Sheet5'!A11)",
+	// With SheetListProvider support, this should evaluate by summing
+	// A11 across Sheet2, Sheet3, Sheet4, Sheet5.
+	resolver := &mock3DResolver{
+		sheets: []string{"test", "Sheet2", "Sheet3", "Sheet4", "Sheet5"},
+		cells: map[CellAddr]Value{
+			{Sheet: "Sheet2", Col: 1, Row: 11}: NumberVal(1),
+			{Sheet: "Sheet3", Col: 1, Row: 11}: NumberVal(2),
+			{Sheet: "Sheet4", Col: 1, Row: 11}: NumberVal(3),
+			{Sheet: "Sheet5", Col: 1, Row: 11}: NumberVal(4),
+		},
 	}
 
-	for _, f := range formulas {
-		t.Run(f, func(t *testing.T) {
-			node, err := Parse(f)
+	formulas := []struct {
+		formula string
+		want    float64
+	}{
+		{"SUM(Sheet2:Sheet5!A11)", 10},
+		{"SUM('Sheet2:Sheet5'!A11)", 10},
+	}
+
+	for _, tt := range formulas {
+		t.Run(tt.formula, func(t *testing.T) {
+			node, err := Parse(tt.formula)
 			if err != nil {
-				// Parse error is the expected graceful failure.
-				t.Logf("Parse(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Parse(%q) error: %v", tt.formula, err)
 			}
-			// If parsing somehow succeeded, compilation should fail or
-			// evaluation should not panic.
-			cf, err := Compile(f, node)
+			cf, err := Compile(tt.formula, node)
 			if err != nil {
-				t.Logf("Compile(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Compile(%q) error: %v", tt.formula, err)
 			}
-			resolver := &mockResolver{}
-			_, err = Eval(cf, resolver, nil)
+			got, err := Eval(cf, resolver, nil)
 			if err != nil {
-				t.Logf("Eval(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Eval(%q) error: %v", tt.formula, err)
 			}
-			t.Errorf("expected error for 3D sheet reference %q, but got none", f)
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+			}
 		})
 	}
+}
+
+// mock3DResolver implements CellResolver and SheetListProvider for testing 3D refs.
+type mock3DResolver struct {
+	sheets []string
+	cells  map[CellAddr]Value
+}
+
+func (m *mock3DResolver) GetCellValue(addr CellAddr) Value {
+	if v, ok := m.cells[addr]; ok {
+		return v
+	}
+	return EmptyVal()
+}
+
+func (m *mock3DResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	rows := make([][]Value, addr.ToRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= addr.ToRow; r++ {
+		row := make([]Value, addr.ToCol-addr.FromCol+1)
+		for c := addr.FromCol; c <= addr.ToCol; c++ {
+			row[c-addr.FromCol] = m.GetCellValue(CellAddr{Sheet: addr.Sheet, Col: c, Row: r})
+		}
+		rows[r-addr.FromRow] = row
+	}
+	return rows
+}
+
+func (m *mock3DResolver) GetSheetNames() []string {
+	return m.sheets
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,5 +1342,141 @@ func TestEvalCOUNTBLANKPadding(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 1 {
 		t.Errorf("COUNTBLANK(A1:A3) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Implicit intersection for bounded ranges in non-array formulas
+// ---------------------------------------------------------------------------
+
+func TestEvalImplicitIntersectionBoundedRange(t *testing.T) {
+	// In a non-array formula, 1+B1:B5 should implicitly intersect B1:B5
+	// at the formula's row, producing a scalar result.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(0.01),
+			{Col: 2, Row: 2}: NumberVal(0.02),
+			{Col: 2, Row: 3}: NumberVal(-0.01),
+			{Col: 2, Row: 4}: NumberVal(0.03),
+			{Col: 2, Row: 5}: NumberVal(0.015),
+		},
+	}
+
+	// Formula at row 3: 1+B1:B5 should intersect to B3 = -0.01, result = 0.99
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     3,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "1+B1:B5")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || math.Abs(got.Num-0.99) > 1e-10 {
+		t.Errorf("1+B1:B5 (non-array, row 3) = %v (%g), want 0.99", got.Type, got.Num)
+	}
+
+	// GEOMEAN(1+B1:B5) at row 3 should get GEOMEAN(0.99) = 0.99
+	cf = evalCompile(t, "GEOMEAN(1+B1:B5)")
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval GEOMEAN: %v", err)
+	}
+	if got.Type != ValueNumber || math.Abs(got.Num-0.99) > 1e-10 {
+		t.Errorf("GEOMEAN(1+B1:B5) (non-array, row 3) = %v (%g), want 0.99", got.Type, got.Num)
+	}
+
+	// Same formula but as array formula should compute element-wise
+	ctxArray := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     3,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	cf = evalCompile(t, "GEOMEAN(1+B1:B5)")
+	got, err = Eval(cf, resolver, ctxArray)
+	if err != nil {
+		t.Fatalf("Eval GEOMEAN (array): %v", err)
+	}
+	// Array mode: 1+[0.01,0.02,-0.01,0.03,0.015] = [1.01,1.02,0.99,1.03,1.015]
+	// GEOMEAN of those 5 values:
+	product := 1.01 * 1.02 * 0.99 * 1.03 * 1.015
+	expectedGM := math.Pow(product, 1.0/5.0)
+	if got.Type != ValueNumber || math.Abs(got.Num-expectedGM) > 1e-10 {
+		t.Errorf("GEOMEAN(1+B1:B5) (array) = %v (%g), want %g", got.Type, got.Num, expectedGM)
+	}
+}
+
+func TestEvalSUMPRODUCTArrayContext(t *testing.T) {
+	// SUMPRODUCT should force array evaluation of its arguments,
+	// even in non-array formula context.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	// SUMPRODUCT(A1:A3*B1:B3) = 1*4 + 2*5 + 3*6 = 32
+	cf := evalCompile(t, "SUMPRODUCT(A1:A3*B1:B3)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 32 {
+		t.Errorf("SUMPRODUCT(A1:A3*B1:B3) = %v (%g), want 32", got.Type, got.Num)
+	}
+
+	// SUMPRODUCT(A1:A3,B1:B3) = same result
+	cf = evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 32 {
+		t.Errorf("SUMPRODUCT(A1:A3,B1:B3) = %v (%g), want 32", got.Type, got.Num)
+	}
+}
+
+func TestEvalImplicitIntersectionRowVector(t *testing.T) {
+	// Row vector implicit intersection: single-row range intersects at formula's column.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 5}: NumberVal(10),
+			{Col: 2, Row: 5}: NumberVal(20),
+			{Col: 3, Row: 5}: NumberVal(30),
+		},
+	}
+
+	// Formula at col 2: 1+A5:C5 should intersect to B5 = 20, result = 21
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "1+A5:C5")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 21 {
+		t.Errorf("1+A5:C5 (non-array, col 2) = %v (%g), want 21", got.Type, got.Num)
 	}
 }

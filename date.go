@@ -9,6 +9,11 @@ import (
 // Excel serial 1 = January 1, 1900 = epoch + 1 day.
 var excelEpoch = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
 
+// excel1904Epoch is January 1, 1904.
+// In the 1904 date system, serial number 0 = January 1, 1904.
+// Unlike the 1900 system, there is no phantom "January 0" offset.
+var excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // timeToExcelSerial converts a time.Time to an Excel serial date number.
 func timeToExcelSerial(t time.Time) float64 {
 	duration := t.Sub(excelEpoch)
@@ -36,6 +41,16 @@ func excelSerialToTime(serial float64) time.Time {
 	days := int(serial)
 	frac := serial - float64(days)
 	t := excelEpoch.AddDate(0, 0, days)
+	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
+	return t
+}
+
+// excelSerialToTime1904 converts an Excel serial date number to a time.Time
+// using the 1904 date system (Mac Excel). No leap-year bug adjustment is needed.
+func excelSerialToTime1904(serial float64) time.Time {
+	days := int(serial)
+	frac := serial - float64(days)
+	t := excel1904Epoch.AddDate(0, 0, days)
 	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
 	return t
 }

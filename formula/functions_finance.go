@@ -20,7 +20,11 @@ func init() {
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
 func flattenValues(arg Value) []Value {
 	if arg.Type == ValueArray {
-		var out []Value
+		total := 0
+		for _, row := range arg.Array {
+			total += len(row)
+		}
+		out := make([]Value, 0, total)
 		for _, row := range arg.Array {
 			out = append(out, row...)
 		}
@@ -431,7 +435,7 @@ func fnIRR(args []Value) (Value, error) {
 			}
 			npv += cf / denom
 			if i > 0 {
-				dnpv -= float64(i) * cf / math.Pow(1+rate, float64(i+1))
+				dnpv -= float64(i) * cf / (denom * (1 + rate))
 			}
 		}
 		if math.Abs(npv) < 1e-10 {
@@ -666,7 +670,7 @@ func fnXIRR(args []Value) (Value, error) {
 			}
 			xnpv += cf / denom
 			if t != 0 {
-				dxnpv -= t * cf / math.Pow(1+rate, t+1)
+				dxnpv -= t * cf / (denom * (1 + rate))
 			}
 		}
 		if math.Abs(xnpv) < 1e-10 {

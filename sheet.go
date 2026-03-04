@@ -82,9 +82,10 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.dirty = true
 	s.file.calcGen++
 	// Compile and register in dep graph.
-	node, parseErr := formula.Parse(f)
+	src := s.file.expandFormula(f, s.name, row)
+	node, parseErr := formula.Parse(src)
 	if parseErr == nil {
-		cf, compErr := formula.Compile(f, node)
+		cf, compErr := formula.Compile(src, node)
 		if compErr == nil {
 			c.compiled = cf
 			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
@@ -365,10 +366,10 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 	for _, rn := range rowNums {
 		r := s.rows[rn]
-		if len(r.cells) == 0 && r.height == 0 {
+		if len(r.cells) == 0 && r.height == 0 && !r.hidden {
 			continue
 		}
-		rd := ooxml.RowData{Num: rn, Height: r.height}
+		rd := ooxml.RowData{Num: rn, Height: r.height, Hidden: r.hidden}
 
 		// Sort cells by column.
 		colNums := make([]int, 0, len(r.cells))
@@ -401,7 +402,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 			rd.Cells = append(rd.Cells, cd)
 		}
-		if len(rd.Cells) > 0 || rd.Height != 0 {
+		if len(rd.Cells) > 0 || rd.Height != 0 || rd.Hidden {
 			sd.Rows = append(sd.Rows, rd)
 		}
 	}
@@ -435,11 +436,13 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	cf := c.compiled
 	if cf == nil {
-		node, err := formula.Parse(c.formula)
+		// Expand table structured references and defined names before parsing.
+		src := f.expandFormula(c.formula, s.name, row)
+		node, err := formula.Parse(src)
 		if err != nil {
 			return Value{Type: TypeError, String: "#NAME?"}
 		}
-		compiled, err := formula.Compile(c.formula, node)
+		compiled, err := formula.Compile(src, node)
 		if err != nil {
 			return Value{Type: TypeError, String: "#NAME?"}
 		}
@@ -452,10 +455,12 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	resolver := &fileResolver{file: f, currentSheet: s.name}
 	ctx := &formula.EvalContext{
-		CurrentCol:   col,
-		CurrentRow:   row,
-		CurrentSheet: s.name,
-		Resolver:     resolver,
+		CurrentCol:     col,
+		CurrentRow:     row,
+		CurrentSheet:   s.name,
+		IsArrayFormula: c.isArrayFormula,
+		Date1904:       f.date1904,
+		Resolver:       resolver,
 	}
 	result, err := formula.Eval(cf, resolver, ctx)
 	if err != nil {
@@ -562,6 +567,11 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	return rows
 }
 
+// GetSheetNames returns the ordered list of all sheet names in the workbook.
+func (fr *fileResolver) GetSheetNames() []string {
+	return fr.file.SheetNames()
+}
+
 // IsSubtotalCell reports whether the cell at (sheet, col, row) contains a formula
 // whose outermost function call is SUBTOTAL. This is used by the SUBTOTAL function
 // to skip nested SUBTOTAL results and avoid double-counting.
@@ -579,6 +589,45 @@ func (fr *fileResolver) IsSubtotalCell(sheet string, col, row int) bool {
 		return false
 	}
 	return isSubtotalFormula(c.formula)
+}
+
+// IsRowHidden reports whether the given row on the given sheet is hidden.
+func (fr *fileResolver) IsRowHidden(sheet string, row int) bool {
+	s := fr.resolveSheet(sheet)
+	if s == nil {
+		return false
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return false
+	}
+	return r.hidden
+}
+
+// IsRowFilteredByAutoFilter reports whether the given row is hidden AND falls
+// within a table that has an active autoFilter (with filterColumn elements).
+// This is used by SUBTOTAL(1-11) which excludes filtered rows but not manually
+// hidden rows.
+func (fr *fileResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
+	if !fr.IsRowHidden(sheet, row) {
+		return false
+	}
+	// Check if the row falls within any table on this sheet that has an active filter.
+	sheetLower := strings.ToLower(sheet)
+	for _, t := range fr.file.tables {
+		if strings.ToLower(t.SheetName) != sheetLower {
+			continue
+		}
+		if !t.HasActiveFilter {
+			continue
+		}
+		dataFirst := t.DataFirstRow()
+		dataLast := t.DataLastRow()
+		if row >= dataFirst && row <= dataLast {
+			return true
+		}
+	}
+	return false
 }
 
 // isSubtotalFormula returns true if the formula string starts with "SUBTOTAL("

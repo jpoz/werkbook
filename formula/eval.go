@@ -24,6 +24,7 @@ type EvalContext struct {
 	CurrentRow     int
 	CurrentSheet   string
 	IsArrayFormula bool // true for CSE (Ctrl+Shift+Enter) array formulas
+	Date1904       bool // true if the workbook uses the 1904 date system
 	Resolver       CellResolver // the active resolver; used by SUBTOTAL to inspect cells
 }
 
@@ -34,9 +35,27 @@ type SubtotalChecker interface {
 	IsSubtotalCell(sheet string, col, row int) bool
 }
 
+// HiddenRowChecker is an optional interface that a CellResolver may implement
+// to allow SUBTOTAL to exclude hidden rows. IsRowHidden returns true if the
+// row is hidden for any reason. IsRowFilteredByAutoFilter returns true only
+// if the row is hidden AND falls within a table with an active autoFilter
+// (used by SUBTOTAL function numbers 1-11 to exclude auto-filtered rows).
+type HiddenRowChecker interface {
+	IsRowHidden(sheet string, row int) bool
+	IsRowFilteredByAutoFilter(sheet string, row int) bool
+}
+
+// SheetListProvider is an optional interface that a CellResolver may implement
+// to support 3D sheet references (e.g. Sheet2:Sheet5!A1). It returns the
+// ordered list of all sheet names in the workbook.
+type SheetListProvider interface {
+	GetSheetNames() []string
+}
+
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
+	arrayCtxDepth := 0 // >0 means we're inside an array-forcing function's arguments
 
 	push := func(v Value) { stack = append(stack, v) }
 	pop := func() (Value, error) {
@@ -113,6 +132,37 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			origin := addr // capture for the Value
 			push(Value{Type: ValueArray, Array: rows, RangeOrigin: &origin})
 
+		case OpLoad3DRange:
+			addr := cf.Ranges[inst.Operand]
+			// Resolve 3D sheet reference: collect values from all sheets
+			// between addr.Sheet and addr.SheetEnd.
+			slp, ok := resolver.(SheetListProvider)
+			if !ok {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
+			sheets := resolveSheetRange(slp.GetSheetNames(), addr.Sheet, addr.SheetEnd)
+			if len(sheets) == 0 {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
+			// Collect all values from all sheets into a flat array.
+			var allValues [][]Value
+			for _, sheetName := range sheets {
+				singleAddr := RangeAddr{
+					Sheet:   sheetName,
+					FromCol: addr.FromCol, FromRow: addr.FromRow,
+					ToCol: addr.ToCol, ToRow: addr.ToRow,
+				}
+				sheetRows := resolver.GetRangeValues(singleAddr)
+				allValues = append(allValues, sheetRows...)
+			}
+			if len(allValues) == 0 {
+				push(EmptyVal())
+			} else {
+				push(Value{Type: ValueArray, Array: allValues})
+			}
+
 		case OpLoadCellRef:
 			addr := cf.Refs[inst.Operand]
 			// Encode col and row into Num: col + row*100_000.
@@ -128,15 +178,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an + bn))
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an + bn)
+			}))
 
 		case OpSub:
 			b, err := pop()
@@ -147,15 +195,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an - bn))
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an - bn)
+			}))
 
 		case OpMul:
 			b, err := pop()
@@ -166,15 +212,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an * bn))
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an * bn)
+			}))
 
 		case OpDiv:
 			b, err := pop()
@@ -185,17 +229,16 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else if bn == 0 {
-				push(ErrorVal(ErrValDIV0))
-			} else {
-				push(NumberVal(an / bn))
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				if bn == 0 {
+					return ErrorVal(ErrValDIV0)
+				}
+				return NumberVal(an / bn)
+			}))
 
 		case OpPow:
 			b, err := pop()
@@ -206,20 +249,17 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
+			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
 				result := math.Pow(an, bn)
 				if math.IsNaN(result) || math.IsInf(result, 0) {
-					push(ErrorVal(ErrValNUM))
-				} else {
-					push(NumberVal(result))
+					return ErrorVal(ErrValNUM)
 				}
-			}
+				return NumberVal(result)
+			}))
 
 		case OpNeg:
 			a, err := pop()
@@ -265,13 +305,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) == 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c == 0 }))
 
 		case OpNe:
 			b, err := pop()
@@ -282,13 +316,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) != 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c != 0 }))
 
 		case OpLt:
 			b, err := pop()
@@ -299,13 +327,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) < 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c < 0 }))
 
 		case OpLe:
 			b, err := pop()
@@ -316,13 +338,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) <= 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c <= 0 }))
 
 		case OpGt:
 			b, err := pop()
@@ -333,13 +349,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) > 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c > 0 }))
 
 		case OpGe:
 			b, err := pop()
@@ -350,13 +360,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			if a.Type == ValueError {
-				push(a)
-			} else if b.Type == ValueError {
-				push(b)
-			} else {
-				push(BoolVal(CompareValues(a, b) >= 0))
-			}
+			push(binaryCompare(a, b, func(c int) bool { return c >= 0 }))
 
 		case OpCall:
 			funcID := int(inst.Operand >> 8)
@@ -390,6 +394,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				arr[r] = elems[r*cols : (r+1)*cols]
 			}
 			push(Value{Type: ValueArray, Array: arr})
+
+		case OpEnterArrayCtx:
+			arrayCtxDepth++
+
+		case OpLeaveArrayCtx:
+			if arrayCtxDepth > 0 {
+				arrayCtxDepth--
+			}
 
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)
@@ -480,11 +492,30 @@ func errorValueToString(e ErrorValue) string {
 
 // CompareValues compares two values for ordering. Returns -1, 0, or 1.
 func CompareValues(a, b Value) int {
+	// In Excel, empty cells adapt to the type of the other operand:
+	//   empty = "" → TRUE,  empty = 0 → TRUE,  empty = FALSE → TRUE
+	if a.Type == ValueEmpty && b.Type == ValueEmpty {
+		return 0
+	}
 	if a.Type == ValueEmpty {
-		a = NumberVal(0)
+		switch b.Type {
+		case ValueString:
+			a = StringVal("")
+		case ValueBool:
+			a = BoolVal(false)
+		default:
+			a = NumberVal(0)
+		}
 	}
 	if b.Type == ValueEmpty {
-		b = NumberVal(0)
+		switch a.Type {
+		case ValueString:
+			b = StringVal("")
+		case ValueBool:
+			b = BoolVal(false)
+		default:
+			b = NumberVal(0)
+		}
 	}
 
 	if a.Type == b.Type {
@@ -545,6 +576,137 @@ func IsTruthy(v Value) bool {
 	}
 }
 
+// implicitIntersect reduces a ValueArray loaded from a worksheet range to a
+// scalar value using Excel's implicit intersection rules (legacy non-array
+// formula behaviour).  For a single-column range the value at the formula's
+// row is returned; for a single-row range the value at the formula's column
+// is returned.  If the range is multi-row and multi-column, or the formula
+// position falls outside the range, #VALUE! is returned.  Values that are
+// not range-origin arrays are returned unchanged.
+func implicitIntersect(v Value, ctx *EvalContext) Value {
+	if v.Type != ValueArray || ctx == nil || v.RangeOrigin == nil {
+		return v
+	}
+	ro := v.RangeOrigin
+	isSingleCol := ro.FromCol == ro.ToCol
+	isSingleRow := ro.FromRow == ro.ToRow
+	if isSingleCol {
+		r := ctx.CurrentRow
+		if r >= ro.FromRow && r <= ro.ToRow && len(v.Array) > 0 {
+			idx := r - ro.FromRow
+			if idx < len(v.Array) {
+				return v.Array[idx][0]
+			}
+		}
+		return ErrorVal(ErrValVALUE)
+	}
+	if isSingleRow {
+		c := ctx.CurrentCol
+		if c >= ro.FromCol && c <= ro.ToCol && len(v.Array) > 0 {
+			idx := c - ro.FromCol
+			if idx < len(v.Array[0]) {
+				return v.Array[0][idx]
+			}
+		}
+		return ErrorVal(ErrValVALUE)
+	}
+	return ErrorVal(ErrValVALUE)
+}
+
+// arrayDims returns the maximum row and column dimensions across two values,
+// treating scalars as 1×1.
+func arrayDims(a, b Value) (rows, cols int) {
+	rows, cols = 1, 1
+	if a.Type == ValueArray {
+		rows = len(a.Array)
+		if rows > 0 {
+			cols = len(a.Array[0])
+		}
+	}
+	if b.Type == ValueArray {
+		if r := len(b.Array); r > rows {
+			rows = r
+		}
+		if len(b.Array) > 0 {
+			if c := len(b.Array[0]); c > cols {
+				cols = c
+			}
+		}
+	}
+	return
+}
+
+// binaryArith performs a binary arithmetic operation on two Values,
+// supporting element-wise array operations when one or both operands are arrays.
+func binaryArith(a, b Value, op func(float64, float64) Value) Value {
+	if a.Type != ValueArray && b.Type != ValueArray {
+		// Scalar case.
+		an, ae := CoerceNum(a)
+		bn, be := CoerceNum(b)
+		if ae != nil {
+			return *ae
+		}
+		if be != nil {
+			return *be
+		}
+		return op(an, bn)
+	}
+
+	// At least one operand is an array — do element-wise computation.
+	rows, cols := arrayDims(a, b)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			av := ArrayElement(a, i, j)
+			bv := ArrayElement(b, i, j)
+			an, ae := CoerceNum(av)
+			bn, be := CoerceNum(bv)
+			if ae != nil {
+				result[i][j] = *ae
+			} else if be != nil {
+				result[i][j] = *be
+			} else {
+				result[i][j] = op(an, bn)
+			}
+		}
+	}
+	return Value{Type: ValueArray, Array: result}
+}
+
+// binaryCompare performs a comparison operation on two Values, supporting
+// element-wise array operations when one or both operands are arrays.
+func binaryCompare(a, b Value, op func(int) bool) Value {
+	if a.Type != ValueArray && b.Type != ValueArray {
+		if a.Type == ValueError {
+			return a
+		}
+		if b.Type == ValueError {
+			return b
+		}
+		return BoolVal(op(CompareValues(a, b)))
+	}
+
+	// At least one operand is an array — do element-wise comparison.
+	rows, cols := arrayDims(a, b)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			av := ArrayElement(a, i, j)
+			bv := ArrayElement(b, i, j)
+			if av.Type == ValueError {
+				result[i][j] = av
+			} else if bv.Type == ValueError {
+				result[i][j] = bv
+			} else {
+				result[i][j] = BoolVal(op(CompareValues(av, bv)))
+			}
+		}
+	}
+	return Value{Type: ValueArray, Array: result}
+}
+
 // callFunction is replaced by CallFunc in registry.go.
 
 // LiftUnary applies a scalar function element-wise over a ValueArray,
@@ -573,6 +735,32 @@ func ArrayElement(v Value, i, j int) Value {
 		return v.Array[i][j]
 	}
 	return ErrorVal(ErrValNA)
+}
+
+// resolveSheetRange returns the slice of sheet names from startSheet to endSheet
+// inclusive, based on the ordering in allSheets. If either sheet is not found,
+// returns nil. Comparison is case-insensitive.
+func resolveSheetRange(allSheets []string, startSheet, endSheet string) []string {
+	startIdx := -1
+	endIdx := -1
+	startLower := strings.ToLower(startSheet)
+	endLower := strings.ToLower(endSheet)
+	for i, name := range allSheets {
+		nameLower := strings.ToLower(name)
+		if nameLower == startLower {
+			startIdx = i
+		}
+		if nameLower == endLower {
+			endIdx = i
+		}
+	}
+	if startIdx < 0 || endIdx < 0 {
+		return nil
+	}
+	if startIdx > endIdx {
+		startIdx, endIdx = endIdx, startIdx
+	}
+	return allSheets[startIdx : endIdx+1]
 }
 
 // IterateNumeric calls fn for each numeric value in args, expanding arrays.

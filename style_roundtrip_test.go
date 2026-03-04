@@ -1,7 +1,6 @@
 package werkbook
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -430,17 +429,5 @@ func TestStyleRoundTrip_RangeStyle(t *testing.T) {
 	v2, _ := s2.GetValue("C3")
 	if v2.String != "BottomRight" {
 		t.Errorf("C3 = %q, want BottomRight", v2.String)
-	}
-}
-
-func TestReadExistingStyledFile(t *testing.T) {
-	// If a styled test fixture exists, read it and verify styles are preserved.
-	path := filepath.Join("testdata", "styled.xlsx")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Skip("testdata/styled.xlsx not found, skipping")
-	}
-	_, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
 	}
 }

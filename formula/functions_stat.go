@@ -531,7 +531,18 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 
 // collectNumeric gathers all numeric values from args into a slice.
 func collectNumeric(args []Value) ([]float64, *Value) {
-	var nums []float64
+	// Pre-count capacity to avoid repeated reallocation.
+	cap := 0
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				cap += len(row)
+			}
+		} else {
+			cap++
+		}
+	}
+	nums := make([]float64, 0, cap)
 	for _, arg := range args {
 		if arg.Type == ValueArray {
 			for _, row := range arg.Array {
@@ -556,6 +567,29 @@ func collectNumeric(args []Value) ([]float64, *Value) {
 		}
 	}
 	return nums, nil
+}
+
+// meanAndSumSq computes the mean and sum of squared deviations from the mean
+// for a set of numeric values collected from formula arguments.
+func meanAndSumSq(args []Value) (nums []float64, mean, ssq float64, ev *Value) {
+	nums, ev = collectNumeric(args)
+	if ev != nil {
+		return
+	}
+	n := len(nums)
+	if n == 0 {
+		return
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean = sum / float64(n)
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return
 }
 
 func fnAVEDEV(args []Value) (Value, error) {
@@ -590,23 +624,9 @@ func fnDEVSQ(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	nums, e := collectNumeric(args)
+	_, _, ssq, e := meanAndSumSq(args)
 	if e != nil {
 		return *e, nil
-	}
-	n := len(nums)
-	if n == 0 {
-		return ErrorVal(ErrValNUM), nil
-	}
-	sum := 0.0
-	for _, v := range nums {
-		sum += v
-	}
-	mean := sum / float64(n)
-	ssq := 0.0
-	for _, v := range nums {
-		d := v - mean
-		ssq += d * d
 	}
 	return NumberVal(ssq), nil
 }
@@ -874,23 +894,13 @@ func fnSTDEV(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	nums, e := collectNumeric(args)
+	nums, _, ssq, e := meanAndSumSq(args)
 	if e != nil {
 		return *e, nil
 	}
 	n := len(nums)
 	if n < 2 {
 		return ErrorVal(ErrValDIV0), nil
-	}
-	sum := 0.0
-	for _, v := range nums {
-		sum += v
-	}
-	mean := sum / float64(n)
-	ssq := 0.0
-	for _, v := range nums {
-		d := v - mean
-		ssq += d * d
 	}
 	return NumberVal(math.Sqrt(ssq / float64(n-1))), nil
 }
@@ -899,23 +909,13 @@ func fnSTDEVP(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	nums, e := collectNumeric(args)
+	nums, _, ssq, e := meanAndSumSq(args)
 	if e != nil {
 		return *e, nil
 	}
 	n := len(nums)
 	if n < 1 {
 		return ErrorVal(ErrValDIV0), nil
-	}
-	sum := 0.0
-	for _, v := range nums {
-		sum += v
-	}
-	mean := sum / float64(n)
-	ssq := 0.0
-	for _, v := range nums {
-		d := v - mean
-		ssq += d * d
 	}
 	return NumberVal(math.Sqrt(ssq / float64(n))), nil
 }
@@ -924,23 +924,13 @@ func fnVAR(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	nums, e := collectNumeric(args)
+	nums, _, ssq, e := meanAndSumSq(args)
 	if e != nil {
 		return *e, nil
 	}
 	n := len(nums)
 	if n < 2 {
 		return ErrorVal(ErrValDIV0), nil
-	}
-	sum := 0.0
-	for _, v := range nums {
-		sum += v
-	}
-	mean := sum / float64(n)
-	ssq := 0.0
-	for _, v := range nums {
-		d := v - mean
-		ssq += d * d
 	}
 	return NumberVal(ssq / float64(n-1)), nil
 }
@@ -949,23 +939,13 @@ func fnVARP(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	nums, e := collectNumeric(args)
+	nums, _, ssq, e := meanAndSumSq(args)
 	if e != nil {
 		return *e, nil
 	}
 	n := len(nums)
 	if n < 1 {
 		return ErrorVal(ErrValDIV0), nil
-	}
-	sum := 0.0
-	for _, v := range nums {
-		sum += v
-	}
-	mean := sum / float64(n)
-	ssq := 0.0
-	for _, v := range nums {
-		d := v - mean
-		ssq += d * d
 	}
 	return NumberVal(ssq / float64(n)), nil
 }

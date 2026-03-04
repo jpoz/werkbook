@@ -53,6 +53,50 @@ func TestFormulaEvaluation(t *testing.T) {
 	}
 }
 
+// TestTEXTWithStringFormatCell verifies that TEXT() correctly uses a string
+// format from a cell reference, even when the format looks like a number (e.g. "0.00").
+func TestTEXTWithStringFormatCell(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("B1", "0.00")   // Format string that looks like a number
+	s.SetValue("C1", 12.344)   // Number to format
+	s.SetFormula("A1", `TEXT(C1, B1)`)
+
+	val, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeString {
+		t.Errorf("A1 type = %v, want TypeString", val.Type)
+	}
+	if val.String != "12.34" {
+		t.Errorf("A1 = %q, want %q", val.String, "12.34")
+	}
+}
+
+// TestArithmeticWithStringCell verifies that arithmetic operations correctly
+// coerce string cell values that look like numbers.
+func TestArithmeticWithStringCell(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", "42")  // String that looks like a number
+	s.SetValue("A2", 8)
+	s.SetFormula("B1", "A1+A2")
+
+	val, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatalf("GetValue(B1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("B1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 50 {
+		t.Errorf("B1 = %g, want 50", val.Number)
+	}
+}
+
 // TestEmptyRefReturnsZero verifies that a formula referencing an empty cell
 // returns 0 (TypeNumber), matching Excel behavior where empty formula results
 // are coerced to numeric zero.
