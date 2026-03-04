@@ -37,6 +37,7 @@ type SubtotalChecker interface {
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
+	arrayCtxDepth := 0 // >0 means we're inside an array-forcing function's arguments
 
 	push := func(v Value) { stack = append(stack, v) }
 	pop := func() (Value, error) {
@@ -128,6 +129,10 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
+			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
 				return NumberVal(an + bn)
 			}))
@@ -140,6 +145,10 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			a, err := pop()
 			if err != nil {
 				return Value{}, err
+			}
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
 				return NumberVal(an - bn)
@@ -154,6 +163,10 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
+			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
 				return NumberVal(an * bn)
 			}))
@@ -166,6 +179,10 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			a, err := pop()
 			if err != nil {
 				return Value{}, err
+			}
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
 				if bn == 0 {
@@ -182,6 +199,10 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			a, err := pop()
 			if err != nil {
 				return Value{}, err
+			}
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				a = implicitIntersect(a, ctx)
+				b = implicitIntersect(b, ctx)
 			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
 				result := math.Pow(an, bn)
@@ -324,6 +345,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				arr[r] = elems[r*cols : (r+1)*cols]
 			}
 			push(Value{Type: ValueArray, Array: arr})
+
+		case OpEnterArrayCtx:
+			arrayCtxDepth++
+
+		case OpLeaveArrayCtx:
+			if arrayCtxDepth > 0 {
+				arrayCtxDepth--
+			}
 
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)
@@ -496,6 +525,43 @@ func IsTruthy(v Value) bool {
 	default:
 		return false
 	}
+}
+
+// implicitIntersect reduces a ValueArray loaded from a worksheet range to a
+// scalar value using Excel's implicit intersection rules (legacy non-array
+// formula behaviour).  For a single-column range the value at the formula's
+// row is returned; for a single-row range the value at the formula's column
+// is returned.  If the range is multi-row and multi-column, or the formula
+// position falls outside the range, #VALUE! is returned.  Values that are
+// not range-origin arrays are returned unchanged.
+func implicitIntersect(v Value, ctx *EvalContext) Value {
+	if v.Type != ValueArray || ctx == nil || v.RangeOrigin == nil {
+		return v
+	}
+	ro := v.RangeOrigin
+	isSingleCol := ro.FromCol == ro.ToCol
+	isSingleRow := ro.FromRow == ro.ToRow
+	if isSingleCol {
+		r := ctx.CurrentRow
+		if r >= ro.FromRow && r <= ro.ToRow && len(v.Array) > 0 {
+			idx := r - ro.FromRow
+			if idx < len(v.Array) {
+				return v.Array[idx][0]
+			}
+		}
+		return ErrorVal(ErrValVALUE)
+	}
+	if isSingleRow {
+		c := ctx.CurrentCol
+		if c >= ro.FromCol && c <= ro.ToCol && len(v.Array) > 0 {
+			idx := c - ro.FromCol
+			if idx < len(v.Array[0]) {
+				return v.Array[0][idx]
+			}
+		}
+		return ErrorVal(ErrValVALUE)
+	}
+	return ErrorVal(ErrValVALUE)
 }
 
 // arrayDims returns the maximum row and column dimensions across two values,

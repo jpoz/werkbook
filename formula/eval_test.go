@@ -1307,3 +1307,139 @@ func TestEvalCOUNTBLANKPadding(t *testing.T) {
 		t.Errorf("COUNTBLANK(A1:A3) = %v (%g), want 1", got.Type, got.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Implicit intersection for bounded ranges in non-array formulas
+// ---------------------------------------------------------------------------
+
+func TestEvalImplicitIntersectionBoundedRange(t *testing.T) {
+	// In a non-array formula, 1+B1:B5 should implicitly intersect B1:B5
+	// at the formula's row, producing a scalar result.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(0.01),
+			{Col: 2, Row: 2}: NumberVal(0.02),
+			{Col: 2, Row: 3}: NumberVal(-0.01),
+			{Col: 2, Row: 4}: NumberVal(0.03),
+			{Col: 2, Row: 5}: NumberVal(0.015),
+		},
+	}
+
+	// Formula at row 3: 1+B1:B5 should intersect to B3 = -0.01, result = 0.99
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     3,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "1+B1:B5")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || math.Abs(got.Num-0.99) > 1e-10 {
+		t.Errorf("1+B1:B5 (non-array, row 3) = %v (%g), want 0.99", got.Type, got.Num)
+	}
+
+	// GEOMEAN(1+B1:B5) at row 3 should get GEOMEAN(0.99) = 0.99
+	cf = evalCompile(t, "GEOMEAN(1+B1:B5)")
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval GEOMEAN: %v", err)
+	}
+	if got.Type != ValueNumber || math.Abs(got.Num-0.99) > 1e-10 {
+		t.Errorf("GEOMEAN(1+B1:B5) (non-array, row 3) = %v (%g), want 0.99", got.Type, got.Num)
+	}
+
+	// Same formula but as array formula should compute element-wise
+	ctxArray := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     3,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	cf = evalCompile(t, "GEOMEAN(1+B1:B5)")
+	got, err = Eval(cf, resolver, ctxArray)
+	if err != nil {
+		t.Fatalf("Eval GEOMEAN (array): %v", err)
+	}
+	// Array mode: 1+[0.01,0.02,-0.01,0.03,0.015] = [1.01,1.02,0.99,1.03,1.015]
+	// GEOMEAN of those 5 values:
+	product := 1.01 * 1.02 * 0.99 * 1.03 * 1.015
+	expectedGM := math.Pow(product, 1.0/5.0)
+	if got.Type != ValueNumber || math.Abs(got.Num-expectedGM) > 1e-10 {
+		t.Errorf("GEOMEAN(1+B1:B5) (array) = %v (%g), want %g", got.Type, got.Num, expectedGM)
+	}
+}
+
+func TestEvalSUMPRODUCTArrayContext(t *testing.T) {
+	// SUMPRODUCT should force array evaluation of its arguments,
+	// even in non-array formula context.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	// SUMPRODUCT(A1:A3*B1:B3) = 1*4 + 2*5 + 3*6 = 32
+	cf := evalCompile(t, "SUMPRODUCT(A1:A3*B1:B3)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 32 {
+		t.Errorf("SUMPRODUCT(A1:A3*B1:B3) = %v (%g), want 32", got.Type, got.Num)
+	}
+
+	// SUMPRODUCT(A1:A3,B1:B3) = same result
+	cf = evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 32 {
+		t.Errorf("SUMPRODUCT(A1:A3,B1:B3) = %v (%g), want 32", got.Type, got.Num)
+	}
+}
+
+func TestEvalImplicitIntersectionRowVector(t *testing.T) {
+	// Row vector implicit intersection: single-row range intersects at formula's column.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 5}: NumberVal(10),
+			{Col: 2, Row: 5}: NumberVal(20),
+			{Col: 3, Row: 5}: NumberVal(30),
+		},
+	}
+
+	// Formula at col 2: 1+A5:C5 should intersect to B5 = 20, result = 21
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "1+A5:C5")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 21 {
+		t.Errorf("1+A5:C5 (non-array, col 2) = %v (%g), want 21", got.Type, got.Num)
+	}
+}

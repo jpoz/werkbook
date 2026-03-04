@@ -63,3 +63,25 @@ func NoCtx(fn func([]Value) (Value, error)) Func {
 		return fn(args)
 	}
 }
+
+// arrayForcingFuncs lists functions that evaluate their arguments in array
+// context, suppressing implicit intersection. In legacy (non-dynamic-array)
+// Excel, these functions treat expressions like range*range element-wise
+// even when the formula is not entered as CSE (Ctrl+Shift+Enter).
+var arrayForcingFuncs = map[string]bool{
+	"SUMPRODUCT": true,
+	"MMULT":      true,
+	"TREND":      true,
+	"GROWTH":     true,
+	"LINEST":     true,
+	"LOGEST":     true,
+	"FREQUENCY":  true,
+	"TRANSPOSE":  true,
+}
+
+// IsArrayFunc reports whether the named function forces array evaluation of
+// its arguments. The compiler uses this to emit OpEnterArrayCtx / OpLeaveArrayCtx
+// around the function's argument expressions.
+func IsArrayFunc(name string) bool {
+	return arrayForcingFuncs[strings.ToUpper(name)]
+}

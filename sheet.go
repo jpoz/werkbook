@@ -452,10 +452,11 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	resolver := &fileResolver{file: f, currentSheet: s.name}
 	ctx := &formula.EvalContext{
-		CurrentCol:   col,
-		CurrentRow:   row,
-		CurrentSheet: s.name,
-		Resolver:     resolver,
+		CurrentCol:     col,
+		CurrentRow:     row,
+		CurrentSheet:   s.name,
+		IsArrayFormula: c.isArrayFormula,
+		Resolver:       resolver,
 	}
 	result, err := formula.Eval(cf, resolver, ctx)
 	if err != nil {

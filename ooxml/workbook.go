@@ -116,9 +116,10 @@ type RowData struct {
 
 // CellData holds the data for a single cell.
 type CellData struct {
-	Ref      string // e.g. "A1"
-	Type     string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
-	Value    string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
-	Formula  string // formula text (empty = no formula)
-	StyleIdx int    // index into WorkbookData.Styles; 0 = default
+	Ref            string // e.g. "A1"
+	Type           string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
+	Value          string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
+	Formula        string // formula text (empty = no formula)
+	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
+	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

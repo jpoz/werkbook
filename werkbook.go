@@ -185,6 +185,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				c := r.ensureCell(col)
 				c.value = v
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
+				c.isArrayFormula = cd.IsArrayFormula
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
 					c.cachedGen = f.calcGen
