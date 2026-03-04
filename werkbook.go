@@ -247,9 +247,13 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 func cellDataToValue(cd ooxml.CellData) Value {
 	switch cd.Type {
 	case "s":
-		// Shared-string cells must remain strings regardless of content.
-		// In Excel, comparing a string "5" to the number 5 returns FALSE
-		// (different types), so we must preserve the string type.
+		// Shared-string cells: some writers (e.g. calamine) store numbers in
+		// the shared string table. If the resolved string is a valid float64,
+		// treat it as a number so that formulas referencing the cell see the
+		// correct type (matching Excel behaviour).
+		if n, err := strconv.ParseFloat(cd.Value, 64); err == nil {
+			return Value{Type: TypeNumber, Number: n}
+		}
 		return Value{Type: TypeString, String: cd.Value}
 	case "str", "inlineStr":
 		return Value{Type: TypeString, String: cd.Value}
