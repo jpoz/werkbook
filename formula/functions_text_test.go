@@ -164,6 +164,10 @@ func TestTEXTFormatExtended(t *testing.T) {
 		{name: "qmark_pad_comma", formula: `TEXT(1234567,"?,?????????")`, want: "    1,234,567"},
 		{name: "qmark_pad_simple", formula: `TEXT(5,"???")`, want: "  5"},
 		{name: "qmark_pad_exact", formula: `TEXT(123,"???")`, want: "123"},
+		// Question mark in decimal positions
+		{name: "qmark_dec_11", formula: `TEXT(1.1,"?.?")`, want: "1.1"},
+		{name: "qmark_dec_10", formula: `TEXT(1,"?.?")`, want: "1. "},
+		{name: "qmark_dec_pipe", formula: `TEXT(1.1,"|?.?|")`, want: "|1.1|"},
 		// Comma formatting
 		{name: "comma_thousands", formula: `TEXT(1234567,"#,##0")`, want: "1,234,567"},
 		{name: "comma_with_dec", formula: `TEXT(1234.56,"#,##0.00")`, want: "1,234.56"},
