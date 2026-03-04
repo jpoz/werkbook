@@ -74,7 +74,7 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		if len(row) == 0 {
 			continue
 		}
-		if CompareValues(row[0], lookup) == 0 {
+		if CompareValuesExact(row[0], lookup) == 0 {
 			if ci > len(row) {
 				return ErrorVal(ErrValREF), nil
 			}
@@ -132,7 +132,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	}
 
 	for i, cell := range firstRow {
-		if CompareValues(cell, lookup) == 0 {
+		if CompareValuesExact(cell, lookup) == 0 {
 			if i >= len(table.Array[ri-1]) {
 				return ErrorVal(ErrValREF), nil
 			}
@@ -229,7 +229,7 @@ func fnMATCH(args []Value) (Value, error) {
 	switch matchType {
 	case 0:
 		for i, v := range values {
-			if CompareValues(v, lookup) == 0 {
+			if CompareValuesExact(v, lookup) == 0 {
 				return NumberVal(float64(i + 1)), nil
 			}
 		}
@@ -448,7 +448,7 @@ func fnXLOOKUP(args []Value) (Value, error) {
 	switch matchMode {
 	case 0:
 		for i, v := range lookupValues {
-			if CompareValues(v, lookup) == 0 {
+			if CompareValuesExact(v, lookup) == 0 {
 				if i < len(returnValues) {
 					return returnValues[i], nil
 				}
