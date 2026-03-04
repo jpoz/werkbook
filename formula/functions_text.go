@@ -320,6 +320,12 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
+	// "@" format with a numeric value: convert number to string using
+	// the text section (@ is the text placeholder).
+	if sectionContainsAt(format) && !strings.ContainsAny(format, "0#?") {
+		return StringVal(formatTextSection(excelNumberToString(n), format)), nil
+	}
+
 	return StringVal(formatExcelNumber(n, format, date1904)), nil
 }
 
