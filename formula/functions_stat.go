@@ -234,13 +234,17 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 	case ValueArray:
 		for _, row := range arg.Array {
 			for _, cell := range row {
-				if cell.Type == ValueEmpty {
+				if cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "") {
 					count++
 				}
 			}
 		}
 	case ValueEmpty:
 		count = 1
+	case ValueString:
+		if arg.Str == "" {
+			count = 1
+		}
 	}
 	return NumberVal(float64(count)), nil
 }
