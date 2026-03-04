@@ -19,6 +19,7 @@ func init() {
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
 	Register("GEOMEAN", NoCtx(fnGEOMEAN))
+	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
 	Register("MAX", NoCtx(fnMAX))
 	Register("MAXIFS", NoCtx(fnMAXIFS))
@@ -1019,4 +1020,26 @@ func fnGEOMEAN(args []Value) (Value, error) {
 		sumLn += math.Log(v)
 	}
 	return NumberVal(math.Exp(sumLn / float64(n))), nil
+}
+
+func fnHARMEAN(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sumReciprocals := 0.0
+	for _, v := range nums {
+		if v <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sumReciprocals += 1.0 / v
+	}
+	return NumberVal(float64(n) / sumReciprocals), nil
 }

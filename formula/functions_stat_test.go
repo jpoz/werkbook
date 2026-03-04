@@ -1199,3 +1199,233 @@ func TestTRIMMEAN(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// HARMEAN
+// ---------------------------------------------------------------------------
+
+func TestHARMEAN(t *testing.T) {
+	const tol = 1e-6
+
+	// Resolver with {4,5,8,7,11,4,3} in A1:A7
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(8),
+			{Col: 1, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(11),
+			{Col: 1, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(3),
+		},
+	}
+
+	// Resolver with mixed types in B column
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: StringVal("hello"),
+			{Col: 2, Row: 3}: NumberVal(4),
+			{Col: 2, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	// Resolver with zero in C column
+	zeroResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(0),
+			{Col: 3, Row: 3}: NumberVal(10),
+		},
+	}
+
+	// Resolver with error in D column
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(3),
+			{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+			{Col: 4, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Large dataset in E column (1..20)
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 5, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		wantNum  float64
+		wantErr  bool // expect ValueError type
+	}{
+		// Excel documentation example: {4,5,8,7,11,4,3}
+		{
+			name:     "excel_example_array_ref",
+			formula:  "HARMEAN(A1:A7)",
+			resolver: excelResolver,
+			wantNum:  5.028376,
+		},
+		// Same values as direct args
+		{
+			name:     "excel_example_direct",
+			formula:  "HARMEAN(4,5,8,7,11,4,3)",
+			resolver: nil,
+			wantNum:  5.028376,
+		},
+		// Single value
+		{
+			name:     "single_value",
+			formula:  "HARMEAN(4)",
+			resolver: nil,
+			wantNum:  4,
+		},
+		// Two values: 2/(1/1+1/4) = 2/1.25 = 1.6
+		{
+			name:     "two_values",
+			formula:  "HARMEAN(1,4)",
+			resolver: nil,
+			wantNum:  1.6,
+		},
+		// All same values
+		{
+			name:     "all_same",
+			formula:  "HARMEAN(5,5,5)",
+			resolver: nil,
+			wantNum:  5,
+		},
+		// Zero returns #NUM!
+		{
+			name:    "zero_direct",
+			formula: "HARMEAN(0)",
+			wantErr: true,
+		},
+		// Zero in middle
+		{
+			name:    "zero_in_middle",
+			formula: "HARMEAN(3,0,6)",
+			wantErr: true,
+		},
+		// Negative value returns #NUM!
+		{
+			name:    "negative_value",
+			formula: "HARMEAN(-1,2,3)",
+			wantErr: true,
+		},
+		// Boolean TRUE as direct arg (counted as 1)
+		{
+			name:    "bool_true_direct",
+			formula: "HARMEAN(TRUE,4)",
+			wantNum: 1.6, // 2/(1/1+1/4) = 1.6
+		},
+		// String number as direct arg
+		{
+			name:    "string_number_direct",
+			formula: `HARMEAN("3",6)`,
+			wantNum: 4, // 2/(1/3+1/6) = 2/0.5 = 4
+		},
+		// Array with mixed types: text and bool ignored, only numbers {2,4,8}
+		{
+			name:     "array_mixed_types",
+			formula:  "HARMEAN(B1:B5)",
+			resolver: mixedResolver,
+			wantNum:  3.428571, // 3/(1/2+1/4+1/8) = 3/0.875
+		},
+		// Zero in array → #NUM!
+		{
+			name:     "zero_in_array",
+			formula:  "HARMEAN(C1:C3)",
+			resolver: zeroResolver,
+			wantErr:  true,
+		},
+		// Error propagation (#N/A in array)
+		{
+			name:     "error_propagation_na",
+			formula:  "HARMEAN(D1:D3)",
+			resolver: errResolver,
+			wantErr:  true,
+		},
+		// Error propagation with #VALUE!
+		{
+			name:    "error_propagation_value",
+			formula: `HARMEAN(1,2,1/0)`,
+			wantErr: true,
+		},
+		// Large dataset 1..20
+		{
+			name:     "large_dataset",
+			formula:  "HARMEAN(E1:E20)",
+			resolver: largeResolver,
+			wantNum:  5.559046, // harmonic mean of 1..20
+		},
+		// Very small positive numbers
+		{
+			name:    "very_small_numbers",
+			formula: "HARMEAN(0.001,0.002,0.003)",
+			wantNum: 0.001636, // 3/(1/0.001+1/0.002+1/0.003)
+		},
+		// Very large numbers
+		{
+			name:    "very_large_numbers",
+			formula: "HARMEAN(1000000,2000000,3000000)",
+			wantNum: 1636363.636364,
+		},
+		// Single element array
+		{
+			name:     "single_element_array",
+			formula:  "HARMEAN(A1:A1)",
+			resolver: excelResolver,
+			wantNum:  4,
+		},
+		// Multiple array arguments
+		{
+			name:     "multiple_arrays",
+			formula:  "HARMEAN(A1:A3,A4:A7)",
+			resolver: excelResolver,
+			wantNum:  5.028376,
+		},
+		// Mix of direct and array
+		{
+			name:     "direct_and_array",
+			formula:  "HARMEAN(2,A1:A1)",
+			resolver: excelResolver,
+			wantNum:  2.666667, // 2/(1/2+1/4) = 2/0.75
+		},
+		// Equal fractions
+		{
+			name:    "fractions",
+			formula: "HARMEAN(0.5,0.5)",
+			wantNum: 0.5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			resolver := tt.resolver
+			if resolver == nil {
+				resolver = &mockResolver{}
+			}
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Errorf("got %v (type %d), want error", got, got.Type)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
