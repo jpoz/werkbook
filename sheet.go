@@ -82,9 +82,10 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.dirty = true
 	s.file.calcGen++
 	// Compile and register in dep graph.
-	node, parseErr := formula.Parse(f)
+	src := formula.ExpandTableRefs(f, s.file.tables, row)
+	node, parseErr := formula.Parse(src)
 	if parseErr == nil {
-		cf, compErr := formula.Compile(f, node)
+		cf, compErr := formula.Compile(src, node)
 		if compErr == nil {
 			c.compiled = cf
 			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
@@ -435,11 +436,13 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	cf := c.compiled
 	if cf == nil {
-		node, err := formula.Parse(c.formula)
+		// Expand table structured references before parsing.
+		src := formula.ExpandTableRefs(c.formula, f.tables, row)
+		node, err := formula.Parse(src)
 		if err != nil {
 			return Value{Type: TypeError, String: "#NAME?"}
 		}
-		compiled, err := formula.Compile(c.formula, node)
+		compiled, err := formula.Compile(src, node)
 		if err != nil {
 			return Value{Type: TypeError, String: "#NAME?"}
 		}
