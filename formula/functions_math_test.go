@@ -69,6 +69,7 @@ func TestMathErrors(t *testing.T) {
 		{"MOD(100,-1e-15)", ErrValNUM},
 		// MOD precision overflow: |n/d| exceeds 2^53
 		{"MOD(1e18,3)", ErrValNUM},
+		{"FLOOR(2.5,0)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
