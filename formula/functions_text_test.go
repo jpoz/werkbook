@@ -782,6 +782,132 @@ func TestLEFTRIGHTMIDEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// MID comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestMIDComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic", formula: `MID("hello",2,3)`, want: "ell"},
+		{name: "basic_single_char", formula: `MID("hello",3,1)`, want: "l"},
+		{name: "basic_two_chars", formula: `MID("hello",4,2)`, want: "lo"},
+		{name: "basic_full_string", formula: `MID("hello",1,5)`, want: "hello"},
+
+		// start_num = 1 (beginning of string)
+		{name: "start_at_one", formula: `MID("abcdef",1,3)`, want: "abc"},
+		{name: "start_at_one_single", formula: `MID("abcdef",1,1)`, want: "a"},
+		{name: "start_at_one_all", formula: `MID("abcdef",1,6)`, want: "abcdef"},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_num_chars", formula: `MID("hello",1,0)`, want: ""},
+		{name: "zero_num_chars_mid", formula: `MID("hello",3,0)`, want: ""},
+		{name: "zero_num_chars_end", formula: `MID("hello",5,0)`, want: ""},
+
+		// num_chars exceeds remaining length returns rest of string
+		{name: "exceeds_remaining", formula: `MID("hello",3,100)`, want: "llo"},
+		{name: "exceeds_from_start", formula: `MID("hi",1,10)`, want: "hi"},
+		{name: "exceeds_from_last", formula: `MID("hello",5,50)`, want: "o"},
+		{name: "exceeds_by_one", formula: `MID("abc",2,3)`, want: "bc"},
+
+		// start_num exceeds string length returns empty string
+		{name: "start_beyond_length", formula: `MID("hi",10,1)`, want: ""},
+		{name: "start_just_beyond", formula: `MID("abc",4,1)`, want: ""},
+		{name: "start_way_beyond", formula: `MID("x",100,5)`, want: ""},
+
+		// Empty string input
+		{name: "empty_string", formula: `MID("",1,0)`, want: ""},
+		{name: "empty_string_with_chars", formula: `MID("",1,5)`, want: ""},
+
+		// Numeric input coerced to string
+		{name: "numeric_input", formula: `MID(12345,2,3)`, want: "234"},
+		{name: "numeric_single_digit", formula: `MID(12345,1,1)`, want: "1"},
+		{name: "numeric_zero", formula: `MID(0,1,1)`, want: "0"},
+		{name: "numeric_negative", formula: `MID(-123,1,2)`, want: "-1"},
+		{name: "numeric_decimal", formula: `MID(3.14,2,2)`, want: ".1"},
+
+		// Boolean input coerced to string
+		{name: "bool_true", formula: `MID(TRUE,1,2)`, want: "TR"},
+		{name: "bool_false", formula: `MID(FALSE,2,3)`, want: "ALS"},
+		{name: "bool_true_end", formula: `MID(TRUE,3,2)`, want: "UE"},
+		{name: "bool_false_full", formula: `MID(FALSE,1,5)`, want: "FALSE"},
+
+		// start_num <= 0 (should error)
+		{name: "start_zero", formula: `MID("hello",0,3)`, isErr: true},
+		{name: "start_negative", formula: `MID("hello",-1,3)`, isErr: true},
+		{name: "start_negative_large", formula: `MID("hello",-100,3)`, isErr: true},
+
+		// Negative num_chars (should error)
+		{name: "negative_num_chars", formula: `MID("hello",1,-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `MID("hello",1,-100)`, isErr: true},
+
+		// Non-numeric args (should error)
+		{name: "non_numeric_start", formula: `MID("hello","abc",3)`, isErr: true},
+		{name: "non_numeric_num_chars", formula: `MID("hello",1,"abc")`, isErr: true},
+
+		// Special characters and spaces
+		{name: "with_spaces", formula: `MID("hello world",6,1)`, want: " "},
+		{name: "extract_word", formula: `MID("hello world",7,5)`, want: "world"},
+		{name: "special_chars", formula: `MID("abc!@#def",4,3)`, want: "!@#"},
+		{name: "newline_char", formula: "MID(\"abc\ndef\",4,1)", want: "\n"},
+
+		// Float args truncated to int
+		{name: "float_start", formula: `MID("hello",2.9,3)`, want: "ell"},
+		{name: "float_num_chars", formula: `MID("hello",1,2.9)`, want: "he"},
+		{name: "float_both", formula: `MID("hello",1.7,3.8)`, want: "hel"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestMIDWrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, `MID("hello",2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("MID with 2 args: got %v, want error", got)
+	}
+
+	// Too many args
+	cf = evalCompile(t, `MID("hello",2,3,4)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("MID with 4 args: got %v, want error", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // RIGHT comprehensive tests
 // ---------------------------------------------------------------------------
 
