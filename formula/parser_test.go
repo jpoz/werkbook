@@ -127,8 +127,8 @@ func TestParseUnary(t *testing.T) {
 		{"+1", "(+ 1)"},
 		{"--1", "(- (- 1))"},
 
-		// Unary binds looser than ^ but tighter than *
-		{"-2^3", "(- (^ 2 3))"}, // -(2^3) = -8 (matches Excel)
+		// Unary binds tighter than ^ (Excel convention: -2^2 = 4)
+		{"-2^3", "(^ (- 2) 3)"}, // (-2)^3 = -8 (matches Excel)
 		{"-1*2", "(* (- 1) 2)"}, // (-1)*2 = -2
 		{"-1+2", "(+ (- 1) 2)"}, // (-1)+2 = 1
 		{"+A1*B1", "(* (+ A1) B1)"},
