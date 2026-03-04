@@ -2443,3 +2443,106 @@ func TestFISHERINV_FISHER_roundtrip(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GAMMALN / GAMMALN.PRECISE
+// ---------------------------------------------------------------------------
+
+func TestGAMMALN(t *testing.T) {
+	const tol = 1e-4
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic positive integer values
+		{"gammaln_1", "GAMMALN(1)", 0, false, 0},
+		{"gammaln_2", "GAMMALN(2)", 0, false, 0},
+		{"gammaln_3", "GAMMALN(3)", 0.6931472, false, 0},
+		{"gammaln_4", "GAMMALN(4)", 1.7917595, false, 0},
+		{"gammaln_5", "GAMMALN(5)", 3.1780538, false, 0},
+		{"gammaln_6", "GAMMALN(6)", 4.7874917, false, 0},
+		{"gammaln_10", "GAMMALN(10)", 12.80183, false, 0},
+
+		// Fractional values
+		{"gammaln_0.5", "GAMMALN(0.5)", 0.5723649, false, 0},
+		{"gammaln_1.5", "GAMMALN(1.5)", -0.1207822, false, 0},
+		{"gammaln_2.5", "GAMMALN(2.5)", 0.2846829, false, 0},
+		{"gammaln_0.001", "GAMMALN(0.001)", 6.9071786, false, 0},
+		{"gammaln_0.1", "GAMMALN(0.1)", 2.2527127, false, 0},
+
+		// Large values
+		{"gammaln_100", "GAMMALN(100)", 359.1342, false, 0},
+		{"gammaln_50", "GAMMALN(50)", 144.5657, false, 0},
+
+		// Boolean coercion (TRUE=1)
+		{"gammaln_true", "GAMMALN(TRUE)", 0, false, 0},
+
+		// Error cases: non-positive
+		{"gammaln_zero", "GAMMALN(0)", 0, true, ErrValNUM},
+		{"gammaln_neg1", "GAMMALN(-1)", 0, true, ErrValNUM},
+		{"gammaln_neg0.5", "GAMMALN(-0.5)", 0, true, ErrValNUM},
+		{"gammaln_neg100", "GAMMALN(-100)", 0, true, ErrValNUM},
+
+		// Error cases: text
+		{"gammaln_text", `GAMMALN("text")`, 0, true, ErrValVALUE},
+
+		// GAMMALN.PRECISE should behave identically
+		{"precise_4", "GAMMALN.PRECISE(4)", 1.7917595, false, 0},
+		{"precise_1", "GAMMALN.PRECISE(1)", 0, false, 0},
+		{"precise_0.5", "GAMMALN.PRECISE(0.5)", 0.5723649, false, 0},
+		{"precise_zero", "GAMMALN.PRECISE(0)", 0, true, ErrValNUM},
+		{"precise_neg", "GAMMALN.PRECISE(-1)", 0, true, ErrValNUM},
+		{"precise_text", `GAMMALN.PRECISE("text")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestGAMMALN_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No args
+	cf := evalCompile(t, "GAMMALN()")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("GAMMALN() should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "GAMMALN(1,2)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("GAMMALN(1,2) should error, got type=%d", got.Type)
+	}
+}

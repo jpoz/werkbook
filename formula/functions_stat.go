@@ -24,6 +24,8 @@ func init() {
 	Register("FISHERINV", NoCtx(fnFISHERINV))
 	Register("FORECAST", NoCtx(fnFORECAST))
 	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
+	Register("GAMMALN", NoCtx(fnGAMMALN))
+	Register("GAMMALN.PRECISE", NoCtx(fnGAMMALN))
 	Register("GEOMEAN", NoCtx(fnGEOMEAN))
 	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
@@ -1252,6 +1254,34 @@ func fnFISHER(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(0.5 * math.Log((1+x)/(1-x))), nil
+}
+
+func fnGAMMALN(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			if n <= 0 {
+				return ErrorVal(ErrValNUM)
+			}
+			lg, _ := math.Lgamma(n)
+			return NumberVal(lg)
+		}), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if x <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	lg, _ := math.Lgamma(x)
+	return NumberVal(lg), nil
 }
 
 func fnFISHERINV(args []Value) (Value, error) {
