@@ -1369,9 +1369,17 @@ func formatFraction(n float64, format string) string {
 		result.WriteString(suffix)
 	} else if hasWhole {
 		result.WriteString(prefix)
-		formatWholeDigits(&result, false)
-		if wholePart != 0 {
+		if wholePart == 0 && (numHasQ || denHasQ) {
+			// When the whole part is zero and the fraction uses ?
+			// (space-padded) placeholders, suppress the whole digits (as #
+			// normally does for zero) but still emit the middle separator
+			// so the fraction stays aligned.  E.g. "# ?/?" with 0.25 → " 1/4".
 			result.WriteString(middle)
+		} else {
+			formatWholeDigits(&result, false)
+			if wholePart != 0 {
+				result.WriteString(middle)
+			}
 		}
 		writeFrac(bestNum, false)
 		result.WriteString(suffix)
