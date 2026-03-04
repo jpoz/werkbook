@@ -89,6 +89,8 @@ func fnCOUNT(args []Value) (Value, error) {
 			}
 		case ValueNumber:
 			count++
+		case ValueBool:
+			count++
 		case ValueString:
 			if _, err := strconv.ParseFloat(arg.Str, 64); err == nil {
 				count++

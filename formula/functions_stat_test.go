@@ -85,6 +85,52 @@ func TestSUMIF(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// COUNT – boolean handling
+// ---------------------------------------------------------------------------
+
+func TestCOUNTBooleanDirectArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	// Direct boolean args should be counted (Excel behavior).
+	cf := evalCompile(t, "COUNT(TRUE,FALSE,10,20)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("COUNT(TRUE,FALSE,10,20): got %g, want 4", got.Num)
+	}
+
+	cf = evalCompile(t, "COUNT(TRUE)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNT(TRUE): got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTBooleanInRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+		},
+	}
+
+	// Booleans in a range should NOT be counted.
+	cf := evalCompile(t, "COUNT(A1:A2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("COUNT(A1:A2) with booleans: got %g, want 0", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTIF
 // ---------------------------------------------------------------------------
 
