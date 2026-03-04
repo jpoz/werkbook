@@ -440,10 +440,12 @@ func CoerceNum(v Value) (float64, *Value) {
 		}
 		return 0, nil
 	case ValueString:
-		if v.Str == "" {
-			return 0, nil
+		trimmed := strings.TrimSpace(v.Str)
+		if trimmed == "" {
+			e := ErrorVal(ErrValVALUE)
+			return 0, &e
 		}
-		n, err := strconv.ParseFloat(v.Str, 64)
+		n, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
 			e := ErrorVal(ErrValVALUE)
 			return 0, &e

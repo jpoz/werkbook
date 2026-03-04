@@ -483,8 +483,8 @@ func TestEvalCoerceNum(t *testing.T) {
 		// Numeric string coerced
 		{name: "numeric_string", formula: `"123"+0`, wantNum: 123},
 		{name: "numeric_string_float", formula: `"3.14"+0`, wantNum: 3.14},
-		// Empty string coerced to 0
-		{name: "empty_string", formula: `""+0`, wantNum: 0},
+		// Empty string produces #VALUE! (not coerced to 0)
+		{name: "empty_string", formula: `""+0`, isErr: true, wantErr: ErrValVALUE},
 		// Non-numeric string produces #VALUE!
 		{name: "non_numeric_string", formula: `"abc"+0`, isErr: true, wantErr: ErrValVALUE},
 		// Error propagates through arithmetic
@@ -496,6 +496,22 @@ func TestEvalCoerceNum(t *testing.T) {
 		{name: "negative_arithmetic", formula: "-10+-20", wantNum: -30},
 		// Chained operations with coercion
 		{name: "bool_chain", formula: "TRUE+TRUE+TRUE", wantNum: 3},
+		// Cell containing empty string produces #VALUE!
+		{name: "cell_empty_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal(""),
+		}, isErr: true, wantErr: ErrValVALUE},
+		// Cell containing numeric string coerces to number
+		{name: "cell_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal("5"),
+		}, wantNum: 5},
+		// Whitespace-padded numeric string coerces to number (Excel trims whitespace)
+		{name: "cell_padded_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal(" 5 "),
+		}, wantNum: 5},
+		// Whitespace-only string produces #VALUE!
+		{name: "whitespace_only_string", formula: `" "+0`, isErr: true, wantErr: ErrValVALUE},
+		// Truly empty cell treated as 0 (not the same as empty string)
+		{name: "truly_empty_cell", formula: "A1+0", wantNum: 0},
 	}
 
 	for _, tt := range tests {
