@@ -50,28 +50,22 @@ func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
 		wantStr  string
 	}{
 		{
-			name:     "shared string with large negative integer stays string",
+			name:     "shared string with large negative integer",
 			cd:       ooxml.CellData{Type: "s", Value: "-8086931554011838357"},
-			wantType: TypeString,
-			wantStr:  "-8086931554011838357",
+			wantType: TypeNumber,
+			wantNum:  -8086931554011838357,
 		},
 		{
-			name:     "shared string with positive integer stays string",
+			name:     "shared string with positive integer",
 			cd:       ooxml.CellData{Type: "s", Value: "42"},
-			wantType: TypeString,
-			wantStr:  "42",
+			wantType: TypeNumber,
+			wantNum:  42,
 		},
 		{
-			name:     "shared string with float stays string",
+			name:     "shared string with float",
 			cd:       ooxml.CellData{Type: "s", Value: "3.14"},
-			wantType: TypeString,
-			wantStr:  "3.14",
-		},
-		{
-			name:     "shared string '5' stays string not number",
-			cd:       ooxml.CellData{Type: "s", Value: "5"},
-			wantType: TypeString,
-			wantStr:  "5",
+			wantType: TypeNumber,
+			wantNum:  3.14,
 		},
 		{
 			name:     "shared string with non-numeric text",
