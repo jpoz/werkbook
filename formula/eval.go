@@ -128,15 +128,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an + bn))
-			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an + bn)
+			}))
 
 		case OpSub:
 			b, err := pop()
@@ -147,15 +141,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an - bn))
-			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an - bn)
+			}))
 
 		case OpMul:
 			b, err := pop()
@@ -166,15 +154,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
-				push(NumberVal(an * bn))
-			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				return NumberVal(an * bn)
+			}))
 
 		case OpDiv:
 			b, err := pop()
@@ -185,17 +167,12 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else if bn == 0 {
-				push(ErrorVal(ErrValDIV0))
-			} else {
-				push(NumberVal(an / bn))
-			}
+			push(binaryArith(a, b, func(an, bn float64) Value {
+				if bn == 0 {
+					return ErrorVal(ErrValDIV0)
+				}
+				return NumberVal(an / bn)
+			}))
 
 		case OpPow:
 			b, err := pop()
@@ -206,20 +183,13 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			bn, be := CoerceNum(b)
-			if ae != nil {
-				push(*ae)
-			} else if be != nil {
-				push(*be)
-			} else {
+			push(binaryArith(a, b, func(an, bn float64) Value {
 				result := math.Pow(an, bn)
 				if math.IsNaN(result) || math.IsInf(result, 0) {
-					push(ErrorVal(ErrValNUM))
-				} else {
-					push(NumberVal(result))
+					return ErrorVal(ErrValNUM)
 				}
-			}
+				return NumberVal(result)
+			}))
 
 		case OpNeg:
 			a, err := pop()
@@ -562,6 +532,64 @@ func IsTruthy(v Value) bool {
 	default:
 		return false
 	}
+}
+
+// binaryArith performs a binary arithmetic operation on two Values,
+// supporting element-wise array operations when one or both operands are arrays.
+func binaryArith(a, b Value, op func(float64, float64) Value) Value {
+	aArr := a.Type == ValueArray
+	bArr := b.Type == ValueArray
+
+	if !aArr && !bArr {
+		// Scalar case.
+		an, ae := CoerceNum(a)
+		bn, be := CoerceNum(b)
+		if ae != nil {
+			return *ae
+		}
+		if be != nil {
+			return *be
+		}
+		return op(an, bn)
+	}
+
+	// At least one operand is an array — do element-wise computation.
+	rows, cols := 1, 1
+	if aArr {
+		rows = len(a.Array)
+		if rows > 0 {
+			cols = len(a.Array[0])
+		}
+	}
+	if bArr {
+		if r := len(b.Array); r > rows {
+			rows = r
+		}
+		if rows > 0 && len(b.Array) > 0 {
+			if c := len(b.Array[0]); c > cols {
+				cols = c
+			}
+		}
+	}
+
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			av := ArrayElement(a, i, j)
+			bv := ArrayElement(b, i, j)
+			an, ae := CoerceNum(av)
+			bn, be := CoerceNum(bv)
+			if ae != nil {
+				result[i][j] = *ae
+			} else if be != nil {
+				result[i][j] = *be
+			} else {
+				result[i][j] = op(an, bn)
+			}
+		}
+	}
+	return Value{Type: ValueArray, Array: result}
 }
 
 // callFunction is replaced by CallFunc in registry.go.

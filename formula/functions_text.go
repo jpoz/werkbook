@@ -254,13 +254,20 @@ func fnTEXT(args []Value) (Value, error) {
 		return StringVal(formatExcelNumber(n, format)), nil
 	}
 
-	// Booleans with a 4-section format use the text section as "TRUE"/"FALSE".
-	if v.Type == ValueBool && len(sections) >= 4 {
+	// Booleans: "General" format preserves TRUE/FALSE text.
+	// A 4-section format uses the text section for booleans.
+	// Other numeric formats coerce TRUE→1, FALSE→0.
+	if v.Type == ValueBool {
 		text := "TRUE"
 		if !v.Bool {
 			text = "FALSE"
 		}
-		return StringVal(formatTextSection(text, sections[3])), nil
+		if strings.EqualFold(format, "General") {
+			return StringVal(text), nil
+		}
+		if len(sections) >= 4 {
+			return StringVal(formatTextSection(text, sections[3])), nil
+		}
 	}
 
 	n, e := CoerceNum(v)

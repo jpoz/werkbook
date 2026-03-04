@@ -603,6 +603,10 @@ func formatElapsedTime(serial float64, format string) string {
 
 	upper := strings.ToUpper(format)
 
+	// Pre-scan to determine the primary elapsed bracket code.
+	// This affects how bare time codes are interpreted.
+	elapsedUnit := detectElapsedUnit(upper)
+
 	var result strings.Builder
 	i := 0
 	for i < len(format) {
@@ -636,6 +640,7 @@ func formatElapsedTime(serial float64, format string) string {
 				continue
 			}
 			code := upper[i+1 : i+end]
+			i += end + 1
 			switch code {
 			case "H", "HH":
 				result.WriteString(strconv.Itoa(totalHours))
@@ -643,17 +648,24 @@ func formatElapsedTime(serial float64, format string) string {
 				result.WriteString(strconv.Itoa(totalMinutes))
 			case "S", "SS":
 				result.WriteString(strconv.Itoa(int(totalSeconds)))
+				// Handle fractional seconds after [s]/[ss].
+				i = writeElapsedFracSeconds(format, i, totalSeconds, &result)
 			}
-			i += end + 1
 			continue
 		}
 
 		if uCh == 'M' {
 			count := countRun(upper, i, 'M')
+			// When [s] is the elapsed unit, bare m shows total minutes;
+			// when [h] or [m] is the unit, m shows minutes-within-hour.
+			mv := minutes
+			if elapsedUnit == 'S' {
+				mv = totalMinutes
+			}
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", minutes))
+				result.WriteString(fmt.Sprintf("%02d", mv))
 			} else {
-				result.WriteString(strconv.Itoa(minutes))
+				result.WriteString(strconv.Itoa(mv))
 			}
 			i += count
 			continue
@@ -661,11 +673,20 @@ func formatElapsedTime(serial float64, format string) string {
 
 		if uCh == 'S' {
 			count := countRun(upper, i, 'S')
-			sec := int(seconds)
-			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", sec))
+			// When [s] is the elapsed unit, bare s also shows total seconds.
+			var sv int
+			var fracSec float64
+			if elapsedUnit == 'S' {
+				sv = int(totalSeconds)
+				fracSec = totalSeconds - float64(sv)
 			} else {
-				result.WriteString(strconv.Itoa(sec))
+				sv = int(seconds)
+				fracSec = seconds - float64(sv)
+			}
+			if count >= 2 {
+				result.WriteString(fmt.Sprintf("%02d", sv))
+			} else {
+				result.WriteString(strconv.Itoa(sv))
 			}
 			// Fractional seconds.
 			if i+count < len(format) && format[i+count] == '.' {
@@ -677,7 +698,6 @@ func formatElapsedTime(serial float64, format string) string {
 					j++
 				}
 				if zeroCount > 0 {
-					fracSec := seconds - float64(sec)
 					fracStr := fmt.Sprintf("%.*f", zeroCount, fracSec)
 					if dotIdx := strings.Index(fracStr, "."); dotIdx >= 0 {
 						result.WriteString(fracStr[dotIdx:])
@@ -692,7 +712,6 @@ func formatElapsedTime(serial float64, format string) string {
 
 		if uCh == 'H' {
 			count := countRun(upper, i, 'H')
-			// In elapsed time format, bare h after [h] shows... just skip or show hours.
 			if count >= 2 {
 				result.WriteString(fmt.Sprintf("%02d", totalHours))
 			} else {
@@ -711,6 +730,62 @@ func formatElapsedTime(serial float64, format string) string {
 		s = "-" + s
 	}
 	return s
+}
+
+// detectElapsedUnit scans the upper-case format for the first elapsed
+// bracket code and returns 'H', 'M', or 'S'. Returns 0 if none found.
+func detectElapsedUnit(upper string) byte {
+	inQuote := false
+	for i := 0; i < len(upper); i++ {
+		if upper[i] == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if upper[i] == '\\' && i+1 < len(upper) {
+			i++
+			continue
+		}
+		if upper[i] == '[' {
+			end := strings.Index(upper[i:], "]")
+			if end > 0 {
+				code := upper[i+1 : i+end]
+				switch code {
+				case "H", "HH":
+					return 'H'
+				case "M", "MM":
+					return 'M'
+				case "S", "SS":
+					return 'S'
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// writeElapsedFracSeconds checks for .000 after an elapsed [s]/[ss] bracket
+// code and writes the fractional seconds. Returns the new position.
+func writeElapsedFracSeconds(format string, i int, totalSeconds float64, result *strings.Builder) int {
+	if i < len(format) && format[i] == '.' {
+		zeroCount := 0
+		j := i + 1
+		for j < len(format) && format[j] == '0' {
+			zeroCount++
+			j++
+		}
+		if zeroCount > 0 {
+			fracSec := totalSeconds - float64(int(totalSeconds))
+			fracStr := fmt.Sprintf("%.*f", zeroCount, fracSec)
+			if dotIdx := strings.Index(fracStr, "."); dotIdx >= 0 {
+				result.WriteString(fracStr[dotIdx:])
+			}
+			return j
+		}
+	}
+	return i
 }
 
 // ---------------------------------------------------------------------------

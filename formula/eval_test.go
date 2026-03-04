@@ -1152,6 +1152,51 @@ func TestEvalArrayLiteral(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Array binary operations — SUM(range*range)
+// ---------------------------------------------------------------------------
+
+func TestEvalArrayBinaryOps(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: NumberVal(3),
+			{Col: 3, Row: 2}: NumberVal(4),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{name: "SUM(range*range)", formula: "SUM(B1:C1*B2:C2)", want: 11}, // 1*3 + 2*4
+		{name: "SUM(range+range)", formula: "SUM(B1:C1+B2:C2)", want: 10}, // (1+3) + (2+4)
+		{name: "SUM(range-range)", formula: "SUM(B1:C1-B2:C2)", want: -4}, // (1-3) + (2-4)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v (%g), want %g", tt.formula, got.Type, got.Num, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // IFNA
 // ---------------------------------------------------------------------------
 

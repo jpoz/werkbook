@@ -241,6 +241,12 @@ func TestTEXTElapsedTime(t *testing.T) {
 		{name: "elapsed_with_frac", formula: `TEXT(3.14159, "[h]:mm:ss.000")`, want: "75:23:53.376"},
 		{name: "simple_elapsed", formula: `TEXT(1.5, "[h]:mm:ss")`, want: "36:00:00"},
 		{name: "zero_elapsed", formula: `TEXT(0, "[h]:mm:ss")`, want: "0:00:00"},
+		// [ss].000 — fractional seconds after elapsed bracket code
+		{name: "elapsed_sec_frac", formula: `TEXT(3.14159, "[ss].000")`, want: "271433.376"},
+		// bare ss with [s] present — bare ss should show total seconds
+		{name: "elapsed_sec_bare_ss", formula: `TEXT(3.14159, "[s]"" [yes, ""ss""] seconds""")`, want: `271433 [yes, 271433] seconds`},
+		// [s] with small value
+		{name: "elapsed_sec_small", formula: `TEXT(0.08546296296296296, "[s]"" [yes, ""ss""] seconds""")`, want: `7384 [yes, 7384] seconds`},
 	}
 
 	for _, tt := range tests {
@@ -429,6 +435,10 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "quoted_literal", formula: `TEXT(12.3, """Value: ""0.00")`, want: "Value: 12.30"},
 		{name: "general_format", formula: `TEXT(1, "General")`, want: "1"},
 		{name: "general_float", formula: `TEXT(3.14, "General")`, want: "3.14"},
+		{name: "general_true", formula: `TEXT(TRUE, "General")`, want: "TRUE"},
+		{name: "general_false", formula: `TEXT(FALSE, "General")`, want: "FALSE"},
+		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "1"},
+		{name: "bool_false_numeric_fmt", formula: `TEXT(FALSE, "0")`, want: "0"},
 	}
 
 	for _, tt := range tests {
