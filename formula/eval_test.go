@@ -1235,42 +1235,79 @@ func TestEvalIFNA(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 3D sheet references — must return parse error, not panic
+// 3D sheet references — parse, compile, and evaluate correctly
 // ---------------------------------------------------------------------------
 
-func TestEval3DSheetRefNoPanic(t *testing.T) {
+func TestEval3DSheetRef(t *testing.T) {
 	// SUM(Sheet2:Sheet5!A11) is a 3D sheet reference (multi-sheet range).
-	// The formula engine does not support 3D references, but it must return
-	// a graceful error instead of panicking.
-	formulas := []string{
-		"SUM(Sheet2:Sheet5!A11)",
-		"SUM('Sheet2:Sheet5'!A11)",
+	// With SheetListProvider support, this should evaluate by summing
+	// A11 across Sheet2, Sheet3, Sheet4, Sheet5.
+	resolver := &mock3DResolver{
+		sheets: []string{"test", "Sheet2", "Sheet3", "Sheet4", "Sheet5"},
+		cells: map[CellAddr]Value{
+			{Sheet: "Sheet2", Col: 1, Row: 11}: NumberVal(1),
+			{Sheet: "Sheet3", Col: 1, Row: 11}: NumberVal(2),
+			{Sheet: "Sheet4", Col: 1, Row: 11}: NumberVal(3),
+			{Sheet: "Sheet5", Col: 1, Row: 11}: NumberVal(4),
+		},
 	}
 
-	for _, f := range formulas {
-		t.Run(f, func(t *testing.T) {
-			node, err := Parse(f)
+	formulas := []struct {
+		formula string
+		want    float64
+	}{
+		{"SUM(Sheet2:Sheet5!A11)", 10},
+		{"SUM('Sheet2:Sheet5'!A11)", 10},
+	}
+
+	for _, tt := range formulas {
+		t.Run(tt.formula, func(t *testing.T) {
+			node, err := Parse(tt.formula)
 			if err != nil {
-				// Parse error is the expected graceful failure.
-				t.Logf("Parse(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Parse(%q) error: %v", tt.formula, err)
 			}
-			// If parsing somehow succeeded, compilation should fail or
-			// evaluation should not panic.
-			cf, err := Compile(f, node)
+			cf, err := Compile(tt.formula, node)
 			if err != nil {
-				t.Logf("Compile(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Compile(%q) error: %v", tt.formula, err)
 			}
-			resolver := &mockResolver{}
-			_, err = Eval(cf, resolver, nil)
+			got, err := Eval(cf, resolver, nil)
 			if err != nil {
-				t.Logf("Eval(%q) returned expected error: %v", f, err)
-				return
+				t.Fatalf("Eval(%q) error: %v", tt.formula, err)
 			}
-			t.Errorf("expected error for 3D sheet reference %q, but got none", f)
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+			}
 		})
 	}
+}
+
+// mock3DResolver implements CellResolver and SheetListProvider for testing 3D refs.
+type mock3DResolver struct {
+	sheets []string
+	cells  map[CellAddr]Value
+}
+
+func (m *mock3DResolver) GetCellValue(addr CellAddr) Value {
+	if v, ok := m.cells[addr]; ok {
+		return v
+	}
+	return EmptyVal()
+}
+
+func (m *mock3DResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	rows := make([][]Value, addr.ToRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= addr.ToRow; r++ {
+		row := make([]Value, addr.ToCol-addr.FromCol+1)
+		for c := addr.FromCol; c <= addr.ToCol; c++ {
+			row[c-addr.FromCol] = m.GetCellValue(CellAddr{Sheet: addr.Sheet, Col: c, Row: r})
+		}
+		rows[r-addr.FromRow] = row
+	}
+	return rows
+}
+
+func (m *mock3DResolver) GetSheetNames() []string {
+	return m.sheets
 }
 
 // ---------------------------------------------------------------------------

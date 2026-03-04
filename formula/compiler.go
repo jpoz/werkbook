@@ -112,9 +112,20 @@ func (c *compiler) compileNode(node Node) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
-		addr := CellAddr{Sheet: n.Sheet, Col: n.Col, Row: n.Row}
-		idx := c.addRef(addr)
-		c.emit(OpLoadCell, idx)
+		addr := CellAddr{Sheet: n.Sheet, SheetEnd: n.SheetEnd, Col: n.Col, Row: n.Row}
+		if n.SheetEnd != "" {
+			// 3D reference (Sheet2:Sheet5!A1): treat as a range across sheets.
+			rng := RangeAddr{
+				Sheet: n.Sheet, SheetEnd: n.SheetEnd,
+				FromCol: n.Col, FromRow: n.Row,
+				ToCol: n.Col, ToRow: n.Row,
+			}
+			idx := c.addRange(rng)
+			c.emit(OpLoad3DRange, idx)
+		} else {
+			idx := c.addRef(addr)
+			c.emit(OpLoadCell, idx)
+		}
 
 	case *RangeRef:
 		if n.From.DotNotation || n.To.DotNotation {
@@ -123,13 +134,19 @@ func (c *compiler) compileNode(node Node) error {
 			return nil
 		}
 		sheet := n.From.Sheet
+		sheetEnd := n.From.SheetEnd
 		addr := RangeAddr{
 			Sheet:   sheet,
+			SheetEnd: sheetEnd,
 			FromCol: n.From.Col, FromRow: n.From.Row,
 			ToCol: n.To.Col, ToRow: n.To.Row,
 		}
 		idx := c.addRange(addr)
-		c.emit(OpLoadRange, idx)
+		if sheetEnd != "" {
+			c.emit(OpLoad3DRange, idx)
+		} else {
+			c.emit(OpLoadRange, idx)
+		}
 
 	case *UnaryExpr:
 		if err := c.compileNode(n.Operand); err != nil {

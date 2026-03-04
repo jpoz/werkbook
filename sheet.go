@@ -567,6 +567,11 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	return rows
 }
 
+// GetSheetNames returns the ordered list of all sheet names in the workbook.
+func (fr *fileResolver) GetSheetNames() []string {
+	return fr.file.SheetNames()
+}
+
 // IsSubtotalCell reports whether the cell at (sheet, col, row) contains a formula
 // whose outermost function call is SUBTOTAL. This is used by the SUBTOTAL function
 // to skip nested SUBTOTAL results and avoid double-counting.

@@ -35,6 +35,13 @@ type SubtotalChecker interface {
 	IsSubtotalCell(sheet string, col, row int) bool
 }
 
+// SheetListProvider is an optional interface that a CellResolver may implement
+// to support 3D sheet references (e.g. Sheet2:Sheet5!A1). It returns the
+// ordered list of all sheet names in the workbook.
+type SheetListProvider interface {
+	GetSheetNames() []string
+}
+
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
@@ -114,6 +121,37 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			}
 			origin := addr // capture for the Value
 			push(Value{Type: ValueArray, Array: rows, RangeOrigin: &origin})
+
+		case OpLoad3DRange:
+			addr := cf.Ranges[inst.Operand]
+			// Resolve 3D sheet reference: collect values from all sheets
+			// between addr.Sheet and addr.SheetEnd.
+			slp, ok := resolver.(SheetListProvider)
+			if !ok {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
+			sheets := resolveSheetRange(slp.GetSheetNames(), addr.Sheet, addr.SheetEnd)
+			if len(sheets) == 0 {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
+			// Collect all values from all sheets into a flat array.
+			var allValues [][]Value
+			for _, sheetName := range sheets {
+				singleAddr := RangeAddr{
+					Sheet:   sheetName,
+					FromCol: addr.FromCol, FromRow: addr.FromRow,
+					ToCol: addr.ToCol, ToRow: addr.ToRow,
+				}
+				sheetRows := resolver.GetRangeValues(singleAddr)
+				allValues = append(allValues, sheetRows...)
+			}
+			if len(allValues) == 0 {
+				push(EmptyVal())
+			} else {
+				push(Value{Type: ValueArray, Array: allValues})
+			}
 
 		case OpLoadCellRef:
 			addr := cf.Refs[inst.Operand]
@@ -687,6 +725,32 @@ func ArrayElement(v Value, i, j int) Value {
 		return v.Array[i][j]
 	}
 	return ErrorVal(ErrValNA)
+}
+
+// resolveSheetRange returns the slice of sheet names from startSheet to endSheet
+// inclusive, based on the ordering in allSheets. If either sheet is not found,
+// returns nil. Comparison is case-insensitive.
+func resolveSheetRange(allSheets []string, startSheet, endSheet string) []string {
+	startIdx := -1
+	endIdx := -1
+	startLower := strings.ToLower(startSheet)
+	endLower := strings.ToLower(endSheet)
+	for i, name := range allSheets {
+		nameLower := strings.ToLower(name)
+		if nameLower == startLower {
+			startIdx = i
+		}
+		if nameLower == endLower {
+			endIdx = i
+		}
+	}
+	if startIdx < 0 || endIdx < 0 {
+		return nil
+	}
+	if startIdx > endIdx {
+		startIdx, endIdx = endIdx, startIdx
+	}
+	return allSheets[startIdx : endIdx+1]
 }
 
 // IterateNumeric calls fn for each numeric value in args, expanding arrays.

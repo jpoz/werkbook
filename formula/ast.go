@@ -75,6 +75,7 @@ func (n *ErrorLit) String() string {
 // CellRef represents a cell reference, possibly sheet-qualified.
 type CellRef struct {
 	Sheet       string // empty if not sheet-qualified
+	SheetEnd    string // non-empty for 3D references (Sheet2:Sheet5!A1); the end sheet name
 	Col         int    // 1-based column number
 	Row         int    // 1-based row number
 	AbsCol      bool   // true if column is absolute ($A)
