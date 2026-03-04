@@ -110,7 +110,7 @@ Werkbook supports **198** Excel formula functions.
 | MAXIFS | Statistical | 11 |
 | MEDIAN | Statistical | - |
 | MID | Text | 6 |
-| MIN | Statistical | 3 |
+| MIN | Statistical | 30 |
 | MINIFS | Statistical | - |
 | MINUTE | Date & Time | - |
 | MOD | Math & Trig | 17 |
@@ -147,7 +147,7 @@ Werkbook supports **198** Excel formula functions.
 | RATE | Financial | 1 |
 | REPLACE | Text | - |
 | REPT | Text | - |
-| RIGHT | Text | 5 |
+| RIGHT | Text | 36 |
 | ROUND | Math & Trig | 38 |
 | ROUNDDOWN | Math & Trig | 2 |
 | ROUNDUP | Math & Trig | 2 |
