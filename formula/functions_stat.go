@@ -14,6 +14,7 @@ func init() {
 	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
+	Register("CORREL", NoCtx(fnCORREL))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
@@ -998,6 +999,87 @@ func fnTRIMMEAN(args []Value) (Value, error) {
 		sum += v
 	}
 	return NumberVal(sum / float64(len(remaining))), nil
+}
+
+func fnCORREL(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten both arrays to 1D slices of Value.
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	// Arrays must have the same number of positions.
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		if v1.Type != ValueNumber || v2.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, v1.Num)
+		ys = append(ys, v2.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute covariance numerator and both sum-of-squared-deviations.
+	cov := 0.0
+	ssqX := 0.0
+	ssqY := 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		cov += dx * dy
+		ssqX += dx * dx
+		ssqY += dy * dy
+	}
+
+	denom := math.Sqrt(ssqX * ssqY)
+	if denom == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	return NumberVal(cov / denom), nil
+}
+
+// flattenValuesGeneric flattens a Value (possibly an array) into a 1D slice of Value.
+func flattenValuesGeneric(arg Value) []Value {
+	if arg.Type == ValueArray {
+		total := 0
+		for _, row := range arg.Array {
+			total += len(row)
+		}
+		out := make([]Value, 0, total)
+		for _, row := range arg.Array {
+			out = append(out, row...)
+		}
+		return out
+	}
+	return []Value{arg}
 }
 
 func fnGEOMEAN(args []Value) (Value, error) {
