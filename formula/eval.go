@@ -480,11 +480,30 @@ func errorValueToString(e ErrorValue) string {
 
 // CompareValues compares two values for ordering. Returns -1, 0, or 1.
 func CompareValues(a, b Value) int {
+	// In Excel, empty cells adapt to the type of the other operand:
+	//   empty = "" → TRUE,  empty = 0 → TRUE,  empty = FALSE → TRUE
+	if a.Type == ValueEmpty && b.Type == ValueEmpty {
+		return 0
+	}
 	if a.Type == ValueEmpty {
-		a = NumberVal(0)
+		switch b.Type {
+		case ValueString:
+			a = StringVal("")
+		case ValueBool:
+			a = BoolVal(false)
+		default:
+			a = NumberVal(0)
+		}
 	}
 	if b.Type == ValueEmpty {
-		b = NumberVal(0)
+		switch a.Type {
+		case ValueString:
+			b = StringVal("")
+		case ValueBool:
+			b = BoolVal(false)
+		default:
+			b = NumberVal(0)
+		}
 	}
 
 	if a.Type == b.Type {
