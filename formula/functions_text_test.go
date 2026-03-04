@@ -782,6 +782,120 @@ func TestLEFTRIGHTMIDEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RIGHT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestRIGHTComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_two_chars", formula: `RIGHT("hello",2)`, want: "lo"},
+		{name: "basic_three_chars", formula: `RIGHT("hello",3)`, want: "llo"},
+		{name: "basic_one_char", formula: `RIGHT("hello",1)`, want: "o"},
+		{name: "basic_full_length", formula: `RIGHT("hello",5)`, want: "hello"},
+
+		// Default num_chars (1 when omitted)
+		{name: "default_num_chars", formula: `RIGHT("hello")`, want: "o"},
+		{name: "default_single_char_string", formula: `RIGHT("x")`, want: "x"},
+		{name: "default_longer_string", formula: `RIGHT("abcdef")`, want: "f"},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_num_chars", formula: `RIGHT("hello",0)`, want: ""},
+		{name: "zero_num_chars_empty", formula: `RIGHT("",0)`, want: ""},
+
+		// num_chars greater than string length returns full string
+		{name: "exceeds_length", formula: `RIGHT("hi",10)`, want: "hi"},
+		{name: "exceeds_by_one", formula: `RIGHT("abc",4)`, want: "abc"},
+		{name: "exceeds_single_char", formula: `RIGHT("x",100)`, want: "x"},
+
+		// Empty string input
+		{name: "empty_string", formula: `RIGHT("")`, want: ""},
+		{name: "empty_string_with_n", formula: `RIGHT("",5)`, want: ""},
+		{name: "empty_string_zero", formula: `RIGHT("",0)`, want: ""},
+
+		// Numeric input coerced to string
+		{name: "numeric_input", formula: `RIGHT(12345,3)`, want: "345"},
+		{name: "numeric_input_default", formula: `RIGHT(12345)`, want: "5"},
+		{name: "numeric_zero", formula: `RIGHT(0)`, want: "0"},
+		{name: "numeric_negative", formula: `RIGHT(-123,2)`, want: "23"},
+		{name: "numeric_decimal", formula: `RIGHT(3.14,2)`, want: "14"},
+
+		// Boolean input coerced to string
+		{name: "bool_true", formula: `RIGHT(TRUE,2)`, want: "UE"},
+		{name: "bool_false", formula: `RIGHT(FALSE,3)`, want: "LSE"},
+		{name: "bool_true_default", formula: `RIGHT(TRUE)`, want: "E"},
+		{name: "bool_false_default", formula: `RIGHT(FALSE)`, want: "E"},
+
+		// Negative num_chars (should error)
+		{name: "negative_num_chars", formula: `RIGHT("hello",-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `RIGHT("hello",-100)`, isErr: true},
+
+		// Non-numeric num_chars (should error)
+		{name: "non_numeric_num_chars", formula: `RIGHT("hello","abc")`, isErr: true},
+
+		// Special characters and spaces
+		{name: "with_spaces", formula: `RIGHT("hello world",5)`, want: "world"},
+		{name: "trailing_space", formula: `RIGHT("hello ",1)`, want: " "},
+		{name: "special_chars", formula: `RIGHT("abc!@#",3)`, want: "!@#"},
+		{name: "newline_char", formula: "RIGHT(\"abc\ndef\",3)", want: "def"},
+
+		// Float num_chars truncated to int
+		{name: "float_num_chars", formula: `RIGHT("hello",2.9)`, want: "lo"},
+		{name: "float_num_chars_one", formula: `RIGHT("hello",1.5)`, want: "o"},
+		{name: "float_num_chars_zero", formula: `RIGHT("hello",0.9)`, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRIGHTWrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// 0 args
+	cf := evalCompile(t, `RIGHT()`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(RIGHT()): %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("RIGHT() = %v, want error", got)
+	}
+
+	// 3 args
+	cf = evalCompile(t, `RIGHT("a","b","c")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(RIGHT(a,b,c)): %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("RIGHT(a,b,c) = %v, want error", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TRIM edge cases
 // ---------------------------------------------------------------------------
 
