@@ -16,7 +16,7 @@ Werkbook supports **198** Excel formula functions.
 | ATAN2 | Math & Trig | - |
 | ATANH | Math & Trig | - |
 | AVEDEV | Statistical | - |
-| AVERAGE | Statistical | 7 |
+| AVERAGE | Statistical | 32 |
 | AVERAGEIF | Statistical | 4 |
 | AVERAGEIFS | Statistical | - |
 | BASE | Math & Trig | - |
@@ -98,7 +98,7 @@ Werkbook supports **198** Excel formula functions.
 | ISTEXT | Information | - |
 | LARGE | Statistical | 4 |
 | LCM | Math & Trig | - |
-| LEFT | Text | 5 |
+| LEFT | Text | 30 |
 | LEN | Text | 3 |
 | LN | Math & Trig | - |
 | LOG | Math & Trig | - |
