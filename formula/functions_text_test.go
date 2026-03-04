@@ -159,6 +159,7 @@ func TestTEXTFormatExtended(t *testing.T) {
 		// Percent with decimals
 		{name: "percent_2dec", formula: `TEXT(0.1234,"0.00%")`, want: "12.34%"},
 		{name: "percent_nodec", formula: `TEXT(0.5,"0%")`, want: "50%"},
+		{name: "percent_fp_rounding", formula: `TEXT(0.00035,"#,##0.00%")`, want: "0.04%"},
 		// Comma formatting
 		{name: "comma_thousands", formula: `TEXT(1234567,"#,##0")`, want: "1,234,567"},
 		{name: "comma_with_dec", formula: `TEXT(1234.56,"#,##0.00")`, want: "1,234.56"},

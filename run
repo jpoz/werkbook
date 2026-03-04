@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAX_ITERATIONS=50
+ITERATION=0
+
+PROMPT='Run `go run ./cmd/excel-audit` in ../testdata. It outputs errors between our library and excel. Choose an error and fix it. Make sure to increase the test coverage. Then rerun the check to make sure it was fixed. If there are no errors remaining, create a file called DONE in the repo root.'
+
+while [ $ITERATION -lt $MAX_ITERATIONS ]; do
+  ITERATION=$((ITERATION + 1))
+  echo ""
+  echo "========================================="
+  echo "  Iteration $ITERATION / $MAX_ITERATIONS"
+  echo "========================================="
+  echo ""
+
+  # Check if a previous run already marked completion
+  if [ -f DONE ]; then
+    echo "DONE file found — all errors resolved!"
+    exit 0
+  fi
+
+  claude --print --dangerously-skip-permissions "$PROMPT"
+
+  if [ -f DONE ]; then
+    echo ""
+    echo "========================================="
+    echo "  All errors resolved after $ITERATION iterations!"
+    echo "========================================="
+    exit 0
+  fi
+done
+
+echo ""
+echo "Hit max iterations ($MAX_ITERATIONS) without completing."
+exit 1

@@ -955,6 +955,12 @@ func formatNumberSection(n float64, format string) string {
 	for pc := 0; pc < percentCount; pc++ {
 		n *= 100
 	}
+	// Snap to 15 significant digits after percentage scaling to eliminate
+	// floating-point noise (e.g. 0.00035*100 = 0.034999… instead of 0.035).
+	if percentCount > 0 && n != 0 {
+		s := strconv.FormatFloat(n, 'g', 15, 64)
+		n, _ = strconv.ParseFloat(s, 64)
+	}
 
 	// Determine decimal places from digit tokens.
 	if hasScientific {
