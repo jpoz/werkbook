@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -2267,6 +2268,177 @@ func TestFORECAST(t *testing.T) {
 			}
 			if math.Abs(got.Num-tt.wantNum) > tol {
 				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FISHER
+// ---------------------------------------------------------------------------
+
+func TestFISHER(t *testing.T) {
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"basic_0.75", "FISHER(0.75)", 0.9729551, false, 0},
+		{"zero", "FISHER(0)", 0, false, 0},
+		{"half", "FISHER(0.5)", 0.5493061, false, 0},
+		{"negative_half", "FISHER(-0.5)", -0.5493061, false, 0},
+		{"near_one", "FISHER(0.99)", 2.6466524, false, 0},
+		{"near_neg_one", "FISHER(-0.99)", -2.6466524, false, 0},
+		{"small_value", "FISHER(0.01)", 0.0100003, false, 0},
+		{"boundary_one", "FISHER(1)", 0, true, ErrValNUM},
+		{"boundary_neg_one", "FISHER(-1)", 0, true, ErrValNUM},
+		{"out_of_range_high", "FISHER(1.5)", 0, true, ErrValNUM},
+		{"out_of_range_low", "FISHER(-1.5)", 0, true, ErrValNUM},
+		{"text_error", `FISHER("text")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestFISHER_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No args
+	cf := evalCompile(t, "FISHER()")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("FISHER() should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "FISHER(0.5,0.3)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("FISHER(0.5,0.3) should error, got type=%d", got.Type)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FISHERINV
+// ---------------------------------------------------------------------------
+
+func TestFISHERINV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"basic_roundtrip", "FISHERINV(0.972955)", 0.75, false, 0},
+		{"zero", "FISHERINV(0)", 0, false, 0},
+		{"half", "FISHERINV(0.5493061)", 0.5, false, 0},
+		{"negative_half", "FISHERINV(-0.5493061)", -0.5, false, 0},
+		{"large_positive", "FISHERINV(10)", 0.99999999, false, 0},
+		{"large_negative", "FISHERINV(-10)", -0.99999999, false, 0},
+		{"one", "FISHERINV(1)", 0.7615942, false, 0},
+		{"negative_one", "FISHERINV(-1)", -0.7615942, false, 0},
+		{"small_value", "FISHERINV(0.01)", 0.01, false, 0},
+		{"text_error", `FISHERINV("text")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestFISHERINV_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, "FISHERINV()")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("FISHERINV() should error, got type=%d", got.Type)
+	}
+
+	cf = evalCompile(t, "FISHERINV(0.5,0.3)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("FISHERINV(0.5,0.3) should error, got type=%d", got.Type)
+	}
+}
+
+func TestFISHERINV_FISHER_roundtrip(t *testing.T) {
+	const tol = 1e-10
+	resolver := &mockResolver{}
+
+	inputs := []float64{0.3, 0.7, -0.5, 0.99, -0.99, 0.01}
+	for _, x := range inputs {
+		t.Run(fmt.Sprintf("roundtrip_%g", x), func(t *testing.T) {
+			formula := fmt.Sprintf("FISHERINV(FISHER(%g))", x)
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-x) > tol {
+				t.Errorf("FISHERINV(FISHER(%g)) = %g, want %g", x, got.Num, x)
 			}
 		})
 	}

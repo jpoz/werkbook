@@ -20,6 +20,8 @@ func init() {
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
+	Register("FISHER", NoCtx(fnFISHER))
+	Register("FISHERINV", NoCtx(fnFISHERINV))
 	Register("FORECAST", NoCtx(fnFORECAST))
 	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
 	Register("GEOMEAN", NoCtx(fnGEOMEAN))
@@ -1224,4 +1226,52 @@ func fnHARMEAN(args []Value) (Value, error) {
 		sumReciprocals += 1.0 / v
 	}
 	return NumberVal(float64(n) / sumReciprocals), nil
+}
+
+func fnFISHER(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			if n <= -1 || n >= 1 {
+				return ErrorVal(ErrValNUM)
+			}
+			return NumberVal(0.5 * math.Log((1+n)/(1-n)))
+		}), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if x <= -1 || x >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(0.5 * math.Log((1+x)/(1-x))), nil
+}
+
+func fnFISHERINV(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			n, e := CoerceNum(v)
+			if e != nil {
+				return *e
+			}
+			e2y := math.Exp(2 * n)
+			return NumberVal((e2y - 1) / (e2y + 1))
+		}), nil
+	}
+	y, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	e2y := math.Exp(2 * y)
+	return NumberVal((e2y - 1) / (e2y + 1)), nil
 }
