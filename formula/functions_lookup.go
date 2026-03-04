@@ -270,18 +270,6 @@ func fnMATCH(args []Value) (Value, error) {
 	return ErrorVal(ErrValVALUE), nil
 }
 
-func columnNumberToName(col int) string {
-	var buf [3]byte
-	i := len(buf)
-	for col > 0 {
-		col--
-		i--
-		buf[i] = byte('A' + col%26)
-		col /= 26
-	}
-	return string(buf[i:])
-}
-
 func fnADDRESS(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 5 {
 		return ErrorVal(ErrValVALUE), nil
@@ -321,7 +309,7 @@ func fnADDRESS(args []Value) (Value, error) {
 
 	var result string
 	if a1Style {
-		colName := columnNumberToName(col)
+		colName := colNumberToLetters(col)
 		switch absNum {
 		case 1:
 			result = fmt.Sprintf("$%s$%d", colName, row)

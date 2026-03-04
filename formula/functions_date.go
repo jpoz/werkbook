@@ -259,6 +259,26 @@ func fnDAYS(args []Value) (Value, error) {
 	return NumberVal(math.Trunc(end) - math.Trunc(start)), nil
 }
 
+// days360Calc computes the number of days between two dates using the 30/360 convention.
+func days360Calc(sy, sm, sd, ey, em, ed int, european bool) float64 {
+	if european {
+		if sd == 31 {
+			sd = 30
+		}
+		if ed == 31 {
+			ed = 30
+		}
+	} else {
+		if sd == 31 {
+			sd = 30
+		}
+		if ed == 31 && sd >= 30 {
+			ed = 30
+		}
+	}
+	return float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
+}
+
 func fnDAYS360(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
@@ -287,24 +307,7 @@ func fnDAYS360(args []Value) (Value, error) {
 	sy, sm, sd := start.Year(), int(start.Month()), start.Day()
 	ey, em, ed := end.Year(), int(end.Month()), end.Day()
 
-	if european {
-		if sd == 31 {
-			sd = 30
-		}
-		if ed == 31 {
-			ed = 30
-		}
-	} else {
-		if sd == 31 {
-			sd = 30
-		}
-		if ed == 31 && sd >= 30 {
-			ed = 30
-		}
-	}
-
-	days := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
-	return NumberVal(days), nil
+	return NumberVal(days360Calc(sy, sm, sd, ey, em, ed, european)), nil
 }
 
 func fnHOUR(args []Value) (Value, error) {
@@ -499,6 +502,32 @@ func fnEOMONTH(args []Value) (Value, error) {
 	return NumberVal(math.Floor(TimeToExcelSerial(last))), nil
 }
 
+// parseHolidays extracts a set of truncated serial dates from an optional holiday argument.
+func parseHolidays(arg Value) (map[float64]bool, *Value) {
+	holidays := make(map[float64]bool)
+	if arg.Type == ValueArray {
+		for _, row := range arg.Array {
+			for _, cell := range row {
+				if cell.Type == ValueError {
+					return nil, &cell
+				}
+				n, ce := CoerceNum(cell)
+				if ce != nil {
+					return nil, ce
+				}
+				holidays[math.Trunc(n)] = true
+			}
+		}
+	} else if arg.Type != ValueEmpty {
+		n, ce := CoerceNum(arg)
+		if ce != nil {
+			return nil, ce
+		}
+		holidays[math.Trunc(n)] = true
+	}
+	return holidays, nil
+}
+
 func fnNETWORKDAYS(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
@@ -517,26 +546,10 @@ func fnNETWORKDAYS(args []Value) (Value, error) {
 
 	holidays := make(map[float64]bool)
 	if len(args) == 3 {
-		arg := args[2]
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return cell, nil
-					}
-					n, ce := CoerceNum(cell)
-					if ce != nil {
-						return *ce, nil
-					}
-					holidays[math.Trunc(n)] = true
-				}
-			}
-		} else if arg.Type != ValueEmpty {
-			n, ce := CoerceNum(arg)
-			if ce != nil {
-				return *ce, nil
-			}
-			holidays[math.Trunc(n)] = true
+		var ev *Value
+		holidays, ev = parseHolidays(args[2])
+		if ev != nil {
+			return *ev, nil
 		}
 	}
 
@@ -653,14 +666,7 @@ func fnYEARFRAC(args []Value) (Value, error) {
 
 	switch basis {
 	case 0: // US (NASD) 30/360
-		if sd == 31 {
-			sd = 30
-		}
-		if ed == 31 && sd >= 30 {
-			ed = 30
-		}
-		num := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
-		return NumberVal(num / 360), nil
+		return NumberVal(days360Calc(sy, sm, sd, ey, em, ed, false) / 360), nil
 
 	case 1: // Actual/actual
 		actualDays := endSerial - startSerial
@@ -691,14 +697,7 @@ func fnYEARFRAC(args []Value) (Value, error) {
 		return NumberVal(actualDays / 365), nil
 
 	case 4: // European 30/360
-		if sd == 31 {
-			sd = 30
-		}
-		if ed == 31 {
-			ed = 30
-		}
-		num := float64((ey-sy)*360 + (em-sm)*30 + (ed - sd))
-		return NumberVal(num / 360), nil
+		return NumberVal(days360Calc(sy, sm, sd, ey, em, ed, true) / 360), nil
 	}
 
 	return ErrorVal(ErrValNUM), nil
@@ -721,28 +720,12 @@ func fnWORKDAY(args []Value) (Value, error) {
 	}
 	days := int(daysF)
 
-	holidays := make(map[int]bool)
+	holidays := make(map[float64]bool)
 	if len(args) == 3 {
-		arg := args[2]
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return cell, nil
-					}
-					if cell.Type == ValueNumber {
-						holidays[int(cell.Num)] = true
-					}
-				}
-			}
-		} else if arg.Type == ValueNumber {
-			holidays[int(arg.Num)] = true
-		} else if arg.Type != ValueEmpty {
-			n, ce := CoerceNum(arg)
-			if ce != nil {
-				return *ce, nil
-			}
-			holidays[int(n)] = true
+		var ev *Value
+		holidays, ev = parseHolidays(args[2])
+		if ev != nil {
+			return *ev, nil
 		}
 	}
 
@@ -760,12 +743,12 @@ func fnWORKDAY(args []Value) (Value, error) {
 
 	for days > 0 {
 		t = t.AddDate(0, 0, step)
-		serial := TimeToExcelSerial(t)
+		serial := math.Trunc(TimeToExcelSerial(t))
 		wd := t.Weekday()
 		if wd == time.Saturday || wd == time.Sunday {
 			continue
 		}
-		if holidays[int(serial)] {
+		if holidays[serial] {
 			continue
 		}
 		days--

@@ -61,7 +61,7 @@ func fnISEVEN(args []Value) (Value, error) {
 	}
 	n, e := CoerceNum(args[0])
 	if e != nil {
-		return ErrorVal(ErrValVALUE), nil
+		return *e, nil
 	}
 	return BoolVal(int(math.Trunc(n))%2 == 0), nil
 }
@@ -72,7 +72,7 @@ func fnISODD(args []Value) (Value, error) {
 	}
 	n, e := CoerceNum(args[0])
 	if e != nil {
-		return ErrorVal(ErrValVALUE), nil
+		return *e, nil
 	}
 	return BoolVal(int(math.Trunc(n))%2 != 0), nil
 }
