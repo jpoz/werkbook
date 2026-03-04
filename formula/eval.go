@@ -552,6 +552,55 @@ func CompareValues(a, b Value) int {
 	return typeRank(a.Type) - typeRank(b.Type)
 }
 
+// CompareValuesExact is like CompareValues but uses bit-exact float
+// comparison (no tolerance). Used by lookup functions for exact-match
+// mode, where Excel does not apply the ≈1e-15 tolerance that the =
+// operator uses.
+func CompareValuesExact(a, b Value) int {
+	if a.Type == ValueEmpty && b.Type == ValueEmpty {
+		return 0
+	}
+	if a.Type == ValueEmpty {
+		switch b.Type {
+		case ValueString:
+			a = StringVal("")
+		case ValueBool:
+			a = BoolVal(false)
+		default:
+			a = NumberVal(0)
+		}
+	}
+	if b.Type == ValueEmpty {
+		switch a.Type {
+		case ValueString:
+			b = StringVal("")
+		case ValueBool:
+			b = BoolVal(false)
+		default:
+			b = NumberVal(0)
+		}
+	}
+
+	if a.Type == b.Type {
+		switch a.Type {
+		case ValueNumber:
+			return cmpFloatExact(a.Num, b.Num)
+		case ValueString:
+			return strings.Compare(strings.ToLower(a.Str), strings.ToLower(b.Str))
+		case ValueBool:
+			if a.Bool == b.Bool {
+				return 0
+			}
+			if !a.Bool {
+				return -1
+			}
+			return 1
+		}
+	}
+
+	return typeRank(a.Type) - typeRank(b.Type)
+}
+
 func typeRank(t ValueType) int {
 	switch t {
 	case ValueError:
@@ -567,30 +616,29 @@ func typeRank(t ValueType) int {
 	}
 }
 
-// roundTo15SigFigs rounds a float64 to 15 significant digits, matching
-// Excel's internal precision. This ensures that small floating-point
-// discrepancies (e.g. 0.1+0.2 vs 0.3) are eliminated.
-func roundTo15SigFigs(f float64) float64 {
-	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
-		return f
+func cmpFloat(a, b float64) int {
+	// Excel's = operator treats two numbers as equal when their relative
+	// difference is within ~1 ULP at 15-digit decimal precision (≈1e-15).
+	// This handles cases like (1/3)*3 = 1.
+	diff := a - b
+	if diff == 0 {
+		return 0
 	}
-	// For very large or very small numbers where scaling could overflow
-	// or underflow, return the value unchanged.
-	abs := math.Abs(f)
-	if abs > 1e292 || abs < 1e-292 {
-		return f
+	abs := math.Abs(diff)
+	scale := math.Max(1, math.Max(math.Abs(a), math.Abs(b)))
+	if abs < 1e-15*scale {
+		return 0
 	}
-	// Determine the order of magnitude, then round to 15 significant digits.
-	d := math.Ceil(math.Log10(abs))
-	pow := math.Pow(10, 15-d)
-	return math.Round(f*pow) / pow
+	if a < b {
+		return -1
+	}
+	return 1
 }
 
-func cmpFloat(a, b float64) int {
-	// Round both operands to 15 significant digits before comparing,
-	// matching Excel's comparison semantics.
-	a = roundTo15SigFigs(a)
-	b = roundTo15SigFigs(b)
+// cmpFloatExact compares two float64 values without tolerance.
+// Used by lookup functions (MATCH, VLOOKUP, etc.) for exact-match mode,
+// where Excel requires bit-exact equality.
+func cmpFloatExact(a, b float64) int {
 	if a < b {
 		return -1
 	}
@@ -686,7 +734,7 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 		if be != nil {
 			return *be
 		}
-		return roundArithResult(op(an, bn))
+		return op(an, bn)
 	}
 
 	// At least one operand is an array — do element-wise computation.
@@ -704,20 +752,11 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 			} else if be != nil {
 				result[i][j] = *be
 			} else {
-				result[i][j] = roundArithResult(op(an, bn))
+				result[i][j] = op(an, bn)
 			}
 		}
 	}
 	return Value{Type: ValueArray, Array: result}
-}
-
-// roundArithResult applies 15 significant digit rounding to arithmetic
-// results, matching Excel's internal precision model.
-func roundArithResult(v Value) Value {
-	if v.Type == ValueNumber {
-		v.Num = roundTo15SigFigs(v.Num)
-	}
-	return v
 }
 
 // binaryCompare performs a comparison operation on two Values, supporting

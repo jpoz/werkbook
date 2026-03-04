@@ -582,7 +582,8 @@ func TestEvalCompareValues(t *testing.T) {
 		{name: "negative_lt", formula: "-5<0", want: true},
 		{name: "negative_gt", formula: "0>-10", want: true},
 		// Decimal comparisons
-		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: true}, // Excel rounds to 15 sig figs
+		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: true},     // relative epsilon handles this
+		{name: "third_times_3", formula: "(1/3*3)=1", want: true},    // Excel audit: must be TRUE
 		{name: "decimal_lt", formula: "0.1<0.2", want: true},
 	}
 
