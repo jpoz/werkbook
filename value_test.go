@@ -3,6 +3,8 @@ package werkbook
 import (
 	"math"
 	"testing"
+
+	"github.com/jpoz/werkbook/ooxml"
 )
 
 func TestToValue(t *testing.T) {
@@ -34,6 +36,67 @@ func TestToValue(t *testing.T) {
 			}
 			if !tt.wantErr && got != tt.want {
 				t.Errorf("toValue(%v) = %#v, want %#v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
+	tests := []struct {
+		name     string
+		cd       ooxml.CellData
+		wantType ValueType
+		wantNum  float64
+		wantStr  string
+	}{
+		{
+			name:     "shared string with large negative integer",
+			cd:       ooxml.CellData{Type: "s", Value: "-8086931554011838357"},
+			wantType: TypeNumber,
+			wantNum:  -8086931554011838357,
+		},
+		{
+			name:     "shared string with positive integer",
+			cd:       ooxml.CellData{Type: "s", Value: "42"},
+			wantType: TypeNumber,
+			wantNum:  42,
+		},
+		{
+			name:     "shared string with float",
+			cd:       ooxml.CellData{Type: "s", Value: "3.14"},
+			wantType: TypeNumber,
+			wantNum:  3.14,
+		},
+		{
+			name:     "shared string with non-numeric text",
+			cd:       ooxml.CellData{Type: "s", Value: "hello"},
+			wantType: TypeString,
+			wantStr:  "hello",
+		},
+		{
+			name:     "str type stays string even if numeric",
+			cd:       ooxml.CellData{Type: "str", Value: "42"},
+			wantType: TypeString,
+			wantStr:  "42",
+		},
+		{
+			name:     "inlineStr type stays string even if numeric",
+			cd:       ooxml.CellData{Type: "inlineStr", Value: "100"},
+			wantType: TypeString,
+			wantStr:  "100",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cellDataToValue(tt.cd)
+			if got.Type != tt.wantType {
+				t.Fatalf("cellDataToValue(%+v).Type = %v, want %v", tt.cd, got.Type, tt.wantType)
+			}
+			if tt.wantType == TypeNumber && got.Number != tt.wantNum {
+				t.Errorf("cellDataToValue(%+v).Number = %v, want %v", tt.cd, got.Number, tt.wantNum)
+			}
+			if tt.wantType == TypeString && got.String != tt.wantStr {
+				t.Errorf("cellDataToValue(%+v).String = %q, want %q", tt.cd, got.String, tt.wantStr)
 			}
 		})
 	}
