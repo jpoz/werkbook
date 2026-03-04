@@ -125,9 +125,10 @@ func TestMOD(t *testing.T) {
 	}{
 		// Division by zero -> #DIV/0!
 		{"div_by_zero", "MOD(10,0)", ErrValDIV0},
-		// Precision overflow: |n/d| > 2^53 -> #NUM!
+		// Precision overflow: |n/d| >= 1e13 -> #NUM!
 		{"precision_overflow", "MOD(100,-1e-15)", ErrValNUM},
 		{"precision_overflow_large", "MOD(1e18,1)", ErrValNUM},
+		{"precision_overflow_excel", "MOD(10^15,7)", ErrValNUM},
 	}
 
 	for _, tt := range errTests {
