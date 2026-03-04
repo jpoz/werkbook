@@ -160,6 +160,10 @@ func TestTEXTFormatExtended(t *testing.T) {
 		{name: "percent_2dec", formula: `TEXT(0.1234,"0.00%")`, want: "12.34%"},
 		{name: "percent_nodec", formula: `TEXT(0.5,"0%")`, want: "50%"},
 		{name: "percent_fp_rounding", formula: `TEXT(0.00035,"#,##0.00%")`, want: "0.04%"},
+		// Question mark (space-padded digit) formatting
+		{name: "qmark_pad_comma", formula: `TEXT(1234567,"?,?????????")`, want: "    1,234,567"},
+		{name: "qmark_pad_simple", formula: `TEXT(5,"???")`, want: "  5"},
+		{name: "qmark_pad_exact", formula: `TEXT(123,"???")`, want: "123"},
 		// Comma formatting
 		{name: "comma_thousands", formula: `TEXT(1234567,"#,##0")`, want: "1,234,567"},
 		{name: "comma_with_dec", formula: `TEXT(1234.56,"#,##0.00")`, want: "1,234.56"},

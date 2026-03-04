@@ -977,10 +977,12 @@ func formatNumberSection(n float64, format string) string {
 	}
 
 	// Count integer and decimal digit placeholders.
-	intZeros := 0  // minimum integer digits (from '0')
-	intDigits := 0 // total integer placeholders (from '0' and '#')
-	decZeros := 0  // decimal '0' count
-	decHashes := 0 // decimal '#' count
+	intZeros := 0   // minimum integer digits (from '0')
+	intDigits := 0  // total integer placeholders (from '0', '#', '?')
+	intSpaces := 0  // integer '?' count (space-padded positions)
+	decZeros := 0   // decimal '0' count
+	decHashes := 0  // decimal '#' count
+	decSpaces := 0  // decimal '?' count
 
 	inDecimal := false
 	for _, tok := range tokens {
@@ -988,10 +990,12 @@ func formatNumberSection(n float64, format string) string {
 			inDecimal = true
 			continue
 		}
-		if tok.kind == tokDigit || tok.kind == tokDigitOpt {
+		if tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace {
 			if inDecimal {
 				if tok.kind == tokDigit {
 					decZeros++
+				} else if tok.kind == tokDigitSpace {
+					decSpaces++
 				} else {
 					decHashes++
 				}
@@ -999,10 +1003,13 @@ func formatNumberSection(n float64, format string) string {
 				intDigits++
 				if tok.kind == tokDigit {
 					intZeros++
+				} else if tok.kind == tokDigitSpace {
+					intSpaces++
 				}
 			}
 		}
 	}
+	_ = decSpaces
 
 	totalDecPlaces := decZeros + decHashes
 	_ = decIdx
@@ -1065,11 +1072,35 @@ func formatNumberSection(n float64, format string) string {
 	intWritten := false
 	decWritten := false
 
+	// If the format has '?' integer placeholders, pad the integer with leading
+	// spaces so that the total digit count matches the placeholder count.
+	if intSpaces > 0 {
+		rawDigits := strings.ReplaceAll(intStr, ",", "")
+		if len(rawDigits) < intDigits {
+			padded := strings.Repeat("0", intDigits-len(rawDigits)) + rawDigits
+			if hasCommaGrouping && trailingCommas == 0 {
+				padded = addCommaGrouping(padded)
+			}
+			// Replace leading zeros (and their adjacent commas) with spaces.
+			buf := []byte(padded)
+			for i := 0; i < len(buf); i++ {
+				if buf[i] == '0' {
+					buf[i] = ' '
+				} else if buf[i] == ',' {
+					buf[i] = ' '
+				} else {
+					break
+				}
+			}
+			intStr = string(buf)
+		}
+	}
+
 	for _, tok := range tokens {
 		switch tok.kind {
 		case tokLiteral:
 			result.WriteString(tok.value)
-		case tokDigit, tokDigitOpt:
+		case tokDigit, tokDigitOpt, tokDigitSpace:
 			if !intWritten {
 				result.WriteString(intStr)
 				intWritten = true
@@ -1112,9 +1143,10 @@ func formatNumberSection(n float64, format string) string {
 type numFmtTokenKind byte
 
 const (
-	tokLiteral  numFmtTokenKind = iota
-	tokDigit                    // '0' — required digit
-	tokDigitOpt                 // '#' — optional digit
+	tokLiteral    numFmtTokenKind = iota
+	tokDigit                       // '0' — required digit
+	tokDigitOpt                    // '#' — optional digit
+	tokDigitSpace                  // '?' — digit padded with space
 	tokDecimal                  // '.'
 	tokComma                    // ','
 	tokPercent                  // '%'
@@ -1179,8 +1211,7 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 			tokens = append(tokens, numFmtToken{kind: tokDigitOpt, value: "#"})
 			i++
 		case '?':
-			// '?' is like '#' but pads with space — treat as optional digit.
-			tokens = append(tokens, numFmtToken{kind: tokDigitOpt, value: "?"})
+			tokens = append(tokens, numFmtToken{kind: tokDigitSpace, value: "?"})
 			i++
 		case '.':
 			tokens = append(tokens, numFmtToken{kind: tokDecimal, value: "."})
@@ -1245,7 +1276,7 @@ func countTrailingCommas(tokens []numFmtToken) int {
 	// Find the last digit/decimal token, then count consecutive commas after it.
 	lastDigitIdx := -1
 	for i, tok := range tokens {
-		if tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDecimal {
+		if tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace || tok.kind == tokDecimal {
 			lastDigitIdx = i
 		}
 	}
@@ -1320,7 +1351,7 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 			inDecimal = true
 			continue
 		}
-		if inDecimal && (tok.kind == tokDigit || tok.kind == tokDigitOpt) {
+		if inDecimal && (tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace) {
 			decPlaces++
 		}
 	}
@@ -1328,7 +1359,7 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 	// Count exponent digit placeholders (after the E+/E- token).
 	expDigits := 0
 	for i := sciIdx + 1; i < len(tokens); i++ {
-		if tokens[i].kind == tokDigit || tokens[i].kind == tokDigitOpt {
+		if tokens[i].kind == tokDigit || tokens[i].kind == tokDigitOpt || tokens[i].kind == tokDigitSpace {
 			expDigits++
 		} else {
 			break
@@ -1401,7 +1432,7 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 	pastExpDigits := false
 	for i := sciIdx + 1; i < len(tokens); i++ {
 		tok := tokens[i]
-		if !pastExpDigits && (tok.kind == tokDigit || tok.kind == tokDigitOpt) {
+		if !pastExpDigits && (tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace) {
 			continue // skip exponent digit placeholders
 		}
 		pastExpDigits = true
