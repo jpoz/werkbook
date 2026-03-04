@@ -236,14 +236,21 @@ func fnMATCH(args []Value) (Value, error) {
 		return ErrorVal(ErrValNA), nil
 
 	case 1:
+		// Approximate match (ascending). Empty cells are skipped so that
+		// whole-column references (e.g. Q:Q) with sparse data work
+		// correctly. We scan all non-empty values and track the last
+		// position where value <= lookup, without breaking early. This
+		// handles unsorted data gracefully (common in real-world
+		// spreadsheets that omit the match_type argument) while producing
+		// identical results for properly sorted data.
 		last := -1
 		for i, v := range values {
+			if v.Type == ValueEmpty {
+				continue
+			}
 			cmp := CompareValues(v, lookup)
 			if cmp <= 0 {
 				last = i
-			}
-			if cmp > 0 {
-				break
 			}
 		}
 		if last < 0 {
@@ -252,14 +259,16 @@ func fnMATCH(args []Value) (Value, error) {
 		return NumberVal(float64(last + 1)), nil
 
 	case -1:
+		// Approximate match (descending). Same approach: skip empties,
+		// scan all values, track last position where value >= lookup.
 		last := -1
 		for i, v := range values {
+			if v.Type == ValueEmpty {
+				continue
+			}
 			cmp := CompareValues(v, lookup)
 			if cmp >= 0 {
 				last = i
-			}
-			if cmp < 0 {
-				break
 			}
 		}
 		if last < 0 {

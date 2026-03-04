@@ -457,6 +457,135 @@ func TestMATCHDescending(t *testing.T) {
 	}
 }
 
+func TestMATCHAscendingSkipsEmpty(t *testing.T) {
+	// Simulate a whole-column ref where data is sparse: rows 1-3 have
+	// sorted ascending values, rows 4-8 are empty. MATCH(matchType=1)
+	// must skip the trailing empty cells rather than treating them as 0.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			// rows 4-8 are empty (not in map)
+		},
+	}
+
+	// MATCH(20,A1:A8,1) should find row 2, not be confused by trailing empties
+	cf := evalCompile(t, "MATCH(20,A1:A8,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH asc skip empty: got %v, want 2", got)
+	}
+
+	// MATCH(25,A1:A8,1) should find row 2 (last <= 25)
+	cf = evalCompile(t, "MATCH(25,A1:A8,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH asc between skip empty: got %v, want 2", got)
+	}
+}
+
+func TestMATCHDescendingSkipsEmpty(t *testing.T) {
+	// Descending data with trailing empties.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(10),
+			// rows 4-6 are empty
+		},
+	}
+
+	cf := evalCompile(t, "MATCH(20,A1:A6,-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("MATCH desc skip empty: got %v, want 2", got)
+	}
+}
+
+func TestMATCHAscendingWithLeadingEmpty(t *testing.T) {
+	// Leading empty row (e.g. header row is empty in lookup column),
+	// followed by sorted data. MATCH should skip the empty and find the value.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// row 1 is empty
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(20),
+			{Col: 1, Row: 4}: NumberVal(30),
+		},
+	}
+
+	cf := evalCompile(t, "MATCH(20,A1:A6,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("MATCH asc leading empty: got %v, want 3", got)
+	}
+}
+
+func TestMATCHDefaultUnsortedStringsWithEmpty(t *testing.T) {
+	// Real-world scenario from fa.xlsx: MATCH(A10,lfy!Q:Q) where Q:Q has
+	// a header row, then unsorted string names, with leading empties.
+	// match_type defaults to 1. The implementation must still find an
+	// exact match among the non-empty values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// rows 1-2 empty
+			{Col: 1, Row: 3}: StringVal("LPs name"),          // header
+			{Col: 1, Row: 4}: StringVal("Brian Schechter"),    // target
+			{Col: 1, Row: 5}: StringVal("Foundation Capital"), // after target
+			// rows 6-10 empty
+		},
+	}
+
+	// Default match_type=1, lookup="Brian Schechter"
+	cf := evalCompile(t, `MATCH("Brian Schechter",A1:A10)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("MATCH default unsorted strings: got %v, want 4", got)
+	}
+}
+
+func TestINDEXMATCHWholeColumnPattern(t *testing.T) {
+	// Simulates INDEX(D:D,MATCH(val,Q:Q)) with sparse data — the
+	// pattern that was failing in the fa.xlsx audit.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Q column (col 17) — lookup array
+			{Col: 17, Row: 3}: StringVal("LPs name"),
+			{Col: 17, Row: 4}: StringVal("Brian Schechter"),
+			{Col: 17, Row: 5}: StringVal("Foundation Capital"),
+			// D column (col 4) — result array
+			{Col: 4, Row: 3}: StringVal("Header"),
+			{Col: 4, Row: 4}: NumberVal(1055),
+			{Col: 4, Row: 5}: NumberVal(2000),
+		},
+	}
+
+	cf := evalCompile(t, `INDEX(D1:D10,MATCH("Brian Schechter",Q1:Q10))`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1055 {
+		t.Errorf("INDEX/MATCH whole-column pattern: got %v, want 1055", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // INDEX edge cases
 // ---------------------------------------------------------------------------
