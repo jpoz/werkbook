@@ -61,6 +61,10 @@ func TestEvalArithmetic(t *testing.T) {
 		{"-5", -5},
 		{"50%", 0.5},
 		{"2+3*4-1", 13},
+		// Excel rounds addition/subtraction results to 15 significant digits,
+		// eliminating floating-point artefacts like 0.1+0.2-0.3 != 0.
+		{"0.1+0.2-0.3", 0},
+		{"1.1+2.2-3.3", 0},
 	}
 
 	for _, tt := range tests {

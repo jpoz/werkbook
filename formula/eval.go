@@ -185,7 +185,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				b = implicitIntersect(b, ctx)
 			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
-				return NumberVal(an + bn)
+				return NumberVal(roundTo15SigFigs(an + bn))
 			}))
 
 		case OpSub:
@@ -202,7 +202,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				b = implicitIntersect(b, ctx)
 			}
 			push(binaryArith(a, b, func(an, bn float64) Value {
-				return NumberVal(an - bn)
+				return NumberVal(roundTo15SigFigs(an - bn))
 			}))
 
 		case OpMul:
