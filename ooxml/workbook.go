@@ -121,13 +121,14 @@ type StyleData struct {
 
 // TableDef holds the definition of an Excel table (ListObject).
 type TableDef struct {
-	Name           string   // internal name
-	DisplayName    string   // display name (used in structured references)
-	Ref            string   // range reference, e.g. "A1:E20"
-	SheetIndex     int      // 0-based index into WorkbookData.Sheets
-	Columns        []string // column names in order
-	HeaderRowCount int      // number of header rows (default 1)
-	TotalsRowCount int      // number of totals rows (default 0)
+	Name            string   // internal name
+	DisplayName     string   // display name (used in structured references)
+	Ref             string   // range reference, e.g. "A1:E20"
+	SheetIndex      int      // 0-based index into WorkbookData.Sheets
+	Columns         []string // column names in order
+	HeaderRowCount  int      // number of header rows (default 1)
+	TotalsRowCount  int      // number of totals rows (default 0)
+	HasActiveFilter bool     // true if table has autoFilter with active filterColumn elements
 }
 
 // ColWidthData holds the width for a range of columns.
@@ -148,6 +149,7 @@ type SheetData struct {
 type RowData struct {
 	Num    int // 1-based
 	Height float64
+	Hidden bool
 	Cells  []CellData
 }
 

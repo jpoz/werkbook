@@ -7,15 +7,16 @@ import (
 // TableInfo holds the resolved geometry of an Excel table, used to expand
 // structured references in formulas before parsing.
 type TableInfo struct {
-	Name       string   // display name (case-insensitive match)
-	SheetName  string   // sheet where the table lives
-	Columns    []string // column names in order
-	FirstCol   int      // 1-based first column of the table range
-	FirstRow   int      // 1-based first row (header row if present)
-	LastCol    int      // 1-based last column
-	LastRow    int      // 1-based last row (including totals if present)
-	HeaderRows int      // number of header rows (usually 1)
-	TotalRows  int      // number of total rows (usually 0)
+	Name            string   // display name (case-insensitive match)
+	SheetName       string   // sheet where the table lives
+	Columns         []string // column names in order
+	FirstCol        int      // 1-based first column of the table range
+	FirstRow        int      // 1-based first row (header row if present)
+	LastCol         int      // 1-based last column
+	LastRow         int      // 1-based last row (including totals if present)
+	HeaderRows      int      // number of header rows (usually 1)
+	TotalRows       int      // number of total rows (usually 0)
+	HasActiveFilter bool     // true if this table has an autoFilter with active filter columns
 }
 
 // DataFirstRow returns the 1-based first data row (after headers).

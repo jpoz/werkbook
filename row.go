@@ -5,6 +5,7 @@ type Row struct {
 	num    int
 	cells  map[int]*Cell
 	height float64
+	hidden bool
 }
 
 // Num returns the 1-based row number.

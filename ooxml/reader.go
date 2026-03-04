@@ -122,7 +122,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		}
 
 		for _, xr := range ws.SheetData.Rows {
-			rd := RowData{Num: xr.R}
+			rd := RowData{Num: xr.R, Hidden: xr.Hidden}
 			if xr.CustomHeight && xr.Ht != 0 {
 				rd.Height = xr.Ht
 			}
@@ -130,7 +130,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 				cd := parseCellData(xc, sst)
 				rd.Cells = append(rd.Cells, cd)
 			}
-			if len(rd.Cells) > 0 || rd.Height != 0 {
+			if len(rd.Cells) > 0 || rd.Height != 0 || rd.Hidden {
 				sd.Rows = append(sd.Rows, rd)
 			}
 		}
@@ -320,13 +320,23 @@ func decodeOOXMLEscapes(s string) string {
 
 // xlsxTable represents the <table> root element in xl/tables/table*.xml.
 type xlsxTable struct {
-	XMLName        xml.Name          `xml:"table"`
-	Name           string            `xml:"name,attr"`
-	DisplayName    string            `xml:"displayName,attr"`
-	Ref            string            `xml:"ref,attr"`
-	HeaderRowCount *int              `xml:"headerRowCount,attr"`
-	TotalsRowCount int               `xml:"totalsRowCount,attr"`
-	TableColumns   xlsxTableColumns  `xml:"tableColumns"`
+	XMLName        xml.Name           `xml:"table"`
+	Name           string             `xml:"name,attr"`
+	DisplayName    string             `xml:"displayName,attr"`
+	Ref            string             `xml:"ref,attr"`
+	HeaderRowCount *int               `xml:"headerRowCount,attr"`
+	TotalsRowCount int                `xml:"totalsRowCount,attr"`
+	AutoFilter     *xlsxAutoFilter    `xml:"autoFilter"`
+	TableColumns   xlsxTableColumns   `xml:"tableColumns"`
+}
+
+type xlsxAutoFilter struct {
+	Ref           string               `xml:"ref,attr"`
+	FilterColumns []xlsxFilterColumn   `xml:"filterColumn"`
+}
+
+type xlsxFilterColumn struct {
+	ColID int `xml:"colId,attr"`
 }
 
 type xlsxTableColumns struct {
@@ -379,11 +389,12 @@ func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex in
 		}
 
 		td := TableDef{
-			Name:           xt.Name,
-			DisplayName:    xt.DisplayName,
-			Ref:            xt.Ref,
-			SheetIndex:     sheetIndex,
-			TotalsRowCount: xt.TotalsRowCount,
+			Name:            xt.Name,
+			DisplayName:     xt.DisplayName,
+			Ref:             xt.Ref,
+			SheetIndex:      sheetIndex,
+			TotalsRowCount:  xt.TotalsRowCount,
+			HasActiveFilter: xt.AutoFilter != nil && len(xt.AutoFilter.FilterColumns) > 0,
 		}
 		// Default headerRowCount is 1 if not specified.
 		if xt.HeaderRowCount != nil {

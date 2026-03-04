@@ -654,15 +654,19 @@ func fnSUBTOTALCtx(args []Value, ctx *EvalContext) (Value, error) {
 		return *e, nil
 	}
 	fn := int(fnNum)
+	excludeAllHidden := false
 	if fn >= 101 && fn <= 111 {
 		fn -= 100
+		excludeAllHidden = true
 	}
 	if fn < 1 || fn > 11 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
 	// Filter out cells containing SUBTOTAL formulas from array arguments.
-	filtered := subtotalFilterArgs(args[1:], ctx)
+	// For function numbers 101-111, also exclude ALL hidden rows.
+	// For function numbers 1-11, exclude rows hidden by autoFilter only.
+	filtered := subtotalFilterArgs(args[1:], ctx, excludeAllHidden)
 
 	names := map[int]string{
 		1: "AVERAGE", 2: "COUNT", 3: "COUNTA", 4: "MAX", 5: "MIN",
@@ -679,16 +683,22 @@ func fnSUBTOTALCtx(args []Value, ctx *EvalContext) (Value, error) {
 // subtotalFilterArgs processes SUBTOTAL's range arguments. For each ValueArray
 // that has a RangeOrigin (came from a worksheet range, not a literal), it
 // replaces cells that contain SUBTOTAL formulas with empty values so the
-// aggregate function skips them.
-func subtotalFilterArgs(args []Value, ctx *EvalContext) []Value {
-	// Obtain the SubtotalChecker from the context's resolver.
+// aggregate function skips them. When excludeAllHidden is true (function
+// numbers 101-111), ALL hidden rows are excluded. When false (function numbers
+// 1-11), only rows hidden by an active autoFilter are excluded.
+func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) []Value {
+	// Obtain the SubtotalChecker and HiddenRowChecker from the context's resolver.
 	var checker SubtotalChecker
+	var hiddenChecker HiddenRowChecker
 	if ctx != nil && ctx.Resolver != nil {
 		if sc, ok := ctx.Resolver.(SubtotalChecker); ok {
 			checker = sc
 		}
+		if hc, ok := ctx.Resolver.(HiddenRowChecker); ok {
+			hiddenChecker = hc
+		}
 	}
-	if checker == nil {
+	if checker == nil && hiddenChecker == nil {
 		// No checker available — return args unchanged (no filtering possible).
 		return args
 	}
@@ -705,16 +715,26 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext) []Value {
 			sheet = ctx.CurrentSheet
 		}
 
-		// Build a filtered copy of the array, replacing SUBTOTAL cells with empty.
+		// Build a filtered copy of the array, replacing SUBTOTAL cells
+		// and hidden-row cells with empty.
 		filtered := make([][]Value, len(arg.Array))
 		changed := false
 		for ri, row := range arg.Array {
 			rowNum := origin.FromRow + ri
+			// Determine if this row should be excluded based on hidden state.
+			var rowExcluded bool
+			if hiddenChecker != nil {
+				if excludeAllHidden {
+					rowExcluded = hiddenChecker.IsRowHidden(sheet, rowNum)
+				} else {
+					rowExcluded = hiddenChecker.IsRowFilteredByAutoFilter(sheet, rowNum)
+				}
+			}
 			filteredRow := make([]Value, len(row))
 			copy(filteredRow, row)
 			for ci := range row {
 				colNum := origin.FromCol + ci
-				if checker.IsSubtotalCell(sheet, colNum, rowNum) {
+				if rowExcluded || (checker != nil && checker.IsSubtotalCell(sheet, colNum, rowNum)) {
 					filteredRow[ci] = EmptyVal()
 					changed = true
 				}
