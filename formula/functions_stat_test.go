@@ -680,6 +680,340 @@ func TestAVERAGEEmpty(t *testing.T) {
 	}
 }
 
+func TestAVERAGE(t *testing.T) {
+	// Helper to build a resolver with numeric values in column A.
+	numResolver := func(nums ...float64) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, n := range nums {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = NumberVal(n)
+		}
+		return m
+	}
+
+	// Helper for resolvers with arbitrary values in column A.
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("single number", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("two numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(10,20)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("multiple numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(2,3,3,5,7,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(-10,-20,-30)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -20 {
+			t.Errorf("got %v, want -20", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(-10,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("decimal numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(1.5,2.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("zero values", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(0,0,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := 10.0 / 3.0
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("all zeros", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(0,0,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("large numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(1000000,2000000,3000000)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2000000 {
+			t.Errorf("got %v, want 2000000", got)
+		}
+	})
+
+	t.Run("very small numbers", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(0.001,0.002,0.003)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.002) > 1e-15 {
+			t.Errorf("got %v, want 0.002", got)
+		}
+	})
+
+	t.Run("boolean TRUE as direct arg coerces to 1", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(TRUE,3)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// TRUE=1, so (1+3)/2 = 2
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("boolean FALSE as direct arg coerces to 0", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(FALSE,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// FALSE=0, so (0+4)/2 = 2
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("string number as direct arg coerces", func(t *testing.T) {
+		// Direct string arg "5" is coerced by CoerceNum to 5.
+		cf := evalCompile(t, `AVERAGE("5",15)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("non-numeric string as direct arg errors", func(t *testing.T) {
+		cf := evalCompile(t, `AVERAGE("hello",10)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(10),
+			ErrorVal(ErrValNA),
+			NumberVal(20),
+		)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("range with numbers", func(t *testing.T) {
+		resolver := numResolver(10, 20, 30)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range ignores strings", func(t *testing.T) {
+		// In a range, strings are ignored (only ValueNumber counted).
+		resolver := valResolver(
+			NumberVal(10),
+			StringVal("hello"),
+			NumberVal(30),
+		)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// (10+30)/2 = 20
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range ignores booleans", func(t *testing.T) {
+		// In a range, booleans are ignored (only ValueNumber counted).
+		resolver := valResolver(
+			NumberVal(10),
+			BoolVal(true),
+			NumberVal(30),
+		)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// (10+30)/2 = 20; TRUE is ignored in range
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range with zero values included", func(t *testing.T) {
+		resolver := numResolver(0, 10, 20)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("range all empty gives DIV0", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("mixed range and literal", func(t *testing.T) {
+		resolver := numResolver(10, 20)
+		cf := evalCompile(t, "AVERAGE(A1:A2,30)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// (10+20+30)/3 = 20
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("fractional result", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(1,2)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1.5 {
+			t.Errorf("got %v, want 1.5", got)
+		}
+	})
+
+	t.Run("single zero", func(t *testing.T) {
+		cf := evalCompile(t, "AVERAGE(0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("error in direct arg propagates", func(t *testing.T) {
+		// 1/0 produces #DIV/0!, which should propagate through AVERAGE.
+		cf := evalCompile(t, "AVERAGE(1/0,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("range with numeric string ignored", func(t *testing.T) {
+		// Per Excel: numeric strings in ranges are ignored by AVERAGE.
+		resolver := valResolver(
+			NumberVal(10),
+			StringVal("5"),
+			NumberVal(20),
+		)
+		cf := evalCompile(t, "AVERAGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// (10+20)/2 = 15; "5" in range is ignored
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	_ = numResolver // suppress unused if needed
+	_ = valResolver
+}
+
 func TestSUMWithMixedTypes(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
