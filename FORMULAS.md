@@ -99,14 +99,14 @@ Werkbook supports **198** Excel formula functions.
 | LARGE | Statistical | 4 |
 | LCM | Math & Trig | - |
 | LEFT | Text | 30 |
-| LEN | Text | 3 |
+| LEN | Text | 32 |
 | LN | Math & Trig | - |
 | LOG | Math & Trig | - |
 | LOG10 | Math & Trig | - |
 | LOOKUP | Lookup & Reference | - |
 | LOWER | Text | 1 |
 | MATCH | Lookup & Reference | 19 |
-| MAX | Statistical | 6 |
+| MAX | Statistical | 31 |
 | MAXIFS | Statistical | 11 |
 | MEDIAN | Statistical | - |
 | MID | Text | 6 |
