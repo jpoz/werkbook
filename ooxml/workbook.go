@@ -68,6 +68,7 @@ type WorkbookData struct {
 	Date1904 bool        // true if the workbook uses the 1904 date system (Mac Excel)
 	Sheets   []SheetData
 	Styles   []StyleData // index 0 = default (empty)
+	Tables   []TableDef  // table definitions parsed from xl/tables/table*.xml
 }
 
 // StyleData is the intermediate representation of a cell style,
@@ -97,6 +98,17 @@ type StyleData struct {
 
 	NumFmtID int    // built-in number format ID
 	NumFmt   string // custom format string
+}
+
+// TableDef holds the definition of an Excel table (ListObject).
+type TableDef struct {
+	Name           string   // internal name
+	DisplayName    string   // display name (used in structured references)
+	Ref            string   // range reference, e.g. "A1:E20"
+	SheetIndex     int      // 0-based index into WorkbookData.Sheets
+	Columns        []string // column names in order
+	HeaderRowCount int      // number of header rows (default 1)
+	TotalsRowCount int      // number of totals rows (default 0)
 }
 
 // ColWidthData holds the width for a range of columns.

@@ -119,6 +119,12 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 				sd.Rows = append(sd.Rows, rd)
 			}
 		}
+
+		// Read table definitions associated with this sheet.
+		sheetIdx := len(data.Sheets)
+		tables := readSheetTables(files, path, sheetIdx)
+		data.Tables = append(data.Tables, tables...)
+
 		data.Sheets = append(data.Sheets, sd)
 	}
 	return data, nil
@@ -270,6 +276,129 @@ func siToString(si xlsxSI) string {
 		sb.WriteString(r.T)
 	}
 	return sb.String()
+}
+
+// decodeOOXMLEscapes replaces _xHHHH_ escape sequences in OOXML attribute
+// values with the corresponding Unicode character.
+func decodeOOXMLEscapes(s string) string {
+	// Fast path: no escape sequences.
+	if !strings.Contains(s, "_x") {
+		return s
+	}
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if i+6 < len(s) && s[i] == '_' && s[i+1] == 'x' && s[i+6] == '_' {
+			hex := s[i+2 : i+6]
+			code, err := strconv.ParseUint(hex, 16, 16)
+			if err == nil {
+				b.WriteRune(rune(code))
+				i += 7
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// xlsxTable represents the <table> root element in xl/tables/table*.xml.
+type xlsxTable struct {
+	XMLName        xml.Name          `xml:"table"`
+	Name           string            `xml:"name,attr"`
+	DisplayName    string            `xml:"displayName,attr"`
+	Ref            string            `xml:"ref,attr"`
+	HeaderRowCount *int              `xml:"headerRowCount,attr"`
+	TotalsRowCount int               `xml:"totalsRowCount,attr"`
+	TableColumns   xlsxTableColumns  `xml:"tableColumns"`
+}
+
+type xlsxTableColumns struct {
+	Column []xlsxTableColumn `xml:"tableColumn"`
+}
+
+type xlsxTableColumn struct {
+	Name string `xml:"name,attr"`
+}
+
+// readSheetTables reads table definitions referenced by a sheet's relationship file.
+// sheetPath is the path to the sheet XML (e.g. "xl/worksheets/sheet1.xml").
+// sheetIndex is the 0-based index of the sheet in WorkbookData.Sheets.
+func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex int) []TableDef {
+	// Determine the relationship file path for this sheet.
+	// e.g. "xl/worksheets/sheet1.xml" → "xl/worksheets/_rels/sheet1.xml.rels"
+	lastSlash := strings.LastIndex(sheetPath, "/")
+	var relsPath string
+	if lastSlash >= 0 {
+		dir := sheetPath[:lastSlash]
+		base := sheetPath[lastSlash+1:]
+		relsPath = dir + "/_rels/" + base + ".rels"
+	} else {
+		relsPath = "_rels/" + sheetPath + ".rels"
+	}
+
+	sheetRels, err := readXML[xlsxRelationships](files, relsPath)
+	if err != nil {
+		return nil
+	}
+
+	var tables []TableDef
+	for _, rel := range sheetRels.Relationships {
+		if rel.Type != RelTypeTable && rel.Type != RelTypeTableStrict {
+			continue
+		}
+		// Resolve the table path relative to the sheet directory.
+		var tablePath string
+		if strings.HasPrefix(rel.Target, "/") {
+			tablePath = rel.Target[1:]
+		} else if lastSlash >= 0 {
+			tablePath = resolveRelativePath(sheetPath[:lastSlash], rel.Target)
+		} else {
+			tablePath = rel.Target
+		}
+
+		xt, err := readXML[xlsxTable](files, tablePath)
+		if err != nil {
+			continue
+		}
+
+		td := TableDef{
+			Name:           xt.Name,
+			DisplayName:    xt.DisplayName,
+			Ref:            xt.Ref,
+			SheetIndex:     sheetIndex,
+			TotalsRowCount: xt.TotalsRowCount,
+		}
+		// Default headerRowCount is 1 if not specified.
+		if xt.HeaderRowCount != nil {
+			td.HeaderRowCount = *xt.HeaderRowCount
+		} else {
+			td.HeaderRowCount = 1
+		}
+		for _, col := range xt.TableColumns.Column {
+			td.Columns = append(td.Columns, decodeOOXMLEscapes(col.Name))
+		}
+		tables = append(tables, td)
+	}
+	return tables
+}
+
+// resolveRelativePath resolves a relative target path against a base directory.
+// Handles "../" prefixes.
+func resolveRelativePath(baseDir, target string) string {
+	for strings.HasPrefix(target, "../") {
+		target = target[3:]
+		if idx := strings.LastIndex(baseDir, "/"); idx >= 0 {
+			baseDir = baseDir[:idx]
+		} else {
+			baseDir = ""
+		}
+	}
+	if baseDir == "" {
+		return target
+	}
+	return baseDir + "/" + target
 }
 
 func readXML[T any](files map[string]*zip.File, name string) (T, error) {

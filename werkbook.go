@@ -17,6 +17,7 @@ type File struct {
 	calcGen    uint64              // incremented on any cell mutation; starts at 1
 	evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
 	deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
+	tables     []formula.TableInfo // table definitions for structured reference expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -203,6 +204,30 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 			}
 		}
 	}
+	// Build table info from parsed table definitions.
+	for _, td := range data.Tables {
+		col1, row1, col2, row2, err := RangeToCoordinates(td.Ref)
+		if err != nil {
+			continue
+		}
+		sheetName := ""
+		if td.SheetIndex >= 0 && td.SheetIndex < len(data.Sheets) {
+			sheetName = data.Sheets[td.SheetIndex].Name
+		}
+		ti := formula.TableInfo{
+			Name:       td.DisplayName,
+			SheetName:  sheetName,
+			Columns:    td.Columns,
+			FirstCol:   col1,
+			FirstRow:   row1,
+			LastCol:    col2,
+			LastRow:    row2,
+			HeaderRows: td.HeaderRowCount,
+			TotalRows:  td.TotalsRowCount,
+		}
+		f.tables = append(f.tables, ti)
+	}
+
 	f.registerAllFormulas()
 	return f
 }
@@ -252,11 +277,13 @@ func (f *File) registerAllFormulas() {
 				if c.formula == "" {
 					continue
 				}
-				node, err := formula.Parse(c.formula)
+				// Expand table structured references before parsing.
+				src := formula.ExpandTableRefs(c.formula, f.tables, r.num)
+				node, err := formula.Parse(src)
 				if err != nil {
 					continue
 				}
-				cf, err := formula.Compile(c.formula, node)
+				cf, err := formula.Compile(src, node)
 				if err != nil {
 					continue
 				}
