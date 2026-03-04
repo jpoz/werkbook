@@ -129,6 +129,9 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		Xmlns:  NSSpreadsheetML,
 		XmlnsR: NSOfficeDocument,
 	}
+	if data.Date1904 {
+		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
+	}
 	for i, sd := range data.Sheets {
 		wb.Sheets.Sheet = append(wb.Sheets.Sheet, xlsxSheet{
 			Name:    sd.Name,

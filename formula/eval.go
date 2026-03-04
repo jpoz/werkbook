@@ -24,6 +24,7 @@ type EvalContext struct {
 	CurrentRow     int
 	CurrentSheet   string
 	IsArrayFormula bool // true for CSE (Ctrl+Shift+Enter) array formulas
+	Date1904       bool // true if the workbook uses the 1904 date system
 	Resolver       CellResolver // the active resolver; used by SUBTOTAL to inspect cells
 }
 

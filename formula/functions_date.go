@@ -34,6 +34,11 @@ func init() {
 // Serial date helpers — duplicated from werkbook/date.go to avoid circular imports.
 var ExcelEpoch = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
 
+// Excel1904Epoch is January 1, 1904.
+// In the 1904 date system, serial number 0 = January 1, 1904, and there is
+// no leap-year bug to compensate for.
+var Excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // MaxExcelSerial is the largest valid Excel serial date (Dec 31, 9999).
 const MaxExcelSerial = 2958465
 
@@ -53,6 +58,16 @@ func ExcelSerialToTime(serial float64) time.Time {
 	days := int(serial)
 	frac := serial - float64(days)
 	t := ExcelEpoch.AddDate(0, 0, days)
+	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
+	return t
+}
+
+// ExcelSerialToTime1904 converts an Excel serial date number to a time.Time
+// using the 1904 date system (Mac Excel). No leap-year bug adjustment is needed.
+func ExcelSerialToTime1904(serial float64) time.Time {
+	days := int(serial)
+	frac := serial - float64(days)
+	t := Excel1904Epoch.AddDate(0, 0, days)
 	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
 	return t
 }

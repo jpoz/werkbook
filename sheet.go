@@ -456,6 +456,7 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 		CurrentRow:     row,
 		CurrentSheet:   s.name,
 		IsArrayFormula: c.isArrayFormula,
+		Date1904:       f.date1904,
 		Resolver:       resolver,
 	}
 	result, err := formula.Eval(cf, resolver, ctx)

@@ -31,7 +31,7 @@ func init() {
 	Register("SEARCH", NoCtx(fnSEARCH))
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
 	Register("T", NoCtx(fnT))
-	Register("TEXT", NoCtx(fnTEXT))
+	Register("TEXT", fnTEXTCtx)
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
@@ -231,7 +231,13 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 	return StringVal(strings.ReplaceAll(text, oldText, newText)), nil
 }
 
-func fnTEXT(args []Value) (Value, error) {
+// fnTEXTCtx is the context-aware TEXT function that respects the 1904 date system.
+func fnTEXTCtx(args []Value, ctx *EvalContext) (Value, error) {
+	d1904 := ctx != nil && ctx.Date1904
+	return fnTEXTWith1904(args, d1904)
+}
+
+func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -257,7 +263,7 @@ func fnTEXT(args []Value) (Value, error) {
 			}
 			return *e, nil
 		}
-		return StringVal(formatExcelNumber(n, format)), nil
+		return StringVal(formatExcelNumber(n, format, date1904)), nil
 	}
 
 	// Booleans: "General" format preserves TRUE/FALSE text.
@@ -280,7 +286,7 @@ func fnTEXT(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	return StringVal(formatExcelNumber(n, format)), nil
+	return StringVal(formatExcelNumber(n, format, date1904)), nil
 }
 
 func FormatWithCommas(n float64, decimals int) string {

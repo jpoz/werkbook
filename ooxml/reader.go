@@ -70,6 +70,12 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 	styles := readStyles(files)
 
 	data := &WorkbookData{Styles: styles}
+
+	// Check for the 1904 date system.
+	if wb.WorkbookPr != nil {
+		v := wb.WorkbookPr.Date1904
+		data.Date1904 = v == "1" || v == "true"
+	}
 	for _, s := range wb.Sheets.Sheet {
 		target, ok := sheetRels[s.RID]
 		if !ok {

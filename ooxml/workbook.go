@@ -6,11 +6,16 @@ import (
 	"strconv"
 )
 
+type xlsxWorkbookPr struct {
+	Date1904 string `xml:"date1904,attr,omitempty"`
+}
+
 type xlsxWorkbook struct {
-	XMLName xml.Name   `xml:"workbook"`
-	Xmlns   string     `xml:"xmlns,attr"`
-	XmlnsR  string     `xml:"xmlns:r,attr"`
-	Sheets  xlsxSheets `xml:"sheets"`
+	XMLName    xml.Name          `xml:"workbook"`
+	Xmlns      string            `xml:"xmlns,attr"`
+	XmlnsR     string            `xml:"xmlns:r,attr"`
+	WorkbookPr *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
+	Sheets     xlsxSheets        `xml:"sheets"`
 }
 
 type xlsxSheets struct {
@@ -60,8 +65,9 @@ func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Sheets []SheetData
-	Styles []StyleData // index 0 = default (empty)
+	Date1904 bool        // true if the workbook uses the 1904 date system (Mac Excel)
+	Sheets   []SheetData
+	Styles   []StyleData // index 0 = default (empty)
 }
 
 // StyleData is the intermediate representation of a cell style,

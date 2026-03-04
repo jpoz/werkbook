@@ -13,6 +13,7 @@ import (
 type File struct {
 	sheets     []*Sheet
 	sheetNames []string
+	date1904   bool                // true if the workbook uses the 1904 date system (Mac Excel)
 	calcGen    uint64              // incremented on any cell mutation; starts at 1
 	evaluating map[cellKey]bool    // tracks cells being evaluated (circular ref detection)
 	deps       *formula.DepGraph   // cell dependency graph for incremental recalculation
@@ -49,6 +50,11 @@ func New(opts ...Option) *File {
 	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
 	f.addSheet(o.firstSheet)
 	return f
+}
+
+// Date1904 reports whether the workbook uses the 1904 date system (Mac Excel).
+func (f *File) Date1904() bool {
+	return f.date1904
 }
 
 // Sheet returns the sheet with the given name, or nil if not found.
@@ -147,7 +153,7 @@ func Open(name string) (*File, error) {
 }
 
 func fileFromData(data *ooxml.WorkbookData) *File {
-	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
+	f := &File{calcGen: 1, date1904: data.Date1904, deps: formula.NewDepGraph()}
 
 	// Convert StyleData slice to *Style slice for assignment.
 	var parsedStyles []*Style
@@ -224,7 +230,7 @@ func cellDataToValue(cd ooxml.CellData) Value {
 }
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
-	data := &ooxml.WorkbookData{}
+	data := &ooxml.WorkbookData{Date1904: f.date1904}
 
 	// Style dedup: index 0 is always the default (empty StyleData).
 	styles := []ooxml.StyleData{{}}

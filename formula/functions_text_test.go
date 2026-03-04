@@ -242,6 +242,37 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 	}
 }
 
+func TestTEXTDateTime1904(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// In the 1904 date system, serial 0 = 1904-01-01.
+	// Serial 17816.607951388887 in the 1904 system = Oct 10, 1952 (vs Oct 10, 1948 in 1900).
+	ctx1904 := &EvalContext{Date1904: true}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{name: "mm-dd-yy 1904", formula: `TEXT(17816.607951388887, "mm-dd-yy")`, want: "10-11-52"},
+		{name: "yyyy-mm-dd 1904", formula: `TEXT(1, "yyyy-mm-dd")`, want: "1904-01-02"},
+		{name: "yyyy-mm-dd serial 0", formula: `TEXT(0, "yyyy-mm-dd hh:mm:ss.000")`, want: "1904-01-01 00:00:00.000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx1904)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
 func TestTEXTElapsedTime(t *testing.T) {
 	resolver := &mockResolver{}
 
