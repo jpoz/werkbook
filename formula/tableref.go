@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -82,7 +83,7 @@ func ExpandTableRefs(formula string, tables []TableInfo, currentRow int) string 
 		// Look for TableName[ pattern.
 		if isIdentStartByte(formula[i]) {
 			nameStart := i
-			for i < len(formula) && isTableNameByte(formula[i]) {
+			for i < len(formula) && isIdentOrDotByte(formula[i]) {
 				i++
 			}
 			name := formula[nameStart:i]
@@ -372,34 +373,10 @@ func writeSheetPrefix(b *strings.Builder, sheet string) {
 	b.WriteByte('!')
 }
 
-func isTableNameByte(c byte) bool {
-	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-		(c >= '0' && c <= '9') || c == '_' || c == '.'
-}
-
 func isIdentStartByte(c byte) bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'
 }
 
-// itoa converts an integer to a string without importing strconv.
 func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
+	return strconv.Itoa(n)
 }

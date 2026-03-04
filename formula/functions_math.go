@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// subtotalFuncNames maps SUBTOTAL function_num (1-11) to the aggregate function name.
+var subtotalFuncNames = map[int]string{
+	1: "AVERAGE", 2: "COUNT", 3: "COUNTA", 4: "MAX", 5: "MIN",
+	6: "PRODUCT", 7: "STDEV", 8: "STDEVP", 9: "SUM", 10: "VAR", 11: "VARP",
+}
+
 func init() {
 	Register("ABS", NoCtx(fnABS))
 	Register("ACOS", NoCtx(fnACOS))
@@ -668,11 +674,7 @@ func fnSUBTOTALCtx(args []Value, ctx *EvalContext) (Value, error) {
 	// For function numbers 1-11, exclude rows hidden by autoFilter only.
 	filtered := subtotalFilterArgs(args[1:], ctx, excludeAllHidden)
 
-	names := map[int]string{
-		1: "AVERAGE", 2: "COUNT", 3: "COUNTA", 4: "MAX", 5: "MIN",
-		6: "PRODUCT", 7: "STDEV", 8: "STDEVP", 9: "SUM", 10: "VAR", 11: "VARP",
-	}
-	name := names[fn]
+	name := subtotalFuncNames[fn]
 	id := LookupFunc(name)
 	if id < 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -703,10 +705,12 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 		return args
 	}
 
-	out := make([]Value, len(args))
+	var out []Value
 	for i, arg := range args {
 		if arg.Type != ValueArray || arg.RangeOrigin == nil {
-			out[i] = arg
+			if out != nil {
+				out[i] = arg
+			}
 			continue
 		}
 		origin := arg.RangeOrigin
@@ -717,8 +721,7 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 
 		// Build a filtered copy of the array, replacing SUBTOTAL cells
 		// and hidden-row cells with empty.
-		filtered := make([][]Value, len(arg.Array))
-		changed := false
+		var filtered [][]Value
 		for ri, row := range arg.Array {
 			rowNum := origin.FromRow + ri
 			// Determine if this row should be excluded based on hidden state.
@@ -730,22 +733,56 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 					rowExcluded = hiddenChecker.IsRowFilteredByAutoFilter(sheet, rowNum)
 				}
 			}
-			filteredRow := make([]Value, len(row))
-			copy(filteredRow, row)
-			for ci := range row {
-				colNum := origin.FromCol + ci
-				if rowExcluded || (checker != nil && checker.IsSubtotalCell(sheet, colNum, rowNum)) {
-					filteredRow[ci] = EmptyVal()
-					changed = true
+			if rowExcluded {
+				// Lazily allocate on first change.
+				if filtered == nil {
+					filtered = make([][]Value, len(arg.Array))
+					for k := 0; k < ri; k++ {
+						filtered[k] = arg.Array[k]
+					}
+				}
+				emptyRow := make([]Value, len(row))
+				filtered[ri] = emptyRow
+				continue
+			}
+			// Check individual cells for SUBTOTAL formulas.
+			var filteredRow []Value
+			if checker != nil {
+				for ci := range row {
+					colNum := origin.FromCol + ci
+					if checker.IsSubtotalCell(sheet, colNum, rowNum) {
+						if filteredRow == nil {
+							filteredRow = make([]Value, len(row))
+							copy(filteredRow, row)
+						}
+						filteredRow[ci] = EmptyVal()
+					}
 				}
 			}
-			filtered[ri] = filteredRow
+			if filteredRow != nil {
+				if filtered == nil {
+					filtered = make([][]Value, len(arg.Array))
+					for k := 0; k < ri; k++ {
+						filtered[k] = arg.Array[k]
+					}
+				}
+				filtered[ri] = filteredRow
+			} else if filtered != nil {
+				filtered[ri] = row
+			}
 		}
-		if changed {
+		if filtered != nil {
+			if out == nil {
+				out = make([]Value, len(args))
+				copy(out[:i], args[:i])
+			}
 			out[i] = Value{Type: ValueArray, Array: filtered}
-		} else {
+		} else if out != nil {
 			out[i] = arg
 		}
+	}
+	if out == nil {
+		return args
 	}
 	return out
 }

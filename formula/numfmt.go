@@ -33,7 +33,7 @@ var longDays = [8]string{"", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 // formatExcelNumber formats a number using an Excel format string.
 // This is the main entry point used by the TEXT() function.
 // If date1904 is true, date serial numbers use the 1904 epoch (Mac Excel).
-func formatExcelNumber(n float64, format string, date1904 ...bool) string {
+func formatExcelNumber(n float64, format string, date1904 bool) string {
 	if strings.EqualFold(format, "General") {
 		return formatGeneral(n)
 	}
@@ -89,8 +89,7 @@ func formatExcelNumber(n float64, format string, date1904 ...bool) string {
 
 	// Check if this is a date/time format.
 	if isDateTimeFormat(section) {
-		use1904 := len(date1904) > 0 && date1904[0]
-		return formatDateTime(n, section, use1904)
+		return formatDateTime(n, section, date1904)
 	}
 
 	// Check for fraction format.
@@ -298,9 +297,9 @@ func stripLiterals(format string) string {
 }
 
 // formatDateTime formats an Excel serial number as a date/time string.
-func formatDateTime(serial float64, format string, date1904 ...bool) string {
+func formatDateTime(serial float64, format string, date1904 bool) string {
 	var t time.Time
-	if len(date1904) > 0 && date1904[0] {
+	if date1904 {
 		t = ExcelSerialToTime1904(serial)
 	} else {
 		t = ExcelSerialToTime(serial)
