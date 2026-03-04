@@ -1429,3 +1429,287 @@ func TestHARMEAN(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CORREL
+// ---------------------------------------------------------------------------
+
+func TestCORREL(t *testing.T) {
+	// Basic data: A1:A5 = {3,2,4,5,6}, B1:B5 = {9,7,12,15,17}
+	basicResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4),
+			{Col: 1, Row: 4}: NumberVal(5),
+			{Col: 1, Row: 5}: NumberVal(6),
+			{Col: 2, Row: 1}: NumberVal(9),
+			{Col: 2, Row: 2}: NumberVal(7),
+			{Col: 2, Row: 3}: NumberVal(12),
+			{Col: 2, Row: 4}: NumberVal(15),
+			{Col: 2, Row: 5}: NumberVal(17),
+		},
+	}
+
+	// Perfect positive: A1:A3 = {1,2,3}, B1:B3 = {2,4,6}
+	perfectPosResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Perfect negative: A1:A3 = {1,2,3}, B1:B3 = {6,4,2}
+	perfectNegResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(6),
+			{Col: 2, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 3}: NumberVal(2),
+		},
+	}
+
+	// Zero std dev: A1:A3 = {5,5,5}, B1:B3 = {1,2,3}
+	zeroStdDevResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Two pairs: A1:A2 = {1,2}, B1:B2 = {3,5}
+	twoPairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 1}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(5),
+		},
+	}
+
+	// Mixed types: A1:A4 = {1,"hello",3,4}, B1:B4 = {10,20,30,"world"}
+	// Only pairs (1,10) and (3,30) are numeric in both
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: StringVal("world"),
+		},
+	}
+
+	// Negative numbers: A1:A4 = {-3,-1,1,3}, B1:B4 = {-9,-3,3,9}
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-3),
+			{Col: 1, Row: 2}: NumberVal(-1),
+			{Col: 1, Row: 3}: NumberVal(1),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(-9),
+			{Col: 2, Row: 2}: NumberVal(-3),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(9),
+		},
+	}
+
+	// All zeros in one array: A1:A3 = {0,0,0}, B1:B3 = {1,2,3}
+	allZerosResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(0),
+			{Col: 1, Row: 3}: NumberVal(0),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Single pair: A1 = {10}, B1 = {20}
+	singlePairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Zeros included: A1:A3 = {0,1,2}, B1:B3 = {0,2,4}
+	zerosIncludedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(2),
+			{Col: 2, Row: 1}: NumberVal(0),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(4),
+		},
+	}
+
+	// Bool in array: A1:A3 = {1,TRUE,3}, B1:B3 = {10,20,30}
+	// TRUE is bool, not numeric in array context; pairs (1,10) and (3,30) only
+	boolResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: BoolVal(true),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+
+	// Large dataset: A1:A20 = {1..20}, B1:B20 = {2..40 step 2}
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		largeResolver.cells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(i * 2))
+	}
+
+	// Weak correlation: A1:A5 = {1,2,3,4,5}, B1:B5 = {2,1,4,3,5}
+	weakResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(4),
+			{Col: 2, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// Error in array: A1:A3 = {1,#VALUE!,3}, B1:B3 = {4,5,6}
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: ErrorVal(ErrValVALUE),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// All text: A1:A3 = {"a","b","c"}, B1:B3 = {"x","y","z"}
+	allTextResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: StringVal("b"),
+			{Col: 1, Row: 3}: StringVal("c"),
+			{Col: 2, Row: 1}: StringVal("x"),
+			{Col: 2, Row: 2}: StringVal("y"),
+			{Col: 2, Row: 3}: StringVal("z"),
+		},
+	}
+
+	// Different length arrays: A1:A3, B1:B5
+	diffLenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	tol := 1e-9
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic positive correlation
+		{"basic_positive", "CORREL(A1:A5,B1:B5)", basicResolver, 0.997054486, false, 0},
+		// Perfect positive correlation
+		{"perfect_positive", "CORREL(A1:A3,B1:B3)", perfectPosResolver, 1.0, false, 0},
+		// Perfect negative correlation
+		{"perfect_negative", "CORREL(A1:A3,B1:B3)", perfectNegResolver, -1.0, false, 0},
+		// Zero std dev in first array → #DIV/0!
+		{"zero_stddev", "CORREL(A1:A3,B1:B3)", zeroStdDevResolver, 0, true, ErrValDIV0},
+		// Two pairs
+		{"two_pairs", "CORREL(A1:A2,B1:B2)", twoPairResolver, 1.0, false, 0},
+		// Mixed types: pairs (1,10) and (3,30) → perfect positive
+		{"mixed_types", "CORREL(A1:A4,B1:B4)", mixedResolver, 1.0, false, 0},
+		// Negative numbers: perfect positive
+		{"negative_numbers", "CORREL(A1:A4,B1:B4)", negResolver, 1.0, false, 0},
+		// All zeros in one array → #DIV/0!
+		{"all_zeros_one_array", "CORREL(A1:A3,B1:B3)", allZerosResolver, 0, true, ErrValDIV0},
+		// Single pair → #DIV/0! (std dev is 0 with 1 point)
+		{"single_pair", "CORREL(A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		// Empty range → #DIV/0!
+		{"empty_range", "CORREL(A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		// Zeros included (0 is numeric): perfect positive
+		{"zeros_included", "CORREL(A1:A3,B1:B3)", zerosIncludedResolver, 1.0, false, 0},
+		// Bool in array (pair skipped): pairs (1,10) and (3,30) → perfect positive
+		{"bool_in_array", "CORREL(A1:A3,B1:B3)", boolResolver, 1.0, false, 0},
+		// Large dataset: perfect positive (y = 2x)
+		{"large_dataset", "CORREL(A1:A20,B1:B20)", largeResolver, 1.0, false, 0},
+		// Weak correlation
+		{"weak_correlation", "CORREL(A1:A5,B1:B5)", weakResolver, 0.8, false, 0},
+		// Error propagation from first array
+		{"error_in_array1", "CORREL(A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		// All text → no numeric pairs → #DIV/0!
+		{"all_text", "CORREL(A1:A3,B1:B3)", allTextResolver, 0, true, ErrValDIV0},
+		// Different length arrays → #N/A
+		{"different_lengths", "CORREL(A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		// Wrong number of arguments (1 arg)
+		{"too_few_args", "CORREL(A1:A3)", basicResolver, 0, true, ErrValVALUE},
+		// Wrong number of arguments (3 args)
+		{"too_many_args", "CORREL(A1:A3,B1:B3,A1:A3)", basicResolver, 0, true, ErrValVALUE},
+		// Reversed argument order: same magnitude, same sign
+		{"reversed_args", "CORREL(B1:B5,A1:A5)", basicResolver, 0.997054486, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
