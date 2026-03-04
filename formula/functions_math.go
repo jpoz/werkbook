@@ -128,7 +128,7 @@ func fnFLOOR(args []Value) (Value, error) {
 		return *e, nil
 	}
 	if sig == 0 {
-		return NumberVal(0), nil
+		return ErrorVal(ErrValDIV0), nil
 	}
 	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
 		return ErrorVal(ErrValNUM), nil
@@ -164,8 +164,11 @@ func fnMOD(args []Value) (Value, error) {
 	}
 	q := n / d
 	// When |n/d| is very large, math.Floor loses precision and the result is
-	// floating-point noise. Excel returns #NUM! in this case.
-	if math.Abs(q) > 1<<49 {
+	// floating-point noise. Excel returns #NUM! in this case. The threshold
+	// aligns with Excel's behavior: once the quotient exceeds ~10^13, the
+	// intermediate INT(n/d)*d multiplication cannot recover n accurately
+	// within float64's ~15 significant digits.
+	if math.Abs(q) >= 1e13 {
 		return ErrorVal(ErrValNUM), nil
 	}
 	result := n - d*math.Floor(q)

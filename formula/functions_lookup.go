@@ -2,6 +2,7 @@ package formula
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -73,7 +74,7 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		if len(row) == 0 {
 			continue
 		}
-		if CompareValues(row[0], lookup) == 0 {
+		if CompareValuesExact(row[0], lookup) == 0 {
 			if ci > len(row) {
 				return ErrorVal(ErrValREF), nil
 			}
@@ -131,7 +132,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	}
 
 	for i, cell := range firstRow {
-		if CompareValues(cell, lookup) == 0 {
+		if CompareValuesExact(cell, lookup) == 0 {
 			if i >= len(table.Array[ri-1]) {
 				return ErrorVal(ErrValREF), nil
 			}
@@ -228,21 +229,28 @@ func fnMATCH(args []Value) (Value, error) {
 	switch matchType {
 	case 0:
 		for i, v := range values {
-			if CompareValues(v, lookup) == 0 {
+			if CompareValuesExact(v, lookup) == 0 {
 				return NumberVal(float64(i + 1)), nil
 			}
 		}
 		return ErrorVal(ErrValNA), nil
 
 	case 1:
+		// Approximate match (ascending). Empty cells are skipped so that
+		// whole-column references (e.g. Q:Q) with sparse data work
+		// correctly. We scan all non-empty values and track the last
+		// position where value <= lookup, without breaking early. This
+		// handles unsorted data gracefully (common in real-world
+		// spreadsheets that omit the match_type argument) while producing
+		// identical results for properly sorted data.
 		last := -1
 		for i, v := range values {
+			if v.Type == ValueEmpty {
+				continue
+			}
 			cmp := CompareValues(v, lookup)
 			if cmp <= 0 {
 				last = i
-			}
-			if cmp > 0 {
-				break
 			}
 		}
 		if last < 0 {
@@ -251,14 +259,16 @@ func fnMATCH(args []Value) (Value, error) {
 		return NumberVal(float64(last + 1)), nil
 
 	case -1:
+		// Approximate match (descending). Same approach: skip empties,
+		// scan all values, track last position where value >= lookup.
 		last := -1
 		for i, v := range values {
+			if v.Type == ValueEmpty {
+				continue
+			}
 			cmp := CompareValues(v, lookup)
 			if cmp >= 0 {
 				last = i
-			}
-			if cmp < 0 {
-				break
 			}
 		}
 		if last < 0 {
@@ -438,7 +448,7 @@ func fnXLOOKUP(args []Value) (Value, error) {
 	switch matchMode {
 	case 0:
 		for i, v := range lookupValues {
-			if CompareValues(v, lookup) == 0 {
+			if CompareValuesExact(v, lookup) == 0 {
 				if i < len(returnValues) {
 					return returnValues[i], nil
 				}
@@ -466,6 +476,28 @@ func fnXLOOKUP(args []Value) (Value, error) {
 				break
 			}
 		}
+
+	case 2:
+		// Wildcard match: * matches any sequence, ? matches single char, ~ escapes.
+		pattern := ValueToString(lookup)
+		re, err := excelPatternToRegexp(pattern)
+		if err != nil {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		// Anchor the pattern for full-string matching.
+		anchored, err := regexp.Compile("(?i)^" + re.String() + "$")
+		if err != nil {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		for i, v := range lookupValues {
+			s := ValueToString(v)
+			if anchored.MatchString(s) {
+				if i < len(returnValues) {
+					return returnValues[i], nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+		}
 	}
 
 	return notFound, nil
@@ -486,18 +518,23 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
 		return ErrorVal(ErrValREF), nil
 	}
 
-	// a1 parameter: default true (A1 style). R1C1 style not implemented.
+	// a1 parameter: default true (A1 style). When false, use R1C1 style.
 	a1Style := true
 	if len(args) == 2 {
 		a1Style = IsTruthy(args[1])
 	}
-	if !a1Style {
-		// R1C1 style not supported; return #REF!
-		return ErrorVal(ErrValREF), nil
-	}
 
 	if ctx == nil || ctx.Resolver == nil {
 		return ErrorVal(ErrValREF), nil
+	}
+
+	// If R1C1 style, convert to A1 style before parsing.
+	if !a1Style {
+		converted, err := r1c1ToA1(refText)
+		if err != nil {
+			return ErrorVal(ErrValREF), nil
+		}
+		refText = converted
 	}
 
 	// Strip dollar signs (absolute markers) for parsing.
@@ -660,6 +697,68 @@ func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
 		FromCol: c1, FromRow: r1,
 		ToCol: c2, ToRow: r2,
 	}, nil
+}
+
+// parseR1C1Cell parses a single R1C1-style cell reference like "R1C1" or "R5C3"
+// and returns (col, row). The input is case-insensitive.
+func parseR1C1Cell(s string) (col, row int, err error) {
+	s = strings.ToUpper(s)
+	if len(s) < 4 || s[0] != 'R' {
+		return 0, 0, fmt.Errorf("invalid R1C1 reference %q", s)
+	}
+	cIdx := strings.IndexByte(s[1:], 'C')
+	if cIdx < 0 {
+		return 0, 0, fmt.Errorf("invalid R1C1 reference %q: missing C", s)
+	}
+	cIdx++ // adjust for the slice offset
+	rowStr := s[1:cIdx]
+	colStr := s[cIdx+1:]
+	if rowStr == "" || colStr == "" {
+		return 0, 0, fmt.Errorf("invalid R1C1 reference %q: empty row or col", s)
+	}
+	row, err = strconv.Atoi(rowStr)
+	if err != nil || row < 1 || row > maxExcelRows {
+		return 0, 0, fmt.Errorf("invalid row in R1C1 reference %q", s)
+	}
+	col, err = strconv.Atoi(colStr)
+	if err != nil || col < 1 || col > maxExcelCols {
+		return 0, 0, fmt.Errorf("invalid col in R1C1 reference %q", s)
+	}
+	return col, row, nil
+}
+
+// r1c1ToA1 converts an R1C1-style reference string to A1-style.
+// Supports single cell (R1C1), ranges (R1C1:R5C3), and optional sheet prefixes.
+func r1c1ToA1(ref string) (string, error) {
+	// Preserve sheet prefix.
+	prefix := ""
+	cellPart := ref
+	if idx := strings.LastIndex(ref, "!"); idx >= 0 {
+		prefix = ref[:idx+1]
+		cellPart = ref[idx+1:]
+	}
+
+	// Check if it's a range.
+	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
+		left := cellPart[:colonIdx]
+		right := cellPart[colonIdx+1:]
+		c1, r1, err := parseR1C1Cell(left)
+		if err != nil {
+			return "", err
+		}
+		c2, r2, err := parseR1C1Cell(right)
+		if err != nil {
+			return "", err
+		}
+		return prefix + colNumberToLetters(c1) + strconv.Itoa(r1) + ":" + colNumberToLetters(c2) + strconv.Itoa(r2), nil
+	}
+
+	// Single cell.
+	c, r, err := parseR1C1Cell(cellPart)
+	if err != nil {
+		return "", err
+	}
+	return prefix + colNumberToLetters(c) + strconv.Itoa(r), nil
 }
 
 func isAllDigits(s string) bool {

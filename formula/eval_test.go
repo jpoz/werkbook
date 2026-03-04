@@ -56,6 +56,7 @@ func TestEvalArithmetic(t *testing.T) {
 		{"(1+2)*3", 9},
 		{"10-3", 7},
 		{"2^3", 8},
+		{"2^3^2", 64}, // left-associative: (2^3)^2 = 64, not 2^(3^2) = 512
 		{"10/4", 2.5},
 		{"-5", -5},
 		{"50%", 0.5},
@@ -482,8 +483,8 @@ func TestEvalCoerceNum(t *testing.T) {
 		// Numeric string coerced
 		{name: "numeric_string", formula: `"123"+0`, wantNum: 123},
 		{name: "numeric_string_float", formula: `"3.14"+0`, wantNum: 3.14},
-		// Empty string coerced to 0
-		{name: "empty_string", formula: `""+0`, wantNum: 0},
+		// Empty string produces #VALUE! (not coerced to 0)
+		{name: "empty_string", formula: `""+0`, isErr: true, wantErr: ErrValVALUE},
 		// Non-numeric string produces #VALUE!
 		{name: "non_numeric_string", formula: `"abc"+0`, isErr: true, wantErr: ErrValVALUE},
 		// Error propagates through arithmetic
@@ -495,6 +496,22 @@ func TestEvalCoerceNum(t *testing.T) {
 		{name: "negative_arithmetic", formula: "-10+-20", wantNum: -30},
 		// Chained operations with coercion
 		{name: "bool_chain", formula: "TRUE+TRUE+TRUE", wantNum: 3},
+		// Cell containing empty string produces #VALUE!
+		{name: "cell_empty_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal(""),
+		}, isErr: true, wantErr: ErrValVALUE},
+		// Cell containing numeric string coerces to number
+		{name: "cell_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal("5"),
+		}, wantNum: 5},
+		// Whitespace-padded numeric string coerces to number (Excel trims whitespace)
+		{name: "cell_padded_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
+			{Sheet: "", Col: 1, Row: 1}: StringVal(" 5 "),
+		}, wantNum: 5},
+		// Whitespace-only string produces #VALUE!
+		{name: "whitespace_only_string", formula: `" "+0`, isErr: true, wantErr: ErrValVALUE},
+		// Truly empty cell treated as 0 (not the same as empty string)
+		{name: "truly_empty_cell", formula: "A1+0", wantNum: 0},
 	}
 
 	for _, tt := range tests {
@@ -565,7 +582,8 @@ func TestEvalCompareValues(t *testing.T) {
 		{name: "negative_lt", formula: "-5<0", want: true},
 		{name: "negative_gt", formula: "0>-10", want: true},
 		// Decimal comparisons
-		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: false}, // floating point!
+		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: true},     // relative epsilon handles this
+		{name: "third_times_3", formula: "(1/3*3)=1", want: true},    // Excel audit: must be TRUE
 		{name: "decimal_lt", formula: "0.1<0.2", want: true},
 	}
 
@@ -607,8 +625,8 @@ func TestEvalIsTruthy(t *testing.T) {
 		{name: "bool_false", formula: `IF(FALSE,"yes","no")`, want: "no"},
 		{name: "num_zero", formula: `IF(A1,"yes","no")`, want: "no"},
 		{name: "num_nonzero", formula: `IF(A2,"yes","no")`, want: "yes"},
-		{name: "str_empty", formula: `IF(A3,"yes","no")`, want: "no"},
-		{name: "str_nonempty", formula: `IF(A4,"yes","no")`, want: "yes"},
+		{name: "str_empty", formula: `IF(A3,"yes","no")`, want: "#VALUE!"},
+		{name: "str_nonempty", formula: `IF(A4,"yes","no")`, want: "#VALUE!"},
 		{name: "empty_cell", formula: `IF(A5,"yes","no")`, want: "no"},
 		{name: "num_negative", formula: `IF(-1,"yes","no")`, want: "yes"},
 		{name: "num_fraction", formula: `IF(0.001,"yes","no")`, want: "yes"},
@@ -621,8 +639,9 @@ func TestEvalIsTruthy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Eval(%q): %v", tt.formula, err)
 			}
-			if got.Type != ValueString || got.Str != tt.want {
-				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			gotStr := ValueToString(got)
+			if gotStr != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, gotStr, tt.want)
 			}
 		})
 	}
@@ -653,8 +672,7 @@ func TestEvalValueToString(t *testing.T) {
 		{name: "empty_to_str", formula: `A4&"x"`, want: "x"},
 		{name: "string_concat", formula: `"hello"&" "&"world"`, want: "hello world"},
 		{name: "float_to_str", formula: `3.14&""`, want: "3.14"},
-		{name: "error_to_str", formula: `#N/A&""`, want: "#N/A"},
-		{name: "div0_to_str", formula: `#DIV/0!&""`, want: "#DIV/0!"},
+		// error concat cases moved to TestEvalConcatErrorPropagation
 	}
 
 	for _, tt := range tests {
@@ -672,10 +690,50 @@ func TestEvalValueToString(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// errorValueToString — exercised through concat with error literals
+// Error propagation in concat — errors must propagate, not stringify
 // ---------------------------------------------------------------------------
 
-func TestEvalErrorValueToString(t *testing.T) {
+func TestEvalConcatErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{name: "DIV0_left", formula: `#DIV/0!&""`, wantErr: ErrValDIV0},
+		{name: "NA_left", formula: `#N/A&""`, wantErr: ErrValNA},
+		{name: "NAME_left", formula: `#NAME?&""`, wantErr: ErrValNAME},
+		{name: "NULL_left", formula: `#NULL!&""`, wantErr: ErrValNULL},
+		{name: "NUM_left", formula: `#NUM!&""`, wantErr: ErrValNUM},
+		{name: "REF_left", formula: `#REF!&""`, wantErr: ErrValREF},
+		{name: "VALUE_left", formula: `#VALUE!&""`, wantErr: ErrValVALUE},
+		{name: "DIV0_right", formula: `"test"&#DIV/0!`, wantErr: ErrValDIV0},
+		{name: "DIV0_from_expr", formula: `1/0&"test"`, wantErr: ErrValDIV0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Fatalf("Eval(%q) = type %v, want error", tt.formula, got.Type)
+			}
+			if got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = error %v, want %v", tt.formula, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Number formatting in concat — Excel uses 15 significant digits
+// ---------------------------------------------------------------------------
+
+func TestEvalConcatNumberFormatting(t *testing.T) {
 	resolver := &mockResolver{}
 
 	tests := []struct {
@@ -683,13 +741,12 @@ func TestEvalErrorValueToString(t *testing.T) {
 		formula string
 		want    string
 	}{
-		{name: "DIV0", formula: `#DIV/0!&""`, want: "#DIV/0!"},
-		{name: "NA", formula: `#N/A&""`, want: "#N/A"},
-		{name: "NAME", formula: `#NAME?&""`, want: "#NAME?"},
-		{name: "NULL", formula: `#NULL!&""`, want: "#NULL!"},
-		{name: "NUM", formula: `#NUM!&""`, want: "#NUM!"},
-		{name: "REF", formula: `#REF!&""`, want: "#REF!"},
-		{name: "VALUE", formula: `#VALUE!&""`, want: "#VALUE!"},
+		{name: "one_third", formula: `1/3&""`, want: "0.333333333333333"},
+		{name: "small_number", formula: `0.000001&""`, want: "1E-06"},
+		{name: "large_number", formula: `1000000000000000&""`, want: "1E+15"},
+		{name: "normal_number", formula: `3.14&""`, want: "3.14"},
+		{name: "integer", formula: `42&""`, want: "42"},
+		{name: "zero", formula: `0&""`, want: "0"},
 	}
 
 	for _, tt := range tests {
@@ -700,7 +757,7 @@ func TestEvalErrorValueToString(t *testing.T) {
 				t.Fatalf("Eval(%q): %v", tt.formula, err)
 			}
 			if got.Type != ValueString || got.Str != tt.want {
-				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				t.Errorf("Eval(%q) = %q (type %v), want %q", tt.formula, got.Str, got.Type, tt.want)
 			}
 		})
 	}
@@ -1450,6 +1507,37 @@ func TestEvalSUMPRODUCTArrayContext(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 32 {
 		t.Errorf("SUMPRODUCT(A1:A3,B1:B3) = %v (%g), want 32", got.Type, got.Num)
+	}
+}
+
+func TestEvalSUMPRODUCTBooleanArrayDoubleNeg(t *testing.T) {
+	// SUMPRODUCT(--(A1:A5="East")) should count cells equal to "East".
+	// The comparison produces a boolean array, -- converts TRUE→1 / FALSE→0,
+	// then SUMPRODUCT sums the values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("East"),
+			{Col: 1, Row: 2}: StringVal("West"),
+			{Col: 1, Row: 3}: StringVal("East"),
+			{Col: 1, Row: 4}: StringVal("East"),
+			{Col: 1, Row: 5}: StringVal("North"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, `SUMPRODUCT(--(A1:A5="East"))`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf(`SUMPRODUCT(--(A1:A5="East")) = %v (%g), want 3`, got.Type, got.Num)
 	}
 }
 

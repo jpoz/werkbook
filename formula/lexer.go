@@ -357,14 +357,22 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
-		if bangPos := l.find3DSheetBang(); bangPos > 0 {
-			l.pos = bangPos + 1 // skip past !
-			refStart := l.pos
-			l.consumeCellRefChars()
-			if l.pos == refStart {
-				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+		// Only try 3D sheet reference if the word so far does NOT look like
+		// a cell reference. E.g. "S1:S3!A1" — S1 is a valid cell ref, so
+		// the colon should be a range operator, not a 3D sheet separator.
+		// Excel behaves the same way: sheet names that look like cell refs
+		// must be quoted to form a valid 3D reference.
+		word := string(l.src[start:l.pos])
+		if !looksLikeCellRef(word) {
+			if bangPos := l.find3DSheetBang(); bangPos > 0 {
+				l.pos = bangPos + 1 // skip past !
+				refStart := l.pos
+				l.consumeCellRefChars()
+				if l.pos == refStart {
+					return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+				}
+				return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 			}
-			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 		}
 	}
 
@@ -403,14 +411,17 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
-		if bangPos := l.find3DSheetBang(); bangPos > 0 {
-			l.pos = bangPos + 1 // skip past !
-			refStart := l.pos
-			l.consumeCellRefChars()
-			if l.pos == refStart {
-				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+		word := string(l.src[start:l.pos])
+		if !looksLikeCellRef(word) {
+			if bangPos := l.find3DSheetBang(); bangPos > 0 {
+				l.pos = bangPos + 1 // skip past !
+				refStart := l.pos
+				l.consumeCellRefChars()
+				if l.pos == refStart {
+					return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+				}
+				return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 			}
-			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 		}
 	}
 

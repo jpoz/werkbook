@@ -130,3 +130,131 @@ func TestNOWTODAY(t *testing.T) {
 		t.Errorf("TODAY() = %g, expected integer (no fractional time)", got.Num)
 	}
 }
+
+func TestDAYS360(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic US method: Jan 1 to Feb 1 = 30 days
+		{"us_jan1_feb1", "DAYS360(DATE(2025,1,1),DATE(2025,2,1),FALSE)", 30},
+		// US method: Feb 28 (last day of Feb, non-leap) to Mar 31
+		// Feb 28 → D1=30 (last-of-Feb rule), Mar 31 → D2=30 (D2==31 && D1>=30)
+		// Result: (3-2)*30 + (30-30) = 30
+		{"us_feb28_mar31", "DAYS360(45716,45747,FALSE)", 30},
+		// US method: Jan 31 to Mar 31
+		// Jan 31 → D1=30, Mar 31 → D2=30 (D2==31 && D1>=30)
+		// Result: (3-1)*30 + (30-30) = 60
+		{"us_jan31_mar31", "DAYS360(DATE(2025,1,31),DATE(2025,3,31),FALSE)", 60},
+		// US method: both dates last day of Feb (leap year 2024)
+		// Feb 29 2024 → D1=30, Feb 29 2024 → D2=30 (both last-of-Feb)
+		// Result: 0
+		{"us_both_feb_leap", "DAYS360(DATE(2024,2,29),DATE(2024,2,29),FALSE)", 0},
+		// US method: Feb 29 (leap) to Mar 31
+		// Feb 29 → D1=30, Mar 31 → D2=30
+		// Result: (3-2)*30 + (30-30) = 30
+		{"us_feb29_mar31_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,31),FALSE)", 30},
+		// European method: same dates
+		// European: D1=28, D2=31→30. (3-2)*30 + (30-28) = 32
+		{"eu_feb28_mar31", "DAYS360(45716,45747,TRUE)", 32},
+		// US method: regular dates, no adjustments needed
+		{"us_jan15_mar15", "DAYS360(DATE(2025,1,15),DATE(2025,3,15),FALSE)", 60},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEDIF(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic units
+		{"Y", `DATEDIF(45307,45736,"Y")`, 1},
+		{"M", `DATEDIF(45307,45736,"M")`, 14},
+		{"D", `DATEDIF(45307,45736,"D")`, 429},
+		{"MD", `DATEDIF(45307,45736,"MD")`, 4},
+		{"YM", `DATEDIF(45307,45736,"YM")`, 2},
+
+		// YD unit — days ignoring year difference
+		{"YD_cross_year", `DATEDIF(45307,45736,"YD")`, 64},
+		{"YD_within_year", `DATEDIF(45307,45672,"YD")`, 365},
+		{"YD_same_date", `DATEDIF(45307,45307,"YD")`, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestSerial60Boundary(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Serial 60 = Excel's fictional Feb 29, 1900
+		{"DAY_60", "DAY(60)", 29},
+		{"MONTH_60", "MONTH(60)", 2},
+		{"YEAR_60", "YEAR(60)", 1900},
+		// Neighbors: serial 59 = Feb 28, serial 61 = Mar 1
+		{"DAY_59", "DAY(59)", 28},
+		{"MONTH_59", "MONTH(59)", 2},
+		{"DAY_61", "DAY(61)", 1},
+		{"MONTH_61", "MONTH(61)", 3},
+		// DATE(1900,2,29) should return serial 60
+		{"DATE_1900_2_29", "DATE(1900,2,29)", 60},
+		// TIME(25,0,0) should wrap to fractional part only
+		{"TIME_25_0_0", "TIME(25,0,0)", 1.0 / 24.0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
