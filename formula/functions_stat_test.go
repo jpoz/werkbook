@@ -5846,3 +5846,75 @@ func TestRANKAVG(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// STANDARDIZE
+// ---------------------------------------------------------------------------
+
+func TestSTANDARDIZE(t *testing.T) {
+	const tol = 1e-9
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		wantErr ErrorValue
+		isErr   bool
+	}{
+		// Basic positive result: (42-40)/1.5 = 1.333...
+		{"basic_positive", "STANDARDIZE(42,40,1.5)", 2.0 / 1.5, 0, false},
+		// Zero result: (40-40)/1.5 = 0
+		{"zero_result", "STANDARDIZE(40,40,1.5)", 0, 0, false},
+		// Negative result: (38-40)/1.5 = -1.333...
+		{"negative_result", "STANDARDIZE(38,40,1.5)", -2.0 / 1.5, 0, false},
+		// Standard normal: (1-0)/1 = 1
+		{"standard_normal", "STANDARDIZE(1,0,1)", 1, 0, false},
+		// Large stddev
+		{"large_stddev", "STANDARDIZE(100,50,100)", 0.5, 0, false},
+		// Small stddev
+		{"small_stddev", "STANDARDIZE(10.001,10,0.001)", 1, 0, false},
+		// Negative x and mean
+		{"negative_values", "STANDARDIZE(-5,-10,2)", 2.5, 0, false},
+		// Fractional stddev
+		{"fractional_stddev", "STANDARDIZE(0,0,0.5)", 0, 0, false},
+		// stddev = 0 -> #NUM!
+		{"stddev_zero", "STANDARDIZE(42,40,0)", 0, ErrValNUM, true},
+		// Negative stddev -> #NUM!
+		{"stddev_negative", "STANDARDIZE(42,40,-1)", 0, ErrValNUM, true},
+		// Too few args -> #VALUE!
+		{"too_few_args", "STANDARDIZE(42,40)", 0, ErrValVALUE, true},
+		// Too many args -> #VALUE!
+		{"too_many_args", "STANDARDIZE(42,40,1.5,1)", 0, ErrValVALUE, true},
+		// Non-numeric string -> #VALUE!
+		{"non_numeric_string", fmt.Sprintf("STANDARDIZE(%q,40,1.5)", "abc"), 0, ErrValVALUE, true},
+		// String coercion: "42" -> 42
+		{"string_coercion", fmt.Sprintf("STANDARDIZE(%q,40,1.5)", "42"), 2.0 / 1.5, 0, false},
+		// Boolean TRUE = 1: (1-0)/1 = 1
+		{"bool_true", "STANDARDIZE(TRUE,0,1)", 1, 0, false},
+		// Boolean FALSE = 0: (0-0)/1 = 0
+		{"bool_false", "STANDARDIZE(FALSE,0,1)", 0, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %g, want %g (diff %g)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+}

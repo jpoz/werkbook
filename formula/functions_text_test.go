@@ -1151,6 +1151,102 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DOLLAR comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestDOLLAR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic positive numbers
+		{name: "basic", formula: `DOLLAR(1234.567, 2)`, want: "$1,234.57"},
+		{name: "default_decimals", formula: `DOLLAR(99)`, want: "$99.00"},
+		{name: "zero_decimals", formula: `DOLLAR(1234.567, 0)`, want: "$1,235"},
+		{name: "negative_decimals", formula: `DOLLAR(1234.567, -2)`, want: "$1,200"},
+
+		// Negative numbers
+		{name: "negative", formula: `DOLLAR(-1234.567, 2)`, want: "($1,234.57)"},
+		{name: "negative_zero_dec", formula: `DOLLAR(-1234.567, 0)`, want: "($1,235)"},
+		{name: "negative_neg_dec", formula: `DOLLAR(-1234.567, -2)`, want: "($1,200)"},
+
+		// Zero
+		{name: "zero", formula: `DOLLAR(0, 2)`, want: "$0.00"},
+		{name: "zero_default", formula: `DOLLAR(0)`, want: "$0.00"},
+
+		// Small values
+		{name: "small_positive", formula: `DOLLAR(0.5, 2)`, want: "$0.50"},
+		{name: "small_negative", formula: `DOLLAR(-0.5, 2)`, want: "($0.50)"},
+
+		// String coercion
+		{name: "string_number", formula: `DOLLAR("1234", 2)`, want: "$1,234.00"},
+
+		// Boolean coercion
+		{name: "bool_true", formula: `DOLLAR(TRUE, 2)`, want: "$1.00"},
+		{name: "bool_false", formula: `DOLLAR(FALSE, 2)`, want: "$0.00"},
+
+		// Large numbers
+		{name: "large_number", formula: `DOLLAR(1234567.89, 2)`, want: "$1,234,567.89"},
+		{name: "millions", formula: `DOLLAR(1000000, 0)`, want: "$1,000,000"},
+
+		// Many decimal places
+		{name: "many_decimals", formula: `DOLLAR(1.5, 5)`, want: "$1.50000"},
+
+		// Negative zero edge case: -0.001 with 2 decimals rounds to 0.00
+		{name: "neg_zero_round", formula: `DOLLAR(-0.001, 2)`, want: "$0.00"},
+
+		// No decimal part
+		{name: "integer_input", formula: `DOLLAR(42, 0)`, want: "$42"},
+
+		// Small number no comma
+		{name: "small_no_comma", formula: `DOLLAR(5, 2)`, want: "$5.00"},
+
+		// Negative decimals rounding
+		{name: "neg_dec_round_up", formula: `DOLLAR(1250, -2)`, want: "$1,300"},
+		{name: "neg_dec_thousands", formula: `DOLLAR(12345, -3)`, want: "$12,000"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "no_args", formula: `DOLLAR()`},
+		{name: "too_many_args", formula: `DOLLAR(1,2,3)`},
+		{name: "non_numeric_string", formula: `DOLLAR("abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LEN comprehensive tests
 // ---------------------------------------------------------------------------
 
