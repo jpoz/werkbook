@@ -78,6 +78,8 @@ func init() {
 	Register("VARP", NoCtx(fnVARP))
 	Register("VAR.P", NoCtx(fnVARP))
 	Register("VARPA", NoCtx(fnVARPA))
+	Register("NORM.DIST", NoCtx(fnNormDist))
+	Register("NORM.INV", NoCtx(fnNormInv))
 	Register("NORM.S.DIST", NoCtx(fnNormSDist))
 	Register("NORM.S.INV", NoCtx(fnNormSInv))
 }
@@ -2494,6 +2496,86 @@ func fnFREQUENCY(args []Value) (Value, error) {
 }
 
 // ---------------------------------------------------------------------------
+// normSDistCDF / normSDistPDF — internal helpers for standard normal
+// ---------------------------------------------------------------------------
+
+// normSDistCDF returns the CDF of the standard normal distribution: Φ(z).
+func normSDistCDF(z float64) float64 {
+	return 0.5 * (1 + math.Erf(z/math.Sqrt(2)))
+}
+
+// normSDistPDF returns the PDF of the standard normal distribution: φ(z).
+func normSDistPDF(z float64) float64 {
+	return (1.0 / math.Sqrt(2*math.Pi)) * math.Exp(-z*z/2)
+}
+
+// ---------------------------------------------------------------------------
+// NORM.DIST — Normal distribution (PDF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnNormDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	if cum != 0 {
+		// CDF: standardize then use Φ
+		z := (x - mean) / stdev
+		return NumberVal(normSDistCDF(z)), nil
+	}
+	// PDF: (1/(stdev*√(2π))) * exp(-((x-mean)/stdev)²/2)
+	z := (x - mean) / stdev
+	return NumberVal(normSDistPDF(z) / stdev), nil
+}
+
+// ---------------------------------------------------------------------------
+// NORM.INV — Inverse of the normal CDF
+// ---------------------------------------------------------------------------
+
+func fnNormInv(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if p <= 0 || p >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(mean + stdev*normSInv(p)), nil
+}
+
+// ---------------------------------------------------------------------------
 // NORM.S.DIST — Standard normal distribution (PDF or CDF)
 // ---------------------------------------------------------------------------
 
@@ -2510,11 +2592,9 @@ func fnNormSDist(args []Value) (Value, error) {
 		return *e, nil
 	}
 	if cum != 0 {
-		// CDF: Φ(z) = 0.5 * (1 + erf(z/√2))
-		return NumberVal(0.5 * (1 + math.Erf(z/math.Sqrt(2)))), nil
+		return NumberVal(normSDistCDF(z)), nil
 	}
-	// PDF: f(z) = (1/√(2π)) * e^(-z²/2)
-	return NumberVal((1.0 / math.Sqrt(2*math.Pi)) * math.Exp(-z*z/2)), nil
+	return NumberVal(normSDistPDF(z)), nil
 }
 
 // ---------------------------------------------------------------------------
