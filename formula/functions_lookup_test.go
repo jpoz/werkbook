@@ -341,6 +341,387 @@ func TestHLOOKUPRowIndexOutOfRange(t *testing.T) {
 	}
 }
 
+func TestHLOOKUPRowIndex1ReturnsHeaderRow(t *testing.T) {
+	// row_index_num=1 should return from the first (lookup) row itself.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Name"),
+			{Col: 2, Row: 1}: StringVal("Age"),
+			{Col: 3, Row: 1}: StringVal("City"),
+			{Col: 1, Row: 2}: StringVal("Alice"),
+			{Col: 2, Row: 2}: NumberVal(30),
+			{Col: 3, Row: 2}: StringVal("NYC"),
+		},
+	}
+
+	cf := evalCompile(t, `HLOOKUP("Age",A1:C2,1,FALSE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "Age" {
+		t.Errorf("HLOOKUP row_index=1: got %v, want Age", got)
+	}
+}
+
+func TestHLOOKUPStringLookup(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Axles"),
+			{Col: 2, Row: 1}: StringVal("Bearings"),
+			{Col: 3, Row: 1}: StringVal("Bolts"),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(7),
+			{Col: 3, Row: 2}: NumberVal(10),
+		},
+	}
+
+	cf := evalCompile(t, `HLOOKUP("Bearings",A1:C2,2,FALSE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 7 {
+		t.Errorf("HLOOKUP string lookup: got %v, want 7", got)
+	}
+}
+
+func TestHLOOKUPCaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 2, Row: 1}: StringVal("Banana"),
+			{Col: 3, Row: 1}: StringVal("Cherry"),
+			{Col: 1, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 3, Row: 2}: NumberVal(3),
+		},
+	}
+
+	// Lookup "banana" (lowercase) should match "Banana"
+	cf := evalCompile(t, `HLOOKUP("banana",A1:C2,2,FALSE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("HLOOKUP case insensitive: got %v, want 2", got)
+	}
+
+	// Also try all-caps
+	cf = evalCompile(t, `HLOOKUP("CHERRY",A1:C2,2,FALSE)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("HLOOKUP case insensitive caps: got %v, want 3", got)
+	}
+}
+
+func TestHLOOKUPMatchInMiddle(t *testing.T) {
+	// 5 columns, match in the middle (col 3)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 4, Row: 1}: NumberVal(40),
+			{Col: 5, Row: 1}: NumberVal(50),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+			{Col: 4, Row: 2}: StringVal("d"),
+			{Col: 5, Row: 2}: StringVal("e"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(30,A1:E2,2,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "c" {
+		t.Errorf("HLOOKUP match in middle: got %v, want c", got)
+	}
+}
+
+func TestHLOOKUPFirstMatchWins(t *testing.T) {
+	// Duplicate values in header row; first match should win.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 3, Row: 1}: NumberVal(2),
+			{Col: 4, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+			{Col: 4, Row: 2}: StringVal("d"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(2,A1:D2,2,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "b" {
+		t.Errorf("HLOOKUP first match wins: got %v, want b", got)
+	}
+}
+
+func TestHLOOKUPApproxExactHit(t *testing.T) {
+	// Approximate match where lookup value exactly matches a header value.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: StringVal("ten"),
+			{Col: 2, Row: 2}: StringVal("twenty"),
+			{Col: 3, Row: 2}: StringVal("thirty"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(20,A1:C2,2,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "twenty" {
+		t.Errorf("HLOOKUP approx exact hit: got %v, want twenty", got)
+	}
+}
+
+func TestHLOOKUPApproxDefaultOmitted(t *testing.T) {
+	// Omitting range_lookup should default to approximate match (TRUE).
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(25,A1:C2,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "b" {
+		t.Errorf("HLOOKUP default approx: got %v, want b", got)
+	}
+}
+
+func TestHLOOKUPApproxLessThanAll(t *testing.T) {
+	// Approximate match with lookup value smaller than all header values → #N/A.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(5,A1:C2,2,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("HLOOKUP approx less than all: got %v, want #N/A", got)
+	}
+}
+
+func TestHLOOKUPUnsortedExact(t *testing.T) {
+	// Unsorted header row with exact match should still find the value.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 1}: NumberVal(20),
+			{Col: 1, Row: 2}: StringVal("thirty"),
+			{Col: 2, Row: 2}: StringVal("ten"),
+			{Col: 3, Row: 2}: StringVal("twenty"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(10,A1:C2,2,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "ten" {
+		t.Errorf("HLOOKUP unsorted exact: got %v, want ten", got)
+	}
+}
+
+func TestHLOOKUPArgErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args (2 args)
+	cf := evalCompile(t, "HLOOKUP(1,A1:C2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("HLOOKUP too few args: got %v, want #VALUE!", got)
+	}
+
+	// Too many args (5 args)
+	cf = evalCompile(t, "HLOOKUP(1,A1:C2,2,FALSE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("HLOOKUP too many args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestHLOOKUPRowIndexZero(t *testing.T) {
+	// row_index_num = 0 → #REF! (index out of range)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(1,A1:B2,0,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("HLOOKUP row_index=0: got %v, want #REF!", got)
+	}
+}
+
+func TestHLOOKUPNegativeRowIndex(t *testing.T) {
+	// Negative row_index_num → #REF!
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(1,A1:B2,-1,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("HLOOKUP negative row_index: got %v, want #REF!", got)
+	}
+}
+
+func TestHLOOKUPBooleanLookup(t *testing.T) {
+	// Look up a boolean value in the header row.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(false),
+			{Col: 2, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: StringVal("no"),
+			{Col: 2, Row: 2}: StringVal("yes"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(TRUE,A1:B2,2,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "yes" {
+		t.Errorf("HLOOKUP boolean lookup: got %v, want yes", got)
+	}
+}
+
+func TestHLOOKUPMultipleRows(t *testing.T) {
+	// Table with 3 rows; retrieve from the third row.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("X"),
+			{Col: 2, Row: 1}: StringVal("Y"),
+			{Col: 3, Row: 1}: StringVal("Z"),
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 3, Row: 2}: NumberVal(30),
+			{Col: 1, Row: 3}: NumberVal(100),
+			{Col: 2, Row: 3}: NumberVal(200),
+			{Col: 3, Row: 3}: NumberVal(300),
+		},
+	}
+
+	cf := evalCompile(t, `HLOOKUP("Y",A1:C3,3,FALSE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 200 {
+		t.Errorf("HLOOKUP multiple rows: got %v, want 200", got)
+	}
+}
+
+func TestHLOOKUPApproxLastColumn(t *testing.T) {
+	// Approximate match should return the last column when lookup >= all values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(99,A1:C2,2,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "c" {
+		t.Errorf("HLOOKUP approx last col: got %v, want c", got)
+	}
+}
+
+func TestHLOOKUPNumberLookup(t *testing.T) {
+	// Exact match for a number in the header row.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 1}: NumberVal(200),
+			{Col: 3, Row: 1}: NumberVal(300),
+			{Col: 1, Row: 2}: StringVal("low"),
+			{Col: 2, Row: 2}: StringVal("mid"),
+			{Col: 3, Row: 2}: StringVal("high"),
+		},
+	}
+
+	cf := evalCompile(t, "HLOOKUP(300,A1:C2,2,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "high" {
+		t.Errorf("HLOOKUP number lookup: got %v, want high", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // MATCH edge cases — all match types
 // ---------------------------------------------------------------------------

@@ -117,7 +117,7 @@ Werkbook supports **303** Excel formula functions.
 | HEX2BIN | Engineering | 38 |
 | HEX2DEC | Engineering | 39 |
 | HEX2OCT | Engineering | 35 |
-| HLOOKUP | Lookup & Reference | 4 |
+| HLOOKUP | Lookup & Reference | 22 |
 | HOUR | Date & Time | - |
 | HSTACK | Lookup & Reference | 18 |
 | IF | Logical | 21 |
