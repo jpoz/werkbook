@@ -82,11 +82,19 @@ func fnAND(args []Value) (Value, error) {
 		if arg.Type == ValueError {
 			return arg, nil
 		}
+		// Direct string argument → #VALUE! (Excel behaviour).
+		if arg.Type == ValueString {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		if arg.Type == ValueArray {
 			for _, row := range arg.Array {
 				for _, cell := range row {
 					if cell.Type == ValueError {
 						return cell, nil
+					}
+					// Skip strings in ranges.
+					if cell.Type == ValueString {
+						continue
 					}
 					if !IsTruthy(cell) {
 						return BoolVal(false), nil
@@ -110,11 +118,19 @@ func fnOR(args []Value) (Value, error) {
 		if arg.Type == ValueError {
 			return arg, nil
 		}
+		// Direct string argument → #VALUE! (Excel behaviour).
+		if arg.Type == ValueString {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		if arg.Type == ValueArray {
 			for _, row := range arg.Array {
 				for _, cell := range row {
 					if cell.Type == ValueError {
 						return cell, nil
+					}
+					// Skip strings in ranges.
+					if cell.Type == ValueString {
+						continue
 					}
 					if IsTruthy(cell) {
 						return BoolVal(true), nil
@@ -149,11 +165,19 @@ func fnXOR(args []Value) (Value, error) {
 		if arg.Type == ValueError {
 			return arg, nil
 		}
+		// XOR skips strings whether direct or from ranges.
+		if arg.Type == ValueString {
+			continue
+		}
 		if arg.Type == ValueArray {
 			for _, row := range arg.Array {
 				for _, cell := range row {
 					if cell.Type == ValueError {
 						return cell, nil
+					}
+					// Skip strings in ranges.
+					if cell.Type == ValueString {
+						continue
 					}
 					if IsTruthy(cell) {
 						count++
