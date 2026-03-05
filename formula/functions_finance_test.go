@@ -2777,3 +2777,184 @@ func TestVDB_ErrorFactorZero(t *testing.T) {
 	v, _ := fnVdb(numArgs(1000, 100, 5, 0, 1, 0))
 	assertError(t, "VDB factor=0", v)
 }
+
+// === SYD ===
+
+func TestSYD_ExcelExample_Period1(t *testing.T) {
+	// SYD(30000, 7500, 10, 1) = 4090.909090...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 1", v, 4090.91)
+}
+
+func TestSYD_ExcelExample_Period10(t *testing.T) {
+	// SYD(30000, 7500, 10, 10) = 409.090909...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 10", v, 409.09)
+}
+
+func TestSYD_Period5(t *testing.T) {
+	// SYD(30000, 7500, 10, 5) = (22500) * 6 / 55 = 2454.545454...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 5", v, 2454.55)
+}
+
+func TestSYD_Period2(t *testing.T) {
+	// SYD(30000, 7500, 10, 2) = 22500 * 9 / 55 = 3681.818181...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 2", v, 3681.82)
+}
+
+func TestSYD_Period3(t *testing.T) {
+	// SYD(30000, 7500, 10, 3) = 22500 * 8 / 55 = 3272.727272...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 3", v, 3272.73)
+}
+
+func TestSYD_ZeroSalvage(t *testing.T) {
+	// SYD(10000, 0, 5, 1) = 10000 * 5 / 15 = 3333.33
+	v, err := fnSYD(numArgs(10000, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD zero salvage", v, 3333.33)
+}
+
+func TestSYD_ZeroSalvage_Period5(t *testing.T) {
+	// SYD(10000, 0, 5, 5) = 10000 * 1 / 15 = 666.67
+	v, err := fnSYD(numArgs(10000, 0, 5, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD zero salvage period 5", v, 666.67)
+}
+
+func TestSYD_SalvageEqualsCost(t *testing.T) {
+	// SYD(10000, 10000, 5, 1) = 0
+	v, err := fnSYD(numArgs(10000, 10000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD salvage=cost", v, 0)
+}
+
+func TestSYD_Life1(t *testing.T) {
+	// SYD(10000, 1000, 1, 1) = 9000 * 1 / 1 = 9000
+	v, err := fnSYD(numArgs(10000, 1000, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD life=1", v, 9000)
+}
+
+func TestSYD_PerEqualsLife(t *testing.T) {
+	// SYD(10000, 2000, 4, 4) = 8000 * 1 / 10 = 800
+	v, err := fnSYD(numArgs(10000, 2000, 4, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD per=life", v, 800)
+}
+
+func TestSYD_LargeValues(t *testing.T) {
+	// SYD(50000000, 5000000, 10, 1) = 45000000 * 10 / 55 = 8181818.18
+	v, err := fnSYD(numArgs(50000000, 5000000, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD large values", v, 8181818.18)
+}
+
+func TestSYD_SmallAsset(t *testing.T) {
+	// SYD(100, 10, 5, 1) = 90 * 5 / 15 = 30
+	v, err := fnSYD(numArgs(100, 10, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD small asset", v, 30)
+}
+
+func TestSYD_FractionalLifeTruncated(t *testing.T) {
+	// SYD(10000, 1000, 5.9, 1) — life truncated to 5
+	// = 9000 * 5 / 15 = 3000
+	v, err := fnSYD(numArgs(10000, 1000, 5.9, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD fractional life", v, 3000)
+}
+
+func TestSYD_FractionalPerTruncated(t *testing.T) {
+	// SYD(10000, 1000, 5, 2.7) — per truncated to 2
+	// = 9000 * 4 / 15 = 2400
+	v, err := fnSYD(numArgs(10000, 1000, 5, 2.7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD fractional per", v, 2400)
+}
+
+func TestSYD_NegativeDepreciableAmount(t *testing.T) {
+	// SYD(1000, 5000, 5, 1) — salvage > cost, negative depreciation
+	// = (1000-5000) * 5 / 15 = -1333.33
+	v, err := fnSYD(numArgs(1000, 5000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD negative depreciable", v, -1333.33)
+}
+
+func TestSYD_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10))
+	assertError(t, "SYD too few args", v)
+}
+
+func TestSYD_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 1, 99))
+	assertError(t, "SYD too many args", v)
+}
+
+func TestSYD_ErrorNonNumeric(t *testing.T) {
+	args := []Value{StringVal("abc"), NumberVal(7500), NumberVal(10), NumberVal(1)}
+	v, _ := fnSYD(args)
+	assertError(t, "SYD non-numeric cost", v)
+}
+
+func TestSYD_ErrorLifeZero(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 0, 1))
+	assertError(t, "SYD life=0", v)
+}
+
+func TestSYD_ErrorLifeNegative(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, -5, 1))
+	assertError(t, "SYD life negative", v)
+}
+
+func TestSYD_ErrorPerZero(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 0))
+	assertError(t, "SYD per=0", v)
+}
+
+func TestSYD_ErrorPerNegative(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, -1))
+	assertError(t, "SYD per negative", v)
+}
+
+func TestSYD_ErrorPerGreaterThanLife(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 11))
+	assertError(t, "SYD per > life", v)
+}

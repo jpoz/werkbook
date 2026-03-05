@@ -31,6 +31,7 @@ func init() {
 	Register("MIRR", NoCtx(fnMirr))
 	Register("PDURATION", NoCtx(fnPduration))
 	Register("RRI", NoCtx(fnRri))
+	Register("SYD", NoCtx(fnSYD))
 	Register("VDB", NoCtx(fnVdb))
 }
 
@@ -1315,6 +1316,41 @@ func fnRri(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(result - 1), nil
+}
+
+// fnSYD implements SYD(cost, salvage, life, per).
+// Returns the sum-of-years-digits depreciation of an asset for a given period.
+func fnSYD(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	per, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Excel truncates life and per to integers.
+	life = math.Trunc(life)
+	per = math.Trunc(per)
+
+	if life <= 0 || per < 1 || per > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// SYD = (cost - salvage) * (life - per + 1) / (life * (life + 1) / 2)
+	return NumberVal((cost - salvage) * (life - per + 1) / (life * (life + 1) / 2)), nil
 }
 
 // vdbCalcOneperiod calculates the depreciation for a single period using
