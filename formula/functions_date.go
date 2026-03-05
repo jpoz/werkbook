@@ -90,6 +90,10 @@ func ExcelSerialToTime(serial float64) time.Time {
 // correctly handling serial 60 (Excel's fictional Feb 29, 1900).
 func excelSerialDateParts(serial float64) (int, time.Month, int) {
 	s := int(serial)
+	if s == 0 {
+		// Serial 0 is Excel's "January 0, 1900" sentinel value.
+		return 1900, time.January, 0
+	}
 	if s == 60 {
 		return 1900, time.February, 29
 	}

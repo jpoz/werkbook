@@ -107,6 +107,39 @@ func TestDAY(t *testing.T) {
 	}
 }
 
+func TestYEARMONTHDAY_Serial0(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Excel serial 0 is "January 0, 1900" — a special sentinel.
+	// YEAR(0)=1900, MONTH(0)=1, DAY(0)=0.
+	cf := evalCompile(t, "YEAR(0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(YEAR(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1900 {
+		t.Errorf("YEAR(0) = %g, want 1900", got.Num)
+	}
+
+	cf = evalCompile(t, "MONTH(0)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(MONTH(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("MONTH(0) = %g, want 1", got.Num)
+	}
+
+	cf = evalCompile(t, "DAY(0)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(DAY(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DAY(0) = %g, want 0", got.Num)
+	}
+}
+
 func TestNOWTODAY(t *testing.T) {
 	resolver := &mockResolver{}
 
