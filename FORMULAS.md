@@ -121,7 +121,7 @@ Werkbook supports **303** Excel formula functions.
 | HOUR | Date & Time | - |
 | HSTACK | Lookup & Reference | 18 |
 | IF | Logical | 21 |
-| IFERROR | Logical | 8 |
+| IFERROR | Logical | 24 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 12 |

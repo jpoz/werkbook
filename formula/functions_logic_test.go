@@ -773,6 +773,185 @@ func TestIFERROR(t *testing.T) {
 			t.Errorf(`IFERROR(1/0, "fallback") = %v, want "fallback"`, got)
 		}
 	})
+
+	t.Run("DIV/0 error returns value_if_error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(1/0, 42)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf(`IFERROR(1/0, 42) = %v, want 42`, got)
+		}
+	})
+
+	t.Run("VALUE error returns value_if_error", func(t *testing.T) {
+		// AND with no args produces #VALUE!
+		cf := evalCompile(t, `IFERROR(AND(), "caught")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "caught" {
+			t.Errorf(`IFERROR(AND(), "caught") = %v, want "caught"`, got)
+		}
+	})
+
+	t.Run("NA error returns value_if_error", func(t *testing.T) {
+		// IFS with no true condition produces #N/A
+		cf := evalCompile(t, `IFERROR(IFS(FALSE,"x"), "na caught")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "na caught" {
+			t.Errorf(`IFERROR(IFS(FALSE,"x"), "na caught") = %v, want "na caught"`, got)
+		}
+	})
+
+	t.Run("NUM error returns value_if_error", func(t *testing.T) {
+		// SQRT(-1) produces #NUM!
+		cf := evalCompile(t, `IFERROR(SQRT(-1), "num error")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "num error" {
+			t.Errorf(`IFERROR(SQRT(-1), "num error") = %v, want "num error"`, got)
+		}
+	})
+
+	t.Run("string value no error returns string", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR("hello", "fallback")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello" {
+			t.Errorf(`IFERROR("hello", "fallback") = %v, want "hello"`, got)
+		}
+	})
+
+	t.Run("number value no error returns number", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(99.5, 0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 99.5 {
+			t.Errorf(`IFERROR(99.5, 0) = %v, want 99.5`, got)
+		}
+	})
+
+	t.Run("boolean value no error returns boolean", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(TRUE, FALSE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf(`IFERROR(TRUE, FALSE) = %v, want TRUE`, got)
+		}
+	})
+
+	t.Run("nested IFERROR", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(IFERROR(1/0, 1/0), "double fallback")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "double fallback" {
+			t.Errorf(`IFERROR(IFERROR(1/0, 1/0), "double fallback") = %v, want "double fallback"`, got)
+		}
+	})
+
+	t.Run("nested IFERROR inner catches", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(IFERROR(1/0, 42), "outer")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf(`IFERROR(IFERROR(1/0, 42), "outer") = %v, want 42`, got)
+		}
+	})
+
+	t.Run("value_if_error is 0", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(1/0, 0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf(`IFERROR(1/0, 0) = %v, want 0`, got)
+		}
+	})
+
+	t.Run("value_if_error is empty string", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(1/0, "")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf(`IFERROR(1/0, "") = %v, want ""`, got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`IFERROR(1) = %v, want #VALUE!`, got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(1, 2, 3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`IFERROR(1, 2, 3) = %v, want #VALUE!`, got)
+		}
+	})
+
+	t.Run("Excel doc example 210/35 no error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(210/35, "Error in calculation")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 6 {
+			t.Errorf(`IFERROR(210/35, "Error in calculation") = %v, want 6`, got)
+		}
+	})
+
+	t.Run("Excel doc example 55/0 error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(55/0, "Error in calculation")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "Error in calculation" {
+			t.Errorf(`IFERROR(55/0, "Error in calculation") = %v, want "Error in calculation"`, got)
+		}
+	})
+
+	t.Run("expression result no error", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(2+3, "err")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf(`IFERROR(2+3, "err") = %v, want 5`, got)
+		}
+	})
 }
 
 func TestIFS(t *testing.T) {
