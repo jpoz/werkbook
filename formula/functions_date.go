@@ -20,6 +20,7 @@ func init() {
 	Register("MINUTE", NoCtx(fnMINUTE))
 	Register("MONTH", NoCtx(fnMONTH))
 	Register("NETWORKDAYS", NoCtx(fnNETWORKDAYS))
+	Register("NETWORKDAYS.INTL", NoCtx(fnNetworkdaysIntl))
 	Register("NOW", NoCtx(fnNOW))
 	Register("SECOND", NoCtx(fnSECOND))
 	Register("TIME", NoCtx(fnTIME))
@@ -28,6 +29,7 @@ func init() {
 	Register("WEEKDAY", NoCtx(fnWEEKDAY))
 	Register("WEEKNUM", NoCtx(fnWEEKNUM))
 	Register("WORKDAY", NoCtx(fnWORKDAY))
+	Register("WORKDAY.INTL", NoCtx(fnWorkdayIntl))
 	Register("YEAR", NoCtx(fnYEAR))
 	Register("YEARFRAC", NoCtx(fnYEARFRAC))
 }
@@ -862,6 +864,64 @@ func fnNETWORKDAYS(args []Value) (Value, error) {
 	return NumberVal(count), nil
 }
 
+func fnNetworkdaysIntl(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	endSerial, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	startSerial = math.Trunc(startSerial)
+	endSerial = math.Trunc(endSerial)
+
+	// Default weekend: Saturday and Sunday (code 1).
+	weekend := [7]bool{true, false, false, false, false, false, true}
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
+		var ev *Value
+		weekend, ev = parseWeekendParam(args[2])
+		if ev != nil {
+			return *ev, nil
+		}
+	}
+
+	holidays := make(map[float64]bool)
+	if len(args) == 4 {
+		var ev *Value
+		holidays, ev = parseHolidays(args[3])
+		if ev != nil {
+			return *ev, nil
+		}
+	}
+
+	negate := false
+	from := startSerial
+	to := endSerial
+	if from > to {
+		from, to = to, from
+		negate = true
+	}
+
+	count := 0.0
+	for d := from; d <= to; d++ {
+		t := ExcelSerialToTime(d)
+		wd := int(t.Weekday())
+		if !weekend[wd] && !holidays[d] {
+			count++
+		}
+	}
+
+	if negate {
+		count = -count
+	}
+	return NumberVal(count), nil
+}
+
 func fnWEEKNUM(args []Value) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -987,6 +1047,151 @@ func fnYEARFRAC(args []Value) (Value, error) {
 	}
 
 	return ErrorVal(ErrValNUM), nil
+}
+
+// parseWeekendParam interprets the weekend parameter used by WORKDAY.INTL and
+// NETWORKDAYS.INTL. It returns a [7]bool where index 0=Sunday, 1=Monday, ...
+// 6=Saturday, with true meaning the day is a weekend (non-working) day.
+// Returns nil error on success, or a Value error for invalid input.
+func parseWeekendParam(arg Value) ([7]bool, *Value) {
+	// If the argument is a string, interpret as a 7-character mask (Mon-Sun).
+	if arg.Type == ValueString {
+		s := arg.Str
+		if len(s) != 7 {
+			ev := ErrorVal(ErrValVALUE)
+			return [7]bool{}, &ev
+		}
+		// Check all weekend — "1111111" is invalid.
+		allOnes := true
+		for i := 0; i < 7; i++ {
+			if s[i] != '0' && s[i] != '1' {
+				ev := ErrorVal(ErrValVALUE)
+				return [7]bool{}, &ev
+			}
+			if s[i] == '0' {
+				allOnes = false
+			}
+		}
+		if allOnes {
+			ev := ErrorVal(ErrValVALUE)
+			return [7]bool{}, &ev
+		}
+		// String positions: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+		// Array indices:    0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+		var result [7]bool
+		for i := 0; i < 7; i++ {
+			if s[i] == '1' {
+				// Map string index i (Mon=0..Sun=6) to Weekday (Sun=0..Sat=6)
+				wd := (i + 1) % 7
+				result[wd] = true
+			}
+		}
+		return result, nil
+	}
+
+	// Numeric weekend codes.
+	n, e := CoerceNum(arg)
+	if e != nil {
+		return [7]bool{}, e
+	}
+	code := int(n)
+
+	// Codes 1-7: two-day weekends
+	// Codes 11-17: single-day weekends
+	type weekendDef struct {
+		days [7]bool // index 0=Sunday
+	}
+	defs := map[int]weekendDef{
+		1:  {days: [7]bool{true, false, false, false, false, false, true}},  // Sat, Sun
+		2:  {days: [7]bool{true, true, false, false, false, false, false}},  // Sun, Mon
+		3:  {days: [7]bool{false, true, true, false, false, false, false}},  // Mon, Tue
+		4:  {days: [7]bool{false, false, true, true, false, false, false}},  // Tue, Wed
+		5:  {days: [7]bool{false, false, false, true, true, false, false}},  // Wed, Thu
+		6:  {days: [7]bool{false, false, false, false, true, true, false}},  // Thu, Fri
+		7:  {days: [7]bool{false, false, false, false, false, true, true}},  // Fri, Sat
+		11: {days: [7]bool{true, false, false, false, false, false, false}}, // Sun only
+		12: {days: [7]bool{false, true, false, false, false, false, false}}, // Mon only
+		13: {days: [7]bool{false, false, true, false, false, false, false}}, // Tue only
+		14: {days: [7]bool{false, false, false, true, false, false, false}}, // Wed only
+		15: {days: [7]bool{false, false, false, false, true, false, false}}, // Thu only
+		16: {days: [7]bool{false, false, false, false, false, true, false}}, // Fri only
+		17: {days: [7]bool{false, false, false, false, false, false, true}}, // Sat only
+	}
+
+	def, ok := defs[code]
+	if !ok {
+		ev := ErrorVal(ErrValVALUE)
+		return [7]bool{}, &ev
+	}
+	return def.days, nil
+}
+
+func fnWorkdayIntl(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	startSerial, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if startSerial < 0 || startSerial > MaxExcelSerial {
+		return ErrorVal(ErrValNUM), nil
+	}
+	daysF, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	days := int(daysF)
+
+	// Default weekend: Saturday and Sunday (code 1).
+	weekend := [7]bool{true, false, false, false, false, false, true}
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
+		var ev *Value
+		weekend, ev = parseWeekendParam(args[2])
+		if ev != nil {
+			return *ev, nil
+		}
+	}
+
+	holidays := make(map[float64]bool)
+	if len(args) == 4 {
+		var ev *Value
+		holidays, ev = parseHolidays(args[3])
+		if ev != nil {
+			return *ev, nil
+		}
+	}
+
+	t := ExcelSerialToTime(startSerial)
+
+	if days == 0 {
+		return NumberVal(startSerial), nil
+	}
+
+	step := 1
+	if days < 0 {
+		step = -1
+		days = -days
+	}
+
+	for days > 0 {
+		t = t.AddDate(0, 0, step)
+		serial := math.Trunc(TimeToExcelSerial(t))
+		wd := int(t.Weekday())
+		if weekend[wd] {
+			continue
+		}
+		if holidays[serial] {
+			continue
+		}
+		days--
+	}
+
+	result := TimeToExcelSerial(t)
+	if result < 0 || result > MaxExcelSerial {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(result), nil
 }
 
 func fnWORKDAY(args []Value) (Value, error) {
