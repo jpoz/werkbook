@@ -261,7 +261,7 @@ Werkbook supports **303** Excel formula functions.
 | SUMX2MY2 | Math & Trig | 31 |
 | SUMX2PY2 | Math & Trig | 31 |
 | SUMXMY2 | Math & Trig | 31 |
-| SWITCH | Logical | 1 |
+| SWITCH | Logical | 28 |
 | SYD | Financial | 23 |
 | T | Text | 5 |
 | TAKE | Lookup & Reference | 30 |
