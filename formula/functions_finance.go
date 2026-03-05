@@ -31,6 +31,7 @@ func init() {
 	Register("MIRR", NoCtx(fnMirr))
 	Register("PDURATION", NoCtx(fnPduration))
 	Register("RRI", NoCtx(fnRri))
+	Register("VDB", NoCtx(fnVdb))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1314,4 +1315,151 @@ func fnRri(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(result - 1), nil
+}
+
+// vdbCalcOneperiod calculates the depreciation for a single period using
+// DDB with optional switch to straight-line.
+func vdbCalcOnePeriod(cost, salvage, life, period, factor float64, noSwitch bool) float64 {
+	// Compute book value at the start of this period by accumulating
+	// depreciation for all prior periods.
+	bookValue := cost
+	for i := 0.0; i < period; i++ {
+		ddb := bookValue * (factor / life)
+		if !noSwitch {
+			sl := 0.0
+			remaining := life - i
+			if remaining > 0 {
+				sl = (bookValue - salvage) / remaining
+			}
+			if sl > ddb {
+				ddb = sl
+			}
+		}
+		if bookValue-ddb < salvage {
+			ddb = bookValue - salvage
+		}
+		if ddb < 0 {
+			ddb = 0
+		}
+		bookValue -= ddb
+	}
+
+	// Now compute depreciation for the requested period.
+	ddb := bookValue * (factor / life)
+	if !noSwitch {
+		sl := 0.0
+		remaining := life - period
+		if remaining > 0 {
+			sl = (bookValue - salvage) / remaining
+		}
+		if sl > ddb {
+			ddb = sl
+		}
+	}
+	if bookValue-ddb < salvage {
+		ddb = bookValue - salvage
+	}
+	if ddb < 0 {
+		ddb = 0
+	}
+	return ddb
+}
+
+// fnVdb implements VDB(cost, salvage, life, start_period, end_period, [factor], [no_switch]).
+// Returns the depreciation of an asset for any specified period using the
+// variable declining balance method.
+func fnVdb(args []Value) (Value, error) {
+	if len(args) < 5 || len(args) > 7 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	factor := 2.0
+	if len(args) >= 6 {
+		factor, e = CoerceNum(args[5])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	noSwitch := false
+	if len(args) == 7 {
+		ns, e := CoerceNum(args[6])
+		if e != nil {
+			// Try bool coercion.
+			if args[6].Type == ValueBool {
+				noSwitch = args[6].Bool
+			} else {
+				return *e, nil
+			}
+		} else {
+			noSwitch = ns != 0
+		}
+	}
+
+	// Validate inputs.
+	if cost < 0 || salvage < 0 || life <= 0 || startPeriod < 0 || endPeriod < startPeriod || factor <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special cases.
+	if cost == 0 || salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// Accumulate depreciation across the period range [startPeriod, endPeriod].
+	// Handle fractional start/end by prorating.
+	totalDep := 0.0
+
+	intStart := math.Ceil(startPeriod)
+	intEnd := math.Floor(endPeriod)
+
+	// Fractional first period: from startPeriod to ceil(startPeriod).
+	if startPeriod != intStart && intStart <= life {
+		frac := intStart - startPeriod
+		dep := vdbCalcOnePeriod(cost, salvage, life, intStart-1, factor, noSwitch)
+		totalDep += dep * frac
+	}
+
+	// Whole periods.
+	for i := intStart; i < intEnd; i++ {
+		dep := vdbCalcOnePeriod(cost, salvage, life, i, factor, noSwitch)
+		totalDep += dep
+	}
+
+	// Fractional last period or whole last period.
+	if endPeriod == intEnd && intEnd > intStart {
+		// endPeriod is exactly an integer and we haven't counted it yet.
+		dep := vdbCalcOnePeriod(cost, salvage, life, intEnd-1, factor, noSwitch)
+		totalDep += dep
+	} else if endPeriod == intEnd && intEnd == intStart && startPeriod == intStart {
+		// start and end are the same integer — no depreciation.
+	} else if endPeriod != intEnd {
+		// Fractional end period.
+		frac := endPeriod - intEnd
+		dep := vdbCalcOnePeriod(cost, salvage, life, intEnd, factor, noSwitch)
+		totalDep += dep * frac
+	}
+
+	return NumberVal(totalDep), nil
 }
