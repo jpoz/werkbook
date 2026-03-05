@@ -1352,6 +1352,285 @@ func TestEFFECT_NOMINAL_RoundTrip(t *testing.T) {
 	assertClose(t, "NOMINAL->EFFECT round-trip", eff2, 0.10)
 }
 
+// === CUMIPMT ===
+
+func TestCUMIPMT_ExcelDocExample_SecondYear(t *testing.T) {
+	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0) = -11135.23
+	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT excel doc second year", v, -11135.23)
+}
+
+func TestCUMIPMT_ExcelDocExample_FirstMonth(t *testing.T) {
+	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0) = -937.50
+	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT excel doc first month", v, -937.50)
+}
+
+func TestCUMIPMT_TotalInterest30YrMortgage(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 360, 0) — total interest on 30yr mortgage at 10%
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT total 30yr", v, -215925.77)
+}
+
+func TestCUMIPMT_FirstYear(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 12, 0) — first year interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT first year", v, -9974.98)
+}
+
+func TestCUMIPMT_SinglePeriod(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 1, 0) — first month only
+	// Excel: -833.33
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT single period", v, -833.33)
+}
+
+func TestCUMIPMT_MiddlePeriods(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 13, 24, 0) — second year
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT second year", v, -9916.77)
+}
+
+func TestCUMIPMT_Type1_FirstYear(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 12, 1) — type=1, first year
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 12, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT type1 first year", v, -9066.10)
+}
+
+func TestCUMIPMT_Type1_SingleFirst(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 1, 1) — type=1, first period only
+	// Interest for period 1 with type=1 is 0
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT type1 period 1", v, 0)
+}
+
+func TestCUMIPMT_SimpleLoan(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 1, 3, 0) — simple 3-period loan at 5%
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 1, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PMT = -367.21, total paid = 1101.63, interest = 1101.63 - 1000 = -101.63
+	assertClose(t, "CUMIPMT simple loan", v, -101.63)
+}
+
+func TestCUMIPMT_SimpleLoan_Period1(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 1, 1, 0)
+	// First period interest = 1000 * 0.05 = -50
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT simple period 1", v, -50.00)
+}
+
+func TestCUMIPMT_SimpleLoan_Period2(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 2, 2, 0)
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 2, 2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After period 1: balance = 1000*1.05 + pmt = 1050 - 367.21 = 682.79
+	// Interest period 2: 682.79 * 0.05 = -34.14
+	assertClose(t, "CUMIPMT simple period 2", v, -34.14)
+}
+
+func TestCUMIPMT_SimpleLoan_Period3(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 3, 3, 0)
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 3, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Interest period 3: remaining balance * 0.05
+	assertClose(t, "CUMIPMT simple period 3", v, -17.49)
+}
+
+func TestCUMIPMT_HighRate(t *testing.T) {
+	// CUMIPMT(0.5, 10, 10000, 1, 10, 0)
+	v, err := fnCumipmt(numArgs(0.5, 10, 10000, 1, 10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT high rate: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_LastPeriodOnly(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 360, 360, 0) — last period interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 360, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last period interest should be small
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT last period: expected negative number, got %v", v)
+	}
+	assertClose(t, "CUMIPMT last period", v, -7.25)
+}
+
+func TestCUMIPMT_Type1_Total(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 360, 1) — type=1 total interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 360, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT type1 total: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_LargerLoan(t *testing.T) {
+	// CUMIPMT(0.06/12, 180, 500000, 1, 180, 0)
+	v, err := fnCumipmt(numArgs(0.06/12, 180, 500000, 1, 180, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT larger loan: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_SumPartsEqualsTotal(t *testing.T) {
+	// Sum of first half + second half should equal total
+	rate := 0.1 / 12
+	nper := 360.0
+	pvVal := 100000.0
+	total, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 360, 0))
+	first, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 180, 0))
+	second, _ := fnCumipmt(numArgs(rate, nper, pvVal, 181, 360, 0))
+	sum := first.Num + second.Num
+	if math.Abs(sum-total.Num) > 0.01 {
+		t.Errorf("CUMIPMT parts: first(%f) + second(%f) = %f, total = %f", first.Num, second.Num, sum, total.Num)
+	}
+}
+
+func TestCUMIPMT_MatchesIPMTSum(t *testing.T) {
+	// CUMIPMT should equal sum of individual IPMT calls
+	rate := 0.05 / 12
+	nper := 60.0
+	pvVal := 20000.0
+	cum, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 60, 0))
+	ipmtSum := 0.0
+	for i := 1; i <= 60; i++ {
+		ipmt, _ := fnIPMT(numArgs(rate, float64(i), nper, pvVal))
+		ipmtSum += ipmt.Num
+	}
+	if math.Abs(cum.Num-ipmtSum) > 0.01 {
+		t.Errorf("CUMIPMT vs IPMT sum: CUMIPMT=%f, sum(IPMT)=%f", cum.Num, ipmtSum)
+	}
+}
+
+// --- Validation errors ---
+
+func TestCUMIPMT_ErrorRateZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0, 360, 100000, 1, 360, 0))
+	assertError(t, "CUMIPMT rate=0", v)
+}
+
+func TestCUMIPMT_ErrorRateNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(-0.01, 360, 100000, 1, 360, 0))
+	assertError(t, "CUMIPMT rate<0", v)
+}
+
+func TestCUMIPMT_ErrorNperZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 0, 100000, 1, 1, 0))
+	assertError(t, "CUMIPMT nper=0", v)
+}
+
+func TestCUMIPMT_ErrorNperNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, -12, 100000, 1, 1, 0))
+	assertError(t, "CUMIPMT nper<0", v)
+}
+
+func TestCUMIPMT_ErrorPvZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 0, 1, 360, 0))
+	assertError(t, "CUMIPMT pv=0", v)
+}
+
+func TestCUMIPMT_ErrorPvNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, -100000, 1, 360, 0))
+	assertError(t, "CUMIPMT pv<0", v)
+}
+
+func TestCUMIPMT_ErrorStartZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 0, 360, 0))
+	assertError(t, "CUMIPMT start=0", v)
+}
+
+func TestCUMIPMT_ErrorStartNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, -1, 360, 0))
+	assertError(t, "CUMIPMT start<0", v)
+}
+
+func TestCUMIPMT_ErrorEndLessThanStart(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 10, 5, 0))
+	assertError(t, "CUMIPMT end<start", v)
+}
+
+func TestCUMIPMT_ErrorEndExceedsNper(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 361, 0))
+	assertError(t, "CUMIPMT end>nper", v)
+}
+
+func TestCUMIPMT_ErrorTypeInvalid(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, 2))
+	assertError(t, "CUMIPMT type=2", v)
+}
+
+func TestCUMIPMT_ErrorTypeNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, -1))
+	assertError(t, "CUMIPMT type=-1", v)
+}
+
+func TestCUMIPMT_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360))
+	assertError(t, "CUMIPMT too few args", v)
+}
+
+func TestCUMIPMT_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, 0, 1))
+	assertError(t, "CUMIPMT too many args", v)
+}
+
+func TestCUMIPMT_ErrorPropagation(t *testing.T) {
+	// Pass an error value as an argument
+	args := []Value{
+		ErrorVal(ErrValNUM),
+		NumberVal(360),
+		NumberVal(100000),
+		NumberVal(1),
+		NumberVal(360),
+		NumberVal(0),
+	}
+	v, _ := fnCumipmt(args)
+	assertError(t, "CUMIPMT error propagation", v)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{

@@ -26,6 +26,8 @@ func init() {
 	Register("DOLLARFR", NoCtx(fnDOLLARFR))
 	Register("EFFECT", NoCtx(fnEFFECT))
 	Register("NOMINAL", NoCtx(fnNOMINAL))
+	Register("CUMIPMT", NoCtx(fnCumipmt))
+	Register("CUMPRINC", NoCtx(fnCumprinc))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -948,6 +950,150 @@ func fnNOMINAL(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(npery * (math.Pow(1+effectRate, 1/npery) - 1)), nil
+}
+
+// fnCumipmt implements CUMIPMT(rate, nper, pv, start_period, end_period, type).
+// Returns the cumulative interest paid on a loan between start_period and end_period.
+func fnCumipmt(args []Value) (Value, error) {
+	if len(args) != 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nper, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	payTypeVal, e := CoerceNum(args[5])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate periods to integers.
+	startPeriod = math.Floor(startPeriod)
+	endPeriod = math.Floor(endPeriod)
+
+	// Validate inputs.
+	if rate <= 0 || nper <= 0 || pv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if startPeriod < 1 || endPeriod < startPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > nper {
+		return ErrorVal(ErrValNUM), nil
+	}
+	payType := 0
+	if payTypeVal == 1 {
+		payType = 1
+	} else if payTypeVal != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	pmt := pmtCore(rate, nper, pv, 0, payType)
+	cumInterest := 0.0
+
+	for i := int(startPeriod); i <= int(endPeriod); i++ {
+		var ipmt float64
+		if payType == 1 {
+			if i == 1 {
+				ipmt = 0
+			} else {
+				ipmt = (fvCore(rate, float64(i-2), pmt, pv, 1) - pmt) * rate
+			}
+		} else {
+			ipmt = fvCore(rate, float64(i-1), pmt, pv, 0) * rate
+		}
+		cumInterest += ipmt
+	}
+
+	return NumberVal(cumInterest), nil
+}
+
+// fnCumprinc implements CUMPRINC(rate, nper, pv, start_period, end_period, type).
+// Returns the cumulative principal paid on a loan between start_period and end_period.
+func fnCumprinc(args []Value) (Value, error) {
+	if len(args) != 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nper, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	payTypeVal, e := CoerceNum(args[5])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate periods to integers.
+	startPeriod = math.Floor(startPeriod)
+	endPeriod = math.Floor(endPeriod)
+
+	// Validate inputs.
+	if rate <= 0 || nper <= 0 || pv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if startPeriod < 1 || endPeriod < startPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > nper {
+		return ErrorVal(ErrValNUM), nil
+	}
+	payType := 0
+	if payTypeVal == 1 {
+		payType = 1
+	} else if payTypeVal != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	pmt := pmtCore(rate, nper, pv, 0, payType)
+	cumPrincipal := 0.0
+
+	for i := int(startPeriod); i <= int(endPeriod); i++ {
+		var ipmt float64
+		if payType == 1 {
+			if i == 1 {
+				ipmt = 0
+			} else {
+				ipmt = (fvCore(rate, float64(i-2), pmt, pv, 1) - pmt) * rate
+			}
+		} else {
+			ipmt = fvCore(rate, float64(i-1), pmt, pv, 0) * rate
+		}
+		cumPrincipal += pmt - ipmt
+	}
+
+	return NumberVal(cumPrincipal), nil
 }
 
 // fnXIRR implements XIRR(values, dates, [guess]).
