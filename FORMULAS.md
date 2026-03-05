@@ -217,7 +217,7 @@ Werkbook supports **303** Excel formula functions.
 | RANK | Statistical | - |
 | RANK.AVG | Statistical | 21 |
 | RANK.EQ | Statistical | 7 |
-| RATE | Financial | 2 |
+| RATE | Financial | 6 |
 | REPLACE | Text | - |
 | REPT | Text | - |
 | RIGHT | Text | 41 |
