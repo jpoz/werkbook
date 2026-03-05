@@ -55,22 +55,22 @@ func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
 		wantStr  string
 	}{
 		{
-			name:     "shared string numeric coerced to number",
+			name:     "shared string numeric stays string",
 			cd:       ooxml.CellData{Type: "s", Value: "-8086931554011838357"},
-			wantType: TypeNumber,
-			wantNum:  -8086931554011838357,
+			wantType: TypeString,
+			wantStr:  "-8086931554011838357",
 		},
 		{
-			name:     "shared string positive integer coerced to number",
+			name:     "shared string positive integer stays string",
 			cd:       ooxml.CellData{Type: "s", Value: "42"},
-			wantType: TypeNumber,
-			wantNum:  42,
+			wantType: TypeString,
+			wantStr:  "42",
 		},
 		{
-			name:     "shared string float coerced to number",
+			name:     "shared string float stays string",
 			cd:       ooxml.CellData{Type: "s", Value: "3.14"},
-			wantType: TypeNumber,
-			wantNum:  3.14,
+			wantType: TypeString,
+			wantStr:  "3.14",
 		},
 		{
 			name:     "shared string with non-numeric text",
