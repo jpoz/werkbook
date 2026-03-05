@@ -16,6 +16,7 @@ func init() {
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
+	Register("UNIQUE", NoCtx(fnUNIQUE))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 }
 
@@ -850,4 +851,156 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 		}
 	}
 	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnUNIQUE implements UNIQUE(array, [by_col], [exactly_once]).
+func fnUNIQUE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Extract the 2D grid from the first argument.
+	arr := args[0]
+	var grid [][]Value
+	switch arr.Type {
+	case ValueArray:
+		grid = arr.Array
+	default:
+		// Single value → 1x1 grid.
+		grid = [][]Value{{arr}}
+	}
+	if len(grid) == 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+
+	// by_col: default FALSE.
+	byCol := false
+	if len(args) >= 2 {
+		bc, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		byCol = bc != 0
+	}
+
+	// exactly_once: default FALSE.
+	exactlyOnce := false
+	if len(args) >= 3 {
+		eo, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		exactlyOnce = eo != 0
+	}
+
+	// If by_col, transpose so we always work with rows.
+	if byCol {
+		grid = transposeGrid(grid)
+	}
+
+	// Build a key for each row and track counts / first-seen order.
+	type rowEntry struct {
+		index int
+		key   string
+	}
+	seen := make(map[string]int) // key → count
+	var order []rowEntry
+	for i, row := range grid {
+		k := rowKey(row)
+		seen[k]++
+		if seen[k] == 1 {
+			order = append(order, rowEntry{index: i, key: k})
+		}
+	}
+
+	// Collect result rows.
+	var result [][]Value
+	for _, entry := range order {
+		if exactlyOnce && seen[entry.key] != 1 {
+			continue
+		}
+		row := grid[entry.index]
+		cp := make([]Value, len(row))
+		copy(cp, row)
+		result = append(result, cp)
+	}
+
+	// If exactly_once filtered everything out, return #CALC!.
+	if len(result) == 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+
+	// If by_col, transpose back.
+	if byCol {
+		result = transposeGrid(result)
+	}
+
+	// Return: single value, 1D column array, or 2D array.
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// rowKey produces a string key for a row of Values, encoding type and value
+// so that different types with the same string representation (e.g. 1 vs "1")
+// are distinguishable.
+func rowKey(row []Value) string {
+	var b strings.Builder
+	for i, v := range row {
+		if i > 0 {
+			b.WriteByte('|')
+		}
+		switch v.Type {
+		case ValueEmpty:
+			b.WriteString("E:")
+		case ValueNumber:
+			b.WriteString("N:")
+			b.WriteString(strconv.FormatFloat(v.Num, 'g', -1, 64))
+		case ValueString:
+			b.WriteString("S:")
+			b.WriteString(v.Str)
+		case ValueBool:
+			b.WriteString("B:")
+			if v.Bool {
+				b.WriteString("1")
+			} else {
+				b.WriteString("0")
+			}
+		case ValueError:
+			b.WriteString("R:")
+			b.WriteString(strconv.Itoa(int(v.Err)))
+		default:
+			b.WriteString("?:")
+		}
+	}
+	return b.String()
+}
+
+// transposeGrid transposes a 2D grid of Values.
+func transposeGrid(grid [][]Value) [][]Value {
+	if len(grid) == 0 {
+		return nil
+	}
+	cols := 0
+	for _, row := range grid {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	if cols == 0 {
+		return nil
+	}
+	result := make([][]Value, cols)
+	for c := 0; c < cols; c++ {
+		result[c] = make([]Value, len(grid))
+		for r := 0; r < len(grid); r++ {
+			if c < len(grid[r]) {
+				result[c][r] = grid[r][c]
+			} else {
+				result[c][r] = EmptyVal()
+			}
+		}
+	}
+	return result
 }
