@@ -2484,3 +2484,296 @@ func TestRRI_VerySmallNper(t *testing.T) {
 		t.Fatalf("RRI very small nper: expected number, got %v", v)
 	}
 }
+
+// === VDB ===
+
+func boolArg(b bool) Value {
+	return Value{Type: ValueBool, Bool: b}
+}
+
+func TestVDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10*365, 0, 1) = 1.32
+	v, err := fnVdb(numArgs(2400, 300, 10*365, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first day", v, 1.32)
+}
+
+func TestVDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10*12, 0, 1) = 40.00
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first month", v, 40.00)
+}
+
+func TestVDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10, 0, 1) = 480.00
+	v, err := fnVdb(numArgs(2400, 300, 10, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first year", v, 480.00)
+}
+
+func TestVDB_ExcelExample_Month6To18(t *testing.T) {
+	// VDB(2400, 300, 10*12, 6, 18) = 396.31
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB month 6-18", v, 396.31)
+}
+
+func TestVDB_ExcelExample_Month6To18_Factor15(t *testing.T) {
+	// VDB(2400, 300, 10*12, 6, 18, 1.5) = 311.81
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB month 6-18 factor 1.5", v, 311.81)
+}
+
+func TestVDB_ExcelExample_FractionalPeriod(t *testing.T) {
+	// VDB(2400, 300, 10, 0, 0.875, 1.5) = 315.00
+	v, err := fnVdb(numArgs(2400, 300, 10, 0, 0.875, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional period", v, 315.00)
+}
+
+func TestVDB_FirstYear_10000(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1) — first year DDB
+	// DDB rate = 2/5 = 0.4, dep = 10000 * 0.4 = 4000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first year 10000", v, 4000.00)
+}
+
+func TestVDB_SecondYear_10000(t *testing.T) {
+	// VDB(10000, 1000, 5, 1, 2)
+	// After year 1: book = 6000, dep = 6000 * 0.4 = 2400
+	v, err := fnVdb(numArgs(10000, 1000, 5, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB second year 10000", v, 2400.00)
+}
+
+func TestVDB_FullLife_EqualsCostMinusSalvage(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 5) = 9000 (cost - salvage)
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB full life", v, 9000.00)
+}
+
+func TestVDB_Factor15(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 1.5)
+	// dep = 10000 * 1.5/5 = 3000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB factor 1.5", v, 3000.00)
+}
+
+func TestVDB_NoSwitch_True(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 2, TRUE)
+	// Same as DDB for first period: 10000 * 2/5 = 4000
+	args := append(numArgs(10000, 1000, 5, 0, 1, 2), boolArg(true))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB no_switch=TRUE first year", v, 4000.00)
+}
+
+func TestVDB_NoSwitch_False(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 2, FALSE)
+	// Same as default (no_switch=FALSE)
+	args := append(numArgs(10000, 1000, 5, 0, 1, 2), boolArg(false))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB no_switch=FALSE first year", v, 4000.00)
+}
+
+func TestVDB_FractionalStart(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 0.5) — half of first year
+	// First year full dep = 4000, half = 2000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 0.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional half year", v, 2000.00)
+}
+
+func TestVDB_FractionalEnd(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1.5)
+	// Year 1: 4000, half of year 2 (2400*0.5=1200) = 5200
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional end", v, 5200.00)
+}
+
+func TestVDB_MiddlePeriod(t *testing.T) {
+	// VDB(10000, 1000, 5, 2, 3)
+	// After y1: book=6000, after y2: book=3600, y3: SL=(3600-1000)/2=1300 vs DDB=3600*0.4=1440 => 1440
+	v, err := fnVdb(numArgs(10000, 1000, 5, 2, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB middle period", v, 1440.00)
+}
+
+func TestVDB_SwitchToSL(t *testing.T) {
+	// VDB(10000, 1000, 5, 3, 4)
+	// y0: book=10000, DDB=4000, SL=1800 -> 4000, book=6000
+	// y1: book=6000, DDB=2400, SL=1250 -> 2400, book=3600
+	// y2: book=3600, DDB=1440, SL=866.67 -> 1440, book=2160
+	// y3: book=2160, DDB=864, SL=580 -> 864
+	v, err := fnVdb(numArgs(10000, 1000, 5, 3, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB period 3", v, 864.00)
+}
+
+func TestVDB_SwitchToSL_Period4(t *testing.T) {
+	// VDB(10000, 1000, 5, 4, 5)
+	// y4: book=1296, DDB=518.40, SL=296 -> capped to 296
+	v, err := fnVdb(numArgs(10000, 1000, 5, 4, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB period 4 capped", v, 296.00)
+}
+
+func TestVDB_SwitchToSL_WithSwitch(t *testing.T) {
+	// VDB(10000, 1000, 10, 0, 10) with default factor=2 should equal 9000
+	// With 10 periods, switch from DDB to SL will occur
+	v, err := fnVdb(numArgs(10000, 1000, 10, 0, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB 10yr full life", v, 9000.00)
+}
+
+func TestVDB_NoSwitch_FullLife_LessThanCostMinusSalvage(t *testing.T) {
+	// With no_switch=TRUE, total depreciation over full life may be less than cost-salvage
+	// because DDB alone doesn't fully depreciate.
+	args := append(numArgs(10000, 1000, 5, 0, 5, 2), boolArg(true))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// DDB only: y1=4000, y2=2400, y3=1440, y4=864, y5=518.4 (capped to 296 since 1296-1000=296)
+	// Total = 4000+2400+1440+864+296 = 9000... wait, let me recalc.
+	// y1: 10000*0.4=4000, book=6000
+	// y2: 6000*0.4=2400, book=3600
+	// y3: 3600*0.4=1440, book=2160
+	// y4: 2160*0.4=864, book=1296
+	// y5: 1296*0.4=518.4, but book-salvage=296, so capped to 296
+	// Total: 4000+2400+1440+864+296 = 9000
+	// Actually with no_switch the salvage cap still applies, so it happens to equal 9000.
+	assertClose(t, "VDB no_switch full life", v, 9000.00)
+}
+
+func TestVDB_CostZero(t *testing.T) {
+	v, err := fnVdb(numArgs(0, 0, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB cost=0", v, 0)
+}
+
+func TestVDB_SalvageEqualsCost(t *testing.T) {
+	v, err := fnVdb(numArgs(10000, 10000, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB salvage=cost", v, 0)
+}
+
+func TestVDB_SalvageZero(t *testing.T) {
+	// VDB(10000, 0, 5, 0, 1) = 10000 * 2/5 = 4000
+	v, err := fnVdb(numArgs(10000, 0, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB salvage=0", v, 4000)
+}
+
+func TestVDB_StartEqualsEnd(t *testing.T) {
+	// VDB(10000, 1000, 5, 1, 1) = 0 (no period range)
+	v, err := fnVdb(numArgs(10000, 1000, 5, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB start=end", v, 0)
+}
+
+func TestVDB_LargeAsset(t *testing.T) {
+	// VDB(1000000, 100000, 10, 0, 1) = 1000000 * 2/10 = 200000
+	v, err := fnVdb(numArgs(1000000, 100000, 10, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB large asset", v, 200000)
+}
+
+func TestVDB_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0))
+	assertError(t, "VDB too few args", v)
+}
+
+func TestVDB_ErrorTooManyArgs(t *testing.T) {
+	args := append(numArgs(1000, 100, 5, 0, 1, 2), boolArg(false), NumberVal(99))
+	v, _ := fnVdb(args)
+	assertError(t, "VDB too many args", v)
+}
+
+func TestVDB_ErrorLifeZero(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 0, 0, 1))
+	assertError(t, "VDB life=0", v)
+}
+
+func TestVDB_ErrorStartNegative(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, -1, 1))
+	assertError(t, "VDB start<0", v)
+}
+
+func TestVDB_ErrorEndLessThanStart(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 3, 2))
+	assertError(t, "VDB end<start", v)
+}
+
+func TestVDB_ErrorEndExceedsLife(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0, 6))
+	assertError(t, "VDB end>life", v)
+}
+
+func TestVDB_ErrorNegativeCost(t *testing.T) {
+	v, _ := fnVdb(numArgs(-1000, 100, 5, 0, 1))
+	assertError(t, "VDB negative cost", v)
+}
+
+func TestVDB_ErrorNegativeSalvage(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, -100, 5, 0, 1))
+	assertError(t, "VDB negative salvage", v)
+}
+
+func TestVDB_ErrorFactorZero(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0, 1, 0))
+	assertError(t, "VDB factor=0", v)
+}

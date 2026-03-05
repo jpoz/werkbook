@@ -1428,36 +1428,32 @@ func fnVdb(args []Value) (Value, error) {
 	}
 
 	// Accumulate depreciation across the period range [startPeriod, endPeriod].
-	// Handle fractional start/end by prorating.
+	// VDB uses 0-based period intervals: period i covers interval [i, i+1).
+	// VDB(cost,salvage,life,0,1) = depreciation for period 0.
+	// VDB(cost,salvage,life,0,5) = total depreciation for periods 0-4.
+	// Fractional start/end are prorated.
 	totalDep := 0.0
 
-	intStart := math.Ceil(startPeriod)
-	intEnd := math.Floor(endPeriod)
-
-	// Fractional first period: from startPeriod to ceil(startPeriod).
-	if startPeriod != intStart && intStart <= life {
-		frac := intStart - startPeriod
-		dep := vdbCalcOnePeriod(cost, salvage, life, intStart-1, factor, noSwitch)
-		totalDep += dep * frac
+	// Walk through each integer period that overlaps [startPeriod, endPeriod].
+	firstPeriod := int(math.Floor(startPeriod))
+	lastPeriod := int(math.Ceil(endPeriod)) - 1
+	if endPeriod == math.Floor(endPeriod) {
+		lastPeriod = int(endPeriod) - 1
 	}
 
-	// Whole periods.
-	for i := intStart; i < intEnd; i++ {
-		dep := vdbCalcOnePeriod(cost, salvage, life, i, factor, noSwitch)
-		totalDep += dep
-	}
+	for p := firstPeriod; p <= lastPeriod; p++ {
+		dep := vdbCalcOnePeriod(cost, salvage, life, float64(p), factor, noSwitch)
 
-	// Fractional last period or whole last period.
-	if endPeriod == intEnd && intEnd > intStart {
-		// endPeriod is exactly an integer and we haven't counted it yet.
-		dep := vdbCalcOnePeriod(cost, salvage, life, intEnd-1, factor, noSwitch)
-		totalDep += dep
-	} else if endPeriod == intEnd && intEnd == intStart && startPeriod == intStart {
-		// start and end are the same integer — no depreciation.
-	} else if endPeriod != intEnd {
-		// Fractional end period.
-		frac := endPeriod - intEnd
-		dep := vdbCalcOnePeriod(cost, salvage, life, intEnd, factor, noSwitch)
+		// Determine the fraction of this period that falls within [startPeriod, endPeriod].
+		pStart := float64(p)
+		pEnd := float64(p + 1)
+		if startPeriod > pStart {
+			pStart = startPeriod
+		}
+		if endPeriod < pEnd {
+			pEnd = endPeriod
+		}
+		frac := pEnd - pStart
 		totalDep += dep * frac
 	}
 
