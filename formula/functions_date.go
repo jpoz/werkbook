@@ -440,7 +440,23 @@ func fnTIME(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	result := (hour*3600 + minute*60 + second) / 86400
+	// Excel truncates arguments to integers.
+	hour = math.Trunc(hour)
+	minute = math.Trunc(minute)
+	second = math.Trunc(second)
+
+	// Excel returns #NUM! if any argument exceeds 32767.
+	if hour > 32767 || minute > 32767 || second > 32767 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	totalSeconds := hour*3600 + minute*60 + second
+	// Excel returns #NUM! if the total time is negative.
+	if totalSeconds < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	result := totalSeconds / 86400
 	// TIME returns only the fractional part (time of day).
 	// Values >= 1.0 wrap; e.g. TIME(25,0,0) = 0.04167 (just the 1-hour fraction).
 	result = result - math.Floor(result)
