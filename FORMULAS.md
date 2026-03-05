@@ -126,7 +126,7 @@ Werkbook supports **303** Excel formula functions.
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 12 |
 | INDIRECT | Lookup & Reference | 17 |
-| INT | Math & Trig | 2 |
+| INT | Math & Trig | 24 |
 | INTERCEPT | Statistical | 16 |
 | IPMT | Financial | 2 |
 | IRR | Financial | 2 |

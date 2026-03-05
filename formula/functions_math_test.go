@@ -4220,3 +4220,94 @@ func TestSUMXMY2_AllNegative(t *testing.T) {
 		t.Errorf("got %v (%g), want 8", got.Type, got.Num)
 	}
 }
+
+func TestINT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic positive decimal — rounds down
+		{"pos_decimal", "INT(3.7)", 3},
+		// Positive integer — unchanged
+		{"pos_integer", "INT(5)", 5},
+		// Zero
+		{"zero", "INT(0)", 0},
+		// Negative decimal — rounds away from zero (toward -infinity)
+		{"neg_decimal", "INT(-3.2)", -4},
+		// Negative integer — unchanged
+		{"neg_integer", "INT(-7)", -7},
+		// Very small positive
+		{"small_pos", "INT(0.1)", 0},
+		// Very small negative — rounds to -1
+		{"small_neg", "INT(-0.1)", -1},
+		// Negative fraction -0.5
+		{"neg_half", "INT(-0.5)", -1},
+		// Large number
+		{"large_number", "INT(1000000.9)", 1000000},
+		// String number coercion
+		{"string_num", `INT("5.5")`, 5},
+		// Boolean TRUE → 1
+		{"bool_true", "INT(TRUE)", 1},
+		// Boolean FALSE → 0
+		{"bool_false", "INT(FALSE)", 0},
+		// Already integer positive
+		{"already_int_pos", "INT(10)", 10},
+		// Already integer negative
+		{"already_int_neg", "INT(-10)", -10},
+		// Excel doc example: INT(8.9) = 8
+		{"excel_doc_pos", "INT(8.9)", 8},
+		// Excel doc example: INT(-8.9) = -9
+		{"excel_doc_neg", "INT(-8.9)", -9},
+		// Positive number just below next integer
+		{"just_below", "INT(2.999999)", 2},
+		// Negative number just above integer
+		{"neg_just_above", "INT(-2.000001)", -3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// Non-numeric string
+		{"non_numeric_string", `INT("hello")`, ErrValVALUE},
+		// No arguments
+		{"no_args", "INT()", ErrValVALUE},
+		// Too many arguments
+		{"too_many_args", "INT(1,2)", ErrValVALUE},
+		// Error propagation
+		{"error_propagation", "INT(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}
