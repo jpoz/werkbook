@@ -7956,3 +7956,206 @@ func TestVARPA(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// NORM.S.DIST
+// ---------------------------------------------------------------------------
+
+func TestNORMSDIST(t *testing.T) {
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// PDF tests
+		{"pdf_z0", "NORM.S.DIST(0,FALSE)", 0.398942280401, false, 0},
+		{"pdf_z1", "NORM.S.DIST(1,FALSE)", 0.241970724519, false, 0},
+		{"pdf_z_neg1", "NORM.S.DIST(-1,FALSE)", 0.241970724519, false, 0},
+		{"pdf_z2", "NORM.S.DIST(2,FALSE)", 0.053990966513, false, 0},
+		{"pdf_z_neg2", "NORM.S.DIST(-2,FALSE)", 0.053990966513, false, 0},
+		{"pdf_z1.333333", "NORM.S.DIST(1.333333,FALSE)", 0.164010148, false, 0},
+		{"pdf_z3", "NORM.S.DIST(3,FALSE)", 0.004431848412, false, 0},
+		{"pdf_symmetry_half", "NORM.S.DIST(0.5,FALSE)", 0.352065326764, false, 0},
+		{"pdf_symmetry_neg_half", "NORM.S.DIST(-0.5,FALSE)", 0.352065326764, false, 0},
+		{"pdf_large", "NORM.S.DIST(10,FALSE)", 0.0, false, 0},
+
+		// CDF tests
+		{"cdf_z0", "NORM.S.DIST(0,TRUE)", 0.5, false, 0},
+		{"cdf_z1", "NORM.S.DIST(1,TRUE)", 0.841344746069, false, 0},
+		{"cdf_z_neg1", "NORM.S.DIST(-1,TRUE)", 0.158655253931, false, 0},
+		{"cdf_z2", "NORM.S.DIST(2,TRUE)", 0.977249868052, false, 0},
+		{"cdf_z_neg2", "NORM.S.DIST(-2,TRUE)", 0.022750131948, false, 0},
+		{"cdf_z3", "NORM.S.DIST(3,TRUE)", 0.998650101968, false, 0},
+		{"cdf_z_neg3", "NORM.S.DIST(-3,TRUE)", 0.001349898032, false, 0},
+		{"cdf_z1.333333", "NORM.S.DIST(1.333333,TRUE)", 0.908788726, false, 0},
+		{"cdf_z1.96", "NORM.S.DIST(1.96,TRUE)", 0.975002105, false, 0},
+		{"cdf_z_neg1.96", "NORM.S.DIST(-1.96,TRUE)", 0.024997895, false, 0},
+		{"cdf_large_pos", "NORM.S.DIST(10,TRUE)", 1.0, false, 0},
+		{"cdf_large_neg", "NORM.S.DIST(-10,TRUE)", 0.0, false, 0},
+
+		// Error cases
+		{"err_non_numeric_z", `NORM.S.DIST("abc",TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `NORM.S.DIST(0,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestNORMSDIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, "NORM.S.DIST(0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NORM.S.DIST(0) should error, got type=%d", got.Type)
+	}
+
+	cf = evalCompile(t, "NORM.S.DIST(0,TRUE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NORM.S.DIST(0,TRUE,1) should error, got type=%d", got.Type)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NORM.S.INV
+// ---------------------------------------------------------------------------
+
+func TestNORMSINV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"p_0.5", "NORM.S.INV(0.5)", 0, false, 0},
+		{"p_0.841344746", "NORM.S.INV(0.841344746)", 1.0, false, 0},
+		{"p_0.158655254", "NORM.S.INV(0.158655254)", -1.0, false, 0},
+		{"p_0.977249868", "NORM.S.INV(0.977249868)", 2.0, false, 0},
+		{"p_0.022750132", "NORM.S.INV(0.022750132)", -2.0, false, 0},
+		{"p_0.998650102", "NORM.S.INV(0.998650102)", 3.0, false, 0},
+		{"p_0.001349898", "NORM.S.INV(0.001349898)", -3.0, false, 0},
+		{"p_0.975", "NORM.S.INV(0.975)", 1.959964, false, 0},
+		{"p_0.025", "NORM.S.INV(0.025)", -1.959964, false, 0},
+		{"p_0.9", "NORM.S.INV(0.9)", 1.281552, false, 0},
+		{"p_0.1", "NORM.S.INV(0.1)", -1.281552, false, 0},
+		{"p_0.95", "NORM.S.INV(0.95)", 1.644854, false, 0},
+		{"p_0.05", "NORM.S.INV(0.05)", -1.644854, false, 0},
+		{"p_0.99", "NORM.S.INV(0.99)", 2.326348, false, 0},
+		{"p_0.01", "NORM.S.INV(0.01)", -2.326348, false, 0},
+		{"p_0.001", "NORM.S.INV(0.001)", -3.090232, false, 0},
+		{"p_0.999", "NORM.S.INV(0.999)", 3.090232, false, 0},
+		{"p_0.908789", "NORM.S.INV(0.908789)", 1.333335, false, 0},
+		{"p_0.75", "NORM.S.INV(0.75)", 0.674490, false, 0},
+		{"p_0.25", "NORM.S.INV(0.25)", -0.674490, false, 0},
+
+		// Error: boundary values
+		{"err_p_zero", "NORM.S.INV(0)", 0, true, ErrValNUM},
+		{"err_p_one", "NORM.S.INV(1)", 0, true, ErrValNUM},
+		{"err_p_neg", "NORM.S.INV(-0.1)", 0, true, ErrValNUM},
+		{"err_p_gt1", "NORM.S.INV(1.1)", 0, true, ErrValNUM},
+		{"err_non_numeric", `NORM.S.INV("abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestNORMSINV_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	cf := evalCompile(t, "NORM.S.INV()")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NORM.S.INV() should error, got type=%d", got.Type)
+	}
+
+	cf = evalCompile(t, "NORM.S.INV(0.5,0.3)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NORM.S.INV(0.5,0.3) should error, got type=%d", got.Type)
+	}
+}
+
+func TestNORMSINV_NORMSDIST_roundtrip(t *testing.T) {
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	probs := []float64{0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.001, 0.999}
+	for _, p := range probs {
+		t.Run(fmt.Sprintf("roundtrip_%g", p), func(t *testing.T) {
+			formula := fmt.Sprintf("NORM.S.DIST(NORM.S.INV(%g),TRUE)", p)
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-p) > tol {
+				t.Errorf("NORM.S.DIST(NORM.S.INV(%g),TRUE) = %g, want %g", p, got.Num, p)
+			}
+		})
+	}
+}
