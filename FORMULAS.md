@@ -203,7 +203,7 @@ Werkbook supports **303** Excel formula functions.
 | PERMUTATIONA | Statistical | 17 |
 | PI | Math & Trig | - |
 | PMT | Financial | 5 |
-| POWER | Math & Trig | 5 |
+| POWER | Math & Trig | 48 |
 | PPMT | Financial | 1 |
 | PRODUCT | Math & Trig | - |
 | PROPER | Text | - |
