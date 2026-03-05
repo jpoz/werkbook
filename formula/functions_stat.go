@@ -163,7 +163,12 @@ func fnCOUNT(args []Value) (Value, error) {
 		case ValueNumber:
 			count++
 		case ValueBool:
-			count++
+			// Direct boolean args (e.g. COUNT(TRUE)) are counted,
+			// but booleans from cell references (e.g. COUNT(A1) where
+			// A1=TRUE) are not — matching Excel behavior.
+			if !arg.FromCell {
+				count++
+			}
 		case ValueString:
 			if _, err := strconv.ParseFloat(arg.Str, 64); err == nil {
 				count++

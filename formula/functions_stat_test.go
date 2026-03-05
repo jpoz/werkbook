@@ -168,6 +168,16 @@ func TestCOUNTBooleanInRange(t *testing.T) {
 	if got.Type != ValueNumber || got.Num != 0 {
 		t.Errorf("COUNT(A1:A2) with booleans: got %g, want 0", got.Num)
 	}
+
+	// A single cell reference to a boolean should NOT be counted either.
+	cf = evalCompile(t, "COUNT(A1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("COUNT(A1) where A1=TRUE: got %g, want 0", got.Num)
+	}
 }
 
 // ---------------------------------------------------------------------------

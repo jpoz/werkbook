@@ -95,6 +95,7 @@ type Value struct {
 	Err         ErrorValue
 	Array       [][]Value  // used by ValueArray for range results
 	RangeOrigin *RangeAddr // set on ValueArray when loaded from a worksheet range
+	FromCell    bool       // true when loaded from a cell reference (OpLoadCell)
 }
 
 // NumberVal creates a Value holding a float64.
