@@ -41,6 +41,7 @@ func init() {
 	Register("FACT", NoCtx(fnFACT))
 	Register("FACTDOUBLE", NoCtx(fnFACTDOUBLE))
 	Register("FLOOR", NoCtx(fnFLOOR))
+	Register("FLOOR.MATH", NoCtx(fnFLOORMATH))
 	Register("GCD", NoCtx(fnGCD))
 	Register("INT", NoCtx(fnINT))
 	Register("LCM", NoCtx(fnLCM))
@@ -180,6 +181,51 @@ func fnFLOOR(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(math.Floor(n/sig) * sig), nil
+}
+
+func fnFLOORMATH(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// Default significance: +1 for positive numbers, -1 for negative.
+	sig := 1.0
+	if n < 0 {
+		sig = -1.0
+	}
+	if len(args) >= 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	mode := 0.0
+	if len(args) == 3 {
+		mode, e = CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Use absolute significance for the computation — the sign of significance
+	// does not affect the result in FLOOR.MATH (unlike FLOOR).
+	absSig := math.Abs(sig)
+	if n >= 0 {
+		// Positive numbers: round down (toward zero / toward -infinity).
+		return NumberVal(math.Floor(n/absSig) * absSig), nil
+	}
+	// Negative numbers:
+	if mode == 0 {
+		// mode=0: round toward -infinity (away from zero).
+		return NumberVal(-math.Ceil(math.Abs(n)/absSig) * absSig), nil
+	}
+	// mode≠0: round toward zero.
+	return NumberVal(-math.Floor(math.Abs(n)/absSig) * absSig), nil
 }
 
 func fnINT(args []Value) (Value, error) {

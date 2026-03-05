@@ -188,6 +188,109 @@ func TestCEILINGMATH(t *testing.T) {
 	}
 }
 
+func TestFLOORMATH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic positive number rounding (default significance=1)
+		{"pos_int_floor", "FLOOR.MATH(6.7)", 6},
+		{"pos_int_exact", "FLOOR.MATH(7)", 7},
+		{"pos_small_frac", "FLOOR.MATH(0.9)", 0},
+		{"pos_half", "FLOOR.MATH(2.5)", 2},
+
+		// Positive with significance
+		{"pos_sig_2", "FLOOR.MATH(6.7,2)", 6},
+		{"pos_sig_5", "FLOOR.MATH(24.3,5)", 20},
+		{"pos_sig_3", "FLOOR.MATH(7,3)", 6},
+		{"pos_sig_exact", "FLOOR.MATH(6,3)", 6},
+		{"pos_sig_0.1", "FLOOR.MATH(6.39,0.1)", 6.3},
+		{"pos_sig_0.5", "FLOOR.MATH(6.7,0.5)", 6.5},
+
+		// Negative number, default mode=0 (toward -infinity / away from zero)
+		{"neg_default", "FLOOR.MATH(-6.7)", -7},
+		{"neg_sig_2_default", "FLOOR.MATH(-6.3,2)", -8},
+		{"neg_sig_2_mode0", "FLOOR.MATH(-8.1,2,0)", -10},
+		{"neg_exact", "FLOOR.MATH(-6)", -6},
+		{"neg_sig_5_default", "FLOOR.MATH(-3,5)", -5},
+
+		// Negative number, mode≠0 (toward zero)
+		{"neg_mode1", "FLOOR.MATH(-6.3,2,1)", -6},
+		{"neg_mode_neg1", "FLOOR.MATH(-5.5,2,-1)", -4},
+		{"neg_mode1_sig1", "FLOOR.MATH(-6.7,1,1)", -6},
+		{"neg_mode1_sig5", "FLOOR.MATH(-3,5,1)", 0},
+		{"neg_mode1_exact", "FLOOR.MATH(-6,3,1)", -6},
+
+		// Significance of 0 returns 0
+		{"sig_zero_pos", "FLOOR.MATH(6.3,0)", 0},
+		{"sig_zero_neg", "FLOOR.MATH(-6.3,0)", 0},
+
+		// Zero as number
+		{"zero_number", "FLOOR.MATH(0)", 0},
+		{"zero_with_sig", "FLOOR.MATH(0,5)", 0},
+
+		// Negative significance (sign of significance is ignored in FLOOR.MATH)
+		{"neg_sig_pos_num", "FLOOR.MATH(6.7,-2)", 6},
+		{"neg_sig_neg_num", "FLOOR.MATH(-6.3,-2)", -8},
+
+		// Large numbers
+		{"large_pos", "FLOOR.MATH(1234567,1000)", 1234000},
+		{"large_neg", "FLOOR.MATH(-1234567,1000)", -1235000},
+		{"large_neg_mode1", "FLOOR.MATH(-1234567,1000,1)", -1234000},
+
+		// Boolean coercion
+		{"bool_true", "FLOOR.MATH(TRUE)", 1},
+		{"bool_false", "FLOOR.MATH(FALSE)", 0},
+
+		// String coercion of numeric strings
+		{"string_num", "FLOOR.MATH(\"6.7\")", 6},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "FLOOR.MATH()", ErrValVALUE},
+		{"too_many_args", "FLOOR.MATH(1,2,3,4)", ErrValVALUE},
+		{"non_numeric", "FLOOR.MATH(\"abc\")", ErrValVALUE},
+		{"non_numeric_sig", "FLOOR.MATH(1,\"abc\")", ErrValVALUE},
+		{"non_numeric_mode", "FLOOR.MATH(1,1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestMOD(t *testing.T) {
 	resolver := &mockResolver{}
 
