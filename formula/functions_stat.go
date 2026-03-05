@@ -520,8 +520,13 @@ func MatchesCriteria(v Value, criteria Value) bool {
 		}
 	}
 
-	if containsWildcard(critStr) {
+	switch classifyWildcard(critStr) {
+	case wildcardFull:
 		return WildcardMatch(ValueToString(v), critStr)
+	case wildcardEscape:
+		// Pattern has escape sequences but no unescaped wildcards (e.g. "~**").
+		// Do a case-insensitive literal comparison after unescaping.
+		return strings.EqualFold(ValueToString(v), unescapePattern(critStr))
 	}
 
 	// Boolean criteria: only match boolean cells.
@@ -655,22 +660,69 @@ func CompareToCriteria(v Value, critValStr string) int {
 	return strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(critValStr))
 }
 
-// containsWildcard returns true if the criteria string contains unescaped
-// wildcard characters (* or ?) or escape sequences (~*, ~?, ~~) that need
-// processing.
-func containsWildcard(s string) bool {
+// wildcardMode describes what wildcard processing a criteria string needs.
+type wildcardMode int
+
+const (
+	wildcardNone   wildcardMode = iota // no wildcards, no escapes
+	wildcardEscape                     // escape sequences only (e.g. "~**"), no unescaped wildcards
+	wildcardFull                       // has at least one unescaped wildcard (* or ?)
+)
+
+// classifyWildcard examines a criteria string and returns what kind of
+// wildcard processing it needs.
+//
+// In Excel, ~* escapes a literal * and also absorbs any immediately
+// following identical wildcard characters.  So "~**" has no unescaped
+// wildcards (it matches literal "**"), whereas "*~**" still has unescaped
+// wildcards at the leading and trailing positions.
+func classifyWildcard(s string) wildcardMode {
+	hasEscape := false
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '~':
-			// ~ followed by *, ?, or ~ is an escape sequence that needs processing
 			if i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
-				return true
+				hasEscape = true
+				escaped := s[i+1]
+				i++ // skip the escaped char
+				// Also skip any immediately following identical wildcard chars.
+				if escaped == '*' || escaped == '?' {
+					for i+1 < len(s) && s[i+1] == escaped {
+						i++
+					}
+				}
 			}
 		case '*', '?':
-			return true
+			return wildcardFull
 		}
 	}
-	return false
+	if hasEscape {
+		return wildcardEscape
+	}
+	return wildcardNone
+}
+
+// unescapePattern removes tilde escape sequences from a pattern,
+// returning the literal string it represents.  This is used when
+// the pattern has escape sequences but no unescaped wildcards.
+func unescapePattern(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '~' && i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
+			b.WriteByte(s[i+1])
+			i++ // skip escaped char
+			// Also emit any immediately following identical wildcard chars.
+			if s[i] == '*' || s[i] == '?' {
+				for i+1 < len(s) && s[i+1] == s[i] {
+					i++
+					b.WriteByte(s[i])
+				}
+			}
+		} else {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
 }
 
 func WildcardMatch(s, pattern string) bool {
