@@ -5849,3 +5849,153 @@ func TestVSTACK_DifferentWidths(t *testing.T) {
 		t.Errorf("[1][1]: expected 3, got %v", got.Array[1][1])
 	}
 }
+
+// mockArrayResolver implements CellResolver and FormulaArrayEvaluator for testing ANCHORARRAY.
+type mockArrayResolver struct {
+	mockResolver
+	arrays map[CellAddr]Value // pre-computed array results keyed by cell address
+}
+
+func (m *mockArrayResolver) EvalCellFormula(sheet string, col, row int) Value {
+	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
+	if v, ok := m.arrays[addr]; ok {
+		return v
+	}
+	return m.GetCellValue(addr)
+}
+
+func TestANCHORARRAY(t *testing.T) {
+	// Set up a mock where cell A2 (col=1,row=2) has a dynamic array formula
+	// that produces a 4-element column array.
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("Cleotilde")},
+		{StringVal("Kenneth")},
+		{StringVal("Matilda")},
+		{StringVal("Yevette")},
+	}}
+
+	resolver := &mockArrayResolver{
+		mockResolver: mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 2}: StringVal("Cleotilde"), // scalar value of anchor cell
+			},
+		},
+		arrays: map[CellAddr]Value{
+			{Col: 1, Row: 2}: arr, // full array result
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:   2,
+		CurrentRow:   2,
+		CurrentSheet: "",
+		Resolver:     resolver,
+	}
+
+	cf := evalCompile(t, "ANCHORARRAY(A2)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected ValueArray, got %v", got.Type)
+	}
+	if len(got.Array) != 4 {
+		t.Fatalf("expected 4 rows, got %d", len(got.Array))
+	}
+	if got.Array[0][0].Str != "Cleotilde" {
+		t.Errorf("[0][0]: expected Cleotilde, got %v", got.Array[0][0])
+	}
+	if got.Array[3][0].Str != "Yevette" {
+		t.Errorf("[3][0]: expected Yevette, got %v", got.Array[3][0])
+	}
+}
+
+func TestANCHORARRAY_ScalarFallback(t *testing.T) {
+	// When the cell has no array formula, return the scalar value.
+	resolver := &mockArrayResolver{
+		mockResolver: mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		},
+		arrays: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(42),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:   2,
+		CurrentRow:   1,
+		CurrentSheet: "",
+		Resolver:     resolver,
+	}
+
+	cf := evalCompile(t, "ANCHORARRAY(A1)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestANCHORARRAY_CrossSheet(t *testing.T) {
+	// Test cross-sheet ANCHORARRAY reference.
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(100)},
+		{NumberVal(200)},
+		{NumberVal(300)},
+	}}
+
+	resolver := &mockArrayResolver{
+		mockResolver: mockResolver{
+			cells: map[CellAddr]Value{},
+		},
+		arrays: map[CellAddr]Value{
+			{Sheet: "Sheet2", Col: 3, Row: 2}: arr,
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:   1,
+		CurrentRow:   1,
+		CurrentSheet: "Sheet1",
+		Resolver:     resolver,
+	}
+
+	cf := evalCompile(t, "SUM(ANCHORARRAY(Sheet2!C2))")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 600 {
+		t.Errorf("expected 600, got %v", got)
+	}
+}
+
+func TestANCHORARRAY_NoResolver(t *testing.T) {
+	// Without FormulaArrayEvaluator, fall back to scalar cell value.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(99),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:   2,
+		CurrentRow:   1,
+		CurrentSheet: "",
+		Resolver:     resolver,
+	}
+
+	cf := evalCompile(t, "ANCHORARRAY(A1)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 99 {
+		t.Errorf("expected 99, got %v", got)
+	}
+}

@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **303** Excel formula functions.
+Werkbook supports **304** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -10,6 +10,7 @@ Werkbook supports **303** Excel formula functions.
 | ACOT | Math & Trig | 25 |
 | ACOTH | Math & Trig | 31 |
 | ADDRESS | Lookup & Reference | - |
+| ANCHORARRAY | Lookup & Reference | 6 |
 | AND | Logical | 27 |
 | ARABIC | Math & Trig | - |
 | ARRAYTOTEXT | Text | 24 |
@@ -95,7 +96,7 @@ Werkbook supports **303** Excel formula functions.
 | EXP | Math & Trig | - |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
-| FILTER | Lookup & Reference | 25 |
+| FILTER | Lookup & Reference | 28 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
 | FISHERINV | Statistical | 15 |
@@ -242,7 +243,7 @@ Werkbook supports **303** Excel formula functions.
 | SLN | Financial | 6 |
 | SLOPE | Statistical | 16 |
 | SMALL | Statistical | 28 |
-| SORT | Logical | 20 |
+| SORT | Logical | 21 |
 | SQRT | Math & Trig | 29 |
 | SQRTPI | Math & Trig | - |
 | STANDARDIZE | Statistical | 16 |
@@ -253,7 +254,7 @@ Werkbook supports **303** Excel formula functions.
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
 | SUBTOTAL | Math & Trig | - |
-| SUM | Statistical | 32 |
+| SUM | Statistical | 33 |
 | SUMIF | Statistical | 36 |
 | SUMIFS | Statistical | 41 |
 | SUMPRODUCT | Statistical | 22 |
