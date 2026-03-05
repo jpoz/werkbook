@@ -2473,3 +2473,893 @@ func TestXLOOKUP_WildcardMode(t *testing.T) {
 		})
 	}
 }
+
+// ---- TAKE tests ----
+
+func TestTAKE_FirstTwoRows(t *testing.T) {
+	// TAKE({1,2,3;4,5,6;7,8,9}, 2) → {1,2,3;4,5,6}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := [][]float64{{1, 2, 3}, {4, 5, 6}}
+	for i, wRow := range want {
+		for j, w := range wRow {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestTAKE_LastRow(t *testing.T) {
+	// TAKE({1,2,3;4,5,6;7,8,9}, -1) → {7,8,9}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 {
+		t.Fatalf("expected 1-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{7, 8, 9}
+	for j, w := range want {
+		if got.Array[0][j].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", j, got.Array[0][j].Num, w)
+		}
+	}
+}
+
+func TestTAKE_RowsAndColumns(t *testing.T) {
+	// TAKE({1,2,3;4,5,6}, 1, 2) → {1,2}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(1),
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Num != 2 {
+		t.Errorf("got {%g,%g}, want {1,2}", got.Array[0][0].Num, got.Array[0][1].Num)
+	}
+}
+
+func TestTAKE_NegRowsNegCols(t *testing.T) {
+	// TAKE({1,2,3;4,5,6}, -1, -2) → {5,6}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(-1),
+		NumberVal(-2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2 array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 5 || got.Array[0][1].Num != 6 {
+		t.Errorf("got {%g,%g}, want {5,6}", got.Array[0][0].Num, got.Array[0][1].Num)
+	}
+}
+
+func TestTAKE_ColumnArray(t *testing.T) {
+	// TAKE({1;2;3}, 2) → {1;2}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+			{NumberVal(3)},
+		}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 {
+		t.Errorf("got {%g;%g}, want {1;2}", got.Array[0][0].Num, got.Array[1][0].Num)
+	}
+}
+
+func TestTAKE_ColumnArrayNegative(t *testing.T) {
+	// TAKE({1;2;3}, -2) → {2;3}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+			{NumberVal(3)},
+		}},
+		NumberVal(-2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 2 || got.Array[1][0].Num != 3 {
+		t.Errorf("got {%g;%g}, want {2;3}", got.Array[0][0].Num, got.Array[1][0].Num)
+	}
+}
+
+func TestTAKE_SingleRowArray(t *testing.T) {
+	// TAKE({1,2,3}, 1) → {1,2,3} (single row, take 1 row = entire row)
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+		}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3 array, got type=%v", got.Type)
+	}
+}
+
+func TestTAKE_SingleRowTakeCols(t *testing.T) {
+	// TAKE({1,2,3}, 1, 2) → {1,2}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+		}},
+		NumberVal(1),
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Num != 2 {
+		t.Errorf("got wrong values")
+	}
+}
+
+func TestTAKE_RowsZeroError(t *testing.T) {
+	// TAKE({1,2,3}, 0) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_ColsZeroError(t *testing.T) {
+	// TAKE({1,2,3}, 1, 0) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(1),
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_RowsExceedArray(t *testing.T) {
+	// TAKE({1;2;3}, 5) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(5),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_NegRowsExceedArray(t *testing.T) {
+	// TAKE({1;2;3}, -5) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(-5),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_ColsExceedArray(t *testing.T) {
+	// TAKE({1,2,3}, 1, 5) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(1),
+		NumberVal(5),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_Scalar(t *testing.T) {
+	// TAKE(42, 1) → 42 (scalar wrapped in {{42}}, take 1 row = scalar)
+	got, err := fnTAKE([]Value{
+		NumberVal(42),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestTAKE_ScalarNeg(t *testing.T) {
+	// TAKE(42, -1) → 42
+	got, err := fnTAKE([]Value{
+		NumberVal(42),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestTAKE_ScalarExceed(t *testing.T) {
+	// TAKE(42, 2) → #VALUE! (scalar = 1 row, can't take 2)
+	got, err := fnTAKE([]Value{
+		NumberVal(42),
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_ErrorPropagation(t *testing.T) {
+	// TAKE(#REF!, 1) → #REF!
+	got, err := fnTAKE([]Value{
+		ErrorVal(ErrValREF),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("expected #REF!, got %v", got)
+	}
+}
+
+func TestTAKE_TooFewArgs(t *testing.T) {
+	got, err := fnTAKE([]Value{NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_TooManyArgs(t *testing.T) {
+	got, err := fnTAKE([]Value{NumberVal(1), NumberVal(1), NumberVal(1), NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_AllRows(t *testing.T) {
+	// TAKE({1;2;3}, 3) → {1;2;3}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v", got.Type)
+	}
+}
+
+func TestTAKE_AllRowsNeg(t *testing.T) {
+	// TAKE({1;2;3}, -3) → {1;2;3}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(-3),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v", got.Type)
+	}
+}
+
+func TestTAKE_NegCols(t *testing.T) {
+	// TAKE({1,2,3;4,5,6}, 2, -1) → {3;6}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(2),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 3 || got.Array[1][0].Num != 6 {
+		t.Errorf("got {%g;%g}, want {3;6}", got.Array[0][0].Num, got.Array[1][0].Num)
+	}
+}
+
+func TestTAKE_StringValues(t *testing.T) {
+	// TAKE({"a","b","c";"d","e","f"}, 1) → {"a","b","c"}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("a"), StringVal("b"), StringVal("c")},
+			{StringVal("d"), StringVal("e"), StringVal("f")},
+		}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Str != "a" || got.Array[0][1].Str != "b" || got.Array[0][2].Str != "c" {
+		t.Errorf("wrong string values")
+	}
+}
+
+func TestTAKE_PosCols(t *testing.T) {
+	// TAKE({1,2,3;4,5,6}, 2, 1) → {1;4}
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(2),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 1 || got.Array[1][0].Num != 4 {
+		t.Errorf("got {%g;%g}, want {1;4}", got.Array[0][0].Num, got.Array[1][0].Num)
+	}
+}
+
+func TestTAKE_NegColsExceed(t *testing.T) {
+	// TAKE({1,2}, 1, -3) → #VALUE!
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		NumberVal(1),
+		NumberVal(-3),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestTAKE_ViaEval(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "TAKE({1,2,3;4,5,6;7,8,9},2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3 array, got type=%v", got.Type)
+	}
+	if got.Array[1][2].Num != 6 {
+		t.Errorf("expected 6, got %g", got.Array[1][2].Num)
+	}
+}
+
+func TestTAKE_ViaEvalNeg(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "TAKE({1,2,3;4,5,6;7,8,9},-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 7 {
+		t.Errorf("expected 7, got %g", got.Array[0][0].Num)
+	}
+}
+
+// ---- DROP tests ----
+
+func TestDROP_FirstRow(t *testing.T) {
+	// DROP({1,2,3;4,5,6;7,8,9}, 1) → {4,5,6;7,8,9}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 4 || got.Array[1][0].Num != 7 {
+		t.Errorf("got wrong values")
+	}
+}
+
+func TestDROP_LastRow(t *testing.T) {
+	// DROP({1,2,3;4,5,6;7,8,9}, -1) → {1,2,3;4,5,6}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[1][0].Num != 4 {
+		t.Errorf("got wrong values")
+	}
+}
+
+func TestDROP_FirstColumn(t *testing.T) {
+	// DROP({1,2,3;4,5,6}, 0, 1) → {2,3;5,6}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(0),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 2 || got.Array[0][1].Num != 3 {
+		t.Errorf("row 0: got {%g,%g}, want {2,3}", got.Array[0][0].Num, got.Array[0][1].Num)
+	}
+	if got.Array[1][0].Num != 5 || got.Array[1][1].Num != 6 {
+		t.Errorf("row 1: got {%g,%g}, want {5,6}", got.Array[1][0].Num, got.Array[1][1].Num)
+	}
+}
+
+func TestDROP_LastColumn(t *testing.T) {
+	// DROP({1,2,3;4,5,6}, 0, -1) → {1,2;4,5}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(0),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Num != 2 {
+		t.Errorf("row 0: got {%g,%g}, want {1,2}", got.Array[0][0].Num, got.Array[0][1].Num)
+	}
+}
+
+func TestDROP_RowAndColumn(t *testing.T) {
+	// DROP({1,2,3;4,5,6;7,8,9}, 1, 1) → {5,6;8,9}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(1),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 5 || got.Array[0][1].Num != 6 {
+		t.Errorf("row 0: got {%g,%g}, want {5,6}", got.Array[0][0].Num, got.Array[0][1].Num)
+	}
+	if got.Array[1][0].Num != 8 || got.Array[1][1].Num != 9 {
+		t.Errorf("row 1: got {%g,%g}, want {8,9}", got.Array[1][0].Num, got.Array[1][1].Num)
+	}
+}
+
+func TestDROP_NegRowNegCol(t *testing.T) {
+	// DROP({1,2,3;4,5,6;7,8,9}, -1, -1) → {1,2;4,5}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8), NumberVal(9)},
+		}},
+		NumberVal(-1),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Num != 2 {
+		t.Errorf("row 0 wrong")
+	}
+	if got.Array[1][0].Num != 4 || got.Array[1][1].Num != 5 {
+		t.Errorf("row 1 wrong")
+	}
+}
+
+func TestDROP_AllRowsError(t *testing.T) {
+	// DROP({1;2;3}, 3) → #VALUE! (drops all rows)
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_MoreThanAllRowsError(t *testing.T) {
+	// DROP({1;2}, 5) → #VALUE!
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}}},
+		NumberVal(5),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_AllColsError(t *testing.T) {
+	// DROP({1,2,3}, 0, 3) → #VALUE!
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(0),
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_AllNegRowsError(t *testing.T) {
+	// DROP({1;2;3}, -3) → #VALUE!
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		NumberVal(-3),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_ZeroRows(t *testing.T) {
+	// DROP({1,2,3;4,5,6}, 0) → {1,2,3;4,5,6} (drop nothing)
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3 array, got type=%v", got.Type)
+	}
+}
+
+func TestDROP_Scalar(t *testing.T) {
+	// DROP(42, 0) → 42 (scalar, drop 0 rows)
+	got, err := fnDROP([]Value{
+		NumberVal(42),
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestDROP_ScalarDropAll(t *testing.T) {
+	// DROP(42, 1) → #VALUE! (scalar = 1 row, drop 1 = nothing left)
+	got, err := fnDROP([]Value{
+		NumberVal(42),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_ErrorPropagation(t *testing.T) {
+	// DROP(#REF!, 1) → #REF!
+	got, err := fnDROP([]Value{
+		ErrorVal(ErrValREF),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("expected #REF!, got %v", got)
+	}
+}
+
+func TestDROP_TooFewArgs(t *testing.T) {
+	got, err := fnDROP([]Value{NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_TooManyArgs(t *testing.T) {
+	got, err := fnDROP([]Value{NumberVal(1), NumberVal(1), NumberVal(1), NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_TwoRows(t *testing.T) {
+	// DROP({1;2;3;4;5}, 2) → {3;4;5}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}, {NumberVal(4)}, {NumberVal(5)},
+		}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 3 || got.Array[1][0].Num != 4 || got.Array[2][0].Num != 5 {
+		t.Errorf("wrong values")
+	}
+}
+
+func TestDROP_LastTwoRows(t *testing.T) {
+	// DROP({1;2;3;4;5}, -2) → {1;2;3}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}, {NumberVal(4)}, {NumberVal(5)},
+		}},
+		NumberVal(-2),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[2][0].Num != 3 {
+		t.Errorf("wrong values")
+	}
+}
+
+func TestDROP_StringValues(t *testing.T) {
+	// DROP({"a","b","c";"d","e","f"}, 1) → {"d","e","f"}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("a"), StringVal("b"), StringVal("c")},
+			{StringVal("d"), StringVal("e"), StringVal("f")},
+		}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Str != "d" || got.Array[0][1].Str != "e" || got.Array[0][2].Str != "f" {
+		t.Errorf("wrong string values")
+	}
+}
+
+func TestDROP_TwoCols(t *testing.T) {
+	// DROP({1,2,3;4,5,6}, 0, 2) → {3;6}
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		NumberVal(0),
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 3 || got.Array[1][0].Num != 6 {
+		t.Errorf("got {%g;%g}, want {3;6}", got.Array[0][0].Num, got.Array[1][0].Num)
+	}
+}
+
+func TestDROP_NegAllCols(t *testing.T) {
+	// DROP({1,2}, 0, -2) → #VALUE!
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		NumberVal(0),
+		NumberVal(-2),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestDROP_ViaEval(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "DROP({1,2,3;4,5,6;7,8,9},1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3 array, got type=%v", got.Type)
+	}
+	if got.Array[0][0].Num != 4 {
+		t.Errorf("expected 4, got %g", got.Array[0][0].Num)
+	}
+}
+
+func TestDROP_ViaEvalNeg(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "DROP({1,2,3;4,5,6;7,8,9},-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3 array, got type=%v", got.Type)
+	}
+	if got.Array[1][2].Num != 6 {
+		t.Errorf("expected 6, got %g", got.Array[1][2].Num)
+	}
+}
+
+func TestDROP_SingleResultIsScalar(t *testing.T) {
+	// DROP({1,2;3,4}, 1, 1) → 4 (single cell result unwrapped)
+	got, err := fnDROP([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+		}},
+		NumberVal(1),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnDROP: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Errorf("expected scalar 4, got %v", got)
+	}
+}
+
+func TestTAKE_SingleResultIsScalar(t *testing.T) {
+	// TAKE({1,2;3,4}, 1, 1) → 1 (single cell result unwrapped)
+	got, err := fnTAKE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+		}},
+		NumberVal(1),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnTAKE: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("expected scalar 1, got %v", got)
+	}
+}
