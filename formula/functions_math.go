@@ -26,6 +26,7 @@ func init() {
 	Register("BASE", NoCtx(fnBASE))
 	Register("CEILING", NoCtx(fnCEILING))
 	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
+	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
 	Register("COMBIN", NoCtx(fnCOMBIN))
 	Register("COMBINA", NoCtx(fnCOMBINA))
 	Register("COS", NoCtx(fnCOS))
@@ -42,6 +43,7 @@ func init() {
 	Register("FACTDOUBLE", NoCtx(fnFACTDOUBLE))
 	Register("FLOOR", NoCtx(fnFLOOR))
 	Register("FLOOR.MATH", NoCtx(fnFLOORMATH))
+	Register("FLOOR.PRECISE", NoCtx(fnFLOORPRECISE))
 	Register("GCD", NoCtx(fnGCD))
 	Register("INT", NoCtx(fnINT))
 	Register("LCM", NoCtx(fnLCM))
@@ -160,6 +162,54 @@ func fnCEILINGMATH(args []Value) (Value, error) {
 	}
 	// mode≠0: round away from zero (toward -infinity).
 	return NumberVal(-math.Ceil(math.Abs(n)/absSig) * absSig), nil
+}
+
+func fnCEILINGPRECISE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sig := 1.0
+	if len(args) == 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Always use absolute value of significance.
+	absSig := math.Abs(sig)
+	// Always round toward +infinity.
+	return NumberVal(math.Ceil(n/absSig) * absSig), nil
+}
+
+func fnFLOORPRECISE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sig := 1.0
+	if len(args) == 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Always use absolute value of significance.
+	absSig := math.Abs(sig)
+	// Always round toward -infinity.
+	return NumberVal(math.Floor(n/absSig) * absSig), nil
 }
 
 func fnFLOOR(args []Value) (Value, error) {

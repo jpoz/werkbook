@@ -291,6 +291,211 @@ func TestFLOORMATH(t *testing.T) {
 	}
 }
 
+func TestCEILINGPRECISE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic positive number rounding (default significance=1)
+		{"pos_default", "CEILING.PRECISE(4.3)", 5},
+		{"pos_exact", "CEILING.PRECISE(7)", 7},
+		{"pos_small_frac", "CEILING.PRECISE(0.1)", 1},
+		{"pos_half", "CEILING.PRECISE(2.5)", 3},
+
+		// Positive with positive significance
+		{"pos_sig_2", "CEILING.PRECISE(4.3,2)", 6},
+		{"pos_sig_5", "CEILING.PRECISE(24.3,5)", 25},
+		{"pos_sig_3", "CEILING.PRECISE(7,3)", 9},
+		{"pos_sig_exact", "CEILING.PRECISE(6,3)", 6},
+		{"pos_sig_0.1", "CEILING.PRECISE(6.31,0.1)", 6.4},
+		{"pos_sig_0.5", "CEILING.PRECISE(6.3,0.5)", 6.5},
+
+		// Negative numbers — always rounds toward +infinity (toward zero for negatives)
+		{"neg_default", "CEILING.PRECISE(-4.3)", -4},
+		{"neg_sig_2", "CEILING.PRECISE(-4.3,2)", -4},
+		{"neg_sig_1", "CEILING.PRECISE(-4.1,1)", -4},
+		{"neg_exact", "CEILING.PRECISE(-6)", -6},
+		{"neg_sig_5", "CEILING.PRECISE(-8.1,5)", -5},
+		{"neg_small_frac", "CEILING.PRECISE(-0.1)", 0},
+
+		// Sign of significance is always ignored
+		{"neg_sig_neg_sig", "CEILING.PRECISE(-4.3,-2)", -4},
+		{"pos_neg_sig", "CEILING.PRECISE(4.3,-2)", 6},
+
+		// Significance of 0 returns 0
+		{"sig_zero_pos", "CEILING.PRECISE(6.3,0)", 0},
+		{"sig_zero_neg", "CEILING.PRECISE(-6.3,0)", 0},
+
+		// Zero as number
+		{"zero_number", "CEILING.PRECISE(0)", 0},
+		{"zero_with_sig", "CEILING.PRECISE(0,5)", 0},
+
+		// Large numbers
+		{"large_pos", "CEILING.PRECISE(1234567,1000)", 1235000},
+		{"large_neg", "CEILING.PRECISE(-1234567,1000)", -1234000},
+
+		// Boolean coercion
+		{"bool_true", "CEILING.PRECISE(TRUE)", 1},
+		{"bool_false", "CEILING.PRECISE(FALSE)", 0},
+
+		// String coercion of numeric strings
+		{"string_num", "CEILING.PRECISE(\"4.3\")", 5},
+
+		// Excel doc examples
+		{"doc_example_1", "CEILING.PRECISE(4.3)", 5},
+		{"doc_example_2", "CEILING.PRECISE(-4.3)", -4},
+		{"doc_example_3", "CEILING.PRECISE(4.3,2)", 6},
+		{"doc_example_4", "CEILING.PRECISE(4.3,-2)", 6},
+		{"doc_example_5", "CEILING.PRECISE(-4.3,2)", -4},
+		{"doc_example_6", "CEILING.PRECISE(-4.3,-2)", -4},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "CEILING.PRECISE()", ErrValVALUE},
+		{"too_many_args", "CEILING.PRECISE(1,2,3)", ErrValVALUE},
+		{"non_numeric", "CEILING.PRECISE(\"abc\")", ErrValVALUE},
+		{"non_numeric_sig", "CEILING.PRECISE(1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestFLOORPRECISE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic positive number rounding (default significance=1)
+		{"pos_default", "FLOOR.PRECISE(3.2)", 3},
+		{"pos_exact", "FLOOR.PRECISE(7)", 7},
+		{"pos_small_frac", "FLOOR.PRECISE(0.9)", 0},
+		{"pos_half", "FLOOR.PRECISE(2.5)", 2},
+
+		// Positive with positive significance
+		{"pos_sig_2", "FLOOR.PRECISE(4.3,2)", 4},
+		{"pos_sig_5", "FLOOR.PRECISE(24.3,5)", 20},
+		{"pos_sig_3", "FLOOR.PRECISE(7,3)", 6},
+		{"pos_sig_exact", "FLOOR.PRECISE(6,3)", 6},
+		{"pos_sig_0.1", "FLOOR.PRECISE(6.39,0.1)", 6.3},
+		{"pos_sig_0.5", "FLOOR.PRECISE(6.7,0.5)", 6.5},
+
+		// Negative numbers — always rounds toward -infinity (away from zero for negatives)
+		{"neg_default", "FLOOR.PRECISE(-4.1)", -5},
+		{"neg_sig_2", "FLOOR.PRECISE(-4.1,2)", -6},
+		{"neg_sig_1", "FLOOR.PRECISE(-4.1,1)", -5},
+		{"neg_exact", "FLOOR.PRECISE(-6)", -6},
+		{"neg_sig_5", "FLOOR.PRECISE(-3,5)", -5},
+		{"neg_small_frac", "FLOOR.PRECISE(-0.1)", -1},
+
+		// Sign of significance is always ignored
+		{"neg_sig_neg_sig", "FLOOR.PRECISE(-3.2,-1)", -4},
+		{"pos_neg_sig", "FLOOR.PRECISE(3.2,-1)", 3},
+
+		// Significance of 0 returns 0
+		{"sig_zero_pos", "FLOOR.PRECISE(6.3,0)", 0},
+		{"sig_zero_neg", "FLOOR.PRECISE(-6.3,0)", 0},
+
+		// Zero as number
+		{"zero_number", "FLOOR.PRECISE(0)", 0},
+		{"zero_with_sig", "FLOOR.PRECISE(0,5)", 0},
+
+		// Large numbers
+		{"large_pos", "FLOOR.PRECISE(1234567,1000)", 1234000},
+		{"large_neg", "FLOOR.PRECISE(-1234567,1000)", -1235000},
+
+		// Boolean coercion
+		{"bool_true", "FLOOR.PRECISE(TRUE)", 1},
+		{"bool_false", "FLOOR.PRECISE(FALSE)", 0},
+
+		// String coercion of numeric strings
+		{"string_num", "FLOOR.PRECISE(\"3.2\")", 3},
+
+		// Excel doc examples
+		{"doc_example_1", "FLOOR.PRECISE(-3.2,-1)", -4},
+		{"doc_example_2", "FLOOR.PRECISE(3.2,1)", 3},
+		{"doc_example_3", "FLOOR.PRECISE(-3.2,1)", -4},
+		{"doc_example_4", "FLOOR.PRECISE(3.2,-1)", 3},
+		{"doc_example_5", "FLOOR.PRECISE(3.2)", 3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "FLOOR.PRECISE()", ErrValVALUE},
+		{"too_many_args", "FLOOR.PRECISE(1,2,3)", ErrValVALUE},
+		{"non_numeric", "FLOOR.PRECISE(\"abc\")", ErrValVALUE},
+		{"non_numeric_sig", "FLOOR.PRECISE(1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestMOD(t *testing.T) {
 	resolver := &mockResolver{}
 
