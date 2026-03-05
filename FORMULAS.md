@@ -107,7 +107,7 @@ Werkbook supports **303** Excel formula functions.
 | FORECAST.LINEAR | Statistical | 3 |
 | FORMULATEXT | Information | 7 |
 | FREQUENCY | Statistical | 25 |
-| FV | Financial | 2 |
+| FV | Financial | 4 |
 | GAMMALN | Statistical | 23 |
 | GAMMALN.PRECISE | Statistical | 6 |
 | GCD | Math & Trig | - |
