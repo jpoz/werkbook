@@ -672,6 +672,114 @@ func TestROUND(t *testing.T) {
 	}
 }
 
+func TestROUNDDOWN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Basic positive number, various decimal places
+		{"basic_2dp", "ROUNDDOWN(3.14159,2)", 3.14, 1e-10},
+		{"basic_1dp", "ROUNDDOWN(2.19,1)", 2.1, 1e-10},
+		{"basic_3dp", "ROUNDDOWN(1.23456,3)", 1.234, 1e-10},
+
+		// Zero digits
+		{"zero_digits_pos", "ROUNDDOWN(3.7,0)", 3, 0},
+		{"zero_digits_pos2", "ROUNDDOWN(3.2,0)", 3, 0},
+
+		// Negative numbers (toward zero means truncation)
+		{"neg_0dp", "ROUNDDOWN(-3.7,0)", -3, 0},
+		{"neg_1dp", "ROUNDDOWN(-3.14159,1)", -3.1, 1e-10},
+		{"neg_2dp", "ROUNDDOWN(-2.789,2)", -2.78, 1e-10},
+
+		// Negative num_digits (round left of decimal)
+		{"neg_digits_tens", "ROUNDDOWN(123.456,-1)", 120, 0},
+		{"neg_digits_hundreds", "ROUNDDOWN(31415.92654,-2)", 31400, 0},
+		{"neg_digits_thousands", "ROUNDDOWN(9876,-3)", 9000, 0},
+
+		// Zero input
+		{"zero_input", "ROUNDDOWN(0,2)", 0, 0},
+		{"zero_input_neg_digits", "ROUNDDOWN(0,-1)", 0, 0},
+
+		// Already rounded (no change expected)
+		{"already_rounded", "ROUNDDOWN(3.14,2)", 3.14, 1e-10},
+		{"already_integer", "ROUNDDOWN(5,0)", 5, 0},
+		{"already_integer_dp", "ROUNDDOWN(5,3)", 5, 0},
+
+		// Large positive num_digits
+		{"large_digits", "ROUNDDOWN(3.14159265,8)", 3.14159265, 1e-10},
+
+		// Negative num_digits with large numbers
+		{"neg_digits_large", "ROUNDDOWN(123456789,-4)", 123450000, 0},
+
+		// Boolean coercion (TRUE=1, FALSE=0)
+		{"bool_true_number", "ROUNDDOWN(TRUE,0)", 1, 0},
+		{"bool_false_number", "ROUNDDOWN(FALSE,0)", 0, 0},
+		{"bool_true_digits", "ROUNDDOWN(3.14,TRUE)", 3.1, 1e-10},
+		{"bool_false_digits", "ROUNDDOWN(3.14,FALSE)", 3, 0},
+
+		// String coercion
+		{"string_number", `ROUNDDOWN("3.7",0)`, 3, 0},
+		{"string_digits", `ROUNDDOWN(3.14159,"2")`, 3.14, 1e-10},
+
+		// Excel doc examples
+		{"doc_ex1", "ROUNDDOWN(3.2,0)", 3, 0},
+		{"doc_ex2", "ROUNDDOWN(76.9,0)", 76, 0},
+		{"doc_ex3", "ROUNDDOWN(3.14159,3)", 3.141, 1e-10},
+		{"doc_ex4", "ROUNDDOWN(-3.14159,1)", -3.1, 1e-10},
+		{"doc_ex5", "ROUNDDOWN(31415.92654,-2)", 31400, 0},
+	}
+
+	const epsilon = 1e-10
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			tol := tt.tol
+			if tol == 0 {
+				tol = epsilon
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ROUNDDOWN()", ErrValVALUE},
+		{"one_arg", "ROUNDDOWN(1)", ErrValVALUE},
+		{"too_many_args", "ROUNDDOWN(1,2,3)", ErrValVALUE},
+		{"non_numeric_number", `ROUNDDOWN("abc",2)`, ErrValVALUE},
+		{"non_numeric_digits", `ROUNDDOWN(1,"abc")`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestRandFunctions(t *testing.T) {
 	resolver := &mockResolver{}
 
