@@ -10,17 +10,17 @@ import (
 
 // patchOp represents a single operation in a patch array.
 type patchOp struct {
-	Cell        string           `json:"cell,omitempty"`
-	Row         int              `json:"row,omitempty"`
-	Sheet       string           `json:"sheet,omitempty"`
-	Value       json.RawMessage  `json:"value,omitempty"`
-	Formula     *string          `json:"formula,omitempty"`
-	Style       json.RawMessage  `json:"style,omitempty"`
-	ColumnWidth *float64         `json:"column_width,omitempty"`
-	RowHeight   *float64         `json:"row_height,omitempty"`
-	AddSheet    string           `json:"add_sheet,omitempty"`
-	DeleteSheet string           `json:"delete_sheet,omitempty"`
-	Clear       bool             `json:"clear,omitempty"`
+	Cell        string          `json:"cell,omitempty"`
+	Row         int             `json:"row,omitempty"`
+	Sheet       string          `json:"sheet,omitempty"`
+	Value       json.RawMessage `json:"value,omitempty"`
+	Formula     *string         `json:"formula,omitempty"`
+	Style       json.RawMessage `json:"style,omitempty"`
+	ColumnWidth *float64        `json:"column_width,omitempty"`
+	RowHeight   *float64        `json:"row_height,omitempty"`
+	AddSheet    string          `json:"add_sheet,omitempty"`
+	DeleteSheet string          `json:"delete_sheet,omitempty"`
+	Clear       bool            `json:"clear,omitempty"`
 }
 
 // opResult reports the outcome of a single patch operation.
@@ -32,10 +32,18 @@ type opResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
+// plannedOp is a normalized, non-mutating view of a patch operation.
+type plannedOp struct {
+	Index  int    `json:"index"`
+	Sheet  string `json:"sheet,omitempty"`
+	Target string `json:"target,omitempty"`
+	Action string `json:"action"`
+}
+
 // parsePatchOps parses a JSON array of patch operations.
 func parsePatchOps(data []byte) ([]patchOp, error) {
 	var ops []patchOp
-	if err := json.Unmarshal(data, &ops); err != nil {
+	if err := strictUnmarshal(data, &ops); err != nil {
 		return nil, err
 	}
 	return ops, nil
@@ -180,6 +188,70 @@ func applyOnePatch(f *werkbook.File, op patchOp, defaultSheet string, index int)
 	}
 
 	return opResult{Index: index, Cell: op.Cell, Action: "noop", Status: "ok"}
+}
+
+func buildPatchPlan(ops []patchOp, defaultSheet string) []plannedOp {
+	plan := make([]plannedOp, 0, len(ops))
+	for i, op := range ops {
+		item := plannedOp{
+			Index:  i,
+			Sheet:  planSheetName(op, defaultSheet),
+			Action: planPatchAction(op),
+		}
+
+		switch {
+		case op.AddSheet != "":
+			item.Target = op.AddSheet
+		case op.DeleteSheet != "":
+			item.Target = op.DeleteSheet
+		case op.Row > 0 && op.RowHeight != nil:
+			item.Target = fmt.Sprintf("row:%d", op.Row)
+		default:
+			item.Target = op.Cell
+		}
+
+		plan = append(plan, item)
+	}
+	return plan
+}
+
+func planSheetName(op patchOp, defaultSheet string) string {
+	if op.AddSheet != "" || op.DeleteSheet != "" {
+		return ""
+	}
+	if op.Sheet != "" {
+		return op.Sheet
+	}
+	return defaultSheet
+}
+
+func planPatchAction(op patchOp) string {
+	switch {
+	case op.AddSheet != "":
+		return "add_sheet"
+	case op.DeleteSheet != "":
+		return "delete_sheet"
+	case op.Row > 0 && op.RowHeight != nil:
+		return "set_row_height"
+	case op.Cell == "":
+		return "unknown"
+	case op.ColumnWidth != nil:
+		return "set_column_width"
+	case op.Clear:
+		return "clear"
+	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null" && op.Formula != nil:
+		return "set_style+set_formula"
+	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null" && op.Value != nil:
+		return "set_style+set_value"
+	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null":
+		return "set_style"
+	case op.Formula != nil:
+		return "set_formula"
+	case op.Value != nil:
+		return "set_value"
+	default:
+		return "noop"
+	}
 }
 
 // jsonValueToGo converts a JSON raw value to a Go value suitable for SetValue.

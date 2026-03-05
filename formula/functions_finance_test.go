@@ -66,6 +66,210 @@ func TestPMT_ZeroNper(t *testing.T) {
 	assertError(t, "PMT zero nper", v)
 }
 
+func TestPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Excel doc examples ---
+		{
+			name: "Excel doc: monthly payment 8%/12, 10 months, $10000",
+			args: numArgs(0.08/12, 10, 10000),
+			want: -1037.03,
+		},
+		{
+			name: "Excel doc: payment at beginning of period (type=1)",
+			args: numArgs(0.08/12, 10, 10000, 0, 1),
+			want: -1030.16,
+		},
+		{
+			name: "Excel doc: saving for $50k over 18 years at 6%",
+			args: numArgs(0.06/12, 18*12, 0, 50000),
+			want: -129.08,
+		},
+
+		// --- Car loan ---
+		{
+			name: "5-year car loan at 6.5%",
+			args: numArgs(0.065/12, 60, 25000),
+			want: -489.15,
+		},
+
+		// --- 15-year mortgage ---
+		{
+			name: "15-year mortgage at 4%",
+			args: numArgs(0.04/12, 180, 300000),
+			want: -2219.06,
+		},
+
+		// --- Zero interest rate with fv ---
+		{
+			name: "zero rate with future value",
+			args: numArgs(0, 12, 0, 6000),
+			want: -500,
+		},
+		{
+			name: "zero rate with pv and fv",
+			args: numArgs(0, 24, 1000, 2000),
+			want: -125,
+		},
+
+		// --- Future value: pv and fv combined ---
+		{
+			name: "pv and fv combined",
+			args: numArgs(0.06/12, 60, 10000, 5000),
+			want: -264.99,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 (end of period)",
+			args: numArgs(0.10/12, 120, 50000, 0, 0),
+			want: -660.75,
+		},
+		{
+			name: "type=1 (beginning of period)",
+			args: numArgs(0.10/12, 120, 50000, 0, 1),
+			want: -655.29,
+		},
+
+		// --- Negative pv (lender perspective) ---
+		{
+			name: "negative pv gives positive payment",
+			args: numArgs(0.05/12, 360, -200000),
+			want: 1073.64,
+		},
+
+		// --- Large nper ---
+		{
+			name: "large nper: 600 months (50 years)",
+			args: numArgs(0.03/12, 600, 100000),
+			want: -321.98,
+		},
+
+		// --- All zeros except nper ---
+		{
+			name: "all zeros: pv=0, fv=0, rate=0",
+			args: numArgs(0, 10, 0),
+			want: 0,
+		},
+
+		// --- Only pv, no fv ---
+		{
+			name: "only pv, fv defaults to 0",
+			args: numArgs(0.12/12, 48, 20000),
+			want: -526.68,
+		},
+
+		// --- Only fv, no pv ---
+		{
+			name: "only fv, pv=0",
+			args: numArgs(0.05/12, 60, 0, 20000),
+			want: -294.09,
+		},
+
+		// --- String coercion ---
+		{
+			name: "string coercion for rate",
+			args: []Value{StringVal("0.05"), NumberVal(12), NumberVal(1200)},
+			want: -135.39,
+		},
+		{
+			name: "string coercion for all numeric strings",
+			args: []Value{StringVal("0"), StringVal("10"), StringVal("1000")},
+			want: -100,
+		},
+
+		// --- Savings with type=1 and fv ---
+		{
+			name: "savings: type=1 with fv",
+			args: numArgs(0.06/12, 60, 0, 10000, 1),
+			want: -142.61,
+		},
+
+		// --- High interest rate ---
+		{
+			name: "high annual rate 24%",
+			args: numArgs(0.24/12, 36, 5000),
+			want: -196.16,
+		},
+
+		// --- Error: too few arguments ---
+		{
+			name: "error: too few args (2)",
+			args: numArgs(0.05, 12),
+			wantErr: true,
+		},
+		{
+			name: "error: too few args (0)",
+			args: []Value{},
+			wantErr: true,
+		},
+
+		// --- Error: too many arguments ---
+		{
+			name: "error: too many args (6)",
+			args: numArgs(0.05, 12, 1000, 0, 0, 0),
+			wantErr: true,
+		},
+
+		// --- Error: non-numeric ---
+		{
+			name: "error: non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(12), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric nper",
+			args: []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pv",
+			args: []Value{NumberVal(0.05), NumberVal(12), StringVal("bad")},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric fv",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), StringVal("no")},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric type",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), NumberVal(0), StringVal("x")},
+			wantErr: true,
+		},
+
+		// --- Error propagation ---
+		{
+			name: "error propagation in rate",
+			args: []Value{ErrorVal(ErrValNUM), NumberVal(12), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error propagation in fv",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), ErrorVal(ErrValREF)},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := fnPMT(tt.args)
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if tt.wantErr {
+				assertError(t, tt.name, v)
+			} else {
+				assertClose(t, tt.name, v, tt.want)
+			}
+		})
+	}
+}
+
 // === FV ===
 
 func TestFV_Savings(t *testing.T) {
@@ -87,6 +291,217 @@ func TestFV_ZeroRate(t *testing.T) {
 	assertClose(t, "FV zero rate", v, 2000)
 }
 
+func TestFV_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic: monthly savings with interest ---
+		{
+			name: "monthly savings 5% annual over 5 years",
+			args: numArgs(0.05/12, 60, -200),
+			want: 13601.22,
+		},
+		// --- Zero interest rate ---
+		{
+			name: "zero rate pmt only",
+			args: numArgs(0, 24, -500),
+			want: 12000,
+		},
+		{
+			name: "zero rate with pv",
+			args: numArgs(0, 12, -100, -500),
+			want: 1700,
+		},
+		// --- Zero payment ---
+		{
+			name: "zero pmt with pv only",
+			args: numArgs(0.05/12, 120, 0, -10000),
+			want: 16470.09,
+		},
+		// --- With present value (pv argument) ---
+		{
+			name: "pmt and pv combined",
+			args: numArgs(0.08/12, 60, -300, -5000),
+			want: 29492.29,
+		},
+		// --- Type=0 (end of period) vs Type=1 (beginning of period) ---
+		{
+			name: "type 0 end of period",
+			args: numArgs(0.06/12, 12, -100, 0, 0),
+			want: 1233.56,
+		},
+		{
+			name: "type 1 beginning of period",
+			args: numArgs(0.06/12, 12, -100, 0, 1),
+			want: 1239.72,
+		},
+		// --- Negative pmt (paying out) ---
+		{
+			name: "negative pmt deposits",
+			args: numArgs(0.10/12, 36, -500),
+			want: 20890.91,
+		},
+		{
+			name: "positive pmt withdrawals",
+			args: numArgs(0.06/12, 24, 200, -10000),
+			want: 6185.21,
+		},
+		// --- Large nper (many periods) ---
+		{
+			name: "large nper 480 months",
+			args: numArgs(0.04/12, 480, -100),
+			want: 118196.13,
+		},
+		// --- All zeros ---
+		{
+			name: "all zeros",
+			args: numArgs(0, 0, 0),
+			want: 0,
+		},
+		{
+			name: "all zeros with pv and type",
+			args: numArgs(0, 0, 0, 0, 0),
+			want: 0,
+		},
+		// --- Only pv, no pmt ---
+		{
+			name: "only pv no pmt",
+			args: numArgs(0.10, 5, 0, -1000),
+			want: 1610.51,
+		},
+		// --- Only pmt, no pv ---
+		{
+			name: "only pmt no pv",
+			args: numArgs(0.08/12, 120, -200),
+			want: 36589.21,
+		},
+		// --- Excel doc example 1: FV(0.06/12, 10, -200, -500, 1) = 2581.40 ---
+		{
+			name: "Excel doc example 1",
+			args: numArgs(0.06/12, 10, -200, -500, 1),
+			want: 2581.40,
+		},
+		// --- Excel doc example 2: FV(0.12/12, 12, -1000) = 12682.50 ---
+		{
+			name: "Excel doc example 2",
+			args: numArgs(0.12/12, 12, -1000),
+			want: 12682.50,
+		},
+		// --- Excel doc example 3: FV(0.11/12, 35, -2000, 0, 1) = 82846.25 ---
+		{
+			name: "Excel doc example 3",
+			args: numArgs(0.11/12, 35, -2000, 0, 1),
+			want: 82846.25,
+		},
+		// --- Excel doc example 4: FV(0.06/12, 12, -100, -1000, 1) = 2301.40 ---
+		{
+			name: "Excel doc example 4",
+			args: numArgs(0.06/12, 12, -100, -1000, 1),
+			want: 2301.40,
+		},
+		// --- Monthly vs annual rates ---
+		{
+			name: "annual rate 10% over 3 years",
+			args: numArgs(0.10, 3, -1000),
+			want: 3310.00,
+		},
+		{
+			name: "monthly rate equivalent",
+			args: numArgs(0.10/12, 36, -1000),
+			want: 41781.82,
+		},
+		// --- String coercion for args ---
+		{
+			name: "string coercion rate",
+			args: []Value{StringVal("0.06"), NumberVal(12), NumberVal(-100)},
+			want: 1686.99,
+		},
+		{
+			name: "string coercion nper",
+			args: []Value{NumberVal(0.05), StringVal("3"), NumberVal(-1000)},
+			want: 3152.50,
+		},
+		{
+			name: "string coercion pmt",
+			args: []Value{NumberVal(0.05), NumberVal(3), StringVal("-1000")},
+			want: 3152.50,
+		},
+		{
+			name: "string coercion pv",
+			args: []Value{NumberVal(0.05), NumberVal(3), NumberVal(0), StringVal("-1000")},
+			want: 1157.63,
+		},
+		{
+			name: "string coercion type",
+			args: []Value{NumberVal(0.06/12), NumberVal(12), NumberVal(-100), NumberVal(0), StringVal("1")},
+			want: 1239.72,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnFV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestFV_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "too few args",
+			args: numArgs(0.05, 10),
+		},
+		{
+			name: "too many args",
+			args: numArgs(0.05, 10, -100, 0, 0, 99),
+		},
+		{
+			name: "non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(10), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric nper",
+			args: []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric pmt",
+			args: []Value{NumberVal(0.05), NumberVal(10), StringVal("bad")},
+		},
+		{
+			name: "non-numeric pv",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), StringVal("bad")},
+		},
+		{
+			name: "non-numeric type",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), NumberVal(0), StringVal("bad")},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnFV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
 // === PV ===
 
 func TestPV_Annuity(t *testing.T) {
@@ -97,6 +512,210 @@ func TestPV_Annuity(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "PV annuity", v, 59777.15)
+}
+
+func TestPV_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic: present value of annuity ---
+		{
+			name: "basic annuity monthly payments",
+			args: numArgs(0.08/12, 240, -500),
+			want: 59777.15,
+		},
+		// --- Zero interest rate ---
+		{
+			name: "zero rate pmt only",
+			args: numArgs(0, 24, -500),
+			want: 12000,
+		},
+		{
+			name: "zero rate with fv",
+			args: numArgs(0, 12, -100, -500),
+			want: 1700,
+		},
+		// --- Zero payment with fv ---
+		{
+			name: "zero pmt with fv only",
+			args: numArgs(0.05/12, 120, 0, -10000),
+			want: 6071.61,
+		},
+		// --- With future value (fv argument) ---
+		{
+			name: "pmt and fv combined",
+			args: numArgs(0.08/12, 60, -300, -5000),
+			want: 18151.58,
+		},
+		// --- Type=0 (end of period) vs Type=1 (beginning of period) ---
+		{
+			name: "type 0 end of period",
+			args: numArgs(0.06/12, 12, -100, 0, 0),
+			want: 1161.89,
+		},
+		{
+			name: "type 1 beginning of period",
+			args: numArgs(0.06/12, 12, -100, 0, 1),
+			want: 1167.70,
+		},
+		// --- Negative pmt (paying out = positive PV) ---
+		{
+			name: "negative pmt deposits yield positive PV",
+			args: numArgs(0.10/12, 36, -500),
+			want: 15495.62,
+		},
+		{
+			name: "positive pmt withdrawals yield negative PV",
+			args: numArgs(0.06/12, 24, 200),
+			want: -4512.57,
+		},
+		// --- Large nper (many periods) ---
+		{
+			name: "large nper 480 months",
+			args: numArgs(0.04/12, 480, -100),
+			want: 23926.97,
+		},
+		// --- All zeros ---
+		{
+			name: "all zeros",
+			args: numArgs(0, 0, 0),
+			want: 0,
+		},
+		{
+			name: "all zeros with fv and type",
+			args: numArgs(0, 0, 0, 0, 0),
+			want: 0,
+		},
+		// --- Only fv, no pmt ---
+		{
+			name: "only fv no pmt",
+			args: numArgs(0.10, 5, 0, -1000),
+			want: 620.92,
+		},
+		// --- Only pmt, no fv ---
+		{
+			name: "only pmt no fv",
+			args: numArgs(0.08/12, 120, -200),
+			want: 16484.30,
+		},
+		// --- Excel doc example: PV(0.08/12, 12*20, 500, , 0) = -59777.15 ---
+		// (sign convention: positive pmt = receiving money, so PV is negative)
+		{
+			name: "Excel doc example annuity payout",
+			args: numArgs(0.08/12, 12*20, 500, 0, 0),
+			want: -59777.15,
+		},
+		// --- Monthly vs annual rates ---
+		{
+			name: "annual rate 10% over 3 years",
+			args: numArgs(0.10, 3, -1000),
+			want: 2486.85,
+		},
+		{
+			name: "monthly rate equivalent",
+			args: numArgs(0.10/12, 36, -1000),
+			want: 30991.24,
+		},
+		// --- Mortgage present value ---
+		{
+			name: "mortgage 30yr 5%",
+			args: numArgs(0.05/12, 360, -1073.64),
+			want: 199999.40,
+		},
+		// --- String coercion for args ---
+		{
+			name: "string coercion rate",
+			args: []Value{StringVal("0.06"), NumberVal(12), NumberVal(-100)},
+			want: 838.38,
+		},
+		{
+			name: "string coercion nper",
+			args: []Value{NumberVal(0.05), StringVal("3"), NumberVal(-1000)},
+			want: 2723.25,
+		},
+		{
+			name: "string coercion pmt",
+			args: []Value{NumberVal(0.05), NumberVal(3), StringVal("-1000")},
+			want: 2723.25,
+		},
+		{
+			name: "string coercion fv",
+			args: []Value{NumberVal(0.05), NumberVal(3), NumberVal(0), StringVal("-1000")},
+			want: 863.84,
+		},
+		{
+			name: "string coercion type",
+			args: []Value{NumberVal(0.06/12), NumberVal(12), NumberVal(-100), NumberVal(0), StringVal("1")},
+			want: 1167.70,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestPV_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "too few args",
+			args: numArgs(0.05, 10),
+		},
+		{
+			name: "too many args",
+			args: numArgs(0.05, 10, -100, 0, 0, 99),
+		},
+		{
+			name: "non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(10), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric nper",
+			args: []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric pmt",
+			args: []Value{NumberVal(0.05), NumberVal(10), StringVal("bad")},
+		},
+		{
+			name: "non-numeric fv",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), StringVal("bad")},
+		},
+		{
+			name: "non-numeric type",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), NumberVal(0), StringVal("bad")},
+		},
+		{
+			name: "nper zero with nonzero rate",
+			args: numArgs(0.05, 0, -100),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
 }
 
 // === NPER ===
@@ -118,6 +737,165 @@ func TestNPER_ZeroRate(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "NPER zero rate", v, 10)
+}
+
+func TestNPER_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Excel doc examples ---
+		{
+			name: "Excel doc: type=1, rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			args: numArgs(0.12/12, -100, -1000, 10000, 1),
+			want: 59.67,
+		},
+		{
+			name: "Excel doc: type=0 (default), rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			args: numArgs(0.12/12, -100, -1000, 10000),
+			want: 60.08,
+		},
+		{
+			name: "Excel doc: no fv, rate=12%/12, pmt=-100, pv=-1000",
+			args: numArgs(0.12/12, -100, -1000),
+			want: -9.58,
+		},
+
+		// --- Basic loan payoff ---
+		{
+			name: "basic loan: 1%/month, $100 payments, $1000 loan",
+			args: numArgs(0.01, -100, 1000),
+			want: 10.58,
+		},
+
+		// --- Zero rate ---
+		{
+			name: "zero rate: pmt only",
+			args: numArgs(0, -100, 1000),
+			want: 10,
+		},
+		{
+			name: "zero rate with fv",
+			args: numArgs(0, -200, 1000, 5000),
+			want: 30,
+		},
+		{
+			name: "zero rate: pmt=0 should error",
+			args: numArgs(0, 0, 1000),
+			wantErr: true,
+		},
+
+		// --- With future value ---
+		{
+			name: "loan with future value (balloon payment)",
+			args: numArgs(0.05/12, -500, 20000, 5000),
+			want: 53.67,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 end of period",
+			args: numArgs(0.06/12, -200, 10000, 0, 0),
+			want: 57.68,
+		},
+		{
+			name: "type=1 beginning of period (fewer periods)",
+			args: numArgs(0.06/12, -200, 10000, 0, 1),
+			want: 57.35,
+		},
+
+		// --- Saving scenario: positive pmt, negative fv ---
+		{
+			name: "saving: monthly $300 deposits to reach $50000",
+			args: numArgs(0.04/12, -300, 0, 50000),
+			want: 132.77,
+		},
+
+		// --- Large loan, small payment ---
+		{
+			name: "large loan small payment: 30yr mortgage check",
+			args: numArgs(0.06/12, -1199.10, 200000),
+			want: 360.00,
+		},
+
+		// --- Negative pmt (standard loan payments) ---
+		{
+			name: "negative pmt standard loan",
+			args: numArgs(0.08/12, -1000, 50000),
+			want: 61.02,
+		},
+
+		// --- Zero pmt with fv: result based on rate and pv/fv ---
+		{
+			name: "zero pmt with fv: compound growth only",
+			args: numArgs(0.05, 0, -1000, 2000),
+			want: 14.21,
+		},
+
+		// --- String coercion ---
+		{
+			name: "string coercion: all numeric strings",
+			args: []Value{StringVal("0.01"), StringVal("-100"), StringVal("1000")},
+			want: 10.58,
+		},
+		{
+			name: "string coercion: rate as string",
+			args: []Value{StringVal("0"), NumberVal(-250), NumberVal(1000)},
+			want: 4,
+		},
+
+		// --- Error: too few args ---
+		{
+			name: "error: too few args (2)",
+			args: numArgs(0.01, -100),
+			wantErr: true,
+		},
+		{
+			name: "error: too few args (1)",
+			args: numArgs(0.01),
+			wantErr: true,
+		},
+
+		// --- Error: too many args ---
+		{
+			name: "error: too many args (6)",
+			args: numArgs(0.01, -100, 1000, 0, 0, 99),
+			wantErr: true,
+		},
+
+		// --- Error: non-numeric ---
+		{
+			name: "error: non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(-100), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pmt",
+			args: []Value{NumberVal(0.01), StringVal("xyz"), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pv",
+			args: []Value{NumberVal(0.01), NumberVal(-100), StringVal("bad")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnNPER(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
 }
 
 // === RATE ===
@@ -144,6 +922,182 @@ func TestRATE_NoSolution(t *testing.T) {
 	}
 }
 
+func TestRATE_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic: loan rate calculation ---
+		{
+			name: "basic 30yr mortgage rate",
+			// RATE(360, -1073.64, 200000) ≈ 0.05/12
+			args: numArgs(360, -1073.64, 200000),
+			want: 0.05 / 12,
+		},
+		// --- Excel doc example ---
+		{
+			name: "Excel doc: 4yr loan monthly, RATE(48, -200, 8000)",
+			// Excel says ~1% per month
+			args: numArgs(48, -200, 8000),
+			want: 0.0077,
+		},
+		// --- With future value ---
+		{
+			name: "with future value, pv to fv with payments",
+			// RATE(120, -100, 0, 20000) — saving $100/mo to reach $20000
+			args: numArgs(120, -100, 0, 20000),
+			want: 0.00596, // ~7.15% annual
+		},
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 end of period (default)",
+			// RATE(60, -500, 25000, 0, 0)
+			args: numArgs(60, -500, 25000, 0, 0),
+			want: 0.003242,
+		},
+		{
+			name: "type=1 beginning of period",
+			// RATE(60, -500, 25000, 0, 1)
+			args: numArgs(60, -500, 25000, 0, 1),
+			want: 0.003231,
+		},
+		// --- With explicit guess ---
+		{
+			name: "explicit guess close to answer",
+			// RATE(360, -1073.64, 200000, 0, 0, 0.004)
+			args: numArgs(360, -1073.64, 200000, 0, 0, 0.004),
+			want: 0.05 / 12,
+		},
+		{
+			name: "explicit guess far from answer",
+			// RATE(48, -200, 8000, 0, 0, 0.5)
+			args: numArgs(48, -200, 8000, 0, 0, 0.5),
+			want: 0.0077,
+		},
+		// --- Zero payment: pv to fv only ---
+		{
+			name: "zero payment pv to fv",
+			// RATE(10, 0, -1000, 1500) — what rate turns 1000 into 1500 in 10 periods?
+			// (1+r)^10 = 1.5 → r ≈ 0.04138
+			args: numArgs(10, 0, -1000, 1500),
+			want: 0.04138,
+		},
+		// --- Savings scenario ---
+		{
+			name: "savings monthly contributions",
+			// RATE(240, -300, 0, 150000) — save $300/mo for 20yr to get $150k
+			args: numArgs(240, -300, 0, 150000),
+			want: 0.003055, // ~3.67% annual
+		},
+		// --- High rate result ---
+		{
+			name: "high rate result",
+			// RATE(12, -1000, 5000) — short loan, large payments relative to principal
+			args: numArgs(12, -1000, 5000),
+			want: 0.16943,
+		},
+		// --- Low rate result ---
+		{
+			name: "low rate result",
+			// RATE(360, -1000, 350000) — low rate mortgage
+			args: numArgs(360, -1000, 350000),
+			want: 0.000953,
+		},
+		// --- Negative nper → #NUM! ---
+		{
+			name: "negative nper",
+			args: numArgs(-12, -100, 1000),
+			want: 0,
+			wantErr: true,
+		},
+		// --- Zero nper → #NUM! ---
+		{
+			name: "zero nper",
+			args: numArgs(0, -100, 1000),
+			want: 0,
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnRATE(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestRATE_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "too few args",
+			args: numArgs(360, -1073.64),
+		},
+		{
+			name: "too many args",
+			args: numArgs(360, -1073.64, 200000, 0, 0, 0.1, 99),
+		},
+		{
+			name: "non-numeric nper",
+			args: []Value{StringVal("abc"), NumberVal(-1073.64), NumberVal(200000)},
+		},
+		{
+			name: "non-numeric pmt",
+			args: []Value{NumberVal(360), StringVal("abc"), NumberVal(200000)},
+		},
+		{
+			name: "non-numeric pv",
+			args: []Value{NumberVal(360), NumberVal(-1073.64), StringVal("abc")},
+		},
+		{
+			name: "no convergence pmt=0 fv=0 pv!=0",
+			// pmt=0, fv=0, pv≠0: no rate satisfies the equation
+			args: numArgs(60, 0, 50000),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnRATE(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestRATE_PMT_RoundTrip(t *testing.T) {
+	// Verify: PMT(RATE(nper, pmt, pv), nper, pv) ≈ pmt
+	nper := 360.0
+	pmt := -1073.64
+	pv := 200000.0
+
+	rateVal, err := fnRATE(numArgs(nper, pmt, pv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rateVal.Type != ValueNumber {
+		t.Fatalf("RATE returned non-number: %v", rateVal)
+	}
+
+	pmtVal, err := fnPMT(numArgs(rateVal.Num, nper, pv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PMT(RATE(...),...) round-trip", pmtVal, pmt)
+}
+
 // === IPMT ===
 
 func TestIPMT_FirstPayment(t *testing.T) {
@@ -156,6 +1110,156 @@ func TestIPMT_FirstPayment(t *testing.T) {
 	assertClose(t, "IPMT first", v, -833.33)
 }
 
+func TestIPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool // expect ValueError
+	}{
+		// --- Basic cases ---
+		{
+			name: "last payment 30yr mortgage",
+			// IPMT(0.05/12, 360, 360, 200000) — interest of last payment is small
+			args: numArgs(0.05/12, 360, 360, 200000),
+			want: -4.45,
+		},
+		{
+			name: "middle period",
+			// IPMT(0.05/12, 180, 360, 200000) — halfway through 30yr mortgage
+			args: numArgs(0.05/12, 180, 360, 200000),
+			want: -567.81,
+		},
+		{
+			name: "zero rate returns zero interest",
+			// IPMT(0, 5, 10, 10000) — no interest when rate=0
+			args: numArgs(0, 5, 10, 10000),
+			want: 0,
+		},
+
+		// --- With future value ---
+		{
+			name: "with future value",
+			// IPMT(0.1/12, 1, 60, 50000, 10000) — loan with balloon payment
+			args: numArgs(0.1/12, 1, 60, 50000, 10000),
+			want: -416.67,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type 0 explicit",
+			// IPMT(0.1/12, 1, 12, 10000, 0, 0)
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 0),
+			want: -83.33,
+		},
+		{
+			name: "type 1 period 1 returns 0",
+			// IPMT(0.1/12, 1, 12, 10000, 0, 1) — beginning of period, first payment has no interest
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 1),
+			want: 0,
+		},
+		{
+			name: "type 1 period 2",
+			// IPMT(0.1/12, 2, 12, 10000, 0, 1) — beginning of period, second payment
+			args: numArgs(0.1/12, 2, 12, 10000, 0, 1),
+			want: -76.07,
+		},
+
+		// --- Excel documentation examples ---
+		{
+			name: "Excel doc example 1 monthly",
+			// IPMT(0.1/12, 1, 36, 8000) — from Excel docs
+			args: numArgs(0.1/12, 1, 36, 8000),
+			want: -66.67,
+		},
+		{
+			name: "Excel doc example 2 annual",
+			// IPMT(0.1, 3, 3, 8000) — from Excel docs, annual payments, last year
+			args: numArgs(0.1, 3, 3, 8000),
+			want: -292.45,
+		},
+
+		// --- Monthly vs annual ---
+		{
+			name: "annual rate 5yr loan first year",
+			// IPMT(0.08, 1, 5, 25000)
+			args: numArgs(0.08, 1, 5, 25000),
+			want: -2000.00,
+		},
+		{
+			name: "monthly equivalent first month",
+			// IPMT(0.08/12, 1, 60, 25000)
+			args: numArgs(0.08/12, 1, 60, 25000),
+			want: -166.67,
+		},
+
+		// --- Large loan scenario ---
+		{
+			name: "large loan first payment",
+			// IPMT(0.04/12, 1, 360, 1000000)
+			args: numArgs(0.04/12, 1, 360, 1000000),
+			want: -3333.33,
+		},
+		{
+			name: "large loan last payment",
+			// IPMT(0.04/12, 360, 360, 1000000)
+			args: numArgs(0.04/12, 360, 360, 1000000),
+			want: -15.86,
+		},
+
+		// --- Error cases ---
+		{
+			name:    "per=0 returns NUM error",
+			args:    numArgs(0.05/12, 0, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "per > nper returns NUM error",
+			args:    numArgs(0.05/12, 361, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "nper=0 returns NUM error",
+			args:    numArgs(0.05/12, 1, 0, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(0.05, 1, 12),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(0.05, 1, 12, 10000, 0, 0, 99),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric rate",
+			args:    []Value{StringVal("abc"), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric per",
+			args:    []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIPMT(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+				return
+			}
+			assertClose(t, tc.name, v, tc.want)
+		})
+	}
+}
+
 // === PPMT ===
 
 func TestPPMT_FirstPayment(t *testing.T) {
@@ -166,6 +1270,181 @@ func TestPPMT_FirstPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "PPMT first", v, -240.31)
+}
+
+func TestPPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic cases ---
+		{
+			name: "principal of first payment 30yr mortgage",
+			// PPMT(0.05/12, 1, 360, 200000)
+			args: numArgs(0.05/12, 1, 360, 200000),
+			want: -240.31,
+		},
+		{
+			name: "principal of last payment 30yr mortgage",
+			// PPMT(0.05/12, 360, 360, 200000) — last payment is mostly principal
+			args: numArgs(0.05/12, 360, 360, 200000),
+			want: -1069.19,
+		},
+		{
+			name: "middle period 30yr mortgage",
+			// PPMT(0.05/12, 180, 360, 200000) — halfway through
+			args: numArgs(0.05/12, 180, 360, 200000),
+			want: -505.83,
+		},
+
+		// --- Zero rate: equal principal payments ---
+		{
+			name: "zero rate equal principal",
+			// PPMT(0, 5, 10, 10000) — each payment is pv/nper = -1000
+			args: numArgs(0, 5, 10, 10000),
+			want: -1000.00,
+		},
+		{
+			name: "zero rate first period",
+			// PPMT(0, 1, 10, 10000)
+			args: numArgs(0, 1, 10, 10000),
+			want: -1000.00,
+		},
+
+		// --- With future value ---
+		{
+			name: "with future value",
+			// PPMT(0.1/12, 1, 60, 50000, 10000)
+			args: numArgs(0.1/12, 1, 60, 50000, 10000),
+			want: -774.82,
+		},
+		{
+			name: "with future value last period",
+			// PPMT(0.1/12, 60, 60, 50000, 10000)
+			args: numArgs(0.1/12, 60, 60, 50000, 10000),
+			want: -1264.29,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type 0 explicit",
+			// PPMT(0.1/12, 1, 12, 10000, 0, 0)
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 0),
+			want: -795.83,
+		},
+		{
+			name: "type 1 period 1 equals full PMT",
+			// PPMT(0.1/12, 1, 12, 10000, 0, 1) — at beginning, first period PPMT = PMT
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 1),
+			want: -871.89,
+		},
+		{
+			name: "type 1 period 2",
+			// PPMT(0.1/12, 2, 12, 10000, 0, 1)
+			args: numArgs(0.1/12, 2, 12, 10000, 0, 1),
+			want: -795.83,
+		},
+
+		// --- Excel documentation examples ---
+		{
+			name: "Excel doc example 1: 10% 2yr loan month 1",
+			// PPMT(0.10/12, 1, 2*12, 2000) = -75.62
+			args: numArgs(0.10/12, 1, 24, 2000),
+			want: -75.62,
+		},
+		{
+			name: "Excel doc example 2: 8% 10yr loan year 10",
+			// PPMT(0.08, 10, 10, 200000) = -27598.05
+			args: numArgs(0.08, 10, 10, 200000),
+			want: -27598.05,
+		},
+
+		// --- Monthly vs annual ---
+		{
+			name: "annual rate 5yr loan first year",
+			// PPMT(0.08, 1, 5, 25000)
+			args: numArgs(0.08, 1, 5, 25000),
+			want: -4261.41,
+		},
+		{
+			name: "monthly equivalent first month",
+			// PPMT(0.08/12, 1, 60, 25000)
+			args: numArgs(0.08/12, 1, 60, 25000),
+			want: -340.24,
+		},
+
+		// --- Large loan ---
+		{
+			name: "large loan first payment",
+			// PPMT(0.04/12, 1, 360, 1000000)
+			args: numArgs(0.04/12, 1, 360, 1000000),
+			want: -1440.82,
+		},
+		{
+			name: "large loan last payment",
+			// PPMT(0.04/12, 360, 360, 1000000)
+			args: numArgs(0.04/12, 360, 360, 1000000),
+			want: -4758.29,
+		},
+
+		// --- Error cases ---
+		{
+			name:    "per=0 returns NUM error",
+			args:    numArgs(0.05/12, 0, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "per > nper returns NUM error",
+			args:    numArgs(0.05/12, 361, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "negative per returns NUM error",
+			args:    numArgs(0.05/12, -1, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "nper=0 returns NUM error",
+			args:    numArgs(0.05/12, 1, 0, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(0.05, 1, 12),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(0.05, 1, 12, 10000, 0, 0, 99),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric rate",
+			args:    []Value{StringVal("abc"), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric per",
+			args:    []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPPMT(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+				return
+			}
+			assertClose(t, tc.name, v, tc.want)
+		})
+	}
 }
 
 func TestIPMT_Plus_PPMT_Equals_PMT(t *testing.T) {
@@ -183,6 +1462,26 @@ func TestIPMT_Plus_PPMT_Equals_PMT(t *testing.T) {
 	}
 }
 
+func TestIPMT_Plus_PPMT_Equals_PMT_WithFV(t *testing.T) {
+	// Verify PPMT + IPMT = PMT with future value and type=1
+	rate := 0.06 / 12
+	nper := 120.0
+	pv := 100000.0
+	fv := 20000.0
+	for _, payType := range []float64{0, 1} {
+		for _, per := range []float64{1, 30, 60, 90, 120} {
+			ipmt, _ := fnIPMT(numArgs(rate, per, nper, pv, fv, payType))
+			ppmt, _ := fnPPMT(numArgs(rate, per, nper, pv, fv, payType))
+			pmt, _ := fnPMT(numArgs(rate, nper, pv, fv, payType))
+			sum := ipmt.Num + ppmt.Num
+			if math.Abs(sum-pmt.Num) > 0.01 {
+				t.Errorf("type=%v per=%v: IPMT(%f) + PPMT(%f) = %f, PMT = %f",
+					payType, per, ipmt.Num, ppmt.Num, sum, pmt.Num)
+			}
+		}
+	}
+}
+
 // === NPV ===
 
 func TestNPV_Basic(t *testing.T) {
@@ -193,6 +1492,237 @@ func TestNPV_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "NPV basic", v, 1188.44)
+}
+
+func TestNPV_PositiveCashFlows(t *testing.T) {
+	// NPV(0.08, 1000, 2000, 3000)
+	// = 1000/1.08 + 2000/1.08^2 + 3000/1.08^3 = 925.93 + 1714.68 + 2381.50 = 5022.11
+	v, err := fnNPV(append(numArgs(0.08), numArgs(1000, 2000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV positive cash flows", v, 5022.10)
+}
+
+func TestNPV_MixedCashFlows(t *testing.T) {
+	// NPV(0.1, -5000, 2000, -1000, 4000, 3000)
+	v, err := fnNPV(append(numArgs(0.1), numArgs(-5000, 2000, -1000, 4000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// -5000/1.1 + 2000/1.1^2 + -1000/1.1^3 + 4000/1.1^4 + 3000/1.1^5
+	// = -4545.45 + 1652.89 + -751.31 + 2732.05 + 1862.76 = 950.94
+	assertClose(t, "NPV mixed cash flows", v, 950.94)
+}
+
+func TestNPV_SingleCashFlow(t *testing.T) {
+	// NPV(0.1, 1000) = 1000/1.1 = 909.09
+	v, err := fnNPV(append(numArgs(0.1), numArgs(1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV single cash flow", v, 909.09)
+}
+
+func TestNPV_ZeroRate(t *testing.T) {
+	// NPV(0, 1000, 2000, 3000) = 1000 + 2000 + 3000 = 6000
+	v, err := fnNPV(append(numArgs(0), numArgs(1000, 2000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV zero rate", v, 6000.00)
+}
+
+func TestNPV_HighRate(t *testing.T) {
+	// NPV(1.0, 1000, 1000, 1000) = 1000/2 + 1000/4 + 1000/8 = 500 + 250 + 125 = 875
+	v, err := fnNPV(append(numArgs(1.0), numArgs(1000, 1000, 1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV high rate", v, 875.00)
+}
+
+func TestNPV_NegativeRate(t *testing.T) {
+	// NPV(-0.1, 1000, 1000, 1000)
+	// = 1000/0.9 + 1000/0.81 + 1000/0.729 = 1111.11 + 1234.57 + 1371.74 = 3717.42
+	v, err := fnNPV(append(numArgs(-0.1), numArgs(1000, 1000, 1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV negative rate", v, 3717.42)
+}
+
+func TestNPV_RateMinusOne(t *testing.T) {
+	// NPV(-1, ...) → #DIV/0! because (1+rate)=0
+	v, _ := fnNPV(append(numArgs(-1), numArgs(1000)...))
+	assertError(t, "NPV rate=-1", v)
+}
+
+func TestNPV_ManyPeriods(t *testing.T) {
+	// NPV(0.05, 100 repeated 20 times)
+	// = sum of 100/1.05^i for i=1..20 = 100 * (1 - 1.05^-20) / 0.05 = 1246.22
+	args := numArgs(0.05)
+	for i := 0; i < 20; i++ {
+		args = append(args, NumberVal(100))
+	}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV many periods", v, 1246.22)
+}
+
+func TestNPV_RangeInput(t *testing.T) {
+	// NPV(0.1, {-10000, 3000, 4200, 6800}) — values passed as array
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)}},
+	}
+	v, err := fnNPV([]Value{NumberVal(0.1), arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV range input", v, 1188.44)
+}
+
+func TestNPV_AllNegativeCashFlows(t *testing.T) {
+	// NPV(0.1, -1000, -2000, -3000)
+	// = -1000/1.1 + -2000/1.21 + -3000/1.331 = -909.09 + -1652.89 + -2253.94 = -4815.93
+	v, err := fnNPV(append(numArgs(0.1), numArgs(-1000, -2000, -3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV all negative", v, -4815.93)
+}
+
+func TestNPV_ZeroCashFlowsMixedIn(t *testing.T) {
+	// NPV(0.1, 0, 1000, 0, 2000) = 0/1.1 + 1000/1.21 + 0/1.331 + 2000/1.4641
+	// = 0 + 826.45 + 0 + 1366.03 = 2192.47
+	v, err := fnNPV(append(numArgs(0.1), numArgs(0, 1000, 0, 2000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV zero mixed in", v, 2192.47)
+}
+
+func TestNPV_TooFewArgs(t *testing.T) {
+	// NPV(0.1) — no values → #VALUE!
+	v, _ := fnNPV(numArgs(0.1))
+	assertError(t, "NPV too few args", v)
+}
+
+func TestNPV_NoArgs(t *testing.T) {
+	// NPV() — no args at all → #VALUE!
+	v, _ := fnNPV([]Value{})
+	assertError(t, "NPV no args", v)
+}
+
+func TestNPV_StringCoercionRate(t *testing.T) {
+	// NPV("0.1", -10000, 3000, 4200, 6800) — rate as numeric string
+	args := []Value{StringVal("0.1"), NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV string rate", v, 1188.44)
+}
+
+func TestNPV_StringCoercionValue(t *testing.T) {
+	// NPV(0.1, "1000") — value as numeric string (direct arg, coerced)
+	args := []Value{NumberVal(0.1), StringVal("1000")}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV string value", v, 909.09)
+}
+
+func TestNPV_BooleanCoercion(t *testing.T) {
+	// NPV(0.1, TRUE) — TRUE coerced to 1, so NPV = 1/1.1 = 0.909..
+	args := []Value{NumberVal(0.1), BoolVal(true)}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV bool TRUE", v, 0.91)
+}
+
+func TestNPV_ErrorPropagationRate(t *testing.T) {
+	// NPV(#VALUE!, 1000) → error
+	args := []Value{ErrorVal(ErrValVALUE), NumberVal(1000)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV error rate", v)
+}
+
+func TestNPV_ErrorPropagationValue(t *testing.T) {
+	// NPV(0.1, #DIV/0!) → error
+	args := []Value{NumberVal(0.1), ErrorVal(ErrValDIV0)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV error value", v)
+}
+
+func TestNPV_NonNumericRate(t *testing.T) {
+	// NPV("abc", 1000) → #VALUE!
+	args := []Value{StringVal("abc"), NumberVal(1000)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV non-numeric rate", v)
+}
+
+func TestNPV_NonNumericValue(t *testing.T) {
+	// NPV(0.1, "abc") — non-numeric string as direct arg → #VALUE!
+	args := []Value{NumberVal(0.1), StringVal("abc")}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV non-numeric value", v)
+}
+
+func TestNPV_ExcelExample2(t *testing.T) {
+	// Excel doc example 2: NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000)
+	// = NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
+	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// NPV alone is 41922.06, then + (-40000) = 1922.06
+	assertClose(t, "NPV excel example 2", v, 41922.06)
+}
+
+func TestNPV_ExcelExample2WithLoss(t *testing.T) {
+	// Excel doc example 2 with loss: NPV(0.08, 8000, 9200, 10000, 12000, 14500, -9000) + (-40000)
+	// = -3749.47, so NPV alone = -3749.47 + 40000 = 36250.53
+	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500, -9000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV excel example 2 with loss", v, 36250.53)
+}
+
+func TestNPV_InitialInvestmentPattern(t *testing.T) {
+	// Common pattern: initial cost + NPV of future cash flows
+	// NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
+	npv, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := npv.Num + (-40000)
+	if math.Abs(result-1922.06) > 0.01 {
+		t.Errorf("NPV initial investment pattern: got %f, want 1922.06", result)
+	}
+}
+
+func TestNPV_EmptyValueSkipped(t *testing.T) {
+	// Empty values in array should be skipped (period not advanced)
+	// NPV(0.1, {1000, <empty>, 2000}) should give same result as NPV(0.1, 1000, 2000)
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(1000), EmptyVal(), NumberVal(2000)}},
+	}
+	v, err := fnNPV([]Value{NumberVal(0.1), arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1000/1.1 + 2000/1.21 = 909.09 + 1652.89 = 2561.98
+	v2, _ := fnNPV(append(numArgs(0.1), numArgs(1000, 2000)...))
+	assertClose(t, "NPV empty skipped", v, v2.Num)
 }
 
 // === IRR ===
@@ -224,6 +1754,280 @@ func TestIRR_NoSolution(t *testing.T) {
 	assertError(t, "IRR no solution", v)
 }
 
+func TestIRR_AllNegative(t *testing.T) {
+	// All negative values — no solution → #NUM!
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-100), NumberVal(-200), NumberVal(-300)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr})
+	assertError(t, "IRR all negative", v)
+}
+
+func TestIRR_SingleValue(t *testing.T) {
+	// Single value → #NUM! (need at least 2 cash flows)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr})
+	assertError(t, "IRR single value", v)
+}
+
+func TestIRR_TwoValues(t *testing.T) {
+	// Two values: invest -1000, return 1100 → IRR = 0.10
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1100)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR two values", v, 0.10)
+}
+
+func TestIRR_WithExplicitGuess(t *testing.T) {
+	// Same as basic but with explicit guess of 0.05
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, NumberVal(0.05)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR with guess", v, 0.1634)
+}
+
+func TestIRR_DefaultGuess(t *testing.T) {
+	// Without guess, default is 0.1. Same result as with explicit guess.
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v1, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2, err := fnIRR([]Value{arr, NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(v1.Num-v2.Num) > 1e-9 {
+		t.Errorf("IRR default guess: results differ: %f vs %f", v1.Num, v2.Num)
+	}
+}
+
+func TestIRR_HighReturnRate(t *testing.T) {
+	// Invest -100, get 500 back → IRR = 4.0 (400%)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-100), NumberVal(500)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR high return", v, 4.0)
+}
+
+func TestIRR_LowReturnRate(t *testing.T) {
+	// Invest -10000, get 10010 back in 10 periods → very low IRR
+	flows := make([]Value, 11)
+	flows[0] = NumberVal(-10000)
+	for i := 1; i <= 10; i++ {
+		flows[i] = NumberVal(1001)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// IRR should be very close to 0, slightly positive
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR low return: expected number, got %v", v.Type)
+	}
+	if v.Num < -0.01 || v.Num > 0.02 {
+		t.Errorf("IRR low return: got %f, want near 0", v.Num)
+	}
+}
+
+func TestIRR_BreakEven(t *testing.T) {
+	// Invest -1000, return 1000 → IRR = 0
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR break even", v, 0.0)
+}
+
+func TestIRR_MonthlyCashFlows(t *testing.T) {
+	// Monthly: invest -10000, receive 900/month for 12 months
+	flows := make([]Value, 13)
+	flows[0] = NumberVal(-10000)
+	for i := 1; i <= 12; i++ {
+		flows[i] = NumberVal(900)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Monthly IRR for these cash flows (~1.6% per month)
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR monthly: expected number, got %v", v.Type)
+	}
+	if v.Num < 0.01 || v.Num > 0.05 {
+		t.Errorf("IRR monthly: got %f, want between 0.01 and 0.05", v.Num)
+	}
+}
+
+func TestIRR_IrregularCashFlows(t *testing.T) {
+	// Irregular: negative initial, mix of positive and negative later
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(1000), NumberVal(-500), NumberVal(3000), NumberVal(4000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR irregular: expected number, got %v", v.Type)
+	}
+	// Just verify it returns a valid rate (positive for profitable flows)
+	if v.Num < 0 || v.Num > 1 {
+		t.Errorf("IRR irregular: got %f, want reasonable rate", v.Num)
+	}
+}
+
+func TestIRR_LargeNumberOfPeriods(t *testing.T) {
+	// 50 periods: invest -50000, receive 1200/period
+	flows := make([]Value, 51)
+	flows[0] = NumberVal(-50000)
+	for i := 1; i <= 50; i++ {
+		flows[i] = NumberVal(1200)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR large periods: expected number, got %v", v.Type)
+	}
+	// Should be a small positive rate (~1.2%)
+	if v.Num < 0 || v.Num > 0.05 {
+		t.Errorf("IRR large periods: got %f, want small positive rate", v.Num)
+	}
+}
+
+func TestIRR_TooFewArgs(t *testing.T) {
+	v, _ := fnIRR([]Value{})
+	assertError(t, "IRR too few args", v)
+}
+
+func TestIRR_TooManyArgs(t *testing.T) {
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1100)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr, NumberVal(0.1), NumberVal(0.2)})
+	assertError(t, "IRR too many args", v)
+}
+
+func TestIRR_ExcelDocExample1(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000}) = -2.1% (-0.021)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000), NumberVal(18000), NumberVal(21000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 4yr", v, -0.02)
+}
+
+func TestIRR_ExcelDocExample2(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000, 26000}) = 8.7% (0.087)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000), NumberVal(18000), NumberVal(21000), NumberVal(26000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 5yr", v, 0.087)
+}
+
+func TestIRR_ExcelDocExample3(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000}, -10%) = -44.4% (-0.444)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, NumberVal(-0.10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 2yr with guess", v, -0.44)
+}
+
+func TestIRR_EmptyGuessIgnored(t *testing.T) {
+	// Empty guess should be treated as default (0.1)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, Value{Type: ValueEmpty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR empty guess", v, 0.1634)
+}
+
 // === SLN ===
 
 func TestSLN_Basic(t *testing.T) {
@@ -238,6 +2042,106 @@ func TestSLN_Basic(t *testing.T) {
 func TestSLN_ZeroLife(t *testing.T) {
 	v, _ := fnSLN(numArgs(30000, 7500, 0))
 	assertError(t, "SLN zero life", v)
+}
+
+func TestSLN_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Excel documentation example
+		{"excel doc example", numArgs(30000, 7500, 10), 2250, false},
+		// Zero salvage value
+		{"zero salvage", numArgs(30000, 0, 10), 3000, false},
+		// Salvage equals cost → zero depreciation
+		{"salvage equals cost", numArgs(10000, 10000, 5), 0, false},
+		// Salvage > cost → negative depreciation
+		{"salvage greater than cost", numArgs(5000, 8000, 10), -300, false},
+		// Life = 1
+		{"life is 1", numArgs(10000, 2000, 1), 8000, false},
+		// Large values
+		{"large values", numArgs(1e9, 1e6, 20), 4.995e7, false},
+		// Small decimals
+		{"small decimals", numArgs(0.50, 0.10, 4), 0.10, false},
+		// Zero cost
+		{"zero cost", numArgs(0, 0, 10), 0, false},
+		// Zero cost with salvage → negative
+		{"zero cost with salvage", numArgs(0, 5000, 10), -500, false},
+		// Negative cost
+		{"negative cost", numArgs(-10000, 2000, 5), -2400, false},
+		// Fractional life
+		{"fractional life", numArgs(10000, 0, 2.5), 4000, false},
+		// Large life
+		{"large life", numArgs(10000, 0, 1000), 10, false},
+		// Negative salvage
+		{"negative salvage", numArgs(10000, -2000, 5), 2400, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestSLN_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		// Life = 0 → #DIV/0!
+		{"life zero", numArgs(30000, 7500, 0)},
+		// Too few args
+		{"too few args 0", []Value{}},
+		{"too few args 1", numArgs(30000)},
+		{"too few args 2", numArgs(30000, 7500)},
+		// Too many args
+		{"too many args", numArgs(30000, 7500, 10, 1)},
+		// Non-numeric string
+		{"non-numeric cost", []Value{StringVal("abc"), NumberVal(7500), NumberVal(10)}},
+		{"non-numeric salvage", []Value{NumberVal(30000), StringVal("xyz"), NumberVal(10)}},
+		{"non-numeric life", []Value{NumberVal(30000), NumberVal(7500), StringVal("abc")}},
+		// Error propagation
+		{"error in cost", []Value{ErrorVal(ErrValNUM), NumberVal(7500), NumberVal(10)}},
+		{"error in salvage", []Value{NumberVal(30000), ErrorVal(ErrValDIV0), NumberVal(10)}},
+		{"error in life", []Value{NumberVal(30000), NumberVal(7500), ErrorVal(ErrValVALUE)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestSLN_StringCoercion(t *testing.T) {
+	// Numeric strings should be coerced
+	v, err := fnSLN([]Value{StringVal("30000"), StringVal("7500"), StringVal("10")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SLN string coercion", v, 2250)
+}
+
+func TestSLN_BoolCoercion(t *testing.T) {
+	// TRUE=1, FALSE=0: SLN(TRUE, FALSE, TRUE) = SLN(1,0,1) = 1
+	v, err := fnSLN([]Value{boolArg(true), boolArg(false), boolArg(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SLN bool coercion", v, 1)
 }
 
 // === XNPV ===
@@ -263,6 +2167,352 @@ func TestXNPV_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "XNPV basic", v, 2086.65)
+}
+
+func TestXNPV_ExcelDocExample(t *testing.T) {
+	// From Excel documentation: XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, dates) = $2,086.65
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.09), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV excel doc", v, 2086.65)
+}
+
+func TestXNPV_ZeroRate(t *testing.T) {
+	// With rate=0, XNPV should equal the sum of all values
+	// sum = -10000 + 2750 + 4250 + 3250 + 2750 = 3000
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV zero rate", v, 3000.0)
+}
+
+func TestXNPV_HighRate(t *testing.T) {
+	// High discount rate reduces future cash flows significantly
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(5.0), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// At rate=5 (500%), future values are heavily discounted
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV high rate: expected number, got type %v", v.Type)
+	}
+	// Result should be negative since future cash flows are nearly worthless
+	if v.Num >= 0 {
+		t.Fatalf("XNPV high rate: expected negative result, got %f", v.Num)
+	}
+}
+
+func TestXNPV_MultipleCashFlows(t *testing.T) {
+	// 7 cash flows: investment + 6 returns over 2 years
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-50000), NumberVal(8000), NumberVal(9500), NumberVal(10000), NumberVal(11000), NumberVal(12000), NumberVal(13000)},
+		},
+	}
+	// Quarterly payments starting 2020-01-01 (serial 43831)
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(43831), NumberVal(43922), NumberVal(44013), NumberVal(44105), NumberVal(44197), NumberVal(44287), NumberVal(44378)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV multiple cash flows: expected number, got type %v", v.Type)
+	}
+}
+
+func TestXNPV_AllPositiveValues(t *testing.T) {
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV all positive: expected number, got type %v", v.Type)
+	}
+	if v.Num <= 0 {
+		t.Fatalf("XNPV all positive: expected positive, got %f", v.Num)
+	}
+}
+
+func TestXNPV_AllNegativeValues(t *testing.T) {
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(-2000), NumberVal(-3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV all negative: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Fatalf("XNPV all negative: expected negative, got %f", v.Num)
+	}
+}
+
+func TestXNPV_MixedCashFlows(t *testing.T) {
+	// Alternating positive and negative
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(3000), NumberVal(-1000), NumberVal(4000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630), NumberVal(39813), NumberVal(39995)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.08), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV mixed: expected number, got type %v", v.Type)
+	}
+}
+
+func TestXNPV_MonthlyCashFlows(t *testing.T) {
+	// Monthly payments for 6 months starting 2008-01-01
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-6000), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100)},
+		},
+	}
+	// ~monthly intervals from serial 39448
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39479), NumberVal(39508), NumberVal(39539), NumberVal(39569), NumberVal(39600), NumberVal(39630)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV monthly: expected number, got type %v", v.Type)
+	}
+	// With 6 payments of 1100 = 6600 total vs 6000 investment, result should be positive
+	if v.Num <= 0 {
+		t.Fatalf("XNPV monthly: expected positive, got %f", v.Num)
+	}
+}
+
+func TestXNPV_SingleCashFlow(t *testing.T) {
+	// Single cash flow: XNPV = value / (1+rate)^0 = value
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(5000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV single cash flow", v, 5000.0)
+}
+
+func TestXNPV_RateNeg1(t *testing.T) {
+	// rate = -1 → #NUM! (division by zero in denominator)
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(-1), vals, dates})
+	assertError(t, "XNPV rate=-1", v)
+}
+
+func TestXNPV_RateBelowNeg1(t *testing.T) {
+	// rate < -1 → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(-2), vals, dates})
+	assertError(t, "XNPV rate<-1", v)
+}
+
+func TestXNPV_MismatchedArrays(t *testing.T) {
+	// Different number of values and dates → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	assertError(t, "XNPV mismatched arrays", v)
+}
+
+func TestXNPV_TooFewArgs(t *testing.T) {
+	v, _ := fnXNPV([]Value{NumberVal(0.05), NumberVal(100)})
+	assertError(t, "XNPV too few args", v)
+}
+
+func TestXNPV_TooManyArgs(t *testing.T) {
+	v, _ := fnXNPV([]Value{NumberVal(0.05), NumberVal(100), NumberVal(39448), NumberVal(99)})
+	assertError(t, "XNPV too many args", v)
+}
+
+func TestXNPV_DatesNotInOrder(t *testing.T) {
+	// Dates not in chronological order — should still work per Excel spec
+	// "All other dates must be later than this date, but they may occur in any order."
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(4250), NumberVal(2750), NumberVal(2750), NumberVal(3250)},
+		},
+	}
+	// Shuffled dates (but all after first date)
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39751), NumberVal(39508), NumberVal(39904), NumberVal(39859)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.09), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same cash flows as basic test, just reordered — result should match
+	assertClose(t, "XNPV dates not in order", v, 2086.65)
+}
+
+func TestXNPV_NegativeRate(t *testing.T) {
+	// Negative rate between -1 and 0: future values are worth MORE than present
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(-0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV negative rate: expected number, got type %v", v.Type)
+	}
+	// With negative rate, NPV should be higher than the zero-rate sum of 3000
+	if v.Num <= 3000 {
+		t.Fatalf("XNPV negative rate: expected > 3000, got %f", v.Num)
+	}
+}
+
+func TestXNPV_EmptyArrays(t *testing.T) {
+	// Empty arrays → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{{}},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{{}},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	assertError(t, "XNPV empty arrays", v)
 }
 
 // === XIRR ===
@@ -1654,6 +3904,372 @@ func TestXIRR_NegativeRate(t *testing.T) {
 	}
 	if v.Num >= 0 {
 		t.Errorf("XIRR negative rate: expected negative rate, got %f", v.Num)
+	}
+}
+
+func TestXIRR_ExcelDocExample(t *testing.T) {
+	// Excel documentation example: XIRR(A3:A7, B3:B7, 0.1) = 0.373362535
+	// Values: -10000, 2750, 4250, 3250, 2750
+	// Dates: 1-Jan-08, 1-Mar-08, 30-Oct-08, 15-Feb-09, 1-Apr-09
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR excel doc: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-0.373362535) > 0.0001 {
+		t.Errorf("XIRR excel doc: got %f, want ~0.3734", v.Num)
+	}
+}
+
+func TestXIRR_WithoutGuess(t *testing.T) {
+	// Same as basic but without guess; default 0.1 should be used.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XIRR without guess", v, 0.3734)
+}
+
+func TestXIRR_WithExplicitGuess(t *testing.T) {
+	// Provide guess=0.5, should still converge to same answer.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(0.5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XIRR with guess 0.5", v, 0.3734)
+}
+
+func TestXIRR_AllPositive(t *testing.T) {
+	// All positive cash flows should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR all positive", v)
+}
+
+func TestXIRR_AllNegative(t *testing.T) {
+	// All negative cash flows should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(-2000), NumberVal(-3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR all negative", v)
+}
+
+func TestXIRR_SingleCashFlow(t *testing.T) {
+	// Single cash flow (len < 2) should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR single cash flow", v)
+}
+
+func TestXIRR_DatesOutOfOrder(t *testing.T) {
+	// Dates not in chronological order should still work.
+	// Same data as basic but with shuffled order.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(4250), NumberVal(-10000), NumberVal(2750), NumberVal(2750), NumberVal(3250)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39751), NumberVal(39448), NumberVal(39508), NumberVal(39904), NumberVal(39859)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR dates out of order: expected number, got type %v", v.Type)
+	}
+	// Should converge to approximately the same result as the sorted case.
+	if math.Abs(v.Num-0.3734) > 0.01 {
+		t.Errorf("XIRR dates out of order: got %f, want ~0.3734", v.Num)
+	}
+}
+
+func TestXIRR_HighReturn(t *testing.T) {
+	// Investment that doubles in 6 months: ~300% annualized.
+	// -1000 on day 0, +2000 on day 182 (~6 months).
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR high return: expected number, got type %v", v.Type)
+	}
+	// Annualized return for doubling in ~182 days is very high (>100%).
+	if v.Num <= 1.0 {
+		t.Errorf("XIRR high return: expected rate > 1.0, got %f", v.Num)
+	}
+}
+
+func TestXIRR_LowReturn(t *testing.T) {
+	// Small return: -10000 invested, 10100 returned after 1 year (~1%).
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(10100)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR low return: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-0.01) > 0.005 {
+		t.Errorf("XIRR low return: got %f, want ~0.01", v.Num)
+	}
+}
+
+func TestXIRR_MonthlyCashFlows(t *testing.T) {
+	// Monthly cash flows over 12 months.
+	// -12000 initial investment, then 1100 each month for 12 months.
+	// Dates are approximately monthly starting from serial 39448 (Jan 1, 2008).
+	cfVals := []Value{NumberVal(-12000)}
+	cfDates := []Value{NumberVal(39448)}
+	for i := 1; i <= 12; i++ {
+		cfVals = append(cfVals, NumberVal(1100))
+		cfDates = append(cfDates, NumberVal(39448+float64(i*30)))
+	}
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{cfVals},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{cfDates},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR monthly: expected number, got type %v", v.Type)
+	}
+	// 12 payments of 1100 = 13200 on 12000 investment; positive return expected.
+	if v.Num <= 0 {
+		t.Errorf("XIRR monthly: expected positive rate, got %f", v.Num)
+	}
+}
+
+func TestXIRR_TooFewArgs(t *testing.T) {
+	// Only one argument should return #VALUE!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(5000)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals})
+	assertError(t, "XIRR too few args", v)
+}
+
+func TestXIRR_TooManyArgs(t *testing.T) {
+	// Four arguments should return #VALUE!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(5000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates, NumberVal(0.1), NumberVal(0.2)})
+	assertError(t, "XIRR too many args", v)
+}
+
+func TestXIRR_MismatchedArraySizes(t *testing.T) {
+	// Values has 3 elements, dates has 2 → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR mismatched arrays", v)
+}
+
+func TestXIRR_MultipleCashFlows(t *testing.T) {
+	// Multiple irregular cash flows.
+	// -5000 initial, then small returns over 2 years.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(500), NumberVal(700), NumberVal(800), NumberVal(1000), NumberVal(1200), NumberVal(1500)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39539), NumberVal(39630), NumberVal(39722), NumberVal(39813), NumberVal(39904), NumberVal(39995)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR multiple cash flows: expected number, got type %v", v.Type)
+	}
+	// Total returns = 5700 on 5000, should be a positive rate.
+	if v.Num <= 0 {
+		t.Errorf("XIRR multiple cash flows: expected positive rate, got %f", v.Num)
+	}
+}
+
+func TestXIRR_BreakEven(t *testing.T) {
+	// Invest -10000, get back exactly 10000 after 1 year → rate ≈ 0.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(10000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR break even: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num) > 0.01 {
+		t.Errorf("XIRR break even: got %f, want ~0.0", v.Num)
+	}
+}
+
+func TestXIRR_ZeroCashFlow(t *testing.T) {
+	// Include a zero cash flow in the middle; should still work.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(0), NumberVal(12000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR zero cash flow: expected number, got type %v", v.Type)
+	}
+	// 12000 return on 10000 in 1 year → ~20% return.
+	if math.Abs(v.Num-0.20) > 0.02 {
+		t.Errorf("XIRR zero cash flow: got %f, want ~0.20", v.Num)
 	}
 }
 

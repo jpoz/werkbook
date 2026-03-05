@@ -99,6 +99,207 @@ func TestCountBlank(t *testing.T) {
 			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
 		}
 	})
+
+	t.Run("all empty range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("COUNTBLANK: got %g, want 5", got.Num)
+		}
+	})
+
+	t.Run("no empty cells returns 0", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("zero is not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("boolean FALSE is not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(false),
+				{Col: 1, Row: 2}: BoolVal(true),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("strings are not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+				{Col: 1, Row: 2}: StringVal("world"),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("2D range with mixed content", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(6),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(4),
+				// B1 empty
+				{Col: 2, Row: 2}: NumberVal(27),
+				{Col: 2, Row: 3}: NumberVal(34),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("COUNTBLANK: got %g, want 2", got.Num)
+		}
+	})
+
+	t.Run("single non-empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("single empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
+		}
+	})
+
+	t.Run("large range with gaps", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}:  NumberVal(1),
+				{Col: 1, Row: 5}:  NumberVal(5),
+				{Col: 1, Row: 10}: NumberVal(10),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("COUNTBLANK: got %g, want 7", got.Num)
+		}
+	})
+
+	t.Run("mix of empty strings and missing cells", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+				// A2 missing
+				{Col: 1, Row: 3}: StringVal(""),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("COUNTBLANK: got %g, want 3", got.Num)
+		}
+	})
+
+	t.Run("no args returns VALUE error", func(t *testing.T) {
+		got, err := fnCOUNTBLANK([]Value{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		got, err := fnCOUNTBLANK([]Value{NumberVal(1), NumberVal(2)})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -181,6 +382,215 @@ func TestCOUNTBooleanInRange(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// COUNT – comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCOUNT(t *testing.T) {
+	tests := []struct {
+		name     string
+		formula  string
+		cells    map[CellAddr]Value
+		expected float64
+	}{
+		{
+			name:    "all numbers",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+			expected: 3,
+		},
+		{
+			name:    "strings not counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+				{Col: 1, Row: 2}: StringVal("world"),
+				{Col: 1, Row: 3}: StringVal("foo"),
+			},
+			expected: 0,
+		},
+		{
+			name:    "booleans in range not counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+			expected: 1,
+		},
+		{
+			name:    "empty cells not counted",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(30),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(50),
+			},
+			expected: 3,
+		},
+		{
+			name:    "all strings yields zero",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a"),
+				{Col: 1, Row: 2}: StringVal("b"),
+				{Col: 1, Row: 3}: StringVal("c"),
+			},
+			expected: 0,
+		},
+		{
+			name:    "mixed types only numbers counted",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(100),
+				{Col: 1, Row: 2}: StringVal("text"),
+				{Col: 1, Row: 3}: BoolVal(true),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(200),
+			},
+			expected: 2,
+		},
+		{
+			name:    "zero is counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 1, Row: 3}: NumberVal(1),
+			},
+			expected: 3,
+		},
+		{
+			name:    "error values not counted in range",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+			expected: 2,
+		},
+		{
+			name:    "multiple ranges",
+			formula: "COUNT(A1:A2,B1:B2)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: StringVal("x"),
+			},
+			expected: 3,
+		},
+		{
+			name:    "scalar number argument counted",
+			formula: "COUNT(42)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar string not counted",
+			formula: `COUNT("hello")`,
+			cells:   map[CellAddr]Value{},
+			expected: 0,
+		},
+		{
+			name:    "scalar boolean TRUE counted",
+			formula: "COUNT(TRUE)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar boolean FALSE counted",
+			formula: "COUNT(FALSE)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar string number counted",
+			formula: `COUNT("5")`,
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar non-numeric string not counted",
+			formula: `COUNT("abc")`,
+			cells:   map[CellAddr]Value{},
+			expected: 0,
+		},
+		{
+			name:    "range with gaps",
+			formula: "COUNT(A1:A10)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}:  NumberVal(1),
+				{Col: 1, Row: 5}:  NumberVal(5),
+				{Col: 1, Row: 10}: NumberVal(10),
+			},
+			expected: 3,
+		},
+		{
+			name:    "negative numbers counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-1),
+				{Col: 1, Row: 2}: NumberVal(-99.5),
+				{Col: 1, Row: 3}: NumberVal(0),
+			},
+			expected: 3,
+		},
+		{
+			name:    "excel doc example COUNT(A2:A6) dates and numbers",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790), // 12/8/2008 as serial
+				{Col: 1, Row: 2}: NumberVal(19),
+				{Col: 1, Row: 3}: NumberVal(22.24),
+				{Col: 1, Row: 4}: BoolVal(true),
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0),
+			},
+			expected: 3,
+		},
+		{
+			name:    "excel doc example with extra scalar",
+			formula: "COUNT(A1:A5,2)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790),
+				{Col: 1, Row: 2}: NumberVal(19),
+				{Col: 1, Row: 3}: NumberVal(22.24),
+				{Col: 1, Row: 4}: BoolVal(true),
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0),
+			},
+			expected: 4,
+		},
+		{
+			name:    "mixed scalar args",
+			formula: `COUNT(1,2,"hi",TRUE,"3")`,
+			cells:   map[CellAddr]Value{},
+			expected: 4, // 1, 2, TRUE, "3"
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := &mockResolver{cells: tc.cells}
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.expected {
+				t.Errorf("%s: got %v (%g), want %g", tc.formula, got.Type, got.Num, tc.expected)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTIF
 // ---------------------------------------------------------------------------
 
@@ -228,6 +638,375 @@ func TestSUMPRODUCT(t *testing.T) {
 	if got.Type != ValueNumber || got.Num != 32 {
 		t.Errorf("SUMPRODUCT: got %g, want 32", got.Num)
 	}
+}
+
+func TestSUMPRODUCT_Comprehensive(t *testing.T) {
+	t.Run("basic two arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(5),
+				{Col: 2, Row: 2}: NumberVal(7),
+			},
+		}
+		// 2*5 + 3*7 = 10 + 21 = 31
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 31 {
+			t.Errorf("got %v, want 31", got)
+		}
+	})
+
+	t.Run("three arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 3, Row: 1}: NumberVal(5),
+				{Col: 3, Row: 2}: NumberVal(6),
+			},
+		}
+		// 1*3*5 + 2*4*6 = 15 + 48 = 63
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2,C1:C2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 63 {
+			t.Errorf("got %v, want 63", got)
+		}
+	})
+
+	t.Run("single array just sums", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		// single array: product of one element is itself, so sum = 10+20+30 = 60
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 60 {
+			t.Errorf("got %v, want 60", got)
+		}
+	})
+
+	t.Run("arrays with zeros", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 2, Row: 2}: NumberVal(7),
+				{Col: 2, Row: 3}: NumberVal(0),
+			},
+		}
+		// 5*2 + 0*7 + 3*0 = 10 + 0 + 0 = 10
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("arrays with negative numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-1),
+				{Col: 1, Row: 2}: NumberVal(-2),
+				{Col: 2, Row: 1}: NumberVal(-3),
+				{Col: 2, Row: 2}: NumberVal(-4),
+			},
+		}
+		// (-1)*(-3) + (-2)*(-4) = 3 + 8 = 11
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 11 {
+			t.Errorf("got %v, want 11", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: NumberVal(-2),
+				{Col: 2, Row: 1}: NumberVal(-4),
+				{Col: 2, Row: 2}: NumberVal(5),
+			},
+		}
+		// 3*(-4) + (-2)*5 = -12 + -10 = -22
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -22 {
+			t.Errorf("got %v, want -22", got)
+		}
+	})
+
+	t.Run("single element arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(7),
+				{Col: 2, Row: 1}: NumberVal(8),
+			},
+		}
+		// 7*8 = 56
+		cf := evalCompile(t, "SUMPRODUCT(A1:A1,B1:B1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 56 {
+			t.Errorf("got %v, want 56", got)
+		}
+	})
+
+	t.Run("different size arrays returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(4),
+				{Col: 2, Row: 2}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("no args returns VALUE error", func(t *testing.T) {
+		got, err := fnSUMPRODUCT([]Value{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("non-array arg returns VALUE error", func(t *testing.T) {
+		got, err := fnSUMPRODUCT([]Value{NumberVal(5)})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("text in array treated as zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+			},
+		}
+		// 2*3 + 0*4 = 6 + 0 = 6  (text coerced to 0)
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 6 {
+			t.Errorf("got %v, want 6", got)
+		}
+	})
+
+	t.Run("boolean TRUE treated as 1 in array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+			},
+		}
+		// 1*10 + 0*20 = 10
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("all zeros returns zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 2, Row: 1}: NumberVal(0),
+				{Col: 2, Row: 2}: NumberVal(0),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("large values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1e6),
+				{Col: 1, Row: 2}: NumberVal(2e6),
+				{Col: 2, Row: 1}: NumberVal(3e6),
+				{Col: 2, Row: 2}: NumberVal(4e6),
+			},
+		}
+		// 1e6*3e6 + 2e6*4e6 = 3e12 + 8e12 = 1.1e13
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1.1e13 {
+			t.Errorf("got %v, want 1.1e13", got)
+		}
+	})
+
+	t.Run("single row range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 3, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(5),
+				{Col: 2, Row: 2}: NumberVal(6),
+				{Col: 3, Row: 2}: NumberVal(7),
+			},
+		}
+		// A1:C1 = {2,3,4}, A2:C2 = {5,6,7}
+		// 2*5 + 3*6 + 4*7 = 10 + 18 + 28 = 56
+		cf := evalCompile(t, "SUMPRODUCT(A1:C1,A2:C2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 56 {
+			t.Errorf("got %v, want 56", got)
+		}
+	})
+
+	t.Run("multi-row multi-col arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 3, Row: 1}: NumberVal(5),
+				{Col: 4, Row: 1}: NumberVal(6),
+				{Col: 3, Row: 2}: NumberVal(7),
+				{Col: 4, Row: 2}: NumberVal(8),
+			},
+		}
+		// A1:B2 = {{1,2},{3,4}}, C1:D2 = {{5,6},{7,8}}
+		// 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70
+		cf := evalCompile(t, "SUMPRODUCT(A1:B2,C1:D2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 70 {
+			t.Errorf("got %v, want 70", got)
+		}
+	})
+
+	t.Run("error value in array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("empty cells treated as zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				// A2 is empty
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+			},
+		}
+		// 5*3 + 0*4 = 15
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("fractional values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0.5),
+				{Col: 1, Row: 2}: NumberVal(1.5),
+				{Col: 2, Row: 1}: NumberVal(2.5),
+				{Col: 2, Row: 2}: NumberVal(3.5),
+			},
+		}
+		// 0.5*2.5 + 1.5*3.5 = 1.25 + 5.25 = 6.5
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 6.5 {
+			t.Errorf("got %v, want 6.5", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +1082,270 @@ func TestCOUNTA(t *testing.T) {
 	if got.Type != ValueNumber || got.Num != 1 {
 		t.Errorf("COUNTA scalar: got %g, want 1", got.Num)
 	}
+
+	// --- Additional comprehensive tests ---
+
+	// All numbers → count all
+	t.Run("all_numbers", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Zero is counted (not empty)
+	t.Run("zero_is_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Empty string "" IS counted by COUNTA
+	t.Run("empty_string_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+				{Col: 1, Row: 2}: StringVal("text"),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Boolean values are counted
+	t.Run("booleans_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Error values are counted
+	t.Run("errors_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 2}: ErrorVal(ErrValVALUE),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Mixed types: numbers, strings, booleans, errors
+	t.Run("mixed_types", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+				{Col: 1, Row: 2}: StringVal("abc"),
+				{Col: 1, Row: 3}: BoolVal(false),
+				{Col: 1, Row: 4}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 5}: NumberVal(0),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Range with gaps (sparse cells)
+	t.Run("range_with_gaps", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(3),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Multiple ranges
+	t.Run("multiple_ranges", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: StringVal("x"),
+				{Col: 2, Row: 2}: StringVal("y"),
+				{Col: 2, Row: 3}: StringVal("z"),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2,B1:B3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Multiple scalar arguments
+	t.Run("multiple_scalars", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, `COUNTA(1,2,3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Mix of scalars and ranges
+	t.Run("scalars_and_ranges", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, `COUNTA(A1:A2,"extra",99)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %g, want 4", got.Num)
+		}
+	})
+
+	// Single cell reference (non-empty)
+	t.Run("single_cell_nonempty", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(99),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
+
+	// Single cell reference (empty)
+	t.Run("single_cell_empty", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "COUNTA(A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %g, want 0", got.Num)
+		}
+	})
+
+	// Scalar boolean TRUE
+	t.Run("scalar_boolean", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "COUNTA(TRUE)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
+
+	// Excel doc example: date, number, decimal, TRUE, #DIV/0! → 5
+	t.Run("excel_doc_example", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790),   // date serial
+				{Col: 1, Row: 2}: NumberVal(19),       // integer
+				{Col: 1, Row: 3}: NumberVal(22.24),    // decimal
+				{Col: 1, Row: 4}: BoolVal(true),       // TRUE
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0), // #DIV/0!
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Scalar empty string "" is counted
+	t.Run("scalar_empty_string", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, `COUNTA("")`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -381,6 +1424,427 @@ func TestSUMIFSArgErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SUMIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSUMIFS_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+			// Criteria range (B) — scores
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `SUMIFS(A1:A5,B1:B5,">30")`, 90},       // 40+50
+		{"less than", `SUMIFS(A1:A5,B1:B5,"<30")`, 30},           // 10+20
+		{"greater or equal", `SUMIFS(A1:A5,B1:B5,">=30")`, 120},  // 30+40+50
+		{"less or equal", `SUMIFS(A1:A5,B1:B5,"<=30")`, 60},      // 10+20+30
+		{"equal", `SUMIFS(A1:A5,B1:B5,"=30")`, 30},               // 30
+		{"not equal", `SUMIFS(A1:A5,B1:B5,"<>30")`, 120},         // 10+20+40+50
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("got %v, want %g", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSUMIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 1}: StringVal("apple"),
+			{Col: 2, Row: 2}: StringVal("banana"),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A2,B1:B2,"cherry")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("SUMIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestSUMIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(15),
+			{Col: 2, Row: 3}: NumberVal(25),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Errorf("SUMIFS all match: got %v, want 60", got)
+	}
+}
+
+func TestSUMIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Bananas"),
+		},
+	}
+
+	// Wildcard * matches any sequence of characters
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"A*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples(5) + Apples(4) + Artichokes(15) = 24
+	if got.Type != ValueNumber || got.Num != 24 {
+		t.Errorf("SUMIFS wildcard *: got %v, want 24", got)
+	}
+}
+
+func TestSUMIFS_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 1}: StringVal("cat"),
+			{Col: 2, Row: 2}: StringVal("car"),
+			{Col: 2, Row: 3}: StringVal("cab"),
+			{Col: 2, Row: 4}: StringVal("dogs"),
+		},
+	}
+
+	// ? matches any single character: "ca?" matches cat, car, cab but not dogs
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10+20+30 = 60
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Errorf("SUMIFS wildcard ?: got %v, want 60", got)
+	}
+}
+
+func TestSUMIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: StringVal("Apple"),
+			{Col: 2, Row: 2}: StringVal("APPLE"),
+			{Col: 2, Row: 3}: StringVal("apple"),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All three should match case-insensitively: 100+200+300 = 600
+	if got.Type != ValueNumber || got.Num != 600 {
+		t.Errorf("SUMIFS case insensitive: got %v, want 600", got)
+	}
+}
+
+func TestSUMIFS_EmptyCellsInSumRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// A2 is empty (not in map)
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Empty cells in sum range contribute 0: 10+0+30 = 40
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Errorf("SUMIFS empty sum cells: got %v, want 40", got)
+	}
+}
+
+func TestSUMIFS_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("text"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// text is not numeric so CoerceNum skips it, TRUE coerces to 1: 10+0+30+1 = 41
+	if got.Type != ValueNumber || got.Num != 41 {
+		t.Errorf("SUMIFS mixed types: got %v, want 41", got)
+	}
+}
+
+func TestSUMIFS_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Only 1 arg — need at least 3
+	cf := evalCompile(t, "SUMIFS(A1:A3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("SUMIFS too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIFS_EvenArgsAfterSumRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// 4 args total: sum_range + 3 => (4-1)%2 != 0 => error
+	cf := evalCompile(t, `SUMIFS(A1:A1,B1:B1,1,C1:C1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("SUMIFS even args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIFS_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Exact numeric match: criteria=5 matches rows 1 and 3
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,5)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIFS numeric criteria: got %v, want 400", got)
+	}
+}
+
+func TestSUMIFS_BooleanCriteriaRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: BoolVal(true),
+			{Col: 2, Row: 2}: BoolVal(false),
+			{Col: 2, Row: 3}: BoolVal(true),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match TRUE: 10+30 = 40
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Errorf("SUMIFS boolean criteria: got %v, want 40", got)
+	}
+}
+
+func TestSUMIFS_StringCriteriaNotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Carrots"),
+		},
+	}
+
+	// Sum where product is NOT Bananas
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,"<>Bananas")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 5+10 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("SUMIFS not-equal string: got %v, want 15", got)
+	}
+}
+
+func TestSUMIFS_MultipleCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A): quantities
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(22),
+			{Col: 1, Row: 6}: NumberVal(12),
+			// Product (B)
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Artichokes"),
+			{Col: 2, Row: 5}: StringVal("Bananas"),
+			{Col: 2, Row: 6}: StringVal("Bananas"),
+			// Salesperson (C)
+			{Col: 3, Row: 1}: StringVal("Tom"),
+			{Col: 3, Row: 2}: StringVal("Sarah"),
+			{Col: 3, Row: 3}: StringVal("Tom"),
+			{Col: 3, Row: 4}: StringVal("Sarah"),
+			{Col: 3, Row: 5}: StringVal("Tom"),
+			{Col: 3, Row: 6}: StringVal("Sarah"),
+		},
+	}
+
+	// Sum where product starts with "A*" AND salesperson is "Tom"
+	cf := evalCompile(t, `SUMIFS(A1:A6,B1:B6,"A*",C1:C6,"Tom")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples/Tom(5) + Artichokes/Tom(15) = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("SUMIFS multiple criteria: got %v, want 20", got)
+	}
+}
+
+func TestSUMIFS_DateSerialNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A): amounts
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			// Date range (B): Excel serial numbers
+			// 44927 = 2023-01-01, 44958 = 2023-02-01, 44986 = 2023-03-01
+			{Col: 2, Row: 1}: NumberVal(44927),
+			{Col: 2, Row: 2}: NumberVal(44958),
+			{Col: 2, Row: 3}: NumberVal(44986),
+		},
+	}
+
+	// Sum amounts where date > 2023-01-15 (serial 44942)
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,">44942")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 44958 and 44986 > 44942: 200+300 = 500
+	if got.Type != ValueNumber || got.Num != 500 {
+		t.Errorf("SUMIFS date serials: got %v, want 500", got)
+	}
+}
+
+func TestSUMIFS_ThreeCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A)
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			// Criteria range 1 (B) — region
+			{Col: 2, Row: 1}: StringVal("East"),
+			{Col: 2, Row: 2}: StringVal("East"),
+			{Col: 2, Row: 3}: StringVal("West"),
+			{Col: 2, Row: 4}: StringVal("East"),
+			// Criteria range 2 (C) — product
+			{Col: 3, Row: 1}: StringVal("Widget"),
+			{Col: 3, Row: 2}: StringVal("Gadget"),
+			{Col: 3, Row: 3}: StringVal("Widget"),
+			{Col: 3, Row: 4}: StringVal("Widget"),
+			// Criteria range 3 (D) — qty
+			{Col: 4, Row: 1}: NumberVal(10),
+			{Col: 4, Row: 2}: NumberVal(20),
+			{Col: 4, Row: 3}: NumberVal(30),
+			{Col: 4, Row: 4}: NumberVal(50),
+		},
+	}
+
+	// East AND Widget AND qty>10 => only row 4 (400)
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"East",C1:C4,"Widget",D1:D4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIFS three criteria: got %v, want 400", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTIFS — multiple criteria
 // ---------------------------------------------------------------------------
 
@@ -417,6 +1881,420 @@ func TestCOUNTIFS(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 2 {
 		t.Errorf("COUNTIFS single: got %g, want 2", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUNTIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCOUNTIFS_SingleCriteriaNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(2),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A5,2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS single number: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_ComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(15),
+			{Col: 1, Row: 5}: NumberVal(20),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    float64
+		label   string
+	}{
+		{`COUNTIFS(A1:A5,">5")`, 3, ">5"},
+		{`COUNTIFS(A1:A5,"<=10")`, 3, "<=10"},
+		{`COUNTIFS(A1:A5,"<>10")`, 4, "<>10"},
+		{`COUNTIFS(A1:A5,">=10")`, 3, ">=10"},
+		{`COUNTIFS(A1:A5,"<10")`, 2, "<10"},
+		{`COUNTIFS(A1:A5,"=10")`, 1, "=10"},
+	}
+	for _, tt := range tests {
+		cf := evalCompile(t, tt.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval %s: %v", tt.label, err)
+		}
+		if got.Type != ValueNumber || got.Num != tt.want {
+			t.Errorf("COUNTIFS %s: got %g, want %g", tt.label, got.Num, tt.want)
+		}
+	}
+}
+
+func TestCOUNTIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("COUNTIFS no matches: got %g, want 0", got.Num)
+	}
+}
+
+func TestCOUNTIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS all match: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MultipleCriteriaPairs(t *testing.T) {
+	// A = category, B = region, C = quantity
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("fruit"),
+			{Col: 2, Row: 1}: StringVal("east"),
+			{Col: 2, Row: 2}: StringVal("east"),
+			{Col: 2, Row: 3}: StringVal("west"),
+			{Col: 2, Row: 4}: StringVal("east"),
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(20),
+			{Col: 3, Row: 3}: NumberVal(30),
+			{Col: 3, Row: 4}: NumberVal(40),
+		},
+	}
+
+	// fruit AND east AND >5 => rows 1 (10) and 4 (40)
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"fruit",B1:B4,"east",C1:C4,">5")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS 3 pairs: got %g, want 2", got.Num)
+	}
+
+	// fruit AND west => row 3 only
+	cf = evalCompile(t, `COUNTIFS(A1:A4,"fruit",B1:B4,"west")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIFS fruit+west: got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple pie"),
+			{Col: 1, Row: 2}: StringVal("apple sauce"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 1, Row: 4}: StringVal("pineapple"),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"apple*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS wildcard *: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardQuestion(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cab"),
+			{Col: 1, Row: 4}: StringVal("cart"),
+		},
+	}
+	// "ca?" matches 3-char strings starting with "ca": cat, car, cab
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS wildcard ?: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("APPLE"),
+			{Col: 1, Row: 3}: StringVal("apple"),
+			{Col: 1, Row: 4}: StringVal("banana"),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS case-insensitive: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_EmptyCells(t *testing.T) {
+	// Rows 2 and 4 have no value in column A (empty)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+		},
+	}
+	// Count where A>0: only rows 1 and 3 have numeric values >0
+	cf := evalCompile(t, `COUNTIFS(A1:A4,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS empty cells: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_BooleanValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 4}: BoolVal(false),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS boolean TRUE: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 1, Row: 5}: StringVal("5"),
+		},
+	}
+	// Numeric criteria 5 matches NumberVal(5) and StringVal("5") (coerced)
+	cf := evalCompile(t, `COUNTIFS(A1:A5,5)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS mixed types: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_ErrorNoArgs(t *testing.T) {
+	cf := evalCompile(t, `COUNTIFS()`)
+	got, err := Eval(cf, &mockResolver{}, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("COUNTIFS no args: expected error, got type %v", got.Type)
+	}
+}
+
+func TestCOUNTIFS_ErrorOddArgs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A1,"=1",A1:A1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("COUNTIFS odd args: expected error, got type %v", got.Type)
+	}
+}
+
+func TestCOUNTIFS_DateSerialNumbers(t *testing.T) {
+	// Excel serial: 44197 = 2021-01-01, 44228 = 2021-02-01, 44256 = 2021-03-01
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(44197),
+			{Col: 1, Row: 2}: NumberVal(44228),
+			{Col: 1, Row: 3}: NumberVal(44256),
+			{Col: 1, Row: 4}: NumberVal(44300),
+		},
+	}
+	// Count dates after 2021-02-01 (serial > 44228)
+	cf := evalCompile(t, `COUNTIFS(A1:A4,">44228")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS date serials: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MultipleRangesAND(t *testing.T) {
+	// Test that all criteria pairs must match (AND logic)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("yes"),
+			{Col: 2, Row: 2}: StringVal("no"),
+			{Col: 2, Row: 3}: StringVal("yes"),
+		},
+	}
+	// A>15 AND B="yes" => only row 3 (30, yes)
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">15",B1:B3,"yes")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIFS AND logic: got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTIFS_SameRangeTwice(t *testing.T) {
+	// Use same range with two different criteria (between logic)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(15),
+			{Col: 1, Row: 5}: NumberVal(20),
+		},
+	}
+	// A>=5 AND A<=15 => rows 2,3,4
+	cf := evalCompile(t, `COUNTIFS(A1:A5,">=5",A1:A5,"<=15")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS same range twice: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_TextExact(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("yes"),
+			{Col: 1, Row: 2}: StringVal("Yes"),
+			{Col: 1, Row: 3}: StringVal("YES"),
+			{Col: 1, Row: 4}: StringVal("no"),
+			{Col: 1, Row: 5}: StringVal("yesss"),
+		},
+	}
+	// "yes" matches case-insensitively but must be exact (not "yesss")
+	cf := evalCompile(t, `COUNTIFS(A1:A5,"yes")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS text exact: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_NotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(0),
+			{Col: 1, Row: 4}: NumberVal(10),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"<>0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS <>0: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardWithCriteriaPair(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple"),
+			{Col: 1, Row: 2}: StringVal("apricot"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 1, Row: 4}: StringVal("avocado"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+	// A starts with "a" AND B>15
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"a*",B1:B4,">15")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// apricot (20>15) and avocado (40>15) => 2
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS wildcard+criteria: got %g, want 2", got.Num)
 	}
 }
 
@@ -475,6 +2353,373 @@ func TestAVERAGEIFWithSeparateRange(t *testing.T) {
 	// (100+300)/2 = 200
 	if got.Type != ValueNumber || got.Num != 200 {
 		t.Errorf("AVERAGEIF separate range: got %g, want 200", got.Num)
+	}
+}
+
+func TestAVERAGEIF_ComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `AVERAGEIF(A1:A5,">25")`, 40},           // 30+40+50 = 120/3
+		{"less than", `AVERAGEIF(A1:A5,"<25")`, 15},              // 10+20 = 30/2
+		{"greater or equal", `AVERAGEIF(A1:A5,">=30")`, 40},      // 30+40+50 = 120/3
+		{"less or equal", `AVERAGEIF(A1:A5,"<=20")`, 15},         // 10+20 = 30/2
+		{"equal operator", `AVERAGEIF(A1:A5,"=30")`, 30},         // 30/1
+		{"not equal", `AVERAGEIF(A1:A5,"<>30")`, 30},             // 10+20+40+50 = 120/4
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAVERAGEIF_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20+30)/3 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF all match: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(30),
+		},
+	}
+	// Numeric exact match: average cells equal to 10
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,10)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+10)/2 = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("AVERAGEIF numeric criteria: got %v, want 10", got)
+	}
+}
+
+func TestAVERAGEIF_StringExactMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple"),
+			{Col: 1, Row: 2}: StringVal("banana"),
+			{Col: 1, Row: 3}: StringVal("apple"),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(15),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (5+15)/2 = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("AVERAGEIF string exact: got %v, want 10", got)
+	}
+}
+
+func TestAVERAGEIF_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("APPLE"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF case insensitive: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple pie"),
+			{Col: 1, Row: 2}: StringVal("apple sauce"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple*",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF wildcard *: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_WildcardQuestion(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cart"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	// "ca?" matches "cat" and "car" (3 chars), not "cart" (4 chars)
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"ca?",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF wildcard ?: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_EmptyCellsIgnored(t *testing.T) {
+	// Empty cells in average_range should be ignored
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// {Col: 1, Row: 2} is empty
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">=0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only 10 and 30 match >=0 (empty cells don't match numeric criteria)
+	// (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF empty cells: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+		},
+	}
+	// ">5" only matches numeric values > 5
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,">5")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10 and 30 match, (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF mixed types: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_BooleanCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"TRUE",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (100+300)/2 = 200
+	if got.Type != ValueNumber || got.Num != 200 {
+		t.Errorf("AVERAGEIF boolean: got %v, want 200", got)
+	}
+}
+
+func TestAVERAGEIF_NoMatchDIV0(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("AVERAGEIF no match: got %v, want #DIV/0!", got)
+	}
+}
+
+func TestAVERAGEIF_StringNoMatchDIV0(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A2,"xyz",B1:B2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("AVERAGEIF string no match: got %v, want #DIV/0!", got)
+	}
+}
+
+func TestAVERAGEIF_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("AVERAGEIF too few args: got %v, want error", got)
+	}
+}
+
+func TestAVERAGEIF_AvgRangeSameSize(t *testing.T) {
+	// average_range and criteria_range are the same size
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">=2",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 2 and 3 match (>=2); avg of B2,B3 = (200+300)/2 = 250
+	if got.Type != ValueNumber || got.Num != 250 {
+		t.Errorf("AVERAGEIF same size ranges: got %v, want 250", got)
+	}
+}
+
+func TestAVERAGEIF_WithoutAvgRange(t *testing.T) {
+	// When average_range is omitted, the criteria_range is used for averaging
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(20),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,">8")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10+15+20 = 45, count=3, avg=15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF without avg_range: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_EqualStringOperator(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"=cat",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF =string: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_NotEqualString(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"<>cat",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only "dog" matches, avg = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF <>string: got %v, want 20", got)
 	}
 }
 
@@ -732,6 +2977,249 @@ func TestSUMIFMixedSignValues(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 0 {
 		t.Errorf("SUMIF no match: got %g, want 0", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SUMIF — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSUMIF_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `SUMIF(A1:A5,">30")`, 90},      // 40+50
+		{"less than", `SUMIF(A1:A5,"<30")`, 30},          // 10+20
+		{"greater or equal", `SUMIF(A1:A5,">=30")`, 120}, // 30+40+50
+		{"less or equal", `SUMIF(A1:A5,"<=30")`, 60},     // 10+20+30
+		{"equal", `SUMIF(A1:A5,"=30")`, 30},              // 30
+		{"not equal", `SUMIF(A1:A5,"<>30")`, 120},        // 10+20+40+50
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSUMIF_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("Apricot"),
+			{Col: 1, Row: 3}: StringVal("Banana"),
+			{Col: 1, Row: 4}: StringVal("Avocado"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A4,"A*",B1:B4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 70 {
+		t.Errorf("SUMIF wildcard *: got %v, want 70", got)
+	}
+}
+
+func TestSUMIF_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cart"),
+			{Col: 1, Row: 4}: StringVal("cab"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+
+	// "ca?" matches 3-char strings starting with "ca": cat, car, cab
+	cf := evalCompile(t, `SUMIF(A1:A4,"ca?",B1:B4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 70 {
+		t.Errorf("SUMIF wildcard ?: got %v, want 70", got)
+	}
+}
+
+func TestSUMIF_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("APPLE"),
+			{Col: 1, Row: 2}: StringVal("apple"),
+			{Col: 1, Row: 3}: StringVal("Apple"),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 600 {
+		t.Errorf("SUMIF case insensitive: got %v, want 600", got)
+	}
+}
+
+func TestSUMIF_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A3,5,B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIF numeric criteria: got %v, want 400", got)
+	}
+}
+
+func TestSUMIF_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	cf := evalCompile(t, "SUMIF(A1:A3)")
+	got, _ := Eval(cf, resolver, nil)
+	if got.Type != ValueError {
+		t.Errorf("SUMIF too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIF_TooManyArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	cf := evalCompile(t, "SUMIF(A1:A3,1,B1:B3,C1:C3)")
+	got, _ := Eval(cf, resolver, nil)
+	if got.Type != ValueError {
+		t.Errorf("SUMIF too many args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIF_ExcelDocExample(t *testing.T) {
+	// From Excel docs Example 1: property values and commissions
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100000),
+			{Col: 1, Row: 2}: NumberVal(200000),
+			{Col: 1, Row: 3}: NumberVal(300000),
+			{Col: 1, Row: 4}: NumberVal(400000),
+			{Col: 2, Row: 1}: NumberVal(7000),
+			{Col: 2, Row: 2}: NumberVal(14000),
+			{Col: 2, Row: 3}: NumberVal(21000),
+			{Col: 2, Row: 4}: NumberVal(28000),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"commissions over 160k", `SUMIF(A1:A4,">160000",B1:B4)`, 63000},
+		{"values over 160k", `SUMIF(A1:A4,">160000")`, 900000},
+		{"commissions for 300k", `SUMIF(A1:A4,300000,B1:B4)`, 21000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSUMIF_ExcelDocExample2(t *testing.T) {
+	// From Excel docs Example 2: categories and food sales
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Vegetables"),
+			{Col: 1, Row: 2}: StringVal("Vegetables"),
+			{Col: 1, Row: 3}: StringVal("Fruits"),
+			// Row 4: A4 is empty (Butter row with no category)
+			{Col: 1, Row: 5}: StringVal("Vegetables"),
+			{Col: 1, Row: 6}: StringVal("Fruits"),
+			{Col: 2, Row: 1}: StringVal("Tomatoes"),
+			{Col: 2, Row: 2}: StringVal("Celery"),
+			{Col: 2, Row: 3}: StringVal("Oranges"),
+			{Col: 2, Row: 4}: StringVal("Butter"),
+			{Col: 2, Row: 5}: StringVal("Carrots"),
+			{Col: 2, Row: 6}: StringVal("Apples"),
+			{Col: 3, Row: 1}: NumberVal(2300),
+			{Col: 3, Row: 2}: NumberVal(5500),
+			{Col: 3, Row: 3}: NumberVal(800),
+			{Col: 3, Row: 4}: NumberVal(400),
+			{Col: 3, Row: 5}: NumberVal(4200),
+			{Col: 3, Row: 6}: NumberVal(1200),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"fruits", `SUMIF(A1:A6,"Fruits",C1:C6)`, 2000},
+		{"vegetables", `SUMIF(A1:A6,"Vegetables",C1:C6)`, 12000},
+		{"ends with es", `SUMIF(B1:B6,"*es",C1:C6)`, 4300}, // Tomatoes+Oranges+Apples
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -2291,6 +4779,866 @@ func TestLARGESMALLEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// LARGE — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestLARGEComprehensive(t *testing.T) {
+	t.Run("k=1 returns largest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: NumberVal(7),
+				{Col: 1, Row: 3}: NumberVal(5),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A4,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("k=2 returns second largest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: NumberVal(7),
+				{Col: 1, Row: 3}: NumberVal(5),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("k=last returns smallest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: NumberVal(7),
+				{Col: 1, Row: 3}: NumberVal(5),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A4,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-10),
+				{Col: 1, Row: 2}: NumberVal(-3),
+				{Col: 1, Row: 3}: NumberVal(-7),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -3 {
+			t.Errorf("got %v, want -3", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-5),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(-2),
+				{Col: 1, Row: 4}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A4,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -2 {
+			t.Errorf("got %v, want -2", got)
+		}
+	})
+
+	t.Run("duplicates in array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(4),
+				{Col: 1, Row: 4}: NumberVal(9),
+			},
+		}
+		// k=2 should return 4 (the second largest, which is one of the duplicates)
+		cf := evalCompile(t, "LARGE(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("k too large returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A2,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k=0 returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A1,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k negative returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A2,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("single element k=1", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("decimal values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1.5),
+				{Col: 1, Row: 2}: NumberVal(2.7),
+				{Col: 1, Row: 3}: NumberVal(0.3),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1.5 {
+			t.Errorf("got %v, want 1.5", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(8),
+				{Col: 1, Row: 2}: NumberVal(8),
+				{Col: 1, Row: 3}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 8 {
+			t.Errorf("got %v, want 8", got)
+		}
+	})
+
+	t.Run("empty cells in range are ignored", func(t *testing.T) {
+		// A2 is empty (not in map), so only 2 numeric values
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+		// k=3 should be #NUM! since only 2 numeric values
+		cf = evalCompile(t, "LARGE(A1:A3,3)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("strings in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(15),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+		// Only 2 numeric values, k=2 should work
+		cf = evalCompile(t, "LARGE(A1:A3,2)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("boolean in range is ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: BoolVal(true),
+				{Col: 1, Row: 3}: NumberVal(7),
+			},
+		}
+		// Booleans in ranges are not numeric, so only 2 values
+		cf := evalCompile(t, "LARGE(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "LARGE(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "LARGE(A1:A3,1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("large dataset", func(t *testing.T) {
+		cells := make(map[CellAddr]Value)
+		for i := 1; i <= 100; i++ {
+			cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		}
+		resolver := &mockResolver{cells: cells}
+		cf := evalCompile(t, "LARGE(A1:A100,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 100 {
+			t.Errorf("got %v, want 100", got)
+		}
+		// 50th largest in 1..100 is 51
+		cf = evalCompile(t, "LARGE(A1:A100,50)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 51 {
+			t.Errorf("got %v, want 51", got)
+		}
+	})
+
+	t.Run("k as decimal is truncated", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		// k=2.9 should be truncated to 2
+		cf := evalCompile(t, "LARGE(A1:A3,2.9)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("error in array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 3}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("scalar argument instead of array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(99),
+			},
+		}
+		// LARGE with a single cell reference (scalar), k=1
+		cf := evalCompile(t, "LARGE(A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 99 {
+			t.Errorf("got %v, want 99", got)
+		}
+	})
+
+	t.Run("Excel example from docs", func(t *testing.T) {
+		// Excel docs example: {3,4,5,2,3,4,5,6,4,7} LARGE(...,3)=5, LARGE(...,7)=4
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(4),
+				{Col: 1, Row: 4}: NumberVal(5), {Col: 2, Row: 4}: NumberVal(6),
+				{Col: 1, Row: 5}: NumberVal(4), {Col: 2, Row: 5}: NumberVal(7),
+			},
+		}
+		cf := evalCompile(t, "LARGE(A1:B5,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("LARGE k=3: got %v, want 5", got)
+		}
+		cf = evalCompile(t, "LARGE(A1:B5,7)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("LARGE k=7: got %v, want 4", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// SMALL — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSMALLComprehensive(t *testing.T) {
+	t.Run("k=1 returns smallest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("k=2 returns second smallest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("k=last returns largest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-3),
+				{Col: 1, Row: 2}: NumberVal(-7),
+				{Col: 1, Row: 3}: NumberVal(-1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -7 {
+			t.Errorf("got %v, want -7", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-5),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 1, Row: 3}: NumberVal(-2),
+				{Col: 1, Row: 4}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("duplicates in array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(1),
+				{Col: 1, Row: 4}: NumberVal(4),
+			},
+		}
+		// k=2 should return 4 (second smallest, which is a duplicate)
+		cf := evalCompile(t, "SMALL(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("k too large returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A2,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k=0 returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A1,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k negative returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A2,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("single element array k=1", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("decimal values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0.1),
+				{Col: 1, Row: 2}: NumberVal(0.3),
+				{Col: 1, Row: 3}: NumberVal(0.2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0.2 {
+			t.Errorf("got %v, want 0.2", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(8),
+				{Col: 1, Row: 2}: NumberVal(8),
+				{Col: 1, Row: 3}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 8 {
+			t.Errorf("got %v, want 8", got)
+		}
+	})
+
+	t.Run("empty cells in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				// A2 is empty
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+		// k=3 should be #NUM! since only 2 numeric values
+		cf = evalCompile(t, "SMALL(A1:A3,3)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("strings in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(15),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+		// Only 2 numeric values, k=2 should work
+		cf = evalCompile(t, "SMALL(A1:A3,2)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("booleans in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: BoolVal(true),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		// Booleans in ranges are not numeric, so only 2 values
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "SMALL(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "SMALL(A1:A3,1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("large dataset", func(t *testing.T) {
+		cells := make(map[CellAddr]Value)
+		for i := 1; i <= 100; i++ {
+			cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		}
+		resolver := &mockResolver{cells: cells}
+		cf := evalCompile(t, "SMALL(A1:A100,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+		// 50th smallest in 1..100 is 50
+		cf = evalCompile(t, "SMALL(A1:A100,50)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 50 {
+			t.Errorf("got %v, want 50", got)
+		}
+	})
+
+	t.Run("k as decimal is truncated", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		// k=2.9 should be truncated to 2
+		cf := evalCompile(t, "SMALL(A1:A3,2.9)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("error in array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 3}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("scalar argument instead of array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(99),
+			},
+		}
+		// SMALL with a single cell reference (scalar), k=1
+		cf := evalCompile(t, "SMALL(A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 99 {
+			t.Errorf("got %v, want 99", got)
+		}
+	})
+
+	t.Run("Excel example from docs", func(t *testing.T) {
+		// Excel docs: Data={3,4,5,2,3,4,6,4,7} SMALL(A2:A10,4)=4
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(8),
+				{Col: 1, Row: 4}: NumberVal(2), {Col: 2, Row: 4}: NumberVal(3),
+				{Col: 1, Row: 5}: NumberVal(3), {Col: 2, Row: 5}: NumberVal(7),
+				{Col: 1, Row: 6}: NumberVal(4), {Col: 2, Row: 6}: NumberVal(12),
+				{Col: 1, Row: 7}: NumberVal(6), {Col: 2, Row: 7}: NumberVal(54),
+				{Col: 1, Row: 8}: NumberVal(4), {Col: 2, Row: 8}: NumberVal(8),
+				{Col: 1, Row: 9}: NumberVal(7), {Col: 2, Row: 9}: NumberVal(23),
+			},
+		}
+		// SMALL(A1:A9,4) => sorted: {2,3,3,4,4,4,5,6,7} => 4th = 4
+		cf := evalCompile(t, "SMALL(A1:A9,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("SMALL k=4: got %v, want 4", got)
+		}
+		// SMALL(B1:B9,2) => sorted: {1,3,4,7,8,8,12,23,54} => 2nd = 3
+		cf = evalCompile(t, "SMALL(B1:B9,2)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("SMALL k=2: got %v, want 3", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Error propagation in range functions
 // ---------------------------------------------------------------------------
 
@@ -2607,6 +5955,222 @@ func TestQUARTILE(t *testing.T) {
 	t.Run("too_few_args", func(t *testing.T) {
 		cf := evalCompile(t, "QUARTILE(A1:A8)")
 		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// PERCENTILE
+// ---------------------------------------------------------------------------
+
+func TestPERCENTILE(t *testing.T) {
+	// Excel docs example: {1,2,3,4} in A1:A4
+	basicResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Single element: B1=42
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Two elements: C1=10, C2=20
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(20),
+		},
+	}
+
+	// Large dataset {1..20} in D1:D20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 4, Row: i}] = NumberVal(float64(i))
+	}
+
+	// All same values: E1:E4 = 7
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(7),
+			{Col: 5, Row: 2}: NumberVal(7),
+			{Col: 5, Row: 3}: NumberVal(7),
+			{Col: 5, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Negative numbers: F1:F4 = {-10, -5, 0, 5}
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(-10),
+			{Col: 6, Row: 2}: NumberVal(-5),
+			{Col: 6, Row: 3}: NumberVal(0),
+			{Col: 6, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Non-numeric mixed: G1=1, G2="hello", G3=3, G4=TRUE
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(1),
+			{Col: 7, Row: 2}: StringVal("hello"),
+			{Col: 7, Row: 3}: NumberVal(3),
+			{Col: 7, Row: 4}: BoolVal(true),
+		},
+	}
+
+	// Error in range: H1=1, H2=#DIV/0!, H3=3
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 8, Row: 1}: NumberVal(1),
+			{Col: 8, Row: 2}: ErrorVal(ErrValDIV0),
+			{Col: 8, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Excel doc example: {1,2,3,6,6,6,7,8,9} → PERCENTILE(data, 0.3) is from the docs
+	// Using simpler data set matching Excel example
+	excelDocResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 9, Row: 1}: NumberVal(1),
+			{Col: 9, Row: 2}: NumberVal(2),
+			{Col: 9, Row: 3}: NumberVal(3),
+			{Col: 9, Row: 4}: NumberVal(6),
+			{Col: 9, Row: 5}: NumberVal(6),
+			{Col: 9, Row: 6}: NumberVal(6),
+			{Col: 9, Row: 7}: NumberVal(7),
+			{Col: 9, Row: 8}: NumberVal(8),
+			{Col: 9, Row: 9}: NumberVal(9),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		want     float64
+		wantErr  ErrorValue
+	}{
+		// Basic: PERCENTILE({1,2,3,4}, 0.5) → median = 2.5
+		{"basic_median", "PERCENTILE(A1:A4,0.5)", basicResolver, 2.5, 0},
+		// k=0 → minimum
+		{"k_zero_min", "PERCENTILE(A1:A4,0)", basicResolver, 1, 0},
+		// k=1 → maximum
+		{"k_one_max", "PERCENTILE(A1:A4,1)", basicResolver, 4, 0},
+		// k=0.25 → first quartile: rank=0.25*3=0.75, 1+0.75*(2-1)=1.75
+		{"k_25th", "PERCENTILE(A1:A4,0.25)", basicResolver, 1.75, 0},
+		// k=0.75 → third quartile: rank=0.75*3=2.25, 3+0.25*(4-3)=3.25
+		{"k_75th", "PERCENTILE(A1:A4,0.75)", basicResolver, 3.25, 0},
+		// k=0.1: rank=0.1*3=0.3, 1+0.3*(2-1)=1.3
+		{"k_10th", "PERCENTILE(A1:A4,0.1)", basicResolver, 1.3, 0},
+		// k=0.9: rank=0.9*3=2.7, 3+0.7*(4-3)=3.7
+		{"k_90th", "PERCENTILE(A1:A4,0.9)", basicResolver, 3.7, 0},
+		// Single element array: any k returns that element
+		{"single_k0", "PERCENTILE(B1:B1,0)", singleResolver, 42, 0},
+		{"single_k05", "PERCENTILE(B1:B1,0.5)", singleResolver, 42, 0},
+		{"single_k1", "PERCENTILE(B1:B1,1)", singleResolver, 42, 0},
+		// Two element array: k=0.5 → 15
+		{"two_median", "PERCENTILE(C1:C2,0.5)", twoResolver, 15, 0},
+		// Two element: k=0 → 10, k=1 → 20
+		{"two_k0", "PERCENTILE(C1:C2,0)", twoResolver, 10, 0},
+		{"two_k1", "PERCENTILE(C1:C2,1)", twoResolver, 20, 0},
+		// Large array {1..20}: k=0.5 → rank=0.5*19=9.5, 10+0.5*(11-10)=10.5
+		{"large_median", "PERCENTILE(D1:D20,0.5)", largeResolver, 10.5, 0},
+		// Large array: k=0.25 → rank=0.25*19=4.75, 5+0.75*(6-5)=5.75
+		{"large_25th", "PERCENTILE(D1:D20,0.25)", largeResolver, 5.75, 0},
+		// Large array: k=0.75 → rank=0.75*19=14.25, 15+0.25*(16-15)=15.25
+		{"large_75th", "PERCENTILE(D1:D20,0.75)", largeResolver, 15.25, 0},
+		// All same values → that value regardless of k
+		{"same_k0", "PERCENTILE(E1:E4,0)", sameResolver, 7, 0},
+		{"same_k05", "PERCENTILE(E1:E4,0.5)", sameResolver, 7, 0},
+		{"same_k1", "PERCENTILE(E1:E4,1)", sameResolver, 7, 0},
+		// Negative numbers: sorted {-10,-5,0,5}, k=0.5 → rank=1.5, -5+0.5*5=-2.5
+		{"neg_median", "PERCENTILE(F1:F4,0.5)", negResolver, -2.5, 0},
+		// Negative: k=0 → -10
+		{"neg_k0", "PERCENTILE(F1:F4,0)", negResolver, -10, 0},
+		// Negative: k=1 → 5
+		{"neg_k1", "PERCENTILE(F1:F4,1)", negResolver, 5, 0},
+		// k < 0 → #NUM!
+		{"k_negative", "PERCENTILE(A1:A4,-0.1)", basicResolver, 0, ErrValNUM},
+		// k > 1 → #NUM!
+		{"k_over_one", "PERCENTILE(A1:A4,1.5)", basicResolver, 0, ErrValNUM},
+		// Empty array → #NUM!
+		{"empty_array", "PERCENTILE(Z1:Z3,0.5)", emptyResolver, 0, ErrValNUM},
+		// Non-numeric values in array are ignored: {1,3} → k=0.5 → 2
+		{"mixed_ignore_strings", "PERCENTILE(G1:G4,0.5)", mixedResolver, 2, 0},
+		// Excel doc example: PERCENTILE({1,2,3,6,6,6,7,8,9},0.3)
+		// rank=0.3*8=2.4, sorted[2]=3, sorted[3]=6 → 3+0.4*(6-3)=4.2
+		{"excel_doc_example", "PERCENTILE(I1:I9,0.3)", excelDocResolver, 4.2, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %v, want number", got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.want)
+			}
+		})
+	}
+
+	// Error propagation: error in range propagates
+	t.Run("error_propagation", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(H1:H3,0.5)")
+		got, err := Eval(cf, errResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	// Too few arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(A1:A4)")
+		got, err := Eval(cf, basicResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	// Too many arguments
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(A1:A4,0.5,1)")
+		got, err := Eval(cf, basicResolver, nil)
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
@@ -3231,6 +6795,240 @@ func TestTRIMMEAN(t *testing.T) {
 			t.Errorf("got %v, want error", got)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// GEOMEAN
+// ---------------------------------------------------------------------------
+
+func TestGEOMEAN(t *testing.T) {
+	const tol = 1e-6
+
+	// Resolver with Excel doc example {4,5,8,7,11,4,3} in A1:A7
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(8),
+			{Col: 1, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(11),
+			{Col: 1, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(3),
+		},
+	}
+
+	// Resolver with mixed types in B column
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: StringVal("hello"),
+			{Col: 2, Row: 3}: NumberVal(8),
+			{Col: 2, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 5}: NumberVal(4),
+		},
+	}
+
+	// Resolver with empty cells in C column
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(4),
+			// C2 is empty
+			{Col: 3, Row: 3}: NumberVal(9),
+		},
+	}
+
+	// Resolver with error in D column
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(3),
+			{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+			{Col: 4, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Large dataset in E column (1..20)
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 5, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		wantNum  float64
+		wantErr  bool // expect ValueError type
+	}{
+		// Basic: GEOMEAN(2,8) = sqrt(16) = 4
+		{
+			name:    "basic_two_values",
+			formula: "GEOMEAN(2,8)",
+			wantNum: 4,
+		},
+		// Single value → that value
+		{
+			name:    "single_value",
+			formula: "GEOMEAN(7)",
+			wantNum: 7,
+		},
+		// All same values → that value
+		{
+			name:    "all_same_values",
+			formula: "GEOMEAN(5,5,5)",
+			wantNum: 5,
+		},
+		// Large values
+		{
+			name:    "large_values",
+			formula: "GEOMEAN(1000000,4000000)",
+			wantNum: 2000000,
+		},
+		// Small decimals
+		{
+			name:    "small_decimals",
+			formula: "GEOMEAN(0.01,0.04)",
+			wantNum: 0.02,
+		},
+		// Negative value → #NUM!
+		{
+			name:    "negative_value",
+			formula: "GEOMEAN(-1,2,3)",
+			wantErr: true,
+		},
+		// Zero value → #NUM!
+		{
+			name:    "zero_value",
+			formula: "GEOMEAN(0,2,3)",
+			wantErr: true,
+		},
+		// Zero in middle → #NUM!
+		{
+			name:    "zero_in_middle",
+			formula: "GEOMEAN(4,0,9)",
+			wantErr: true,
+		},
+		// Range input - Excel doc example: GEOMEAN(A2:A8) = 5.476987
+		{
+			name:     "excel_example_range",
+			formula:  "GEOMEAN(A1:A7)",
+			resolver: excelResolver,
+			wantNum:  5.476987,
+		},
+		// Same values as direct args
+		{
+			name:    "excel_example_direct",
+			formula: "GEOMEAN(4,5,8,7,11,4,3)",
+			wantNum: 5.476987,
+		},
+		// Empty cells in range (ignored by collectNumeric)
+		{
+			name:     "empty_cells_ignored",
+			formula:  "GEOMEAN(C1:C3)",
+			resolver: emptyResolver,
+			wantNum:  6, // geomean(4,9) = sqrt(36) = 6
+		},
+		// Strings in range (ignored by collectNumeric)
+		{
+			name:     "strings_in_range_ignored",
+			formula:  "GEOMEAN(B1:B5)",
+			resolver: mixedResolver,
+			wantNum:  4, // geomean(2,8,4) = (2*8*4)^(1/3) = 64^(1/3) = 4
+		},
+		// Booleans in range (ignored by collectNumeric)
+		// mixedResolver has bool TRUE at B4 - should be ignored in array context
+		// Only numbers {2,8,4} are collected
+		{
+			name:     "booleans_in_range_ignored",
+			formula:  "GEOMEAN(B1:B5)",
+			resolver: mixedResolver,
+			wantNum:  4, // same as strings test - all non-numeric ignored
+		},
+		// Scalar boolean TRUE=1
+		{
+			name:    "scalar_bool_true",
+			formula: "GEOMEAN(TRUE,4)",
+			wantNum: 2, // geomean(1,4) = sqrt(4) = 2
+		},
+		// Scalar boolean FALSE=0 → #NUM! (zero)
+		{
+			name:    "scalar_bool_false",
+			formula: "GEOMEAN(FALSE,4)",
+			wantErr: true,
+		},
+		// Error propagation (#N/A in array)
+		{
+			name:     "error_propagation_na",
+			formula:  "GEOMEAN(D1:D3)",
+			resolver: errResolver,
+			wantErr:  true,
+		},
+		// Error propagation with #DIV/0!
+		{
+			name:    "error_propagation_div0",
+			formula: "GEOMEAN(1,2,1/0)",
+			wantErr: true,
+		},
+		// Many values (1..20)
+		{
+			name:     "many_values",
+			formula:  "GEOMEAN(E1:E20)",
+			resolver: largeResolver,
+			wantNum:  8.304361, // geometric mean of 1..20
+		},
+		// Multiple array arguments
+		{
+			name:     "multiple_arrays",
+			formula:  "GEOMEAN(A1:A3,A4:A7)",
+			resolver: excelResolver,
+			wantNum:  5.476987,
+		},
+		// Mix of direct arg and array
+		{
+			name:     "direct_and_array",
+			formula:  "GEOMEAN(2,A1:A1)",
+			resolver: excelResolver,
+			wantNum:  2.828427, // geomean(2,4) = sqrt(8)
+		},
+		// String number as direct arg (coerced)
+		{
+			name:    "string_number_direct",
+			formula: `GEOMEAN("4","9")`,
+			wantNum: 6, // geomean(4,9) = sqrt(36) = 6
+		},
+		// Non-numeric string as direct arg → error
+		{
+			name:    "non_numeric_string_direct",
+			formula: `GEOMEAN("hello",4)`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			resolver := tt.resolver
+			if resolver == nil {
+				resolver = &mockResolver{}
+			}
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Errorf("got %v (type %d), want error", got, got.Type)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -4280,6 +8078,59 @@ func TestFORECAST(t *testing.T) {
 		{"fractional_x", "FORECAST(2.5,A1:A3,B1:B3)", linearResolver, 6.0, false, 0},
 		// FORECAST.LINEAR with two points
 		{"linear_two_points", "FORECAST.LINEAR(10,A1:A2,B1:B2)", twoPairResolver, 9.0, false, 0},
+
+		// --- Additional FORECAST.LINEAR-specific tests ---
+
+		// FORECAST.LINEAR: perfect linear y=2x+1, predict x=5 -> 11
+		{"fl_perfect_linear", "FORECAST.LINEAR(5,A1:A3,B1:B3)", linearResolver, 11.0, false, 0},
+		// FORECAST.LINEAR: horizontal line (all y same) -> predict same y
+		{"fl_horizontal_line", "FORECAST.LINEAR(99,A1:A3,B1:B3)", &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+			},
+		}, 5.0, false, 0},
+		// FORECAST.LINEAR: extrapolation beyond data range
+		{"fl_extrapolation_high", "FORECAST.LINEAR(100,A1:A3,B1:B3)", linearResolver, 201.0, false, 0},
+		// FORECAST.LINEAR: extrapolation below data range (negative x)
+		{"fl_extrapolation_low", "FORECAST.LINEAR(-10,A1:A3,B1:B3)", linearResolver, -19.0, false, 0},
+		// FORECAST.LINEAR: interpolation within data range
+		{"fl_interpolation", "FORECAST.LINEAR(1.5,A1:A3,B1:B3)", linearResolver, 4.0, false, 0},
+		// FORECAST.LINEAR: negative x and y values
+		{"fl_negative_values", "FORECAST.LINEAR(-1,A1:A3,B1:B3)", negValsResolver, -10.0, false, 0},
+		// FORECAST.LINEAR: single data point -> #DIV/0!
+		{"fl_single_point_div0", "FORECAST.LINEAR(5,A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: mismatched array sizes -> #N/A
+		{"fl_mismatched_arrays", "FORECAST.LINEAR(5,A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		// FORECAST.LINEAR: empty arrays -> #DIV/0!
+		{"fl_empty_arrays", "FORECAST.LINEAR(5,A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: non-numeric string in x arg -> #VALUE!
+		{"fl_non_numeric_x", "FORECAST.LINEAR(\"hello\",A1:A3,B1:B3)", linearResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: too many args -> #VALUE!
+		{"fl_too_many_args", "FORECAST.LINEAR(5,A1:A3,B1:B3,A1:A3)", linearResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: Excel doc example with x=30
+		{"fl_excel_doc_example", "FORECAST.LINEAR(30,A1:A5,B1:B5)", excelResolver, 10.607253, false, 0},
+		// FORECAST.LINEAR: large dataset y=2x+1, predict x=50 -> 101
+		{"fl_large_dataset", "FORECAST.LINEAR(50,A1:A20,B1:B20)", largeResolver, 101.0, false, 0},
+		// FORECAST.LINEAR: decimal/fractional values in data
+		{"fl_decimal_values", "FORECAST.LINEAR(3.5,A1:A3,B1:B3)", &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1.5), {Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 1, Row: 2}: NumberVal(3.0), {Col: 2, Row: 2}: NumberVal(1.0),
+				{Col: 1, Row: 3}: NumberVal(4.5), {Col: 2, Row: 3}: NumberVal(1.5),
+			},
+		}, 10.5, false, 0},
+		// FORECAST.LINEAR: x=0 returns intercept
+		{"fl_x_zero_intercept", "FORECAST.LINEAR(0,A1:A3,B1:B3)", linearResolver, 1.0, false, 0},
+		// FORECAST.LINEAR: constant x values -> #DIV/0!
+		{"fl_constant_x_div0", "FORECAST.LINEAR(5,A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: error propagation from arrays
+		{"fl_error_propagation", "FORECAST.LINEAR(5,A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: mixed types skip non-numeric pairs
+		{"fl_mixed_types_skip", "FORECAST.LINEAR(10,A1:A4,B1:B4)", mixedResolver, 11.0, false, 0},
+		// FORECAST.LINEAR: very large x value
+		{"fl_very_large_x", "FORECAST.LINEAR(1000000,A1:A3,B1:B3)", linearResolver, 2000001.0, false, 0},
 	}
 
 	for _, tt := range tests {
@@ -5672,6 +9523,480 @@ func TestMAXA(t *testing.T) {
 			t.Errorf("got %v, want -3", got)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// MAXIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestMAXIFS_SingleCriteria(t *testing.T) {
+	// Excel doc Example 1: =MAXIFS(A2:A7,B2:B7,1) => 91
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A): grades
+			{Col: 1, Row: 1}: NumberVal(89),
+			{Col: 1, Row: 2}: NumberVal(93),
+			{Col: 1, Row: 3}: NumberVal(96),
+			{Col: 1, Row: 4}: NumberVal(85),
+			{Col: 1, Row: 5}: NumberVal(91),
+			{Col: 1, Row: 6}: NumberVal(88),
+			// criteria range (B): weights
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(2),
+			{Col: 2, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 5}: NumberVal(1),
+			{Col: 2, Row: 6}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A6,B1:B6,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows with weight=1: 89, 91, 88 => max=91
+	if got.Type != ValueNumber || got.Num != 91 {
+		t.Errorf("MAXIFS single criteria: got %v, want 91", got)
+	}
+}
+
+func TestMAXIFS_MultipleCriteria(t *testing.T) {
+	// Excel doc Example 3: =MAXIFS(A2:A7,B2:B7,"b",D2:D7,">100") => 50
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A): weights
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(100),
+			{Col: 1, Row: 4}: NumberVal(1),
+			{Col: 1, Row: 5}: NumberVal(1),
+			{Col: 1, Row: 6}: NumberVal(50),
+			// criteria range 1 (B): grades
+			{Col: 2, Row: 1}: StringVal("b"),
+			{Col: 2, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 3}: StringVal("a"),
+			{Col: 2, Row: 4}: StringVal("b"),
+			{Col: 2, Row: 5}: StringVal("a"),
+			{Col: 2, Row: 6}: StringVal("b"),
+			// criteria range 2 (D): levels
+			{Col: 4, Row: 1}: NumberVal(100),
+			{Col: 4, Row: 2}: NumberVal(100),
+			{Col: 4, Row: 3}: NumberVal(200),
+			{Col: 4, Row: 4}: NumberVal(300),
+			{Col: 4, Row: 5}: NumberVal(100),
+			{Col: 4, Row: 6}: NumberVal(400),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A6,B1:B6,"b",D1:D6,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// grade="b" AND level>100: row4(1,300) and row6(50,400) => max=50
+	if got.Type != ValueNumber || got.Num != 50 {
+		t.Errorf("MAXIFS multiple criteria: got %v, want 50", got)
+	}
+}
+
+func TestMAXIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 1}: StringVal("apple"),
+			{Col: 2, Row: 2}: StringVal("banana"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A2,B1:B2,"cherry")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// No matches => 0
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MAXIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestMAXIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All rows match => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS all match: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+			// criteria range (B)
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `MAXIFS(A1:A5,B1:B5,">30")`, 50},
+		{"less than", `MAXIFS(A1:A5,B1:B5,"<30")`, 20},
+		{"greater or equal", `MAXIFS(A1:A5,B1:B5,">=30")`, 50},
+		{"less or equal", `MAXIFS(A1:A5,B1:B5,"<=30")`, 30},
+		{"equal", `MAXIFS(A1:A5,B1:B5,"=30")`, 30},
+		{"not equal", `MAXIFS(A1:A5,B1:B5,"<>30")`, 50},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("MAXIFS %s: got %v, want %g", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMAXIFS_StringCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Apples"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"Apples")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples rows: 5, 10 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS string criteria: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Bananas"),
+		},
+	}
+
+	// Wildcard * matches any sequence of characters
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"A*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// A* matches Apples(5), Apples(4), Artichokes(15) => max=15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("MAXIFS wildcard *: got %v, want 15", got)
+	}
+}
+
+func TestMAXIFS_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(5),
+			{Col: 2, Row: 1}: StringVal("cat"),
+			{Col: 2, Row: 2}: StringVal("car"),
+			{Col: 2, Row: 3}: StringVal("cab"),
+			{Col: 2, Row: 4}: StringVal("dogs"),
+		},
+	}
+
+	// ? matches any single character: "ca?" matches cat, car, cab but not dogs
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// cat(10), car(20), cab(30) => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS wildcard ?: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: StringVal("Apple"),
+			{Col: 2, Row: 2}: StringVal("APPLE"),
+			{Col: 2, Row: 3}: StringVal("apple"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All three should match case-insensitively: max(100,200,300) = 300
+	if got.Type != ValueNumber || got.Num != 300 {
+		t.Errorf("MAXIFS case insensitive: got %v, want 300", got)
+	}
+}
+
+func TestMAXIFS_NegativeNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-10),
+			{Col: 1, Row: 2}: NumberVal(-20),
+			{Col: 1, Row: 3}: NumberVal(-5),
+			{Col: 1, Row: 4}: NumberVal(-15),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(2),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows with criteria=1: -10, -20, -15 => max=-10
+	if got.Type != ValueNumber || got.Num != -10 {
+		t.Errorf("MAXIFS negative numbers: got %v, want -10", got)
+	}
+}
+
+func TestMAXIFS_MixedTypesInMaxRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("text"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// "text" is not numeric and is skipped; TRUE coerces to 1
+	// Numeric values: 10, 30, 1 => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS mixed types: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_EmptyCellsInMaxRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// A2 is empty (not in map)
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Empty cell coerces to 0: max(10, 0, 30) = 30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS empty cells: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Only 1 arg — need at least 3
+	cf := evalCompile(t, "MAXIFS(A1:A3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMAXIFS_UnpairedCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// 4 args total: max_range + 3 => (4-1)%2 != 0 => error
+	cf := evalCompile(t, `MAXIFS(A1:A1,B1:B1,1,C1:C1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS unpaired criteria: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMAXIFS_StringNotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Apples"),
+		},
+	}
+
+	// Max where product is NOT Bananas
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"<>Bananas")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples rows: 5, 10 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS not-equal string: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_ExcelDocExample2(t *testing.T) {
+	// Excel doc Example 2: =MAXIFS(A2:A5,B3:B6,"a") => 10
+	// criteria_range and max_range aren't aligned but same shape
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range A2:A5
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(1),
+			{Col: 1, Row: 4}: NumberVal(100),
+			{Col: 1, Row: 5}: NumberVal(1),
+			// criteria range B3:B6
+			{Col: 2, Row: 3}: StringVal("a"),
+			{Col: 2, Row: 4}: StringVal("a"),
+			{Col: 2, Row: 5}: StringVal("b"),
+			{Col: 2, Row: 6}: StringVal("a"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A2:A5,B3:B6,"a")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// "a" matches positions 1,2,4 => max_range values 10,1,1 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS Excel doc example 2: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_ThreeCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A)
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			// criteria range 1 (B): region
+			{Col: 2, Row: 1}: StringVal("East"),
+			{Col: 2, Row: 2}: StringVal("West"),
+			{Col: 2, Row: 3}: StringVal("East"),
+			{Col: 2, Row: 4}: StringVal("East"),
+			// criteria range 2 (C): product
+			{Col: 3, Row: 1}: StringVal("Widget"),
+			{Col: 3, Row: 2}: StringVal("Widget"),
+			{Col: 3, Row: 3}: StringVal("Gadget"),
+			{Col: 3, Row: 4}: StringVal("Widget"),
+			// criteria range 3 (D): quantity
+			{Col: 4, Row: 1}: NumberVal(5),
+			{Col: 4, Row: 2}: NumberVal(15),
+			{Col: 4, Row: 3}: NumberVal(20),
+			{Col: 4, Row: 4}: NumberVal(25),
+		},
+	}
+
+	// East AND Widget AND qty>10 => only row 4 (400)
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"East",C1:C4,"Widget",D1:D4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("MAXIFS three criteria: got %v, want 400", got)
+	}
+}
+
+func TestMAXIFS_NonArrayMaxRange(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// max_range is a scalar, not an array => #VALUE!
+	cf := evalCompile(t, `MAXIFS(5,A1:A1,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS non-array max_range: got %v, want #VALUE!", got)
+	}
 }
 
 func TestMINA(t *testing.T) {
@@ -8383,4 +12708,340 @@ func TestNORMINV_NORMDIST_roundtrip(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMEDIAN(t *testing.T) {
+	// Helper to build a resolver with numeric values in column A.
+	numResolver := func(nums ...float64) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, n := range nums {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = NumberVal(n)
+		}
+		return m
+	}
+
+	// Helper for resolvers with arbitrary values in column A.
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("odd count basic", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("even count basic", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	t.Run("single value", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(42)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("two values", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(10,20)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("five values unsorted", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(9,1,5,3,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("six values unsorted", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3,4,5,6)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-5,-3,-1)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -3 {
+			t.Errorf("got %v, want -3", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-10,0,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("mixed positive and negative even count", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-10,-1,1,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("all zeros", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(0,0,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(7,7,7,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("decimals", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1.5,2.5,3.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	t.Run("very large numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1E15,2E15,3E15)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2e15 {
+			t.Errorf("got %v, want 2e15", got)
+		}
+	})
+
+	t.Run("very small numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1E-10,2E-10,3E-10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2e-10 {
+			t.Errorf("got %v, want 2e-10", got)
+		}
+	})
+
+	t.Run("boolean TRUE as direct arg coerced to 1", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(TRUE,3,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("boolean FALSE as direct arg coerced to 0", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(FALSE,2,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("numeric string as direct arg coerced", func(t *testing.T) {
+		cf := evalCompile(t, `MEDIAN("2",4,6)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("non-numeric string as direct arg returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `MEDIAN("abc",1,2)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	t.Run("range with numbers", func(t *testing.T) {
+		m := numResolver(1, 2, 3, 4, 5)
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range even count", func(t *testing.T) {
+		m := numResolver(1, 2, 3, 4, 5, 6)
+		cf := evalCompile(t, "MEDIAN(A1:A6)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	t.Run("range with empty cells ignored", func(t *testing.T) {
+		// A1=1, A2=empty, A3=3, A4=empty, A5=5
+		m := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(5),
+		}}
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range with strings ignored", func(t *testing.T) {
+		m := valResolver(NumberVal(1), StringVal("hello"), NumberVal(3), StringVal("world"), NumberVal(5))
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range with booleans ignored", func(t *testing.T) {
+		m := valResolver(NumberVal(10), BoolVal(true), NumberVal(20), BoolVal(false), NumberVal(30))
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range with error propagates", func(t *testing.T) {
+		m := valResolver(NumberVal(1), ErrorVal(ErrValNA), NumberVal(3))
+		cf := evalCompile(t, "MEDIAN(A1:A3)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	t.Run("all non-numeric in range returns NUM error", func(t *testing.T) {
+		m := valResolver(StringVal("a"), StringVal("b"), StringVal("c"))
+		cf := evalCompile(t, "MEDIAN(A1:A3)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM! error", got)
+		}
+	})
+
+	t.Run("Excel example odd", func(t *testing.T) {
+		// From Excel docs: MEDIAN(1,2,3,4,5) = 3
+		m := numResolver(1, 2, 3, 4, 5)
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("Excel example even", func(t *testing.T) {
+		// From Excel docs: MEDIAN(1,2,3,4,5,6) = 3.5
+		m := numResolver(1, 2, 3, 4, 5, 6)
+		cf := evalCompile(t, "MEDIAN(A1:A6)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	_ = numResolver // suppress unused if only direct-arg tests
+	_ = valResolver
 }

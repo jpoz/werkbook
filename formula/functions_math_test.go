@@ -94,6 +94,464 @@ func TestMathErrors(t *testing.T) {
 	}
 }
 
+func TestPOWER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Basic exponentiation
+		{"2_cubed", "POWER(2,3)", 8, 0},
+		{"5_squared", "POWER(5,2)", 25, 0},
+
+		// Power of 0 → 1
+		{"power_of_zero", "POWER(7,0)", 1, 0},
+		{"large_base_power_zero", "POWER(999,0)", 1, 0},
+
+		// Power of 1 → same number
+		{"power_of_one", "POWER(7,1)", 7, 0},
+		{"neg_base_power_one", "POWER(-3,1)", -3, 0},
+
+		// Number 0, positive power → 0
+		{"zero_base_pos_power", "POWER(0,5)", 0, 0},
+		{"zero_base_large_power", "POWER(0,100)", 0, 0},
+
+		// Negative base, integer power
+		{"neg_base_even_power", "POWER(-3,2)", 9, 0},
+		{"neg_base_odd_power", "POWER(-3,3)", -27, 0},
+		{"neg_base_power_4", "POWER(-2,4)", 16, 0},
+
+		// Negative base, fractional power (odd root) → real result
+		{"neg_base_cube_root", "POWER(-8,1/3)", -2, 1e-10},
+
+		// Fractional power (square root)
+		{"square_root", "POWER(4,0.5)", 2, 1e-10},
+		{"cube_root_pos", "POWER(27,1/3)", 3, 1e-10},
+		{"fourth_root", "POWER(16,0.25)", 2, 1e-10},
+
+		// Negative power (reciprocal)
+		{"neg_power", "POWER(2,-1)", 0.5, 1e-10},
+		{"neg_power_squared", "POWER(2,-2)", 0.25, 1e-10},
+		{"neg_power_3", "POWER(10,-3)", 0.001, 1e-10},
+
+		// Large values
+		{"large_result", "POWER(10,10)", 1e10, 0},
+		{"large_base", "POWER(100,3)", 1e6, 0},
+
+		// String coercion
+		{"string_base", "POWER(\"2\",3)", 8, 0},
+		{"string_power", "POWER(2,\"3\")", 8, 0},
+		{"string_both", "POWER(\"5\",\"2\")", 25, 0},
+
+		// Boolean coercion
+		{"bool_true_base", "POWER(TRUE,5)", 1, 0},
+		{"bool_false_base_pos", "POWER(FALSE,5)", 0, 0},
+		{"bool_true_power", "POWER(3,TRUE)", 3, 0},
+		{"bool_false_power", "POWER(3,FALSE)", 1, 0},
+
+		// Excel doc examples
+		{"doc_ex1", "POWER(5,2)", 25, 0},
+		{"doc_ex2", "POWER(98.6,3.2)", 2401077.2220695773, 1e-3},
+		{"doc_ex3", "POWER(4,5/4)", 5.656854249, 1e-6},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else {
+				if math.Abs(got.Num-tt.wantNum) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.wantNum, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// 0^0 → #NUM!
+		{"zero_power_zero", "POWER(0,0)", ErrValNUM},
+		// 0^negative → #DIV/0!
+		{"zero_neg_power", "POWER(0,-1)", ErrValDIV0},
+		{"zero_neg_power_2", "POWER(0,-5)", ErrValDIV0},
+		// Negative base, fractional (non-odd-root) power → #NUM!
+		{"neg_base_frac_power", "POWER(-4,0.5)", ErrValNUM},
+		{"neg_base_even_frac", "POWER(-8,1/4)", ErrValNUM},
+		{"neg_base_arb_frac", "POWER(-2,1.5)", ErrValNUM},
+		// Too few args
+		{"no_args", "POWER()", ErrValVALUE},
+		{"one_arg", "POWER(2)", ErrValVALUE},
+		// Too many args
+		{"three_args", "POWER(2,3,4)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric_base", "POWER(\"abc\",2)", ErrValVALUE},
+		{"non_numeric_power", "POWER(2,\"abc\")", ErrValVALUE},
+		// Error propagation
+		{"err_div0_base", "POWER(1/0,2)", ErrValDIV0},
+		{"err_div0_power", "POWER(2,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestABS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Positive numbers → unchanged
+		{"pos_int", "ABS(5)", 5},
+		{"pos_decimal", "ABS(3.14)", 3.14},
+
+		// Negative numbers → positive
+		{"neg_int", "ABS(-5)", 5},
+		{"neg_decimal", "ABS(-3.14)", 3.14},
+
+		// Zero
+		{"zero", "ABS(0)", 0},
+
+		// Large values
+		{"large_pos", "ABS(999999999)", 999999999},
+		{"large_neg", "ABS(-999999999)", 999999999},
+
+		// Small decimals
+		{"small_pos", "ABS(0.000001)", 0.000001},
+		{"small_neg", "ABS(-0.000001)", 0.000001},
+
+		// String coercion
+		{"string_pos", "ABS(\"5\")", 5},
+		{"string_neg", "ABS(\"-3.5\")", 3.5},
+
+		// Boolean coercion
+		{"bool_true", "ABS(TRUE)", 1},
+		{"bool_false", "ABS(FALSE)", 0},
+
+		// Expression argument
+		{"expr_neg_result", "ABS(2-5)", 3},
+		{"expr_pos_result", "ABS(5-2)", 3},
+
+		// Excel doc examples
+		{"doc_ex1", "ABS(2)", 2},
+		{"doc_ex2", "ABS(-2)", 2},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.wantNum {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "ABS()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "ABS(1,2)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric", "ABS(\"abc\")", ErrValVALUE},
+		// Error propagation
+		{"err_div0", "ABS(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestFLOOR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic: round down to nearest integer (significance=1)
+		{"pos_int_floor", "FLOOR(4.9,1)", 4},
+		{"pos_half_floor", "FLOOR(2.5,1)", 2},
+		{"pos_exact", "FLOOR(7,1)", 7},
+		{"pos_small_frac", "FLOOR(0.1,1)", 0},
+
+		// Various significance (0.5, 0.1, 10, 100)
+		{"sig_0.5", "FLOOR(4.7,0.5)", 4.5},
+		{"sig_0.1", "FLOOR(4.29,0.1)", 4.2},
+		{"sig_10", "FLOOR(42,10)", 40},
+		{"sig_100", "FLOOR(450,100)", 400},
+
+		// Negative number with negative significance (rounds toward zero)
+		{"neg_neg_sig", "FLOOR(-2.5,-1)", -2},
+		{"neg_neg_sig_2", "FLOOR(-2.5,-2)", -2},
+		{"neg_neg_sig_5", "FLOOR(-7,-5)", -5},
+
+		// Zero number → 0 (regardless of significance, even sig=0)
+		{"zero_pos_sig", "FLOOR(0,1)", 0},
+		{"zero_neg_sig", "FLOOR(0,5)", 0},
+		{"zero_zero", "FLOOR(0,0)", 0},
+
+		// At boundary → unchanged
+		{"exact_boundary", "FLOOR(6,3)", 6},
+		{"exact_boundary_neg", "FLOOR(-6,-3)", -6},
+		{"exact_boundary_2", "FLOOR(10,5)", 10},
+
+		// Negative number with positive significance (rounds away from zero)
+		{"neg_pos_sig", "FLOOR(-2.5,1)", -3},
+		{"neg_pos_sig_2", "FLOOR(-4.1,2)", -6},
+
+		// Large numbers
+		{"large_num", "FLOOR(1234567,1000)", 1234000},
+		{"large_exact", "FLOOR(1000000,1000)", 1000000},
+
+		// Decimal significance
+		{"dec_sig_0.01", "FLOOR(0.234,0.01)", 0.23},
+		{"dec_sig_0.05", "FLOOR(4.42,0.05)", 4.4},
+
+		// Excel doc examples
+		{"doc_ex1", "FLOOR(3.7,2)", 2},
+		{"doc_ex2", "FLOOR(-2.5,-2)", -2},
+		{"doc_ex3", "FLOOR(1.58,0.1)", 1.5},
+		{"doc_ex4", "FLOOR(0.234,0.01)", 0.23},
+
+		// String coercion of numeric strings
+		{"string_num", "FLOOR(\"4.9\",1)", 4},
+		{"string_sig", "FLOOR(4.9,\"1\")", 4},
+		{"string_both", "FLOOR(\"4.9\",\"1\")", 4},
+
+		// Boolean coercion
+		{"bool_true_num", "FLOOR(TRUE,1)", 1},
+		{"bool_false_num", "FLOOR(FALSE,1)", 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Too few args
+		{"no_args", "FLOOR()", ErrValVALUE},
+		{"one_arg", "FLOOR(1)", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "FLOOR(1,2,3)", ErrValVALUE},
+		// Non-numeric
+		{"non_numeric_num", "FLOOR(\"abc\",1)", ErrValVALUE},
+		{"non_numeric_sig", "FLOOR(1,\"abc\")", ErrValVALUE},
+		// Positive number with negative significance → #NUM!
+		{"pos_neg_sig", "FLOOR(2.5,-1)", ErrValNUM},
+		{"pos_neg_sig_2", "FLOOR(2.5,-2)", ErrValNUM},
+		{"pos_neg_sig_3", "FLOOR(10,-5)", ErrValNUM},
+		// Significance = 0 with non-zero number → #DIV/0!
+		{"sig_zero_pos", "FLOOR(2.5,0)", ErrValDIV0},
+		{"sig_zero_neg", "FLOOR(-2.5,0)", ErrValDIV0},
+		// Error propagation
+		{"err_prop_num", "FLOOR(1/0,1)", ErrValDIV0},
+		{"err_prop_sig", "FLOOR(1,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCEILING(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic: round up to nearest integer (significance=1)
+		{"pos_int_ceil", "CEILING(4.1,1)", 5},
+		{"pos_half_ceil", "CEILING(2.5,1)", 3},
+		{"pos_exact", "CEILING(7,1)", 7},
+		{"pos_small_frac", "CEILING(0.1,1)", 1},
+
+		// Significance of 0.5, 0.1, 10, 100
+		{"sig_0.5", "CEILING(4.2,0.5)", 4.5},
+		{"sig_0.1", "CEILING(4.21,0.1)", 4.3},
+		{"sig_10", "CEILING(42,10)", 50},
+		{"sig_100", "CEILING(450,100)", 500},
+
+		// Negative number with negative significance (rounds away from zero)
+		{"neg_neg_sig", "CEILING(-2.5,-1)", -3},
+		{"neg_neg_sig_2", "CEILING(-2.5,-2)", -4},
+		{"neg_neg_sig_5", "CEILING(-7,-5)", -10},
+
+		// Negative number with positive significance (rounds toward zero)
+		{"neg_pos_sig", "CEILING(-2.5,1)", -2},
+		{"neg_pos_sig_2", "CEILING(-4.1,2)", -4},
+		{"neg_pos_sig_5", "CEILING(-8.1,5)", -5},
+
+		// Zero → 0
+		{"zero_zero", "CEILING(0,1)", 0},
+		{"zero_neg_sig", "CEILING(0,5)", 0},
+
+		// Number already at significance boundary → unchanged
+		{"exact_boundary", "CEILING(6,3)", 6},
+		{"exact_boundary_neg", "CEILING(-6,-3)", -6},
+		{"exact_boundary_neg_pos_sig", "CEILING(-6,3)", -6},
+
+		// Significance = 0 → 0
+		{"sig_zero_pos", "CEILING(6.3,0)", 0},
+		{"sig_zero_neg", "CEILING(-6.3,0)", 0},
+		{"sig_zero_zero", "CEILING(0,0)", 0},
+
+		// Very small significance
+		{"small_sig", "CEILING(0.234,0.01)", 0.24},
+		{"small_sig_2", "CEILING(1.001,0.001)", 1.001},
+
+		// Large numbers
+		{"large_num", "CEILING(1234567,1000)", 1235000},
+		{"large_exact", "CEILING(1000000,1000)", 1000000},
+
+		// Decimal significance
+		{"dec_sig_0.05", "CEILING(4.42,0.05)", 4.45},
+		{"dec_sig_0.25", "CEILING(1.1,0.25)", 1.25},
+
+		// Excel doc examples
+		{"doc_ex1", "CEILING(2.5,1)", 3},
+		{"doc_ex2", "CEILING(-2.5,-2)", -4},
+		{"doc_ex3", "CEILING(-2.5,2)", -2},
+		{"doc_ex4", "CEILING(1.5,0.1)", 1.5},
+		{"doc_ex5", "CEILING(0.234,0.01)", 0.24},
+
+		// String coercion of numeric strings
+		{"string_num", "CEILING(\"4.1\",1)", 5},
+		{"string_sig", "CEILING(4.1,\"1\")", 5},
+		{"string_both", "CEILING(\"4.1\",\"1\")", 5},
+
+		// Boolean coercion
+		{"bool_true_num", "CEILING(TRUE,1)", 1},
+		{"bool_false_num", "CEILING(FALSE,1)", 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Too few args
+		{"no_args", "CEILING()", ErrValVALUE},
+		{"one_arg", "CEILING(1)", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "CEILING(1,2,3)", ErrValVALUE},
+		// Non-numeric
+		{"non_numeric_num", "CEILING(\"abc\",1)", ErrValVALUE},
+		{"non_numeric_sig", "CEILING(1,\"abc\")", ErrValVALUE},
+		// Positive number with negative significance → #NUM!
+		{"pos_neg_sig", "CEILING(2.5,-1)", ErrValNUM},
+		{"pos_neg_sig_2", "CEILING(10,-5)", ErrValNUM},
+		// Error propagation
+		{"err_prop_num", "CEILING(1/0,1)", ErrValDIV0},
+		{"err_prop_sig", "CEILING(1,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCEILINGMATH(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -656,6 +1114,222 @@ func TestROUND(t *testing.T) {
 		{"too_many_args", "ROUND(1,2,3)", ErrValVALUE},
 		{"non_numeric_number", "ROUND(\"abc\",2)", ErrValVALUE},
 		{"non_numeric_digits", "ROUND(1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestROUNDDOWN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Basic positive number, various decimal places
+		{"basic_2dp", "ROUNDDOWN(3.14159,2)", 3.14, 1e-10},
+		{"basic_1dp", "ROUNDDOWN(2.19,1)", 2.1, 1e-10},
+		{"basic_3dp", "ROUNDDOWN(1.23456,3)", 1.234, 1e-10},
+
+		// Zero digits
+		{"zero_digits_pos", "ROUNDDOWN(3.7,0)", 3, 0},
+		{"zero_digits_pos2", "ROUNDDOWN(3.2,0)", 3, 0},
+
+		// Negative numbers (toward zero means truncation)
+		{"neg_0dp", "ROUNDDOWN(-3.7,0)", -3, 0},
+		{"neg_1dp", "ROUNDDOWN(-3.14159,1)", -3.1, 1e-10},
+		{"neg_2dp", "ROUNDDOWN(-2.789,2)", -2.78, 1e-10},
+
+		// Negative num_digits (round left of decimal)
+		{"neg_digits_tens", "ROUNDDOWN(123.456,-1)", 120, 0},
+		{"neg_digits_hundreds", "ROUNDDOWN(31415.92654,-2)", 31400, 0},
+		{"neg_digits_thousands", "ROUNDDOWN(9876,-3)", 9000, 0},
+
+		// Zero input
+		{"zero_input", "ROUNDDOWN(0,2)", 0, 0},
+		{"zero_input_neg_digits", "ROUNDDOWN(0,-1)", 0, 0},
+
+		// Already rounded (no change expected)
+		{"already_rounded", "ROUNDDOWN(3.14,2)", 3.14, 1e-10},
+		{"already_integer", "ROUNDDOWN(5,0)", 5, 0},
+		{"already_integer_dp", "ROUNDDOWN(5,3)", 5, 0},
+
+		// Large positive num_digits
+		{"large_digits", "ROUNDDOWN(3.14159265,8)", 3.14159265, 1e-10},
+
+		// Negative num_digits with large numbers
+		{"neg_digits_large", "ROUNDDOWN(123456789,-4)", 123450000, 0},
+
+		// Boolean coercion (TRUE=1, FALSE=0)
+		{"bool_true_number", "ROUNDDOWN(TRUE,0)", 1, 0},
+		{"bool_false_number", "ROUNDDOWN(FALSE,0)", 0, 0},
+		{"bool_true_digits", "ROUNDDOWN(3.14,TRUE)", 3.1, 1e-10},
+		{"bool_false_digits", "ROUNDDOWN(3.14,FALSE)", 3, 0},
+
+		// String coercion
+		{"string_number", `ROUNDDOWN("3.7",0)`, 3, 0},
+		{"string_digits", `ROUNDDOWN(3.14159,"2")`, 3.14, 1e-10},
+
+		// Excel doc examples
+		{"doc_ex1", "ROUNDDOWN(3.2,0)", 3, 0},
+		{"doc_ex2", "ROUNDDOWN(76.9,0)", 76, 0},
+		{"doc_ex3", "ROUNDDOWN(3.14159,3)", 3.141, 1e-10},
+		{"doc_ex4", "ROUNDDOWN(-3.14159,1)", -3.1, 1e-10},
+		{"doc_ex5", "ROUNDDOWN(31415.92654,-2)", 31400, 0},
+	}
+
+	const epsilon = 1e-10
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			tol := tt.tol
+			if tol == 0 {
+				tol = epsilon
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ROUNDDOWN()", ErrValVALUE},
+		{"one_arg", "ROUNDDOWN(1)", ErrValVALUE},
+		{"too_many_args", "ROUNDDOWN(1,2,3)", ErrValVALUE},
+		{"non_numeric_number", `ROUNDDOWN("abc",2)`, ErrValVALUE},
+		{"non_numeric_digits", `ROUNDDOWN(1,"abc")`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestROUNDUP(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Basic positive number, various decimal places
+		{"basic_2dp", "ROUNDUP(3.14159,2)", 3.15, 1e-10},
+		{"basic_1dp", "ROUNDUP(2.11,1)", 2.2, 1e-10},
+		{"basic_3dp", "ROUNDUP(1.23412,3)", 1.235, 1e-10},
+
+		// Zero digits
+		{"zero_digits_pos", "ROUNDUP(3.2,0)", 4, 0},
+		{"zero_digits_pos2", "ROUNDUP(76.9,0)", 77, 0},
+
+		// Negative numbers (away from zero)
+		{"neg_0dp", "ROUNDUP(-3.2,0)", -4, 0},
+		{"neg_1dp", "ROUNDUP(-3.14159,1)", -3.2, 1e-10},
+		{"neg_2dp", "ROUNDUP(-2.781,2)", -2.79, 1e-10},
+
+		// Negative num_digits (round left of decimal)
+		{"neg_digits_tens", "ROUNDUP(123.456,-1)", 130, 0},
+		{"neg_digits_hundreds", "ROUNDUP(31415.92654,-2)", 31500, 0},
+		{"neg_digits_thousands", "ROUNDUP(9111,-3)", 10000, 0},
+
+		// Zero input
+		{"zero_input", "ROUNDUP(0,2)", 0, 0},
+		{"zero_input_neg_digits", "ROUNDUP(0,-1)", 0, 0},
+
+		// Already rounded (no change expected)
+		{"already_rounded", "ROUNDUP(3.14,2)", 3.14, 1e-10},
+		{"already_integer", "ROUNDUP(5,0)", 5, 0},
+		{"already_integer_dp", "ROUNDUP(5,3)", 5, 0},
+
+		// Large positive num_digits
+		{"large_digits", "ROUNDUP(3.14159265,8)", 3.14159265, 1e-10},
+
+		// Negative num_digits with large numbers
+		{"neg_digits_large", "ROUNDUP(123456789,-4)", 123460000, 0},
+
+		// Boolean coercion (TRUE=1, FALSE=0)
+		{"bool_true_number", "ROUNDUP(TRUE,0)", 1, 0},
+		{"bool_false_number", "ROUNDUP(FALSE,0)", 0, 0},
+		{"bool_true_digits", "ROUNDUP(3.14,TRUE)", 3.2, 1e-10},
+		{"bool_false_digits", "ROUNDUP(3.14,FALSE)", 4, 0},
+
+		// String coercion
+		{"string_number", `ROUNDUP("3.2",0)`, 4, 0},
+		{"string_digits", `ROUNDUP(3.14159,"2")`, 3.15, 1e-10},
+
+		// Excel doc examples
+		{"doc_ex1", "ROUNDUP(3.2,0)", 4, 0},
+		{"doc_ex2", "ROUNDUP(76.9,0)", 77, 0},
+		{"doc_ex3", "ROUNDUP(3.14159,3)", 3.142, 1e-10},
+		{"doc_ex4", "ROUNDUP(-3.14159,1)", -3.2, 1e-10},
+		{"doc_ex5", "ROUNDUP(31415.92654,-2)", 31500, 0},
+	}
+
+	const epsilon = 1e-10
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			tol := tt.tol
+			if tol == 0 {
+				tol = epsilon
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ROUNDUP()", ErrValVALUE},
+		{"one_arg", "ROUNDUP(1)", ErrValVALUE},
+		{"too_many_args", "ROUNDUP(1,2,3)", ErrValVALUE},
+		{"non_numeric_number", `ROUNDUP("abc",2)`, ErrValVALUE},
+		{"non_numeric_digits", `ROUNDUP(1,"abc")`, ErrValVALUE},
 	}
 
 	for _, tt := range errTests {
@@ -4218,5 +4892,300 @@ func TestSUMXMY2_AllNegative(t *testing.T) {
 	// (-3-(-1))²+(-4-(-2))² = 4+4 = 8
 	if got.Type != ValueNumber || got.Num != 8 {
 		t.Errorf("got %v (%g), want 8", got.Type, got.Num)
+	}
+}
+
+func TestINT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic positive decimal — rounds down
+		{"pos_decimal", "INT(3.7)", 3},
+		// Positive integer — unchanged
+		{"pos_integer", "INT(5)", 5},
+		// Zero
+		{"zero", "INT(0)", 0},
+		// Negative decimal — rounds away from zero (toward -infinity)
+		{"neg_decimal", "INT(-3.2)", -4},
+		// Negative integer — unchanged
+		{"neg_integer", "INT(-7)", -7},
+		// Very small positive
+		{"small_pos", "INT(0.1)", 0},
+		// Very small negative — rounds to -1
+		{"small_neg", "INT(-0.1)", -1},
+		// Negative fraction -0.5
+		{"neg_half", "INT(-0.5)", -1},
+		// Large number
+		{"large_number", "INT(1000000.9)", 1000000},
+		// String number coercion
+		{"string_num", `INT("5.5")`, 5},
+		// Boolean TRUE → 1
+		{"bool_true", "INT(TRUE)", 1},
+		// Boolean FALSE → 0
+		{"bool_false", "INT(FALSE)", 0},
+		// Already integer positive
+		{"already_int_pos", "INT(10)", 10},
+		// Already integer negative
+		{"already_int_neg", "INT(-10)", -10},
+		// Excel doc example: INT(8.9) = 8
+		{"excel_doc_pos", "INT(8.9)", 8},
+		// Excel doc example: INT(-8.9) = -9
+		{"excel_doc_neg", "INT(-8.9)", -9},
+		// Positive number just below next integer
+		{"just_below", "INT(2.999999)", 2},
+		// Negative number just above integer
+		{"neg_just_above", "INT(-2.000001)", -3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// Non-numeric string
+		{"non_numeric_string", `INT("hello")`, ErrValVALUE},
+		// No arguments
+		{"no_args", "INT()", ErrValVALUE},
+		// Too many arguments
+		{"too_many_args", "INT(1,2)", ErrValVALUE},
+		// Error propagation
+		{"error_propagation", "INT(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}
+
+func TestSQRT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Perfect squares
+		{"sqrt_0", "SQRT(0)", 0},
+		{"sqrt_1", "SQRT(1)", 1},
+		{"sqrt_4", "SQRT(4)", 2},
+		{"sqrt_9", "SQRT(9)", 3},
+		{"sqrt_16", "SQRT(16)", 4},
+		{"sqrt_25", "SQRT(25)", 5},
+		{"sqrt_100", "SQRT(100)", 10},
+		// Non-perfect squares
+		{"sqrt_2", "SQRT(2)", math.Sqrt2},
+		{"sqrt_3", "SQRT(3)", math.Sqrt(3)},
+		{"sqrt_10", "SQRT(10)", math.Sqrt(10)},
+		// Large number
+		{"sqrt_large", "SQRT(1000000)", 1000},
+		{"sqrt_large_non_perfect", "SQRT(999999)", math.Sqrt(999999)},
+		// Small decimals
+		{"sqrt_0.25", "SQRT(0.25)", 0.5},
+		{"sqrt_0.01", "SQRT(0.01)", 0.1},
+		{"sqrt_0.0001", "SQRT(0.0001)", 0.01},
+		// String coercion
+		{"string_coerce", "SQRT(\"9\")", 3},
+		{"string_coerce_decimal", "SQRT(\"0.25\")", 0.5},
+		// Boolean coercion
+		{"bool_true", "SQRT(TRUE)", 1},
+		{"bool_false", "SQRT(FALSE)", 0},
+		// Excel doc example: SQRT(ABS(-16)) = 4
+		{"excel_doc_abs_neg16", "SQRT(ABS(-16))", 4},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative", "SQRT(-1)", ErrValNUM},
+		{"negative_large", "SQRT(-100)", ErrValNUM},
+		{"no_args", "SQRT()", ErrValVALUE},
+		{"too_many_args", "SQRT(4,2)", ErrValVALUE},
+		{"non_numeric", "SQRT(\"abc\")", ErrValVALUE},
+		{"error_propagation", "SQRT(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLOG(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Basic default base 10
+		{"log10_of_10", "LOG(10)", 1, 0},
+		{"log10_of_100", "LOG(100)", 2, 0},
+		{"log10_of_1000", "LOG(1000)", 3, 1e-10},
+
+		// Explicit base 10
+		{"log_10_explicit", "LOG(10,10)", 1, 0},
+		{"log_100_explicit", "LOG(100,10)", 2, 0},
+
+		// Base 2
+		{"log2_of_8", "LOG(8,2)", 3, 0},
+		{"log2_of_16", "LOG(16,2)", 4, 0},
+		{"log2_of_1", "LOG(1,2)", 0, 0},
+
+		// Base e (natural log)
+		{"log_e_of_e", "LOG(EXP(1),EXP(1))", 1, 1e-10},
+
+		// LOG(1, any base) = 0
+		{"log_1_base10", "LOG(1)", 0, 0},
+		{"log_1_base7", "LOG(1,7)", 0, 0},
+		{"log_1_base100", "LOG(1,100)", 0, 0},
+
+		// LOG(base, base) = 1
+		{"log_base_base_5", "LOG(5,5)", 1, 1e-10},
+		{"log_base_base_3", "LOG(3,3)", 1, 1e-10},
+
+		// Fractional base
+		{"log_frac_base", "LOG(0.125,0.5)", 3, 1e-10},
+
+		// Large numbers
+		{"log_large", "LOG(1000000)", 6, 1e-10},
+		{"log_large_base2", "LOG(1048576,2)", 20, 1e-10},
+
+		// Excel doc examples
+		{"excel_example_1", "LOG(10)", 1, 0},
+		{"excel_example_2", "LOG(8,2)", 3, 0},
+		{"excel_example_3", "LOG(86,2.7182818)", 4.4543473, 1e-4},
+
+		// Boolean coercion: TRUE=1
+		{"log_true", "LOG(TRUE)", 0, 0},
+
+		// String coercion
+		{"log_string_10", "LOG(\"10\")", 1, 0},
+		{"log_string_base", "LOG(100,\"10\")", 2, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Negative number
+		{"negative_num", "LOG(-1)", ErrValNUM},
+		{"negative_num2", "LOG(-10)", ErrValNUM},
+
+		// Zero
+		{"zero_num", "LOG(0)", ErrValNUM},
+
+		// Base = 1 → #DIV/0!
+		{"base_1", "LOG(10,1)", ErrValDIV0},
+		{"base_1_any", "LOG(1,1)", ErrValDIV0},
+
+		// Base = 0 → #NUM!
+		{"base_0", "LOG(10,0)", ErrValNUM},
+
+		// Negative base → #NUM!
+		{"negative_base", "LOG(10,-2)", ErrValNUM},
+
+		// No args
+		{"no_args", "LOG()", ErrValVALUE},
+
+		// Too many args
+		{"too_many_args", "LOG(10,2,3)", ErrValVALUE},
+
+		// Error propagation
+		{"error_prop_num", "LOG(1/0)", ErrValDIV0},
+		{"error_prop_base", "LOG(10,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
 	}
 }

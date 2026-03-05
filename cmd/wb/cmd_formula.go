@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"sort"
 
 	"github.com/jpoz/werkbook/formula"
@@ -17,16 +15,10 @@ func cmdFormula(args []string, globals globalFlags) int {
 	cmd := "formula"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb formula <subcommand>
-
-Formula-related subcommands.
-
-Subcommands:
-  list    List all registered formula functions
-
-Examples:
-  wb formula list`)
-		return ExitSuccess
+		if len(args) > 0 && args[0] == "list" {
+			return writeHelpTopic([]string{cmd, "list"}, globals)
+		}
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	if len(args) == 0 {
