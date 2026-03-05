@@ -17,7 +17,7 @@ import (
 // Features implemented:
 //   - Section separator ; (positive;negative;zero;text)
 //   - Literal text: "quoted", \escaped, and passthrough of $ - + / ( ) : ! ^ & ' ~ { } = < > space
-//   - Date/time codes: d dd ddd dddd m mm mmm mmmm yy yyyy h hh m mm s ss AM/PM
+//   - Date/time codes: d dd ddd dddd m mm mmm mmmm mmmmm yy yyyy h hh m mm s ss AM/PM
 //   - Elapsed time: [h] [m] [s] with optional decimal seconds
 //   - Number codes: 0 # . , % E+/E-
 //   - Fraction codes: # #/# etc
@@ -544,9 +544,13 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 					if month >= 1 && month <= 12 {
 						result.WriteString(shortMonths[month])
 					}
-				default: // 4+
+				case 4:
 					if month >= 1 && month <= 12 {
 						result.WriteString(longMonths[month])
+					}
+				default: // 5+ ("MMMMM" → first letter of month name)
+					if month >= 1 && month <= 12 {
+						result.WriteByte(longMonths[month][0])
 					}
 				}
 			}

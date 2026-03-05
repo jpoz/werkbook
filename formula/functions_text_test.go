@@ -214,6 +214,8 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 		{name: "d-mmm-yy", formula: `TEXT(44197, "d-mmm-yy")`, want: "1-Jan-21"},
 		{name: "dd-mmm-yyyy", formula: `TEXT(44197, "dd-mmm-yyyy")`, want: "01-Jan-2021"},
 		{name: "mmmm_d_yyyy", formula: `TEXT(44197, "mmmm d, yyyy")`, want: "January 1, 2021"},
+		{name: "mmmmm_first_letter", formula: `TEXT(45720, "MMMMM")`, want: "M"},
+		{name: "mmmmm_jan", formula: `TEXT(44197, "MMMMM")`, want: "J"},
 
 		// Time formatting
 		{name: "h:mm:ss", formula: `TEXT(0.5, "h:mm:ss")`, want: "12:00:00"},
