@@ -125,7 +125,7 @@ Werkbook supports **304** Excel formula functions.
 | IFERROR | Logical | 25 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
-| INDEX | Lookup & Reference | 12 |
+| INDEX | Lookup & Reference | 13 |
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
 | INTERCEPT | Statistical | 16 |
@@ -254,7 +254,7 @@ Werkbook supports **304** Excel formula functions.
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
 | SUBTOTAL | Math & Trig | - |
-| SUM | Statistical | 33 |
+| SUM | Statistical | 34 |
 | SUMIF | Statistical | 36 |
 | SUMIFS | Statistical | 41 |
 | SUMPRODUCT | Statistical | 22 |

@@ -96,6 +96,7 @@ type Value struct {
 	Array       [][]Value  // used by ValueArray for range results
 	RangeOrigin *RangeAddr // set on ValueArray when loaded from a worksheet range
 	FromCell    bool       // true when loaded from a cell reference (OpLoadCell)
+	NoSpill     bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
 }
 
 // NumberVal creates a Value holding a float64.

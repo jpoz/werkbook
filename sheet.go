@@ -467,7 +467,7 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 		return Value{Type: TypeError, String: err.Error()}
 	}
 
-	return formulaValueToValue(result)
+	return formulaValueToValue(result, c.isArrayFormula)
 }
 
 // evaluateFormulaRaw is like evaluateFormula but returns the raw formula.Value
@@ -521,7 +521,8 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 // formulaValueToValue converts a formula.Value to a werkbook Value.
 // Excel coerces empty formula results to 0 (a cell containing =EmptyRef
 // displays and caches 0, not blank), so ValueEmpty maps to TypeNumber 0.
-func formulaValueToValue(fv formula.Value) Value {
+// isArrayFormula indicates whether the originating cell is a CSE array formula.
+func formulaValueToValue(fv formula.Value, isArrayFormula bool) Value {
 	switch fv.Type {
 	case formula.ValueNumber:
 		return Value{Type: TypeNumber, Number: fv.Num}
@@ -532,12 +533,17 @@ func formulaValueToValue(fv formula.Value) Value {
 	case formula.ValueError:
 		return Value{Type: TypeError, String: fv.Err.String()}
 	case formula.ValueArray:
+		// Arrays marked NoSpill (e.g. INDEX with row_num=0) cannot be
+		// displayed in a single non-array cell; Excel returns #VALUE!.
+		if fv.NoSpill && !isArrayFormula {
+			return Value{Type: TypeError, String: "#VALUE!"}
+		}
 		// Dynamic array spill: return the top-left element of the array
 		// for the anchor cell. Full spill support is not yet implemented,
 		// but returning the first element matches Excel's behavior for
 		// the formula cell itself.
 		if len(fv.Array) > 0 && len(fv.Array[0]) > 0 {
-			return formulaValueToValue(fv.Array[0][0])
+			return formulaValueToValue(fv.Array[0][0], isArrayFormula)
 		}
 		// Empty array — treat as numeric 0.
 		return Value{Type: TypeNumber, Number: 0}

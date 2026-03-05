@@ -377,10 +377,14 @@ func fnINDEX(args []Value) (Value, error) {
 	}
 
 	// row_num=0 means return the entire column (or array if col_num=0 too).
-	// The result is an array; in a single-cell (non-array) context the
-	// caller will reduce this to #VALUE! automatically.
+	// The result is an array marked NoSpill; in a single-cell (non-array)
+	// context the caller converts this to #VALUE!. Functions like SUM that
+	// consume the array directly still work because they read Array elements
+	// before the final scalar reduction.
 	if ri == 0 && colNum == 0 {
-		return arr, nil
+		v := arr
+		v.NoSpill = true
+		return v, nil
 	}
 	if ri == 0 {
 		// Return entire column as a single-column array.
@@ -392,7 +396,7 @@ func fnINDEX(args []Value) (Value, error) {
 			}
 			col = append(col, []Value{row[ci]})
 		}
-		return Value{Type: ValueArray, Array: col}, nil
+		return Value{Type: ValueArray, Array: col, NoSpill: true}, nil
 	}
 	if colNum == 0 {
 		// Return entire row as a single-row array.
@@ -400,7 +404,7 @@ func fnINDEX(args []Value) (Value, error) {
 		if ri < 0 || ri >= len(arr.Array) {
 			return ErrorVal(ErrValREF), nil
 		}
-		return Value{Type: ValueArray, Array: [][]Value{arr.Array[ri]}}, nil
+		return Value{Type: ValueArray, Array: [][]Value{arr.Array[ri]}, NoSpill: true}, nil
 	}
 
 	ri--

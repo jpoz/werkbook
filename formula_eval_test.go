@@ -349,3 +349,41 @@ func TestFILTER_NumericArrayResult(t *testing.T) {
 		t.Errorf("C1 = %g, want 100", val.Number)
 	}
 }
+
+// TestINDEX_RowZero_ReturnsValueError verifies that INDEX(range,0) returns
+// #VALUE! in a non-array cell, matching Excel behaviour.
+func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 10)
+	s.SetValue("A2", 20)
+	s.SetValue("A3", 30)
+
+	// INDEX with row_num=0 on a column vector should return #VALUE!
+	// in a regular (non-array) cell.
+	s.SetFormula("B1", "INDEX(A1:A3,0)")
+	val, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatalf("GetValue B1: %v", err)
+	}
+	if val.Type != werkbook.TypeError {
+		t.Errorf("INDEX(A1:A3,0) type = %v, want TypeError", val.Type)
+	}
+	if val.String != "#VALUE!" {
+		t.Errorf("INDEX(A1:A3,0) = %q, want #VALUE!", val.String)
+	}
+
+	// SUM(INDEX(range,0)) should still work — SUM consumes the array.
+	s.SetFormula("C1", "SUM(INDEX(A1:A3,0))")
+	val, err = s.GetValue("C1")
+	if err != nil {
+		t.Fatalf("GetValue C1: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("SUM(INDEX(A1:A3,0)) type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 60 {
+		t.Errorf("SUM(INDEX(A1:A3,0)) = %g, want 60", val.Number)
+	}
+}

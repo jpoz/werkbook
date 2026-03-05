@@ -1045,8 +1045,9 @@ func TestINDEXEdgeCases(t *testing.T) {
 		t.Errorf("INDEX 2-arg: got %g, want 30", got.Num)
 	}
 
-	// row_num=0 returns entire column as an array (caller reduces to #VALUE!
-	// in single-cell context).
+	// row_num=0 returns entire column as an array. The caller
+	// (formulaValueToValue) converts multi-element arrays to #VALUE!
+	// in non-array formula cells.
 	cf = evalCompile(t, "INDEX(A1:B2,0,1)")
 	got, err = Eval(cf, resolver, nil)
 	if err != nil {
