@@ -43,12 +43,35 @@ var Excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 const MaxExcelSerial = 2958465
 
 func TimeToExcelSerial(t time.Time) float64 {
-	duration := t.Sub(ExcelEpoch)
-	days := duration.Hours() / 24
+	// Calculate the number of days between the Excel epoch and the given time.
+	// We cannot use t.Sub(ExcelEpoch) because time.Duration is an int64 of
+	// nanoseconds, which overflows for dates more than ~292 years from the epoch.
+	// Instead, compute whole days via calendar difference and fractional day
+	// from the time-of-day components.
+	y1, m1, d1 := ExcelEpoch.Date()
+	y2, m2, d2 := t.Date()
+	epochDays := julianDayNumber(y1, int(m1), d1)
+	tDays := julianDayNumber(y2, int(m2), d2)
+	days := float64(tDays - epochDays)
+
+	// Add fractional day from time-of-day.
+	h, min, sec := t.Clock()
+	days += (float64(h)*3600 + float64(min)*60 + float64(sec)) / 86400.0
+
 	if days >= 60 {
 		days++
 	}
 	return days
+}
+
+// julianDayNumber returns a Julian Day Number for the given date, useful for
+// computing the difference in days between two dates without overflow.
+func julianDayNumber(year, month, day int) int {
+	// Algorithm from Meeus, "Astronomical Algorithms".
+	a := (14 - month) / 12
+	y := year + 4800 - a
+	m := month + 12*a - 3
+	return day + (153*m+2)/5 + 365*y + y/4 - y/100 + y/400 - 32045
 }
 
 func ExcelSerialToTime(serial float64) time.Time {
