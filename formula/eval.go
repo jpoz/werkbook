@@ -52,6 +52,17 @@ type SheetListProvider interface {
 	GetSheetNames() []string
 }
 
+// FormulaIntrospector is an optional interface that a CellResolver may
+// implement to support ISFORMULA and FORMULATEXT. It allows the formula
+// engine to check whether a cell contains a formula and retrieve its text.
+type FormulaIntrospector interface {
+	// HasFormula reports whether the cell at the given address contains a formula.
+	HasFormula(sheet string, col, row int) bool
+	// GetFormulaText returns the formula text (without leading '=') for the
+	// cell at the given address, or "" if the cell has no formula.
+	GetFormulaText(sheet string, col, row int) string
+}
+
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
