@@ -6798,6 +6798,240 @@ func TestTRIMMEAN(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// GEOMEAN
+// ---------------------------------------------------------------------------
+
+func TestGEOMEAN(t *testing.T) {
+	const tol = 1e-6
+
+	// Resolver with Excel doc example {4,5,8,7,11,4,3} in A1:A7
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(8),
+			{Col: 1, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(11),
+			{Col: 1, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(3),
+		},
+	}
+
+	// Resolver with mixed types in B column
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: StringVal("hello"),
+			{Col: 2, Row: 3}: NumberVal(8),
+			{Col: 2, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 5}: NumberVal(4),
+		},
+	}
+
+	// Resolver with empty cells in C column
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(4),
+			// C2 is empty
+			{Col: 3, Row: 3}: NumberVal(9),
+		},
+	}
+
+	// Resolver with error in D column
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(3),
+			{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+			{Col: 4, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Large dataset in E column (1..20)
+	largeCells := map[CellAddr]Value{}
+	for i := 1; i <= 20; i++ {
+		largeCells[CellAddr{Col: 5, Row: i}] = NumberVal(float64(i))
+	}
+	largeResolver := &mockResolver{cells: largeCells}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		wantNum  float64
+		wantErr  bool // expect ValueError type
+	}{
+		// Basic: GEOMEAN(2,8) = sqrt(16) = 4
+		{
+			name:    "basic_two_values",
+			formula: "GEOMEAN(2,8)",
+			wantNum: 4,
+		},
+		// Single value → that value
+		{
+			name:    "single_value",
+			formula: "GEOMEAN(7)",
+			wantNum: 7,
+		},
+		// All same values → that value
+		{
+			name:    "all_same_values",
+			formula: "GEOMEAN(5,5,5)",
+			wantNum: 5,
+		},
+		// Large values
+		{
+			name:    "large_values",
+			formula: "GEOMEAN(1000000,4000000)",
+			wantNum: 2000000,
+		},
+		// Small decimals
+		{
+			name:    "small_decimals",
+			formula: "GEOMEAN(0.01,0.04)",
+			wantNum: 0.02,
+		},
+		// Negative value → #NUM!
+		{
+			name:    "negative_value",
+			formula: "GEOMEAN(-1,2,3)",
+			wantErr: true,
+		},
+		// Zero value → #NUM!
+		{
+			name:    "zero_value",
+			formula: "GEOMEAN(0,2,3)",
+			wantErr: true,
+		},
+		// Zero in middle → #NUM!
+		{
+			name:    "zero_in_middle",
+			formula: "GEOMEAN(4,0,9)",
+			wantErr: true,
+		},
+		// Range input - Excel doc example: GEOMEAN(A2:A8) = 5.476987
+		{
+			name:     "excel_example_range",
+			formula:  "GEOMEAN(A1:A7)",
+			resolver: excelResolver,
+			wantNum:  5.476987,
+		},
+		// Same values as direct args
+		{
+			name:    "excel_example_direct",
+			formula: "GEOMEAN(4,5,8,7,11,4,3)",
+			wantNum: 5.476987,
+		},
+		// Empty cells in range (ignored by collectNumeric)
+		{
+			name:     "empty_cells_ignored",
+			formula:  "GEOMEAN(C1:C3)",
+			resolver: emptyResolver,
+			wantNum:  6, // geomean(4,9) = sqrt(36) = 6
+		},
+		// Strings in range (ignored by collectNumeric)
+		{
+			name:     "strings_in_range_ignored",
+			formula:  "GEOMEAN(B1:B5)",
+			resolver: mixedResolver,
+			wantNum:  4, // geomean(2,8,4) = (2*8*4)^(1/3) = 64^(1/3) = 4
+		},
+		// Booleans in range (ignored by collectNumeric)
+		// mixedResolver has bool TRUE at B4 - should be ignored in array context
+		// Only numbers {2,8,4} are collected
+		{
+			name:     "booleans_in_range_ignored",
+			formula:  "GEOMEAN(B1:B5)",
+			resolver: mixedResolver,
+			wantNum:  4, // same as strings test - all non-numeric ignored
+		},
+		// Scalar boolean TRUE=1
+		{
+			name:    "scalar_bool_true",
+			formula: "GEOMEAN(TRUE,4)",
+			wantNum: 2, // geomean(1,4) = sqrt(4) = 2
+		},
+		// Scalar boolean FALSE=0 → #NUM! (zero)
+		{
+			name:    "scalar_bool_false",
+			formula: "GEOMEAN(FALSE,4)",
+			wantErr: true,
+		},
+		// Error propagation (#N/A in array)
+		{
+			name:     "error_propagation_na",
+			formula:  "GEOMEAN(D1:D3)",
+			resolver: errResolver,
+			wantErr:  true,
+		},
+		// Error propagation with #DIV/0!
+		{
+			name:    "error_propagation_div0",
+			formula: "GEOMEAN(1,2,1/0)",
+			wantErr: true,
+		},
+		// Many values (1..20)
+		{
+			name:     "many_values",
+			formula:  "GEOMEAN(E1:E20)",
+			resolver: largeResolver,
+			wantNum:  8.304361, // geometric mean of 1..20
+		},
+		// Multiple array arguments
+		{
+			name:     "multiple_arrays",
+			formula:  "GEOMEAN(A1:A3,A4:A7)",
+			resolver: excelResolver,
+			wantNum:  5.476987,
+		},
+		// Mix of direct arg and array
+		{
+			name:     "direct_and_array",
+			formula:  "GEOMEAN(2,A1:A1)",
+			resolver: excelResolver,
+			wantNum:  2.828427, // geomean(2,4) = sqrt(8)
+		},
+		// String number as direct arg (coerced)
+		{
+			name:    "string_number_direct",
+			formula: `GEOMEAN("4","9")`,
+			wantNum: 6, // geomean(4,9) = sqrt(36) = 6
+		},
+		// Non-numeric string as direct arg → error
+		{
+			name:    "non_numeric_string_direct",
+			formula: `GEOMEAN("hello",4)`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			resolver := tt.resolver
+			if resolver == nil {
+				resolver = &mockResolver{}
+			}
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Errorf("got %v (type %d), want error", got, got.Type)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // HARMEAN
 // ---------------------------------------------------------------------------
 

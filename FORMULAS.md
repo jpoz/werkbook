@@ -111,7 +111,7 @@ Werkbook supports **303** Excel formula functions.
 | GAMMALN | Statistical | 23 |
 | GAMMALN.PRECISE | Statistical | 6 |
 | GCD | Math & Trig | - |
-| GEOMEAN | Statistical | 2 |
+| GEOMEAN | Statistical | 24 |
 | GESTEP | Engineering | 29 |
 | HARMEAN | Statistical | 21 |
 | HEX2BIN | Engineering | 38 |
