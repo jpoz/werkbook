@@ -2142,3 +2142,464 @@ func TestTEXTAFTER(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TEXTSPLIT
+// ---------------------------------------------------------------------------
+
+func TestTEXTSPLIT_BasicColSplit(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,C", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_2D(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C,D", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	expected := [][]string{{"A", "B"}, {"C", "D"}}
+	for r, row := range expected {
+		for c, w := range row {
+			if got.Array[r][c].Str != w {
+				t.Errorf("[%d][%d]: got %q, want %q", r, c, got.Array[r][c].Str, w)
+			}
+		}
+	}
+}
+
+func TestTEXTSPLIT_EmptySegments(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmpty(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,B", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_MultiCharDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A::B::C", "::")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("AxBxC", "X",,, 1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_CaseSensitiveNoMatch(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("axbxc", "X")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "axbxc" {
+		t.Errorf("expected original text, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_Padding(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("row 0: got %v %v, want A B", got.Array[0][0], got.Array[0][1])
+	}
+	if got.Array[1][0].Str != "C" {
+		t.Errorf("row 1 col 0: got %v, want C", got.Array[1][0])
+	}
+	if got.Array[1][1].Type != ValueError || got.Array[1][1].Err != ErrValNA {
+		t.Errorf("row 1 col 1: got %v, want #N/A", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_CustomPadWith(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";",,,0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if got.Array[1][1].Type != ValueNumber || got.Array[1][1].Num != 0 {
+		t.Errorf("row 1 col 1: got %v, want 0", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_NoMatch(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "hello" {
+		t.Errorf("expected 'hello', got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_EmptyText(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "" {
+		t.Errorf("expected empty string, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_SingleChar(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "A" {
+		t.Errorf("expected 'A', got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_DelimiterAtEnd(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][2].Str != "" {
+		t.Errorf("col 2: got %q, want empty", got.Array[0][2].Str)
+	}
+}
+
+func TestTEXTSPLIT_DelimiterAtStart(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",A,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "" {
+		t.Errorf("col 0: got %q, want empty", got.Array[0][0].Str)
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyRows(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A;B;;C", ",", ";",TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"A", "B", "C"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_ConsecutiveColDelimiters(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 4 {
+		t.Fatalf("expected 4 cols, got %d", len(got.Array[0]))
+	}
+	want := []string{"A", "", "", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyConsecutive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,,B", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("got %v, want [A, B]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_CaseInsensitive2D(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("AXBxC", "x", , , 1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_PadWithString(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";",,,"N/A")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if got.Array[1][1].Type != ValueString || got.Array[1][1].Str != "N/A" {
+		t.Errorf("pad: got %v, want 'N/A'", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_OnlyRowDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A;B;C", "", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"A", "B", "C"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_UnevenRows3x(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,C;D;E,F", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	if len(got.Array[0]) != 3 || len(got.Array[1]) != 3 || len(got.Array[2]) != 3 {
+		t.Fatalf("expected 3 cols each, got %d, %d, %d",
+			len(got.Array[0]), len(got.Array[1]), len(got.Array[2]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" || got.Array[0][2].Str != "C" {
+		t.Errorf("row 0: got %v", got.Array[0])
+	}
+	if got.Array[1][0].Str != "D" {
+		t.Errorf("row 1 col 0: got %v, want D", got.Array[1][0])
+	}
+	if got.Array[1][1].Type != ValueError || got.Array[1][1].Err != ErrValNA {
+		t.Errorf("row 1 col 1: got %v, want #N/A", got.Array[1][1])
+	}
+	if got.Array[2][0].Str != "E" || got.Array[2][1].Str != "F" {
+		t.Errorf("row 2: got %v", got.Array[2])
+	}
+	if got.Array[2][2].Type != ValueError || got.Array[2][2].Err != ErrValNA {
+		t.Errorf("row 2 col 2: got %v, want #N/A", got.Array[2][2])
+	}
+}
+
+func TestTEXTSPLIT_TwoElements(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("got %v, want [A, B]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_SpaceDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello world foo", " ")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"hello", "world", "foo"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_MatchModeZeroCaseSensitive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("aXbXc", "x",,, 0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "aXbXc" {
+		t.Errorf("expected original text, got %v", got)
+	}
+}
