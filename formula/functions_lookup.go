@@ -16,8 +16,13 @@ func init() {
 	Register("LOOKUP", NoCtx(fnLOOKUP))
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
+	Register("TAKE", NoCtx(fnTAKE))
+	Register("DROP", NoCtx(fnDROP))
+	Register("TOCOL", NoCtx(fnTOCOL))
+	Register("TOROW", NoCtx(fnTOROW))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
 	Register("UNIQUE", NoCtx(fnUNIQUE))
+	Register("WRAPROWS", NoCtx(fnWRAPROWS))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 }
 
@@ -1141,6 +1146,395 @@ func rowKey(row []Value) string {
 		}
 	}
 	return b.String()
+}
+
+// normalizeToGrid converts a Value into a 2D grid.
+// Scalars become {{value}}, arrays are used as-is.
+func normalizeToGrid(v Value) ([][]Value, *Value) {
+	switch v.Type {
+	case ValueArray:
+		if len(v.Array) == 0 {
+			e := ErrorVal(ErrValVALUE)
+			return nil, &e
+		}
+		return v.Array, nil
+	case ValueError:
+		return nil, &v
+	default:
+		return [][]Value{{v}}, nil
+	}
+}
+
+// gridDims returns (rows, maxCols) for a 2D grid.
+func gridDims(grid [][]Value) (int, int) {
+	rows := len(grid)
+	cols := 0
+	for _, row := range grid {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	return rows, cols
+}
+
+// fnTAKE implements TAKE(array, rows, [columns]).
+// Returns a specified number of contiguous rows or columns from the start or end of an array.
+func fnTAKE(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	numRows, numCols := gridDims(grid)
+
+	// Parse rows parameter.
+	rowsArg, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	takeRows := int(rowsArg)
+	if takeRows == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Parse optional columns parameter.
+	takeCols := 0 // 0 means "all columns"
+	if len(args) == 3 {
+		colsArg, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		takeCols = int(colsArg)
+		if takeCols == 0 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Determine row slice.
+	var rowStart, rowEnd int
+	if takeRows > 0 {
+		if takeRows > numRows {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		rowStart = 0
+		rowEnd = takeRows
+	} else {
+		if -takeRows > numRows {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		rowStart = numRows + takeRows
+		rowEnd = numRows
+	}
+
+	// Determine column slice.
+	colStart := 0
+	colEnd := numCols
+	if takeCols != 0 {
+		if takeCols > 0 {
+			if takeCols > numCols {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			colStart = 0
+			colEnd = takeCols
+		} else {
+			if -takeCols > numCols {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			colStart = numCols + takeCols
+			colEnd = numCols
+		}
+	}
+
+	// Build the result grid.
+	result := make([][]Value, rowEnd-rowStart)
+	for i := rowStart; i < rowEnd; i++ {
+		row := make([]Value, colEnd-colStart)
+		for j := colStart; j < colEnd; j++ {
+			if j < len(grid[i]) {
+				row[j-colStart] = grid[i][j]
+			} else {
+				row[j-colStart] = EmptyVal()
+			}
+		}
+		result[i-rowStart] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnDROP implements DROP(array, rows, [columns]).
+// Excludes a specified number of rows or columns from the start or end of an array.
+func fnDROP(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	numRows, numCols := gridDims(grid)
+
+	// Parse rows parameter.
+	rowsArg, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	dropRows := int(rowsArg)
+
+	// Parse optional columns parameter.
+	dropCols := 0
+	if len(args) == 3 {
+		colsArg, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		dropCols = int(colsArg)
+	}
+
+	// Determine row slice after dropping.
+	var rowStart, rowEnd int
+	if dropRows >= 0 {
+		rowStart = dropRows
+		rowEnd = numRows
+	} else {
+		rowStart = 0
+		rowEnd = numRows + dropRows
+	}
+	if rowStart >= rowEnd {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Determine column slice after dropping.
+	colStart := 0
+	colEnd := numCols
+	if dropCols > 0 {
+		colStart = dropCols
+	} else if dropCols < 0 {
+		colEnd = numCols + dropCols
+	}
+	if colStart >= colEnd {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Build the result grid.
+	result := make([][]Value, rowEnd-rowStart)
+	for i := rowStart; i < rowEnd; i++ {
+		row := make([]Value, colEnd-colStart)
+		for j := colStart; j < colEnd; j++ {
+			if j < len(grid[i]) {
+				row[j-colStart] = grid[i][j]
+			} else {
+				row[j-colStart] = EmptyVal()
+			}
+		}
+		result[i-rowStart] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnTOCOL implements TOCOL(array, [ignore], [scan_by_column]).
+// Returns all values from a 2D array as a single column.
+func fnTOCOL(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	ignore := 0
+	if len(args) >= 2 {
+		ig, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		ignore = int(ig)
+		if ignore < 0 || ignore > 3 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	scanByCol := false
+	if len(args) >= 3 {
+		scanByCol = IsTruthy(args[2])
+	}
+
+	flat := flattenGrid(grid, scanByCol, ignore)
+	if len(flat) == 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+
+	// Build a single-column array (n rows x 1 col).
+	result := make([][]Value, len(flat))
+	for i, v := range flat {
+		result[i] = []Value{v}
+	}
+	if len(result) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnTOROW implements TOROW(array, [ignore], [scan_by_column]).
+// Returns all values from a 2D array as a single row.
+func fnTOROW(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	ignore := 0
+	if len(args) >= 2 {
+		ig, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		ignore = int(ig)
+		if ignore < 0 || ignore > 3 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	scanByCol := false
+	if len(args) >= 3 {
+		scanByCol = IsTruthy(args[2])
+	}
+
+	flat := flattenGrid(grid, scanByCol, ignore)
+	if len(flat) == 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+
+	// Build a single-row array (1 row x n cols).
+	if len(flat) == 1 {
+		return flat[0], nil
+	}
+	return Value{Type: ValueArray, Array: [][]Value{flat}}, nil
+}
+
+// flattenGrid flattens a 2D grid into a 1D slice, optionally scanning by
+// column and filtering based on ignore flags (0=keep all, 1=ignore blanks,
+// 2=ignore errors, 3=ignore blanks and errors).
+func flattenGrid(grid [][]Value, scanByCol bool, ignore int) []Value {
+	_, numCols := gridDims(grid)
+	numRows := len(grid)
+
+	var flat []Value
+	if scanByCol {
+		for c := 0; c < numCols; c++ {
+			for r := 0; r < numRows; r++ {
+				v := EmptyVal()
+				if c < len(grid[r]) {
+					v = grid[r][c]
+				}
+				if shouldInclude(v, ignore) {
+					flat = append(flat, v)
+				}
+			}
+		}
+	} else {
+		for r := 0; r < numRows; r++ {
+			for c := 0; c < numCols; c++ {
+				v := EmptyVal()
+				if c < len(grid[r]) {
+					v = grid[r][c]
+				}
+				if shouldInclude(v, ignore) {
+					flat = append(flat, v)
+				}
+			}
+		}
+	}
+	return flat
+}
+
+// shouldInclude returns true if the value should be kept given the ignore flag.
+func shouldInclude(v Value, ignore int) bool {
+	switch ignore {
+	case 1: // ignore blanks
+		return v.Type != ValueEmpty
+	case 2: // ignore errors
+		return v.Type != ValueError
+	case 3: // ignore blanks and errors
+		return v.Type != ValueEmpty && v.Type != ValueError
+	default:
+		return true
+	}
+}
+
+// fnWRAPROWS implements WRAPROWS(vector, wrap_count, [pad_with]).
+// Wraps a row or column vector into a 2D array with wrap_count columns per row.
+func fnWRAPROWS(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten input to a 1D vector.
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	var flat []Value
+	for _, row := range grid {
+		flat = append(flat, row...)
+	}
+	if len(flat) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	wrapArg, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	wrapCount := int(wrapArg)
+	if wrapCount < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	padWith := ErrorVal(ErrValNA)
+	if len(args) == 3 {
+		padWith = args[2]
+	}
+
+	// Build 2D array.
+	numRows := (len(flat) + wrapCount - 1) / wrapCount
+	result := make([][]Value, numRows)
+	for i := 0; i < numRows; i++ {
+		row := make([]Value, wrapCount)
+		for j := 0; j < wrapCount; j++ {
+			idx := i*wrapCount + j
+			if idx < len(flat) {
+				row[j] = flat[idx]
+			} else {
+				row[j] = padWith
+			}
+		}
+		result[i] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 // transposeGrid transposes a 2D grid of Values.
