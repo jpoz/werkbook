@@ -63,7 +63,7 @@ Werkbook supports **303** Excel formula functions.
 | CSCH | Math & Trig | - |
 | CUMIPMT | Financial | 33 |
 | CUMPRINC | Financial | 29 |
-| DATE | Date & Time | 7 |
+| DATE | Date & Time | 49 |
 | DATEDIF | Date & Time | 18 |
 | DATEVALUE | Date & Time | 4 |
 | DAY | Date & Time | 5 |

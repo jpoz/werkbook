@@ -68,6 +68,110 @@ func TestFnDATEEdgeCases(t *testing.T) {
 	}
 }
 
+func TestDATEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic dates
+		{"basic_jan1_2023", "DATE(2023,1,1)", 44927, false, 0},
+		{"basic_dec31_2023", "DATE(2023,12,31)", 45291, false, 0},
+		{"basic_jul4_2000", "DATE(2000,7,4)", 36711, false, 0},
+
+		// Excel doc examples
+		{"doc_example_2008_1_2", "DATE(2008,1,2)", 39449, false, 0},
+		{"doc_example_108_1_2", "DATE(108,1,2)", 39449, false, 0},  // 1900+108=2008
+		{"doc_example_2008_14_2", "DATE(2008,14,2)", 39846, false, 0}, // Feb 2, 2009
+		{"doc_example_2008_neg3_2", "DATE(2008,-3,2)", 39327, false, 0}, // Sep 2, 2007
+		{"doc_example_2008_1_35", "DATE(2008,1,35)", 39482, false, 0}, // Feb 4, 2008
+		{"doc_example_2008_1_neg15", "DATE(2008,1,-15)", 39432, false, 0}, // Dec 16, 2007
+
+		// Year < 1900 behavior (0-1899 adds to 1900)
+		{"year_0_jan1", "DATE(0,1,1)", 1, false, 0},           // 1900-01-01 = serial 1
+		{"year_99_jan1", "DATE(99,1,1)", 36161, false, 0},     // 1999-01-01
+		{"year_1899_dec31", "DATE(1899,12,31)", 693962, false, 0}, // 3799-12-31
+
+		// Year 1900 (serial number 1 for Jan 1)
+		{"year_1900_jan1", "DATE(1900,1,1)", 1, false, 0},
+		{"year_1900_jan2", "DATE(1900,1,2)", 2, false, 0},
+		{"year_1900_feb28", "DATE(1900,2,28)", 59, false, 0},
+		{"year_1900_feb29_fictional", "DATE(1900,2,29)", 60, false, 0}, // Excel fictional leap day
+		{"year_1900_mar1", "DATE(1900,3,1)", 61, false, 0},
+
+		// Month overflow: DATE(2023,13,1) → Jan 2024
+		{"month_overflow_13", "DATE(2023,13,1)", 45292, false, 0},
+		{"month_overflow_14", "DATE(2023,14,1)", 45323, false, 0}, // Feb 1, 2024
+		{"month_overflow_25", "DATE(2023,25,1)", 45658, false, 0}, // Jan 1, 2025
+
+		// Month negative/zero: DATE(2023,0,1) → Dec 2022
+		{"month_zero", "DATE(2023,0,1)", 44896, false, 0},   // Dec 1, 2022
+		{"month_neg1", "DATE(2023,-1,1)", 44866, false, 0},  // Nov 1, 2022
+		{"month_neg12", "DATE(2023,-12,1)", 44531, false, 0}, // Dec 1, 2021 (actually Jan 1 -12 months)
+
+		// Day overflow: DATE(2023,1,32) → Feb 1
+		{"day_overflow_32", "DATE(2023,1,32)", 44958, false, 0},  // Feb 1, 2023
+		{"day_overflow_60", "DATE(2023,1,60)", 44986, false, 0},  // Mar 1, 2023
+		{"day_overflow_365", "DATE(2023,1,365)", 45291, false, 0}, // Dec 31, 2023
+
+		// Day negative/zero
+		{"day_zero", "DATE(2023,1,0)", 44926, false, 0},    // Dec 31, 2022
+		{"day_neg1", "DATE(2023,1,-1)", 44925, false, 0},   // Dec 30, 2022
+		{"day_neg30", "DATE(2023,1,-30)", 44896, false, 0}, // Dec 1, 2022
+
+		// Leap year: DATE(2024,2,29) — valid
+		{"leap_year_2024_feb29", "DATE(2024,2,29)", 45351, false, 0},
+		{"leap_year_2024_feb28", "DATE(2024,2,28)", 45350, false, 0},
+		{"leap_year_2000_feb29", "DATE(2000,2,29)", 36585, false, 0},
+
+		// Non-leap year: DATE(2023,2,29) → Mar 1
+		{"non_leap_feb29", "DATE(2023,2,29)", 44986, false, 0}, // Mar 1, 2023
+		{"non_leap_1900_feb29", "DATE(1900,2,29)", 60, false, 0}, // Excel fictional
+
+		// Large year values (but within range)
+		{"year_9999_dec31", "DATE(9999,12,31)", 2958465, false, 0}, // Max serial
+		{"year_9999_jan1", "DATE(9999,1,1)", 2958101, false, 0},
+
+		// Year out of range
+		{"year_10000_out_of_range", "DATE(10000,1,1)", 0, true, ErrValNUM},
+		{"year_negative_out_of_range", "DATE(-1,1,1)", 0, true, ErrValNUM},
+
+		// String/boolean coercion (via CoerceNum)
+		{"bool_true_year", "DATE(TRUE,1,1)", 367, false, 0}, // TRUE=1, 1+1900=1901, Jan 1
+
+		// Too few/many args → error
+		{"too_few_args_0", "DATE()", 0, true, ErrValVALUE},
+		{"too_few_args_2", "DATE(2023,1)", 0, true, ErrValVALUE},
+		{"too_many_args", "DATE(2023,1,1,1)", 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestYEAR(t *testing.T) {
 	resolver := &mockResolver{}
 
