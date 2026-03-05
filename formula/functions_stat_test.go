@@ -12371,6 +12371,16 @@ func TestNORMSDIST_argcount(t *testing.T) {
 	if got.Type != ValueError {
 		t.Errorf("NORM.S.DIST(0,TRUE,1) should error, got type=%d", got.Type)
 	}
+
+	// IFERROR should catch the #VALUE! from NORM.S.DIST with 1 arg.
+	cf = evalCompile(t, `IFERROR(NORM.S.DIST(1),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(NORM.S.DIST(1),"err") = %v, want string "err"`, got)
+	}
 }
 
 // ---------------------------------------------------------------------------
