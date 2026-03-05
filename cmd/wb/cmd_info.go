@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	werkbook "github.com/jpoz/werkbook"
@@ -27,17 +26,7 @@ func cmdInfo(args []string, globals globalFlags) int {
 	cmd := "info"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb info [flags] <file>
-
-Show sheet metadata including dimensions, cell counts, and formula presence.
-
-Flags:
-  --sheet <name>   Show only the named sheet (default: all sheets)
-
-Examples:
-  wb info data.xlsx
-  wb info --sheet Sheet1 data.xlsx`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var sheetFlag string

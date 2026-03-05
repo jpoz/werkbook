@@ -68,6 +68,110 @@ func TestFnDATEEdgeCases(t *testing.T) {
 	}
 }
 
+func TestDATEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic dates
+		{"basic_jan1_2023", "DATE(2023,1,1)", 44927, false, 0},
+		{"basic_dec31_2023", "DATE(2023,12,31)", 45291, false, 0},
+		{"basic_jul4_2000", "DATE(2000,7,4)", 36711, false, 0},
+
+		// Excel doc examples
+		{"doc_example_2008_1_2", "DATE(2008,1,2)", 39449, false, 0},
+		{"doc_example_108_1_2", "DATE(108,1,2)", 39449, false, 0},  // 1900+108=2008
+		{"doc_example_2008_14_2", "DATE(2008,14,2)", 39846, false, 0}, // Feb 2, 2009
+		{"doc_example_2008_neg3_2", "DATE(2008,-3,2)", 39327, false, 0}, // Sep 2, 2007
+		{"doc_example_2008_1_35", "DATE(2008,1,35)", 39482, false, 0}, // Feb 4, 2008
+		{"doc_example_2008_1_neg15", "DATE(2008,1,-15)", 39432, false, 0}, // Dec 16, 2007
+
+		// Year < 1900 behavior (0-1899 adds to 1900)
+		{"year_0_jan1", "DATE(0,1,1)", 1, false, 0},           // 1900-01-01 = serial 1
+		{"year_99_jan1", "DATE(99,1,1)", 36161, false, 0},     // 1999-01-01
+		{"year_1899_dec31", "DATE(1899,12,31)", 693962, false, 0}, // 3799-12-31
+
+		// Year 1900 (serial number 1 for Jan 1)
+		{"year_1900_jan1", "DATE(1900,1,1)", 1, false, 0},
+		{"year_1900_jan2", "DATE(1900,1,2)", 2, false, 0},
+		{"year_1900_feb28", "DATE(1900,2,28)", 59, false, 0},
+		{"year_1900_feb29_fictional", "DATE(1900,2,29)", 60, false, 0}, // Excel fictional leap day
+		{"year_1900_mar1", "DATE(1900,3,1)", 61, false, 0},
+
+		// Month overflow: DATE(2023,13,1) → Jan 2024
+		{"month_overflow_13", "DATE(2023,13,1)", 45292, false, 0},
+		{"month_overflow_14", "DATE(2023,14,1)", 45323, false, 0}, // Feb 1, 2024
+		{"month_overflow_25", "DATE(2023,25,1)", 45658, false, 0}, // Jan 1, 2025
+
+		// Month negative/zero: DATE(2023,0,1) → Dec 2022
+		{"month_zero", "DATE(2023,0,1)", 44896, false, 0},   // Dec 1, 2022
+		{"month_neg1", "DATE(2023,-1,1)", 44866, false, 0},  // Nov 1, 2022
+		{"month_neg12", "DATE(2023,-12,1)", 44531, false, 0}, // Dec 1, 2021 (actually Jan 1 -12 months)
+
+		// Day overflow: DATE(2023,1,32) → Feb 1
+		{"day_overflow_32", "DATE(2023,1,32)", 44958, false, 0},  // Feb 1, 2023
+		{"day_overflow_60", "DATE(2023,1,60)", 44986, false, 0},  // Mar 1, 2023
+		{"day_overflow_365", "DATE(2023,1,365)", 45291, false, 0}, // Dec 31, 2023
+
+		// Day negative/zero
+		{"day_zero", "DATE(2023,1,0)", 44926, false, 0},    // Dec 31, 2022
+		{"day_neg1", "DATE(2023,1,-1)", 44925, false, 0},   // Dec 30, 2022
+		{"day_neg30", "DATE(2023,1,-30)", 44896, false, 0}, // Dec 1, 2022
+
+		// Leap year: DATE(2024,2,29) — valid
+		{"leap_year_2024_feb29", "DATE(2024,2,29)", 45351, false, 0},
+		{"leap_year_2024_feb28", "DATE(2024,2,28)", 45350, false, 0},
+		{"leap_year_2000_feb29", "DATE(2000,2,29)", 36585, false, 0},
+
+		// Non-leap year: DATE(2023,2,29) → Mar 1
+		{"non_leap_feb29", "DATE(2023,2,29)", 44986, false, 0}, // Mar 1, 2023
+		{"non_leap_1900_feb29", "DATE(1900,2,29)", 60, false, 0}, // Excel fictional
+
+		// Large year values (but within range)
+		{"year_9999_dec31", "DATE(9999,12,31)", 2958465, false, 0}, // Max serial
+		{"year_9999_jan1", "DATE(9999,1,1)", 2958101, false, 0},
+
+		// Year out of range
+		{"year_10000_out_of_range", "DATE(10000,1,1)", 0, true, ErrValNUM},
+		{"year_negative_out_of_range", "DATE(-1,1,1)", 0, true, ErrValNUM},
+
+		// String/boolean coercion (via CoerceNum)
+		{"bool_true_year", "DATE(TRUE,1,1)", 367, false, 0}, // TRUE=1, 1+1900=1901, Jan 1
+
+		// Too few/many args → error
+		{"too_few_args_0", "DATE()", 0, true, ErrValVALUE},
+		{"too_few_args_2", "DATE(2023,1)", 0, true, ErrValVALUE},
+		{"too_many_args", "DATE(2023,1,1,1)", 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestYEAR(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -78,6 +182,86 @@ func TestYEAR(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 2024 {
 		t.Errorf("YEAR: got %g, want 2024", got.Num)
+	}
+}
+
+func TestYEARComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic: YEAR(DATE(2023,6,15)) → 2023
+		{"basic_date_2023", "YEAR(DATE(2023,6,15))", 2023, false, 0},
+		// Serial number 1 → 1900 (Jan 1, 1900)
+		{"serial_1", "YEAR(1)", 1900, false, 0},
+		// Serial number 367 → 1901 (Jan 2, 1901)
+		{"serial_367", "YEAR(367)", 1901, false, 0},
+		// Year 2000 (Y2K): Jan 1, 2000 = serial 36526
+		{"year_2000", "YEAR(36526)", 2000, false, 0},
+		// Modern date 2024: serial 45306 = Jan 15, 2024
+		{"year_2024", "YEAR(45306)", 2024, false, 0},
+		// Dec 31 of a year: DATE(2023,12,31)
+		{"dec_31", "YEAR(DATE(2023,12,31))", 2023, false, 0},
+		// Jan 1 of a year: DATE(2025,1,1)
+		{"jan_1", "YEAR(DATE(2025,1,1))", 2025, false, 0},
+		// Leap year date: Feb 29, 2024
+		{"leap_year_2024", "YEAR(DATE(2024,2,29))", 2024, false, 0},
+		// Serial 0 → 1900 (Excel's "January 0, 1900" sentinel)
+		{"serial_0", "YEAR(0)", 1900, false, 0},
+		// Serial 60 → 1900 (Excel's fictional Feb 29, 1900)
+		{"serial_60", "YEAR(60)", 1900, false, 0},
+		// String date input via DATEVALUE: YEAR(DATEVALUE("1/1/2023"))
+		{"string_date_via_datevalue", `YEAR(DATEVALUE("1/1/2023"))`, 2023, false, 0},
+		// String date input directly: CoerceNum cannot parse date strings → #VALUE!
+		{"string_date_direct", `YEAR("1/1/2023")`, 0, true, ErrValVALUE},
+		// Negative serial → #NUM!
+		{"negative_serial", "YEAR(-1)", 0, true, ErrValNUM},
+		// Too few args → error
+		{"no_args", "YEAR()", 0, true, ErrValVALUE},
+		// Too many args → error
+		{"too_many_args", "YEAR(1,2)", 0, true, ErrValVALUE},
+		// Error propagation: YEAR(#VALUE!) → #VALUE!
+		{"error_propagation", `YEAR("abc")`, 0, true, ErrValVALUE},
+		// Large serial number (far future): serial 2958465 = Dec 31, 9999
+		{"max_serial", "YEAR(2958465)", 9999, false, 0},
+		// Beyond max serial → #NUM!
+		{"beyond_max_serial", "YEAR(2958466)", 0, true, ErrValNUM},
+		// Excel doc examples via DATEVALUE
+		{"excel_doc_2023", `YEAR(DATEVALUE("7/5/2023"))`, 2023, false, 0},
+		{"excel_doc_2025", `YEAR(DATEVALUE("7/5/2025"))`, 2025, false, 0},
+		// Fractional serial (should use integer part): 45306.75 → 2024
+		{"fractional_serial", "YEAR(45306.75)", 2024, false, 0},
+		// Last day of 1900: serial 366 = Dec 31, 1900
+		{"last_day_1900", "YEAR(366)", 1900, false, 0},
+		// Boolean TRUE coerced to 1 → 1900
+		{"bool_true", "YEAR(TRUE)", 1900, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
 	}
 }
 
@@ -305,6 +489,131 @@ func TestSerial60Boundary(t *testing.T) {
 	}
 }
 
+func TestTIME(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("numeric", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// Basic cases
+			{"midnight", "TIME(0,0,0)", 0},
+			{"noon", "TIME(12,0,0)", 0.5},
+			{"quarter_day", "TIME(6,0,0)", 0.25},
+			{"three_quarter_day", "TIME(18,0,0)", 0.75},
+			{"end_of_day", "TIME(23,59,59)", 0.999988425925926},
+
+			// Minutes only
+			{"30_minutes", "TIME(0,30,0)", 30.0 / 1440.0},
+			{"1_minute", "TIME(0,1,0)", 1.0 / 1440.0},
+			{"59_minutes", "TIME(0,59,0)", 59.0 / 1440.0},
+
+			// Seconds only
+			{"30_seconds", "TIME(0,0,30)", 30.0 / 86400.0},
+			{"1_second", "TIME(0,0,1)", 1.0 / 86400.0},
+
+			// Mixed
+			{"16_48_10", "TIME(16,48,10)", 0.700115740740741},
+
+			// Hour overflow (mod 24)
+			{"hour_25", "TIME(25,0,0)", 1.0 / 24.0},
+			{"hour_24", "TIME(24,0,0)", 0},
+			{"hour_48", "TIME(48,0,0)", 0},
+			{"hour_27", "TIME(27,0,0)", 3.0 / 24.0},
+
+			// Minute overflow
+			{"90_minutes", "TIME(0,90,0)", 1.5 / 24.0},
+			{"minute_750", "TIME(0,750,0)", 0.520833333333333},
+			{"minute_1440", "TIME(0,1440,0)", 0},
+
+			// Second overflow
+			{"3600_seconds", "TIME(0,0,3600)", 1.0 / 24.0},
+			{"second_2000", "TIME(0,0,2000)", 0.023148148148148},
+			{"second_7200", "TIME(0,0,7200)", 2.0 / 24.0},
+
+			// Fractional args are truncated
+			{"frac_hour", "TIME(12.9,0,0)", 0.5},
+			{"frac_minute", "TIME(0,30.7,0)", 30.0 / 1440.0},
+			{"frac_second", "TIME(0,0,30.9)", 30.0 / 86400.0},
+
+			// String coercion
+			{"string_hour", `TIME("12",0,0)`, 0.5},
+			{"string_all", `TIME("6","30","0")`, 6.5 / 24.0},
+
+			// Excel doc examples
+			{"doc_example_1", "TIME(12,0,0)", 0.5},
+			{"doc_example_2", "TIME(16,48,10)", 0.700115740740741},
+
+			// Large valid values
+			{"hour_32767", "TIME(32767,0,0)", float64(32767%24) * 3600 / 86400},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+				}
+				if math.Abs(got.Num-tc.want) > 1e-9 {
+					t.Errorf("%s = %.15g, want %.15g", tc.formula, got.Num, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			errVal  ErrorValue
+		}{
+			// Too few args
+			{"no_args", "TIME()", ErrValVALUE},
+			{"one_arg", "TIME(1)", ErrValVALUE},
+			{"two_args", "TIME(1,2)", ErrValVALUE},
+
+			// Too many args
+			{"four_args", "TIME(1,2,3,4)", ErrValVALUE},
+
+			// Non-numeric
+			{"non_numeric_hour", `TIME("abc",0,0)`, ErrValVALUE},
+			{"non_numeric_minute", `TIME(0,"xyz",0)`, ErrValVALUE},
+			{"non_numeric_second", `TIME(0,0,"foo")`, ErrValVALUE},
+
+			// Exceeds 32767
+			{"hour_over_32767", "TIME(32768,0,0)", ErrValNUM},
+			{"minute_over_32767", "TIME(0,32768,0)", ErrValNUM},
+			{"second_over_32767", "TIME(0,0,32768)", ErrValNUM},
+
+			// Negative total time
+			{"negative_hour", "TIME(-1,0,0)", ErrValNUM},
+			{"negative_total", "TIME(0,-1,0)", ErrValNUM},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): unexpected Go error: %v", tc.formula, err)
+				}
+				if got.Type != ValueError {
+					t.Fatalf("%s: got type %v (%v), want error", tc.formula, got.Type, got)
+				}
+				if got.Err != tc.errVal {
+					t.Errorf("%s: got error %v, want %v", tc.formula, got.Err, tc.errVal)
+				}
+			})
+		}
+	})
+}
+
 func TestTIMEVALUE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -363,6 +672,223 @@ func TestDATEVALUE_extended(t *testing.T) {
 			got, err := Eval(cf, resolver, nil)
 			if err != nil {
 				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEVALUEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Various date formats
+		{"slash_m_d_yyyy", `DATEVALUE("1/1/2023")`, 44927, false, 0},
+		{"slash_mm_dd_yyyy", `DATEVALUE("01/01/2023")`, 44927, false, 0},
+		{"month_name_full", `DATEVALUE("January 1, 2023")`, 44927, false, 0},
+		{"iso_format", `DATEVALUE("2023-01-01")`, 44927, false, 0},
+		{"slash_yyyy_mm_dd", `DATEVALUE("2023/01/01")`, 44927, false, 0},
+		{"dash_d_mon_yyyy", `DATEVALUE("1-Jan-2023")`, 44927, false, 0},
+		{"dash_dd_mon_yyyy", `DATEVALUE("01-Jan-2023")`, 44927, false, 0},
+
+		// End of year
+		{"dec_31_2023", `DATEVALUE("12/31/2023")`, 45291, false, 0},
+
+		// Known serial: 1/1/1900 = 1
+		{"jan_1_1900", `DATEVALUE("1/1/1900")`, 1, false, 0},
+
+		// After the leap year bug: 3/1/1900 = 61
+		{"mar_1_1900", `DATEVALUE("3/1/1900")`, 61, false, 0},
+
+		// Leap year date
+		{"leap_year_feb29_2024", `DATEVALUE("2/29/2024")`, 45351, false, 0},
+		{"leap_year_feb29_2000", `DATEVALUE("2/29/2000")`, 36585, false, 0},
+
+		// Excel doc examples
+		{"doc_8_22_2011", `DATEVALUE("8/22/2011")`, 40777, false, 0},
+		{"doc_22_may_2011", `DATEVALUE("22-May-2011")`, 40685, false, 0},
+		{"doc_2011_02_23", `DATEVALUE("2011/02/23")`, 40597, false, 0},
+		{"doc_jan1_2008", `DATEVALUE("1/1/2008")`, 39448, false, 0},
+
+		// Two-digit years
+		{"two_digit_year_25", `DATEVALUE("01/01/25")`, 45658, false, 0},
+		{"two_digit_year_99", `DATEVALUE("12/31/99")`, 36525, false, 0},
+		{"two_digit_year_00", `DATEVALUE("1/1/00")`, 36526, false, 0},
+
+		// Date with time portion (time should be ignored)
+		{"datetime_iso_with_time", `DATEVALUE("2023-06-15 14:30")`, 45092, false, 0},
+		{"datetime_with_seconds", `DATEVALUE("2023-06-15 14:30:45")`, 45092, false, 0},
+
+		// Mid-year dates
+		{"jul_4_2000", `DATEVALUE("7/4/2000")`, 36711, false, 0},
+		{"feb_28_1900", `DATEVALUE("2/28/1900")`, 59, false, 0},
+
+		// Invalid date string → #VALUE!
+		{"invalid_string", `DATEVALUE("not a date")`, 0, true, ErrValVALUE},
+		{"invalid_gibberish", `DATEVALUE("abc123")`, 0, true, ErrValVALUE},
+
+		// Empty string → #VALUE!
+		{"empty_string", `DATEVALUE("")`, 0, true, ErrValVALUE},
+
+		// Non-date string → #VALUE!
+		{"non_date_hello", `DATEVALUE("hello world")`, 0, true, ErrValVALUE},
+
+		// Number input: DATEVALUE coerces to string, which won't parse as a date format
+		{"number_input", `DATEVALUE(12345)`, 0, true, ErrValVALUE},
+		{"number_zero", `DATEVALUE(0)`, 0, true, ErrValVALUE},
+
+		// Too few args → #VALUE!
+		{"too_few_args", `DATEVALUE()`, 0, true, ErrValVALUE},
+
+		// Too many args → #VALUE!
+		{"too_many_args", `DATEVALUE("1/1/2023","extra")`, 0, true, ErrValVALUE},
+
+		// Error propagation
+		{"error_propagation_ref", `DATEVALUE(1/0)`, 0, true, ErrValDIV0},
+
+		// Boolean input (TRUE → "1", FALSE → "0", neither parses as date)
+		{"bool_true", `DATEVALUE(TRUE)`, 0, true, ErrValVALUE},
+		{"bool_false", `DATEVALUE(FALSE)`, 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestWORKDAY(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Key dates (2025) — serial numbers:
+	// Jan 1  = 45658 (Wed), Jan 2  = 45659 (Thu), Jan 3  = 45660 (Fri)
+	// Jan 4  = 45661 (Sat), Jan 5  = 45662 (Sun), Jan 6  = 45663 (Mon)
+	// Jan 7  = 45664 (Tue), Jan 8  = 45665 (Wed), Jan 9  = 45666 (Thu)
+	// Jan 10 = 45667 (Fri), Jan 13 = 45670 (Mon), Jan 15 = 45672 (Wed)
+	//
+	// Excel doc dates:
+	// 2008-10-01 (Wed) = 39722 (start), 2009-04-30 (Thu) = 39933 (result no holidays)
+	// 2009-05-05 (Tue) = 39938 (result with holidays)
+	// Holidays: 2008-11-26 = 39778, 2008-12-04 = 39786, 2009-01-21 = 39834
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// --- Basic: add workdays, result skips weekends ---
+		// 1 workday from Wed Jan 1 → Thu Jan 2
+		{"basic_1day_wed", "WORKDAY(45658,1)", 45659, false, 0},
+		// 2 workdays from Wed Jan 1 → Fri Jan 3
+		{"basic_2days_wed", "WORKDAY(45658,2)", 45660, false, 0},
+
+		// --- Add 0 days → same date (if weekday) ---
+		{"zero_days_weekday", "WORKDAY(45658,0)", 45658, false, 0},
+		// Add 0 days on Saturday → returns Saturday serial (implementation returns start)
+		{"zero_days_saturday", "WORKDAY(45661,0)", 45661, false, 0},
+
+		// --- Add 1 day on Friday → Monday ---
+		{"friday_plus_1", "WORKDAY(45660,1)", 45663, false, 0},
+
+		// --- Add 5 days → one week later (skipping weekend) ---
+		// Wed Jan 1 + 5 workdays: Thu(1), Fri(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"five_days_skip_weekend", "WORKDAY(45658,5)", 45665, false, 0},
+
+		// --- Add 10 days → two weeks later ---
+		// Wed Jan 1 + 10 workdays = Wed Jan 15
+		{"ten_days", "WORKDAY(45658,10)", 45672, false, 0},
+
+		// --- Negative days (go backward) ---
+		// Mon Jan 6 - 1 workday → Fri Jan 3
+		{"negative_1", "WORKDAY(45663,-1)", 45660, false, 0},
+
+		// --- Negative days crossing weekend ---
+		// Mon Jan 6 - 3 workdays: Fri(1), Thu(2), Wed(3) = Jan 1
+		{"negative_cross_weekend", "WORKDAY(45663,-3)", 45658, false, 0},
+		// Wed Jan 8 - 5 workdays: Tue(1), Mon(2), Fri(3), Thu(4), Wed(5) = Jan 1
+		{"negative_5_cross_weekend", "WORKDAY(45665,-5)", 45658, false, 0},
+
+		// --- With holidays (skips them) ---
+		// Wed Jan 1 + 5, holiday on Thu Jan 2: Fri(1), Mon(2), Tue(3), Wed(4), Thu Jan 9(5) = 45666
+		{"with_one_holiday", "WORKDAY(45658,5,45659)", 45666, false, 0},
+
+		// --- Holiday on weekend (no extra skip) ---
+		// Wed Jan 1 + 5, holiday on Sat Jan 4: same as no holidays = Jan 8
+		{"holiday_on_weekend", "WORKDAY(45658,5,45661)", 45665, false, 0},
+
+		// --- Multiple holidays ---
+		// Wed Jan 1 + 5, holidays on Thu Jan 2 and Fri Jan 3:
+		// Mon(1), Tue(2), Wed(3), Thu(4), Fri Jan 10(5) = 45667
+		{"multiple_holidays", "WORKDAY(45658,5,{45659,45660})", 45667, false, 0},
+
+		// --- Start on weekend ---
+		// Sat Jan 4 + 1 workday → Mon Jan 6
+		{"start_saturday_plus1", "WORKDAY(45661,1)", 45663, false, 0},
+		// Sun Jan 5 + 1 workday → Mon Jan 6
+		{"start_sunday_plus1", "WORKDAY(45662,1)", 45663, false, 0},
+		// Sat Jan 4 - 1 workday → Fri Jan 3
+		{"start_saturday_minus1", "WORKDAY(45661,-1)", 45660, false, 0},
+
+		// --- Large number of days ---
+		// 250 workdays from Wed Jan 1 2025 = Wed Dec 17 2025 = 46008
+		{"large_positive", "WORKDAY(45658,250)", 46008, false, 0},
+
+		// --- Too few args → error ---
+		{"too_few_args_zero", "WORKDAY()", 0, true, ErrValVALUE},
+		{"too_few_args_one", "WORKDAY(45658)", 0, true, ErrValVALUE},
+
+		// --- Too many args → error ---
+		{"too_many_args", "WORKDAY(45658,5,45659,1)", 0, true, ErrValVALUE},
+
+		// --- Excel doc examples ---
+		// WORKDAY(10/1/2008, 151) = 4/30/2009 = 39933
+		{"excel_doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
+		// WORKDAY(10/1/2008, 151, {11/26/2008,12/4/2008,1/21/2009}) = 5/5/2009 = 39938
+		{"excel_doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Fatalf("%s: want error %v, got %v", tc.formula, tc.errVal, got)
+				}
+				return
 			}
 			if got.Type != ValueNumber {
 				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
@@ -512,6 +1038,111 @@ func TestWORKDAY_INTL(t *testing.T) {
 		// --- Weekend=6 (Thu, Fri) ---
 		// From Wed Jan 1: Sat(1), Sun(2), Mon(3), Tue(4), Wed(5) = Jan 8
 		{"weekend6_5days", "WORKDAY.INTL(DATE(2025,1,1),5,6)", 45665, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestNETWORKDAYS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Key dates (2025) — serial numbers per ExcelSerialToTime:
+	// Jan 1  = 45658 (Wed), Jan 3  = 45660 (Fri), Jan 4  = 45661 (Sat)
+	// Jan 5  = 45662 (Sun), Jan 6  = 45663 (Mon), Jan 7  = 45664 (Tue)
+	// Jan 8  = 45665 (Wed), Jan 10 = 45667 (Fri), Jan 11 = 45668 (Sat)
+	// Jan 12 = 45669 (Sun), Jan 13 = 45670 (Mon), Jan 31 = 45688 (Fri)
+	//
+	// Excel doc example dates (serial numbers):
+	// 2012-10-01 (Mon) = 41183  (project start)
+	// 2013-03-01 (Fri) = 41334  (project end)
+	// 2012-11-22 (Thu) = 41235  (holiday 1)
+	// 2012-12-04 (Tue) = 41247  (holiday 2)
+	// 2013-01-21 (Mon) = 41295  (holiday 3)
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic: same week Monday–Friday
+		{"mon_to_fri_same_week", "NETWORKDAYS(45663,45667)", 5, false, 0},
+
+		// Cross-weekend: Friday to Monday
+		{"fri_to_mon", "NETWORKDAYS(45660,45663)", 2, false, 0},
+
+		// Cross-weekend: Monday to next Monday
+		{"mon_to_next_mon", "NETWORKDAYS(45663,45670)", 6, false, 0},
+
+		// Same day (weekday) → 1
+		{"same_day_weekday_wed", "NETWORKDAYS(45658,45658)", 1, false, 0},
+		{"same_day_weekday_mon", "NETWORKDAYS(45663,45663)", 1, false, 0},
+		{"same_day_weekday_fri", "NETWORKDAYS(45667,45667)", 1, false, 0},
+
+		// Same day (weekend) → 0
+		{"same_day_saturday", "NETWORKDAYS(45661,45661)", 0, false, 0},
+		{"same_day_sunday", "NETWORKDAYS(45662,45662)", 0, false, 0},
+
+		// Start and end on weekend → count only weekdays between
+		{"sat_to_sun_same_weekend", "NETWORKDAYS(45661,45662)", 0, false, 0},
+		{"sat_to_next_sat", "NETWORKDAYS(45661,45668)", 5, false, 0},
+		{"sun_to_next_sun", "NETWORKDAYS(45662,45669)", 5, false, 0},
+
+		// One full week (Mon–Fri) → 5
+		{"one_full_week", "NETWORKDAYS(45663,45667)", 5, false, 0},
+
+		// One month: Jan 1 (Wed) to Jan 31 (Fri)
+		{"one_month_jan", "NETWORKDAYS(45658,45688)", 23, false, 0},
+
+		// With holidays: one holiday on a weekday
+		{"one_holiday", "NETWORKDAYS(45663,45667,45665)", 4, false, 0},
+
+		// Holiday on weekend (doesn't reduce count)
+		{"holiday_on_saturday", "NETWORKDAYS(45663,45667,45661)", 5, false, 0},
+		{"holiday_on_sunday", "NETWORKDAYS(45663,45667,45662)", 5, false, 0},
+
+		// Multiple holidays
+		{"two_holidays", "NETWORKDAYS(45663,45667,{45664,45665})", 3, false, 0},
+
+		// Negative result (end before start)
+		{"negative_range", "NETWORKDAYS(45667,45663)", -5, false, 0},
+		{"negative_cross_weekend", "NETWORKDAYS(45670,45660)", -7, false, 0},
+
+		// Excel doc examples:
+		// NETWORKDAYS(10/1/2012, 3/1/2013) = 110
+		{"excel_doc_no_holidays", "NETWORKDAYS(41183,41334)", 110, false, 0},
+		// NETWORKDAYS(10/1/2012, 3/1/2013, 11/22/2012) = 109
+		{"excel_doc_one_holiday", "NETWORKDAYS(41183,41334,41235)", 109, false, 0},
+		// NETWORKDAYS(10/1/2012, 3/1/2013, {11/22/2012,12/4/2012,1/21/2013}) = 107
+		{"excel_doc_three_holidays", "NETWORKDAYS(41183,41334,{41235,41247,41295})", 107, false, 0},
+
+		// Too few args → error
+		{"too_few_args_zero", "NETWORKDAYS()", 0, true, ErrValVALUE},
+		{"too_few_args_one", "NETWORKDAYS(45663)", 0, true, ErrValVALUE},
+
+		// Too many args → error
+		{"too_many_args", "NETWORKDAYS(45663,45667,45665,1)", 0, true, ErrValVALUE},
 	}
 
 	for _, tc := range tests {
