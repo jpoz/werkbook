@@ -15,6 +15,7 @@ func init() {
 	Register("DEC2OCT", NoCtx(fnDec2Oct))
 	Register("GESTEP", NoCtx(fnGESTEP))
 	Register("HEX2DEC", NoCtx(fnHex2Dec))
+	Register("OCT2DEC", NoCtx(fnOct2Dec))
 }
 
 // fnBin2Dec implements the Excel BIN2DEC function.

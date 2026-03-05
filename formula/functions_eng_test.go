@@ -707,6 +707,125 @@ func TestHEX2DEC(t *testing.T) {
 	})
 }
 
+func TestOCT2DEC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+		}{
+			// Basic string inputs
+			{`OCT2DEC("0")`, 0},
+			{`OCT2DEC("1")`, 1},
+			{`OCT2DEC("2")`, 2},
+			{`OCT2DEC("7")`, 7},
+			{`OCT2DEC("10")`, 8},
+			{`OCT2DEC("11")`, 9},
+			{`OCT2DEC("17")`, 15},
+			{`OCT2DEC("20")`, 16},
+			{`OCT2DEC("144")`, 100},
+			{`OCT2DEC("377")`, 255},
+			{`OCT2DEC("777")`, 511},
+			{`OCT2DEC("1000")`, 512},
+			{`OCT2DEC("1750")`, 1000},
+
+			// Numeric inputs (coerced to string)
+			{"OCT2DEC(0)", 0},
+			{"OCT2DEC(1)", 1},
+			{"OCT2DEC(10)", 8},
+			{"OCT2DEC(11)", 9},
+			{"OCT2DEC(144)", 100},
+			{"OCT2DEC(377)", 255},
+
+			// Max positive (10 digits, first digit < 4)
+			{`OCT2DEC("3777777777")`, 536870911},
+
+			// Negative two's complement (10 digits, first digit >= 4)
+			{`OCT2DEC("7777777777")`, -1},
+			{`OCT2DEC("7777777776")`, -2},
+			{`OCT2DEC("7777777770")`, -8},
+			{`OCT2DEC("7777777634")`, -100},
+			{`OCT2DEC("4000000000")`, -536870912},
+			{`OCT2DEC("4000000001")`, -536870911},
+
+			// Padded with leading zeros
+			{`OCT2DEC("0000000001")`, 1},
+			{`OCT2DEC("0000000000")`, 0},
+			{`OCT2DEC("0000000010")`, 8},
+
+			// Single digit
+			{`OCT2DEC("3")`, 3},
+			{`OCT2DEC("5")`, 5},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Non-octal characters
+			{`OCT2DEC("8")`, ErrValNUM},
+			{`OCT2DEC("9")`, ErrValNUM},
+			{`OCT2DEC("abc")`, ErrValNUM},
+			{`OCT2DEC("1238")`, ErrValNUM},
+			{`OCT2DEC("12a")`, ErrValNUM},
+			{`OCT2DEC("G")`, ErrValNUM},
+
+			// Too many digits (11 digits)
+			{`OCT2DEC("40000000000")`, ErrValNUM},
+			{`OCT2DEC("77777777777")`, ErrValNUM},
+
+			// Empty string
+			{`OCT2DEC("")`, ErrValNUM},
+
+			// Boolean rejection
+			{"OCT2DEC(TRUE)", ErrValVALUE},
+			{"OCT2DEC(FALSE)", ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"OCT2DEC()", `OCT2DEC("1","2")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestGESTEP(t *testing.T) {
 	resolver := &mockResolver{}
 
