@@ -489,6 +489,131 @@ func TestSerial60Boundary(t *testing.T) {
 	}
 }
 
+func TestTIME(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("numeric", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// Basic cases
+			{"midnight", "TIME(0,0,0)", 0},
+			{"noon", "TIME(12,0,0)", 0.5},
+			{"quarter_day", "TIME(6,0,0)", 0.25},
+			{"three_quarter_day", "TIME(18,0,0)", 0.75},
+			{"end_of_day", "TIME(23,59,59)", 0.999988425925926},
+
+			// Minutes only
+			{"30_minutes", "TIME(0,30,0)", 30.0 / 1440.0},
+			{"1_minute", "TIME(0,1,0)", 1.0 / 1440.0},
+			{"59_minutes", "TIME(0,59,0)", 59.0 / 1440.0},
+
+			// Seconds only
+			{"30_seconds", "TIME(0,0,30)", 30.0 / 86400.0},
+			{"1_second", "TIME(0,0,1)", 1.0 / 86400.0},
+
+			// Mixed
+			{"16_48_10", "TIME(16,48,10)", 0.700115740740741},
+
+			// Hour overflow (mod 24)
+			{"hour_25", "TIME(25,0,0)", 1.0 / 24.0},
+			{"hour_24", "TIME(24,0,0)", 0},
+			{"hour_48", "TIME(48,0,0)", 0},
+			{"hour_27", "TIME(27,0,0)", 3.0 / 24.0},
+
+			// Minute overflow
+			{"90_minutes", "TIME(0,90,0)", 1.5 / 24.0},
+			{"minute_750", "TIME(0,750,0)", 0.520833333333333},
+			{"minute_1440", "TIME(0,1440,0)", 0},
+
+			// Second overflow
+			{"3600_seconds", "TIME(0,0,3600)", 1.0 / 24.0},
+			{"second_2000", "TIME(0,0,2000)", 0.023148148148148},
+			{"second_7200", "TIME(0,0,7200)", 2.0 / 24.0},
+
+			// Fractional args are truncated
+			{"frac_hour", "TIME(12.9,0,0)", 0.5},
+			{"frac_minute", "TIME(0,30.7,0)", 30.0 / 1440.0},
+			{"frac_second", "TIME(0,0,30.9)", 30.0 / 86400.0},
+
+			// String coercion
+			{"string_hour", `TIME("12",0,0)`, 0.5},
+			{"string_all", `TIME("6","30","0")`, 6.5 / 24.0},
+
+			// Excel doc examples
+			{"doc_example_1", "TIME(12,0,0)", 0.5},
+			{"doc_example_2", "TIME(16,48,10)", 0.700115740740741},
+
+			// Large valid values
+			{"hour_32767", "TIME(32767,0,0)", float64(32767%24) * 3600 / 86400},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+				}
+				if math.Abs(got.Num-tc.want) > 1e-9 {
+					t.Errorf("%s = %.15g, want %.15g", tc.formula, got.Num, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			errVal  ErrorValue
+		}{
+			// Too few args
+			{"no_args", "TIME()", ErrValVALUE},
+			{"one_arg", "TIME(1)", ErrValVALUE},
+			{"two_args", "TIME(1,2)", ErrValVALUE},
+
+			// Too many args
+			{"four_args", "TIME(1,2,3,4)", ErrValVALUE},
+
+			// Non-numeric
+			{"non_numeric_hour", `TIME("abc",0,0)`, ErrValVALUE},
+			{"non_numeric_minute", `TIME(0,"xyz",0)`, ErrValVALUE},
+			{"non_numeric_second", `TIME(0,0,"foo")`, ErrValVALUE},
+
+			// Exceeds 32767
+			{"hour_over_32767", "TIME(32768,0,0)", ErrValNUM},
+			{"minute_over_32767", "TIME(0,32768,0)", ErrValNUM},
+			{"second_over_32767", "TIME(0,0,32768)", ErrValNUM},
+
+			// Negative total time
+			{"negative_hour", "TIME(-1,0,0)", ErrValNUM},
+			{"negative_total", "TIME(0,-1,0)", ErrValNUM},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): unexpected Go error: %v", tc.formula, err)
+				}
+				if got.Type != ValueError {
+					t.Fatalf("%s: got type %v (%v), want error", tc.formula, got.Type, got)
+				}
+				if got.Err != tc.errVal {
+					t.Errorf("%s: got error %v, want %v", tc.formula, got.Err, tc.errVal)
+				}
+			})
+		}
+	})
+}
+
 func TestTIMEVALUE(t *testing.T) {
 	resolver := &mockResolver{}
 

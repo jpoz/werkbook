@@ -272,7 +272,7 @@ Werkbook supports **303** Excel formula functions.
 | TEXTBEFORE | Text | 34 |
 | TEXTJOIN | Text | 26 |
 | TEXTSPLIT | Text | 50 |
-| TIME | Date & Time | 1 |
+| TIME | Date & Time | 42 |
 | TIMEVALUE | Date & Time | 7 |
 | TOCOL | Lookup & Reference | 22 |
 | TODAY | Date & Time | 2 |
