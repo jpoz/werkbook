@@ -934,6 +934,156 @@ func TestIPMT_FirstPayment(t *testing.T) {
 	assertClose(t, "IPMT first", v, -833.33)
 }
 
+func TestIPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool // expect ValueError
+	}{
+		// --- Basic cases ---
+		{
+			name: "last payment 30yr mortgage",
+			// IPMT(0.05/12, 360, 360, 200000) — interest of last payment is small
+			args: numArgs(0.05/12, 360, 360, 200000),
+			want: -4.45,
+		},
+		{
+			name: "middle period",
+			// IPMT(0.05/12, 180, 360, 200000) — halfway through 30yr mortgage
+			args: numArgs(0.05/12, 180, 360, 200000),
+			want: -567.81,
+		},
+		{
+			name: "zero rate returns zero interest",
+			// IPMT(0, 5, 10, 10000) — no interest when rate=0
+			args: numArgs(0, 5, 10, 10000),
+			want: 0,
+		},
+
+		// --- With future value ---
+		{
+			name: "with future value",
+			// IPMT(0.1/12, 1, 60, 50000, 10000) — loan with balloon payment
+			args: numArgs(0.1/12, 1, 60, 50000, 10000),
+			want: -416.67,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type 0 explicit",
+			// IPMT(0.1/12, 1, 12, 10000, 0, 0)
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 0),
+			want: -83.33,
+		},
+		{
+			name: "type 1 period 1 returns 0",
+			// IPMT(0.1/12, 1, 12, 10000, 0, 1) — beginning of period, first payment has no interest
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 1),
+			want: 0,
+		},
+		{
+			name: "type 1 period 2",
+			// IPMT(0.1/12, 2, 12, 10000, 0, 1) — beginning of period, second payment
+			args: numArgs(0.1/12, 2, 12, 10000, 0, 1),
+			want: -76.07,
+		},
+
+		// --- Excel documentation examples ---
+		{
+			name: "Excel doc example 1 monthly",
+			// IPMT(0.1/12, 1, 36, 8000) — from Excel docs
+			args: numArgs(0.1/12, 1, 36, 8000),
+			want: -66.67,
+		},
+		{
+			name: "Excel doc example 2 annual",
+			// IPMT(0.1, 3, 3, 8000) — from Excel docs, annual payments, last year
+			args: numArgs(0.1, 3, 3, 8000),
+			want: -292.45,
+		},
+
+		// --- Monthly vs annual ---
+		{
+			name: "annual rate 5yr loan first year",
+			// IPMT(0.08, 1, 5, 25000)
+			args: numArgs(0.08, 1, 5, 25000),
+			want: -2000.00,
+		},
+		{
+			name: "monthly equivalent first month",
+			// IPMT(0.08/12, 1, 60, 25000)
+			args: numArgs(0.08/12, 1, 60, 25000),
+			want: -166.67,
+		},
+
+		// --- Large loan scenario ---
+		{
+			name: "large loan first payment",
+			// IPMT(0.04/12, 1, 360, 1000000)
+			args: numArgs(0.04/12, 1, 360, 1000000),
+			want: -3333.33,
+		},
+		{
+			name: "large loan last payment",
+			// IPMT(0.04/12, 360, 360, 1000000)
+			args: numArgs(0.04/12, 360, 360, 1000000),
+			want: -15.86,
+		},
+
+		// --- Error cases ---
+		{
+			name:    "per=0 returns NUM error",
+			args:    numArgs(0.05/12, 0, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "per > nper returns NUM error",
+			args:    numArgs(0.05/12, 361, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "nper=0 returns NUM error",
+			args:    numArgs(0.05/12, 1, 0, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(0.05, 1, 12),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(0.05, 1, 12, 10000, 0, 0, 99),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric rate",
+			args:    []Value{StringVal("abc"), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric per",
+			args:    []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIPMT(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+				return
+			}
+			assertClose(t, tc.name, v, tc.want)
+		})
+	}
+}
+
 // === PPMT ===
 
 func TestPPMT_FirstPayment(t *testing.T) {
