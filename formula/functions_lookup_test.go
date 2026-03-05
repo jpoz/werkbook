@@ -1984,6 +1984,437 @@ func TestUNIQUE_FromRange(t *testing.T) {
 	}
 }
 
+// ── FILTER tests ──────────────────────────────────────────────────────
+
+func TestFILTER_BasicBoolean(t *testing.T) {
+	// FILTER({1;2;3;4;5}, {TRUE;FALSE;TRUE;FALSE;TRUE}) = {1;3;5}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}, {NumberVal(4)}, {NumberVal(5)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {BoolVal(false)}, {BoolVal(true)}, {BoolVal(false)}, {BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{1, 3, 5}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestFILTER_NumericBooleans(t *testing.T) {
+	// FILTER({1;2;3}, {1;0;1}) = {1;3}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(0)}, {NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[1][0].Num != 3 {
+		t.Errorf("got %v %v, want 1 3", got.Array[0][0], got.Array[1][0])
+	}
+}
+
+func TestFILTER_AllMatch(t *testing.T) {
+	// FILTER({1;2;3}, {1;1;1}) = {1;2;3}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(1)}, {NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{1, 2, 3}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestFILTER_NoneMatchWithIfEmpty(t *testing.T) {
+	// FILTER({1;2;3}, {0;0;0}, "empty") = "empty"
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0)}, {NumberVal(0)}, {NumberVal(0)},
+		}},
+		StringVal("empty"),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "empty" {
+		t.Errorf("got %v, want string 'empty'", got)
+	}
+}
+
+func TestFILTER_NoneMatchWithoutIfEmpty(t *testing.T) {
+	// FILTER({1;2;3}, {0;0;0}) = #CALC!
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0)}, {NumberVal(0)}, {NumberVal(0)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("got %v, want #CALC!", got)
+	}
+}
+
+func TestFILTER_SingleMatch(t *testing.T) {
+	// FILTER({10;20;30}, {0;1;0}) = 20 (scalar)
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)}, {NumberVal(30)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0)}, {NumberVal(1)}, {NumberVal(0)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("got %v, want 20", got)
+	}
+}
+
+func TestFILTER_MultiColumnRows(t *testing.T) {
+	// FILTER({1,"a";2,"b";3,"c"}, {TRUE;FALSE;TRUE}) = {1,"a";3,"c"}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), StringVal("a")},
+			{NumberVal(2), StringVal("b")},
+			{NumberVal(3), StringVal("c")},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {BoolVal(false)}, {BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2 rows, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Str != "a" {
+		t.Errorf("row 0: got %v %v, want 1 a", got.Array[0][0], got.Array[0][1])
+	}
+	if got.Array[1][0].Num != 3 || got.Array[1][1].Str != "c" {
+		t.Errorf("row 1: got %v %v, want 3 c", got.Array[1][0], got.Array[1][1])
+	}
+}
+
+func TestFILTER_StringValues(t *testing.T) {
+	// FILTER({"a";"b";"c"}, {1;0;1}) = {"a";"c"}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("a")}, {StringVal("b")}, {StringVal("c")},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(0)}, {NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2 rows, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Str != "a" || got.Array[1][0].Str != "c" {
+		t.Errorf("got %v %v, want a c", got.Array[0][0], got.Array[1][0])
+	}
+}
+
+func TestFILTER_ErrorInInclude(t *testing.T) {
+	// Error in include array propagates immediately.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {ErrorVal(ErrValDIV0)}, {BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("got %v, want #DIV/0!", got)
+	}
+}
+
+func TestFILTER_MismatchedSizes(t *testing.T) {
+	// Include length doesn't match rows or columns.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(0)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("got %v, want #VALUE!", got)
+	}
+}
+
+func TestFILTER_IfEmptyNumber(t *testing.T) {
+	// if_empty is a number
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0)}, {NumberVal(0)},
+		}},
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("got %v, want 0", got)
+	}
+}
+
+func TestFILTER_WrongArgCount(t *testing.T) {
+	// Too few args
+	got, err := fnFILTER([]Value{NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("got %v, want #VALUE!", got)
+	}
+
+	// Too many args
+	got, err = fnFILTER([]Value{NumberVal(1), NumberVal(1), NumberVal(0), NumberVal(0)})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("got %v, want #VALUE!", got)
+	}
+}
+
+func TestFILTER_SingleElement(t *testing.T) {
+	// FILTER({42}, {TRUE}) = 42
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(42)}}},
+		{Type: ValueArray, Array: [][]Value{{BoolVal(true)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("got %v, want 42", got)
+	}
+}
+
+func TestFILTER_SingleElementFalse(t *testing.T) {
+	// FILTER({42}, {FALSE}) = #CALC!
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(42)}}},
+		{Type: ValueArray, Array: [][]Value{{BoolVal(false)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("got %v, want #CALC!", got)
+	}
+}
+
+func TestFILTER_ScalarInputs(t *testing.T) {
+	// Scalar array + scalar include (both treated as 1x1)
+	got, err := fnFILTER([]Value{
+		NumberVal(5),
+		BoolVal(true),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 5 {
+		t.Errorf("got %v, want 5", got)
+	}
+}
+
+func TestFILTER_NegativeNumberIsTruthy(t *testing.T) {
+	// Negative numbers are truthy (non-zero).
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(-1)}, {NumberVal(0)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("got %v, want 10", got)
+	}
+}
+
+func TestFILTER_ColumnFiltering(t *testing.T) {
+	// FILTER({1,2,3;4,5,6}, {TRUE,FALSE,TRUE}) filters columns → {1,3;4,6}
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true), BoolVal(false), BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("expected 2 rows, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[0][1].Num != 3 {
+		t.Errorf("row 0: got %v %v, want 1 3", got.Array[0][0], got.Array[0][1])
+	}
+	if got.Array[1][0].Num != 4 || got.Array[1][1].Num != 6 {
+		t.Errorf("row 1: got %v %v, want 4 6", got.Array[1][0], got.Array[1][1])
+	}
+}
+
+func TestFILTER_ColumnFilterNoneMatch(t *testing.T) {
+	// Column filter with all FALSE → #CALC!
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(false), BoolVal(false), BoolVal(false)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("got %v, want #CALC!", got)
+	}
+}
+
+func TestFILTER_ErrorInArray(t *testing.T) {
+	// Error in array argument is propagated.
+	got, err := fnFILTER([]Value{
+		ErrorVal(ErrValNA),
+		{Type: ValueArray, Array: [][]Value{{BoolVal(true)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("got %v, want #N/A", got)
+	}
+}
+
+func TestFILTER_ErrorInIncludeArg(t *testing.T) {
+	// Error value as the include argument itself (not an array element).
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}},
+		ErrorVal(ErrValREF),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("got %v, want #REF!", got)
+	}
+}
+
+func TestFILTER_ViaEval(t *testing.T) {
+	// Test through the formula evaluator.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "FILTER({1;2;3;4;5},{TRUE;FALSE;TRUE;FALSE;TRUE})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{1, 3, 5}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestFILTER_ViaEvalIfEmpty(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `FILTER({1;2;3},{0;0;0},"none")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "none" {
+		t.Errorf("got %v, want string 'none'", got)
+	}
+}
+
+func TestFILTER_BoolFalseInInclude(t *testing.T) {
+	// All FALSE booleans with no if_empty.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("a")}, {StringVal("b")}, {StringVal("c")},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(false)}, {BoolVal(false)}, {BoolVal(false)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("got %v, want #CALC!", got)
+	}
+}
+
 func TestXLOOKUP_WildcardMode(t *testing.T) {
 	// Data layout: D2:D4 = lookup values, E2:E4 = return values
 	resolver := &mockResolver{

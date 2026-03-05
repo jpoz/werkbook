@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
+	Register("FILTER", NoCtx(fnFILTER))
 	Register("HLOOKUP", NoCtx(fnHLOOKUP))
 	Register("INDEX", NoCtx(fnINDEX))
 	Register("INDIRECT", fnINDIRECT)
@@ -18,6 +19,171 @@ func init() {
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
 	Register("UNIQUE", NoCtx(fnUNIQUE))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
+}
+
+// fnFILTER implements FILTER(array, include, [if_empty]).
+// It filters rows or columns of an array based on a Boolean array.
+func fnFILTER(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Normalize array to 2D grid.
+	arr := args[0]
+	var grid [][]Value
+	switch arr.Type {
+	case ValueArray:
+		grid = arr.Array
+	case ValueError:
+		return arr, nil
+	default:
+		grid = [][]Value{{arr}}
+	}
+	if len(grid) == 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+
+	// Normalize include to 2D grid.
+	inc := args[1]
+	var incGrid [][]Value
+	switch inc.Type {
+	case ValueArray:
+		incGrid = inc.Array
+	case ValueError:
+		return inc, nil
+	default:
+		incGrid = [][]Value{{inc}}
+	}
+
+	// Determine filtering direction: row filtering vs column filtering.
+	// Row filtering: include has same number of rows as array (column vector).
+	// Column filtering: include has same number of columns as array (row vector).
+	numRows := len(grid)
+	numCols := 0
+	for _, row := range grid {
+		if len(row) > numCols {
+			numCols = len(row)
+		}
+	}
+
+	incRows := len(incGrid)
+	incCols := 0
+	for _, row := range incGrid {
+		if len(row) > incCols {
+			incCols = len(row)
+		}
+	}
+
+	// Flatten include to a single list of values.
+	filterByCol := false
+	var includeVals []Value
+	if incRows == numRows && (incCols == 1 || incRows == 1 && incCols == 1) {
+		// Row filtering: include is a column vector with same row count.
+		for _, row := range incGrid {
+			if len(row) > 0 {
+				includeVals = append(includeVals, row[0])
+			} else {
+				includeVals = append(includeVals, EmptyVal())
+			}
+		}
+	} else if incRows == 1 && incCols == numCols {
+		// Column filtering: include is a row vector with same column count.
+		filterByCol = true
+		includeVals = make([]Value, incCols)
+		if len(incGrid) > 0 {
+			for i := 0; i < incCols; i++ {
+				if i < len(incGrid[0]) {
+					includeVals[i] = incGrid[0][i]
+				} else {
+					includeVals[i] = EmptyVal()
+				}
+			}
+		}
+	} else if incRows == numRows {
+		// Multi-column include with same rows — flatten first column.
+		for _, row := range incGrid {
+			if len(row) > 0 {
+				includeVals = append(includeVals, row[0])
+			} else {
+				includeVals = append(includeVals, EmptyVal())
+			}
+		}
+	} else {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	if !filterByCol {
+		// Row filtering.
+		if len(includeVals) != numRows {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		var result [][]Value
+		for i, iv := range includeVals {
+			if iv.Type == ValueError {
+				return iv, nil
+			}
+			n, e := CoerceNum(iv)
+			if e != nil {
+				return *e, nil
+			}
+			if n != 0 {
+				row := make([]Value, len(grid[i]))
+				copy(row, grid[i])
+				result = append(result, row)
+			}
+		}
+		if len(result) == 0 {
+			if len(args) == 3 {
+				return args[2], nil
+			}
+			return ErrorVal(ErrValCALC), nil
+		}
+		if len(result) == 1 && len(result[0]) == 1 {
+			return result[0][0], nil
+		}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
+
+	// Column filtering.
+	if len(includeVals) != numCols {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Determine which columns to keep.
+	var keepCols []int
+	for i, iv := range includeVals {
+		if iv.Type == ValueError {
+			return iv, nil
+		}
+		n, e := CoerceNum(iv)
+		if e != nil {
+			return *e, nil
+		}
+		if n != 0 {
+			keepCols = append(keepCols, i)
+		}
+	}
+	if len(keepCols) == 0 {
+		if len(args) == 3 {
+			return args[2], nil
+		}
+		return ErrorVal(ErrValCALC), nil
+	}
+	var result [][]Value
+	for _, row := range grid {
+		newRow := make([]Value, len(keepCols))
+		for j, ci := range keepCols {
+			if ci < len(row) {
+				newRow[j] = row[ci]
+			} else {
+				newRow[j] = EmptyVal()
+			}
+		}
+		result = append(result, newRow)
+	}
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnVLOOKUP(args []Value) (Value, error) {
