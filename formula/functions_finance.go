@@ -24,6 +24,8 @@ func init() {
 	Register("XNPV", NoCtx(fnXNPV))
 	Register("DOLLARDE", NoCtx(fnDOLLARDE))
 	Register("DOLLARFR", NoCtx(fnDOLLARFR))
+	Register("EFFECT", NoCtx(fnEFFECT))
+	Register("NOMINAL", NoCtx(fnNOMINAL))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -898,6 +900,48 @@ func fnDOLLARFR(args []Value) (Value, error) {
 	result := intPart + numerator/divisor
 
 	return NumberVal(sign * result), nil
+}
+
+// fnEFFECT implements EFFECT(nominal_rate, npery).
+// Returns the effective annual interest rate.
+func fnEFFECT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nominalRate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	npery, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	npery = math.Trunc(npery)
+	if nominalRate <= 0 || npery < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Pow(1+nominalRate/npery, npery) - 1), nil
+}
+
+// fnNOMINAL implements NOMINAL(effect_rate, npery).
+// Returns the nominal annual interest rate.
+func fnNOMINAL(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	effectRate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	npery, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	npery = math.Trunc(npery)
+	if effectRate <= 0 || npery < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(npery * (math.Pow(1+effectRate, 1/npery) - 1)), nil
 }
 
 // fnXIRR implements XIRR(values, dates, [guess]).
