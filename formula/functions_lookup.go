@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
+	Register("ANCHORARRAY", fnANCHORARRAY)
 	Register("FILTER", NoCtx(fnFILTER))
 	Register("HLOOKUP", NoCtx(fnHLOOKUP))
 	Register("INDEX", NoCtx(fnINDEX))
@@ -27,6 +28,35 @@ func init() {
 	Register("HSTACK", NoCtx(fnHSTACK))
 	Register("VSTACK", NoCtx(fnVSTACK))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
+}
+
+// fnANCHORARRAY implements ANCHORARRAY(ref). It returns the full dynamic
+// array (spilled range) produced by the formula in the anchor cell ref.
+// If the referenced cell has no formula or produces a scalar, the scalar
+// value is returned.
+func fnANCHORARRAY(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type != ValueRef {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if ctx == nil || ctx.Resolver == nil {
+		return ErrorVal(ErrValREF), nil
+	}
+
+	row := int(args[0].Num) / 100_000
+	col := int(args[0].Num) % 100_000
+	sheet := args[0].Str
+
+	fae, ok := ctx.Resolver.(FormulaArrayEvaluator)
+	if !ok {
+		// Resolver does not support formula array evaluation; fall back to
+		// loading the scalar cell value.
+		return ctx.Resolver.GetCellValue(CellAddr{Sheet: sheet, Col: col, Row: row}), nil
+	}
+
+	return fae.EvalCellFormula(sheet, col, row), nil
 }
 
 // fnFILTER implements FILTER(array, include, [if_empty]).

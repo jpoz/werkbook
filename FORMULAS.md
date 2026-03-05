@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **303** Excel formula functions.
+Werkbook supports **304** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -10,6 +10,7 @@ Werkbook supports **303** Excel formula functions.
 | ACOT | Math & Trig | 25 |
 | ACOTH | Math & Trig | 31 |
 | ADDRESS | Lookup & Reference | - |
+| ANCHORARRAY | Lookup & Reference | 6 |
 | AND | Logical | 27 |
 | ARABIC | Math & Trig | - |
 | ARRAYTOTEXT | Text | 24 |
@@ -253,7 +254,7 @@ Werkbook supports **303** Excel formula functions.
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
 | SUBTOTAL | Math & Trig | - |
-| SUM | Statistical | 32 |
+| SUM | Statistical | 33 |
 | SUMIF | Statistical | 36 |
 | SUMIFS | Statistical | 41 |
 | SUMPRODUCT | Statistical | 22 |
