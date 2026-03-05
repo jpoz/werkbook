@@ -1310,8 +1310,9 @@ func fnRri(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 	ratio := fv / pv
-	if ratio < 0 {
+	result := math.Pow(ratio, 1.0/nper)
+	if math.IsNaN(result) {
 		return ErrorVal(ErrValNUM), nil
 	}
-	return NumberVal(math.Pow(ratio, 1.0/nper) - 1), nil
+	return NumberVal(result - 1), nil
 }
