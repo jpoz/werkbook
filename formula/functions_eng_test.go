@@ -218,6 +218,135 @@ func TestDEC2BIN(t *testing.T) {
 	})
 }
 
+func TestDEC2OCT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{"DEC2OCT(0)", "0"},
+			{"DEC2OCT(1)", "1"},
+			{"DEC2OCT(7)", "7"},
+			{"DEC2OCT(8)", "10"},
+			{"DEC2OCT(9)", "11"},
+			{"DEC2OCT(100)", "144"},
+			{"DEC2OCT(255)", "377"},
+			{"DEC2OCT(511)", "777"},
+			{"DEC2OCT(512)", "1000"},
+			{"DEC2OCT(1000)", "1750"},
+
+			// With places
+			{"DEC2OCT(100,4)", "0144"},
+			{"DEC2OCT(1,8)", "00000001"},
+			{"DEC2OCT(0,4)", "0000"},
+			{"DEC2OCT(7,1)", "7"},
+			{"DEC2OCT(8,3)", "010"},
+			{"DEC2OCT(100,10)", "0000000144"},
+
+			// Negative numbers (two's complement)
+			{"DEC2OCT(-1)", "7777777777"},
+			{"DEC2OCT(-2)", "7777777776"},
+			{"DEC2OCT(-100)", "7777777634"},
+			{"DEC2OCT(-8)", "7777777770"},
+			{"DEC2OCT(-256)", "7777777400"},
+
+			// Boundaries
+			{"DEC2OCT(536870911)", "3777777777"},
+			{"DEC2OCT(-536870912)", "4000000000"},
+
+			// Non-integer truncation
+			{"DEC2OCT(7.9)", "7"},
+			{"DEC2OCT(7.1)", "7"},
+			{"DEC2OCT(-1.9)", "7777777777"},
+			{"DEC2OCT(100.7)", "144"},
+
+			// String coercion
+			{`DEC2OCT("100")`, "144"},
+			{`DEC2OCT("0")`, "0"},
+			{`DEC2OCT("255")`, "377"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Out of range
+			{"DEC2OCT(536870912)", ErrValNUM},
+			{"DEC2OCT(-536870913)", ErrValNUM},
+			{"DEC2OCT(1000000000)", ErrValNUM},
+			{"DEC2OCT(-1000000000)", ErrValNUM},
+
+			// Places too small
+			{"DEC2OCT(100,2)", ErrValNUM},
+			{"DEC2OCT(255,2)", ErrValNUM},
+			{"DEC2OCT(8,1)", ErrValNUM},
+
+			// Places = 0
+			{"DEC2OCT(1,0)", ErrValNUM},
+
+			// Negative places
+			{"DEC2OCT(1,-1)", ErrValNUM},
+
+			// Places > 10
+			{"DEC2OCT(1,11)", ErrValNUM},
+
+			// Boolean input (engineering functions reject booleans)
+			{"DEC2OCT(TRUE)", ErrValVALUE},
+			{"DEC2OCT(FALSE)", ErrValVALUE},
+
+			// Non-numeric input
+			{`DEC2OCT("abc")`, ErrValVALUE},
+
+			// Non-numeric places
+			{`DEC2OCT(1,"abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"DEC2OCT()", "DEC2OCT(1,2,3)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestGESTEP(t *testing.T) {
 	resolver := &mockResolver{}
 

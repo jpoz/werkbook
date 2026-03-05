@@ -9,6 +9,8 @@ import (
 func init() {
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
+	Register("DEC2HEX", NoCtx(fnDec2Hex))
+	Register("DEC2OCT", NoCtx(fnDec2Oct))
 	Register("GESTEP", NoCtx(fnGESTEP))
 }
 
@@ -74,6 +76,124 @@ func fnDec2Bin(args []Value) (Value, error) {
 		result = fmt.Sprintf("%b", n+1024)
 	} else {
 		result = fmt.Sprintf("%b", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnDec2Hex implements the Excel DEC2HEX function.
+// DEC2HEX(number, [places]) — converts a decimal number to hexadecimal.
+// number must be between -549755813888 and 549755813887 (inclusive, -2^39 to 2^39-1).
+// Non-integer values are truncated. Negative numbers use two's complement (10 hex digits = 40 bits).
+// places specifies minimum digits (1–10).
+func fnDec2Hex(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Excel engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate to integer.
+	num = math.Trunc(num)
+
+	// Range check: -549755813888 to 549755813887.
+	if num < -549755813888 || num > 549755813887 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	n := int64(num)
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^40 (1099511627776) to get 10-digit hex representation.
+		result = fmt.Sprintf("%X", n+1099511627776)
+	} else {
+		result = fmt.Sprintf("%X", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnDec2Oct implements the Excel DEC2OCT function.
+// DEC2OCT(number, [places]) — converts a decimal number to octal.
+// number must be between -536870912 and 536870911 (inclusive, -2^29 to 2^29-1).
+// Non-integer values are truncated. Negative numbers use two's complement (10 octal digits = 30 bits).
+// places specifies minimum digits (1–10).
+func fnDec2Oct(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Excel engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate to integer.
+	num = math.Trunc(num)
+
+	// Range check: -536870912 to 536870911.
+	if num < -536870912 || num > 536870911 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	n := int64(num)
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^30 (1073741824) to get 10-digit octal representation.
+		result = fmt.Sprintf("%o", n+1073741824)
+	} else {
+		result = fmt.Sprintf("%o", n)
 	}
 
 	if len(args) == 2 {
