@@ -483,23 +483,35 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 }
 
 // MatchesCriteria checks if a value matches Excel-style criteria.
+//
+// In Excel, booleans and numbers are distinct types for criteria matching:
+//   - Numeric criteria (e.g. 1) only match numeric cells, not booleans.
+//   - Boolean criteria (e.g. TRUE) only match boolean cells, not numbers.
+//   - String criteria with comparison operators (e.g. ">0") only compare
+//     against numeric cells; booleans are excluded from numeric comparisons.
+//   - String criteria "TRUE"/"FALSE" are coerced to boolean for matching.
 func MatchesCriteria(v Value, criteria Value) bool {
 	critStr := ValueToString(criteria)
 
 	if len(critStr) >= 2 {
+		// Extract operator and operand.
+		var op, operand string
 		switch {
 		case strings.HasPrefix(critStr, ">="):
-			return CompareToCriteria(v, critStr[2:]) >= 0
+			op, operand = ">=", critStr[2:]
 		case strings.HasPrefix(critStr, "<="):
-			return CompareToCriteria(v, critStr[2:]) <= 0
+			op, operand = "<=", critStr[2:]
 		case strings.HasPrefix(critStr, "<>"):
-			return CompareToCriteria(v, critStr[2:]) != 0
+			op, operand = "<>", critStr[2:]
 		case strings.HasPrefix(critStr, ">"):
-			return CompareToCriteria(v, critStr[1:]) > 0
+			op, operand = ">", critStr[1:]
 		case strings.HasPrefix(critStr, "<"):
-			return CompareToCriteria(v, critStr[1:]) < 0
+			op, operand = "<", critStr[1:]
 		case strings.HasPrefix(critStr, "="):
-			return CompareToCriteria(v, critStr[1:]) == 0
+			op, operand = "=", critStr[1:]
+		}
+		if op != "" {
+			return matchOperator(v, op, operand)
 		}
 	}
 
@@ -507,16 +519,103 @@ func MatchesCriteria(v Value, criteria Value) bool {
 		return WildcardMatch(ValueToString(v), critStr)
 	}
 
+	// Boolean criteria: only match boolean cells.
+	if criteria.Type == ValueBool {
+		return v.Type == ValueBool && v.Bool == criteria.Bool
+	}
+
+	// Numeric criteria: only match numeric cells, not booleans.
 	if criteria.Type == ValueNumber {
-		n, e := CoerceNum(v)
-		if e != nil {
+		if v.Type != ValueNumber {
 			return false
 		}
-		return n == criteria.Num
+		return v.Num == criteria.Num
 	}
+
+	// String criteria "TRUE"/"FALSE": coerce to boolean for matching.
+	// In Excel, =COUNTIF(range,"TRUE") counts only boolean TRUE cells,
+	// not cells containing the string "TRUE".
+	upper := strings.ToUpper(strings.TrimSpace(critStr))
+	if upper == "TRUE" {
+		return v.Type == ValueBool && v.Bool
+	}
+	if upper == "FALSE" {
+		return v.Type == ValueBool && !v.Bool
+	}
+
+	// Other string criteria: use case-insensitive comparison.
 	return strings.EqualFold(ValueToString(v), critStr)
 }
 
+// matchOperator applies a comparison operator to a cell value and an operand
+// string, respecting Excel's type separation between booleans and numbers.
+func matchOperator(v Value, op, operand string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(operand))
+
+	// If the operand is a boolean literal, compare against boolean type only.
+	if upper == "TRUE" || upper == "FALSE" {
+		critBool := upper == "TRUE"
+		if v.Type == ValueBool {
+			cmp := 0
+			if v.Bool != critBool {
+				if !v.Bool {
+					cmp = -1 // FALSE < TRUE
+				} else {
+					cmp = 1
+				}
+			}
+			return evalOp(op, cmp)
+		}
+		// Non-boolean value compared to boolean operand:
+		// For <> they are not equal; for = they are not equal;
+		// for ordering operators they don't match.
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
+	// If the operand is numeric, only compare against numeric cells.
+	// Booleans are excluded from numeric comparisons.
+	if cn, err := strconv.ParseFloat(operand, 64); err == nil {
+		if v.Type == ValueNumber {
+			return evalOp(op, cmpFloat(v.Num, cn))
+		}
+		// Boolean or other non-numeric type vs numeric operand:
+		// For <> they are not equal; otherwise no match.
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
+	// Non-numeric, non-boolean operand: plain string comparison.
+	cmp := strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(operand))
+	return evalOp(op, cmp)
+}
+
+// evalOp applies a comparison operator to a cmp result (-1, 0, 1).
+func evalOp(op string, cmp int) bool {
+	switch op {
+	case ">=":
+		return cmp >= 0
+	case "<=":
+		return cmp <= 0
+	case "<>":
+		return cmp != 0
+	case ">":
+		return cmp > 0
+	case "<":
+		return cmp < 0
+	case "=":
+		return cmp == 0
+	}
+	return false
+}
+
+// CompareToCriteria compares a value to a criteria string. This is the
+// original type-agnostic version kept for backward compatibility with
+// external callers. Internal *IF functions use compareToCriteriaTyped.
 func CompareToCriteria(v Value, critValStr string) int {
 	if n, e := CoerceNum(v); e == nil {
 		if cn, err := strconv.ParseFloat(critValStr, 64); err == nil {

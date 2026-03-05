@@ -2340,6 +2340,56 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// MatchesCriteria — boolean vs number type distinction
+// ---------------------------------------------------------------------------
+
+func TestMatchesCriteriaBoolNumDistinction(t *testing.T) {
+	tests := []struct {
+		name string
+		v    Value
+		crit Value
+		want bool
+	}{
+		// Boolean criteria only matches boolean cells
+		{name: "bool_true_matches_bool_true", v: BoolVal(true), crit: BoolVal(true), want: true},
+		{name: "bool_true_no_match_num_1", v: NumberVal(1), crit: BoolVal(true), want: false},
+		{name: "bool_false_matches_bool_false", v: BoolVal(false), crit: BoolVal(false), want: true},
+		{name: "bool_false_no_match_num_0", v: NumberVal(0), crit: BoolVal(false), want: false},
+		{name: "bool_true_no_match_bool_false", v: BoolVal(true), crit: BoolVal(false), want: false},
+
+		// Numeric criteria only matches numeric cells
+		{name: "num_1_matches_num_1", v: NumberVal(1), crit: NumberVal(1), want: true},
+		{name: "num_1_no_match_bool_true", v: BoolVal(true), crit: NumberVal(1), want: false},
+		{name: "num_0_matches_num_0", v: NumberVal(0), crit: NumberVal(0), want: true},
+		{name: "num_0_no_match_bool_false", v: BoolVal(false), crit: NumberVal(0), want: false},
+
+		// String "TRUE"/"FALSE" matches boolean via case-insensitive comparison
+		{name: "str_TRUE_matches_bool_true", v: BoolVal(true), crit: StringVal("TRUE"), want: true},
+		{name: "str_TRUE_no_match_num_1", v: NumberVal(1), crit: StringVal("TRUE"), want: false},
+		{name: "str_FALSE_matches_bool_false", v: BoolVal(false), crit: StringVal("FALSE"), want: true},
+
+		// Comparison operators with numeric operand exclude booleans
+		{name: "gt0_matches_positive_num", v: NumberVal(5), crit: StringVal(">0"), want: true},
+		{name: "gt0_excludes_bool_true", v: BoolVal(true), crit: StringVal(">0"), want: false},
+		{name: "gt0_excludes_bool_false", v: BoolVal(false), crit: StringVal(">0"), want: false},
+
+		// <>TRUE: not-equal-to boolean TRUE
+		{name: "ne_TRUE_bool_true_no_match", v: BoolVal(true), crit: StringVal("<>TRUE"), want: false},
+		{name: "ne_TRUE_bool_false_matches", v: BoolVal(false), crit: StringVal("<>TRUE"), want: true},
+		{name: "ne_TRUE_num_matches", v: NumberVal(1), crit: StringVal("<>TRUE"), want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesCriteria(tt.v, tt.crit)
+			if got != tt.want {
+				t.Errorf("MatchesCriteria(%v, %v) = %v, want %v", tt.v, tt.crit, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // QUARTILE
 // ---------------------------------------------------------------------------
 
