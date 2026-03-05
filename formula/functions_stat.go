@@ -38,6 +38,7 @@ func init() {
 	Register("MINA", NoCtx(fnMINA))
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
+	Register("MODE.SNGL", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
