@@ -58,6 +58,7 @@ func init() {
 	Register("STDEV.S", NoCtx(fnSTDEV))
 	Register("STDEVP", NoCtx(fnSTDEVP))
 	Register("STDEV.P", NoCtx(fnSTDEVP))
+	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
 	Register("SUM", NoCtx(fnSUM))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
@@ -2127,4 +2128,26 @@ func fnFISHERINV(args []Value) (Value, error) {
 	}
 	e2y := math.Exp(2 * y)
 	return NumberVal((e2y - 1) / (e2y + 1)), nil
+}
+
+func fnSTANDARDIZE(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stddev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if stddev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal((x - mean) / stddev), nil
 }

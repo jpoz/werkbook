@@ -17,6 +17,7 @@ func init() {
 	Register("CODE", NoCtx(fnCODE))
 	Register("CONCAT", NoCtx(fnCONCAT))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
+	Register("DOLLAR", NoCtx(fnDOLLAR))
 	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
 	Register("FIXED", NoCtx(fnFIXED))
@@ -86,6 +87,49 @@ func fnCONCATENATE(args []Value) (Value, error) {
 		b.WriteString(ValueToString(arg))
 	}
 	return StringVal(b.String()), nil
+}
+
+func fnDOLLAR(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	decimals := 2
+	if len(args) == 2 {
+		d, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		decimals = int(d)
+	}
+
+	// For negative decimals, round to the left of the decimal point.
+	if decimals < 0 {
+		factor := math.Pow(10, float64(-decimals))
+		n = math.Round(n/factor) * factor
+		decimals = 0
+	} else {
+		factor := math.Pow(10, float64(decimals))
+		n = math.Round(n*factor) / factor
+	}
+
+	// Handle negative zero: after rounding, n may be -0.
+	negative := n < 0
+	if negative {
+		n = -n
+	}
+	// Ensure -0.0 becomes +0.0.
+	n = n + 0
+
+	formatted := FormatWithCommas(n, decimals)
+	if negative {
+		return StringVal("($" + formatted + ")"), nil
+	}
+	return StringVal("$" + formatted), nil
 }
 
 func fnFIND(args []Value) (Value, error) {
