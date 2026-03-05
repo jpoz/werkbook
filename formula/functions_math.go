@@ -90,6 +90,9 @@ func init() {
 	Register("SQRT", NoCtx(fnSQRT))
 	Register("SQRTPI", NoCtx(fnSQRTPI))
 	Register("SUBTOTAL", fnSUBTOTALCtx)
+	Register("SUMX2MY2", NoCtx(fnSumx2my2))
+	Register("SUMX2PY2", NoCtx(fnSumx2py2))
+	Register("SUMXMY2", NoCtx(fnSumxmy2))
 	Register("TAN", NoCtx(fnTAN))
 	Register("TANH", NoCtx(fnTANH))
 	Register("TRUNC", NoCtx(fnTRUNC))
@@ -1545,4 +1548,64 @@ func fnBITRSHIFT(args []Value) (Value, error) {
 	}
 	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(float64(result)), nil
+}
+
+// sumPairedArrays is a helper for SUMX2MY2, SUMX2PY2, and SUMXMY2.
+// It flattens two arrays, checks they have equal length, coerces each
+// element to a number (empty cells become 0, non-numeric text causes #VALUE!),
+// and accumulates the result using the provided combine function.
+func sumPairedArrays(args []Value, combine func(x, y float64) float64) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	sum := 0.0
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		x, e := CoerceNum(v1)
+		if e != nil {
+			return *e, nil
+		}
+		y, e := CoerceNum(v2)
+		if e != nil {
+			return *e, nil
+		}
+		sum += combine(x, y)
+	}
+	return NumberVal(sum), nil
+}
+
+// fnSumx2my2 implements SUMX2MY2: Σ(xi² - yi²)
+func fnSumx2my2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		return x*x - y*y
+	})
+}
+
+// fnSumx2py2 implements SUMX2PY2: Σ(xi² + yi²)
+func fnSumx2py2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		return x*x + y*y
+	})
+}
+
+// fnSumxmy2 implements SUMXMY2: Σ(xi - yi)²
+func fnSumxmy2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		d := x - y
+		return d * d
+	})
 }

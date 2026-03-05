@@ -11,6 +11,7 @@ func init() {
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("BIN2HEX", NoCtx(fnBin2Hex))
 	Register("BIN2OCT", NoCtx(fnBin2Oct))
+	Register("CONVERT", NoCtx(fnConvert))
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
 	Register("DEC2HEX", NoCtx(fnDec2Hex))
@@ -845,6 +846,384 @@ func fnOct2Hex(args []Value) (Value, error) {
 	}
 
 	return StringVal(result), nil
+}
+
+// ---------------------------------------------------------------------------
+// CONVERT — unit conversion tables and logic
+// ---------------------------------------------------------------------------
+
+// convertCategory groups a set of units that can be converted between each other.
+// For non-temperature categories the factor field gives the multiplier to the
+// category's base unit. Temperature uses special-case formulas.
+type convertCategory struct {
+	name  string
+	units map[string]float64 // unit name -> factor relative to base
+}
+
+// SI metric prefixes that can be prepended to applicable base units.
+// The map value is the multiplier.
+var siPrefixes = map[string]float64{
+	"Y":  1e24,
+	"Z":  1e21,
+	"E":  1e18,
+	"P":  1e15,
+	"T":  1e12,
+	"G":  1e9,
+	"M":  1e6,
+	"k":  1e3,
+	"h":  1e2,
+	"da": 1e1,
+	"d":  1e-1,
+	"c":  1e-2,
+	"m":  1e-3,
+	"u":  1e-6,
+	"n":  1e-9,
+	"p":  1e-12,
+	"f":  1e-15,
+	"a":  1e-18,
+	"z":  1e-21,
+	"y":  1e-24,
+}
+
+// siPrefixOrder is used to try longer prefixes first (e.g. "da" before "d").
+var siPrefixOrder = []string{
+	"Y", "Z", "E", "P", "T", "G", "M", "k", "h", "da",
+	"d", "c", "m", "u", "n", "p", "f", "a", "z", "y",
+}
+
+// Units that accept SI prefixes.
+var siEligible = map[string]bool{
+	"g": true, "m": true, "l": true, "lt": true, "N": true, "Pa": true,
+	"J": true, "W": true, "T": true, "e": true, "eV": true, "Wh": true,
+	"cal": true, "sec": true, "bit": true, "byte": true, "dyn": true,
+	"pond": true, "ang": true,
+}
+
+var convertMass = convertCategory{
+	name: "mass",
+	units: map[string]float64{
+		"g":     1,
+		"kg":    1e3,
+		"lbm":   453.59237,
+		"ozm":   28.349523125,
+		"stone": 6350.29318,
+		"ton":   907184.74,
+		"sg":    14593.9029372064,
+		"u":     1.66053906660e-24,
+	},
+}
+
+var convertDistance = convertCategory{
+	name: "distance",
+	units: map[string]float64{
+		"m":    1,
+		"km":   1e3,
+		"mi":   1609.344,
+		"yd":   0.9144,
+		"ft":   0.3048,
+		"in":   0.0254,
+		"Nmi":  1852,
+		"ang":  1e-10,
+		"Pica": 0.0254 / 72 * 6, // 1 Pica = 1/6 inch (PostScript pica)
+		"ell":  1.143,
+		"ly":   9.46073047258e15,
+		"survey_mi": 1609.3472186944373,
+	},
+}
+
+var convertTime = convertCategory{
+	name: "time",
+	units: map[string]float64{
+		"sec": 1,
+		"mn":  60,
+		"hr":  3600,
+		"day": 86400,
+		"yr":  365.25 * 86400,
+	},
+}
+
+var convertPressure = convertCategory{
+	name: "pressure",
+	units: map[string]float64{
+		"Pa":   1,
+		"atm":  101325,
+		"mmHg": 133.322,
+		"psi":  6894.76,
+		"Torr": 133.3223684211,
+	},
+}
+
+var convertForce = convertCategory{
+	name: "force",
+	units: map[string]float64{
+		"N":    1,
+		"dyn":  1e-5,
+		"lbf":  4.4482216152605,
+		"pond": 9.80665e-3,
+	},
+}
+
+var convertEnergy = convertCategory{
+	name: "energy",
+	units: map[string]float64{
+		"J":   1,
+		"e":   1e-7,
+		"c":   4.1868,
+		"cal": 4.1868,
+		"eV":  1.602176634e-19,
+		"HPh": 2684519.537696173,
+		"Wh":  3600,
+		"flb": 1.3558179483314,
+		"BTU": 1055.05585262,
+	},
+}
+
+var convertPower = convertCategory{
+	name: "power",
+	units: map[string]float64{
+		"W":  1,
+		"HP": 745.69987158227022,
+		"PS": 735.49875,
+	},
+}
+
+var convertMagnetism = convertCategory{
+	name: "magnetism",
+	units: map[string]float64{
+		"T":  1,
+		"ga": 1e-4,
+	},
+}
+
+var convertVolume = convertCategory{
+	name: "volume",
+	units: map[string]float64{
+		"l":      1,
+		"lt":     1,
+		"tsp":    0.00492892159375,
+		"tbs":    0.01478676478125,
+		"oz":     0.0295735295625,
+		"cup":    0.236588236500,
+		"pt":     0.473176473,
+		"qt":     0.946352946,
+		"gal":    3.785411784,
+		"m3":     1000,
+		"mi3":    4.168181825440579584e12,
+		"yd3":    764.554857984,
+		"ft3":    28.316846592,
+		"in3":    0.016387064,
+		"ang3":   1e-27,
+		"Pica3":  2.2316552567e-8, // (Pica)^3
+		"barrel": 158.987294928,
+		"bushel": 35.23907016688,
+		"regton": 2831.6846592,
+		"Nmi3":   6.352182208e12,
+		"ly3":    8.46786664623715e47,
+	},
+}
+
+var convertArea = convertCategory{
+	name: "area",
+	units: map[string]float64{
+		"m2":      1,
+		"mi2":     2589988.110336,
+		"yd2":     0.83612736,
+		"ft2":     0.09290304,
+		"in2":     6.4516e-4,
+		"ang2":    1e-20,
+		"Pica2":   1.76369644444e-7,
+		"Nmi2":    3429904,
+		"Morgen":  2500,
+		"ar":      100,
+		"ha":      10000,
+		"us_acre": 4046.8564224,
+	},
+}
+
+var convertInformation = convertCategory{
+	name: "information",
+	units: map[string]float64{
+		"bit":  1,
+		"byte": 8,
+	},
+}
+
+var convertSpeed = convertCategory{
+	name: "speed",
+	units: map[string]float64{
+		"m/s":   1,
+		"m/h":   1.0 / 3600.0,
+		"mph":   0.44704,
+		"kn":    0.514444444444444,
+		"admkn": 0.514773333333333,
+	},
+}
+
+// allCategories collects every non-temperature category.
+var allCategories = []convertCategory{
+	convertMass,
+	convertDistance,
+	convertTime,
+	convertPressure,
+	convertForce,
+	convertEnergy,
+	convertPower,
+	convertMagnetism,
+	convertVolume,
+	convertArea,
+	convertInformation,
+	convertSpeed,
+}
+
+// Temperature unit names (handled specially).
+var tempUnits = map[string]bool{
+	"C": true, "F": true, "K": true, "Rank": true, "Reau": true,
+}
+
+// resolveUnit looks up a unit string, trying exact match first, then SI-prefix
+// + base. Returns (category-name, factor, ok). For temperature units the factor
+// is unused and category-name is "temperature".
+func resolveUnit(unit string) (category string, factor float64, ok bool) {
+	// Temperature — exact match only, no SI prefixes.
+	if tempUnits[unit] {
+		return "temperature", 0, true
+	}
+
+	// Exact match in non-temperature categories.
+	for _, cat := range allCategories {
+		if f, exists := cat.units[unit]; exists {
+			return cat.name, f, true
+		}
+	}
+
+	// Try SI prefix + base unit.
+	for _, pfx := range siPrefixOrder {
+		if strings.HasPrefix(unit, pfx) {
+			base := unit[len(pfx):]
+			if !siEligible[base] {
+				continue
+			}
+			for _, cat := range allCategories {
+				if baseFactor, exists := cat.units[base]; exists {
+					return cat.name, baseFactor * siPrefixes[pfx], true
+				}
+			}
+		}
+	}
+
+	return "", 0, false
+}
+
+// convertTemperature converts a temperature value from one unit to another.
+func convertTemperature(val float64, from, to string) (float64, bool) {
+	if from == to {
+		return val, true
+	}
+	// Convert from -> Celsius first, then Celsius -> to.
+	var celsius float64
+	switch from {
+	case "C":
+		celsius = val
+	case "F":
+		celsius = (val - 32) * 5.0 / 9.0
+	case "K":
+		celsius = val - 273.15
+	case "Rank":
+		celsius = (val - 491.67) * 5.0 / 9.0
+	case "Reau":
+		celsius = val * 5.0 / 4.0
+	default:
+		return 0, false
+	}
+
+	var result float64
+	switch to {
+	case "C":
+		result = celsius
+	case "F":
+		result = celsius*9.0/5.0 + 32
+	case "K":
+		result = celsius + 273.15
+	case "Rank":
+		result = celsius*9.0/5.0 + 491.67
+	case "Reau":
+		result = celsius * 4.0 / 5.0
+	default:
+		return 0, false
+	}
+	return result, true
+}
+
+// fnConvert implements the Excel CONVERT function.
+// CONVERT(number, from_unit, to_unit) — converts a number from one measurement
+// unit to another.
+func fnConvert(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// First arg: number.
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Second and third args: unit strings.
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	if args[2].Type == ValueError {
+		return args[2], nil
+	}
+
+	fromUnit := ""
+	switch args[1].Type {
+	case ValueString:
+		fromUnit = args[1].Str
+	case ValueNumber:
+		fromUnit = strconv.FormatFloat(args[1].Num, 'f', -1, 64)
+	default:
+		return ErrorVal(ErrValNA), nil
+	}
+
+	toUnit := ""
+	switch args[2].Type {
+	case ValueString:
+		toUnit = args[2].Str
+	case ValueNumber:
+		toUnit = strconv.FormatFloat(args[2].Num, 'f', -1, 64)
+	default:
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Same unit: short-circuit.
+	if fromUnit == toUnit {
+		return NumberVal(num), nil
+	}
+
+	// Resolve units.
+	fromCat, fromFactor, fromOk := resolveUnit(fromUnit)
+	toCat, toFactor, toOk := resolveUnit(toUnit)
+
+	if !fromOk || !toOk {
+		return ErrorVal(ErrValNA), nil
+	}
+	if fromCat != toCat {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Temperature: special formulas.
+	if fromCat == "temperature" {
+		result, ok := convertTemperature(num, fromUnit, toUnit)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		return NumberVal(result), nil
+	}
+
+	// Factor-based conversion.
+	result := num * fromFactor / toFactor
+	return NumberVal(result), nil
 }
 
 // fnGESTEP implements the Excel GESTEP function.

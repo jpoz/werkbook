@@ -1548,6 +1548,157 @@ func TestOCT2HEX(t *testing.T) {
 	})
 }
 
+func TestCONVERT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+			tol     float64 // 0 means exact match
+		}{
+			// Temperature conversions
+			{`CONVERT(1,"C","F")`, 33.8, 1e-9},
+			{`CONVERT(32,"F","C")`, 0, 1e-9},
+			{`CONVERT(0,"C","K")`, 273.15, 1e-9},
+			{`CONVERT(100,"C","F")`, 212, 1e-9},
+			{`CONVERT(212,"F","C")`, 100, 1e-9},
+			{`CONVERT(0,"K","C")`, -273.15, 1e-9},
+			{`CONVERT(0,"C","Rank")`, 491.67, 1e-9},
+			{`CONVERT(0,"C","Reau")`, 0, 1e-9},
+			{`CONVERT(100,"C","Reau")`, 80, 1e-9},
+			{`CONVERT(80,"Reau","C")`, 100, 1e-9},
+
+			// Same unit returns same number
+			{`CONVERT(42,"C","C")`, 42, 0},
+			{`CONVERT(42,"kg","kg")`, 42, 0},
+
+			// Mass conversions
+			{`CONVERT(1,"kg","lbm")`, 2.20462262184878, 1e-6},
+			{`CONVERT(1,"lbm","kg")`, 0.45359237, 1e-6},
+			{`CONVERT(1,"kg","g")`, 1000, 1e-9},
+			{`CONVERT(1,"lbm","ozm")`, 16, 1e-6},
+			{`CONVERT(1,"stone","lbm")`, 14, 1e-4},
+
+			// Distance conversions
+			{`CONVERT(1,"mi","km")`, 1.609344, 1e-6},
+			{`CONVERT(1,"ft","in")`, 12, 1e-9},
+			{`CONVERT(1,"yd","ft")`, 3, 1e-9},
+			{`CONVERT(1,"m","ft")`, 3.28083989501312, 1e-6},
+			{`CONVERT(1,"Nmi","m")`, 1852, 1e-9},
+			{`CONVERT(1,"in","m")`, 0.0254, 1e-9},
+
+			// Time conversions
+			{`CONVERT(1,"hr","mn")`, 60, 1e-9},
+			{`CONVERT(1,"day","hr")`, 24, 1e-9},
+			{`CONVERT(1,"day","sec")`, 86400, 1e-9},
+			{`CONVERT(1,"yr","day")`, 365.25, 1e-9},
+
+			// Volume conversions
+			{`CONVERT(1,"gal","l")`, 3.785411784, 1e-6},
+			{`CONVERT(1,"l","gal")`, 0.264172052358148, 1e-6},
+			{`CONVERT(1,"cup","tbs")`, 16, 1e-4},
+			{`CONVERT(1,"gal","qt")`, 4, 1e-9},
+			{`CONVERT(1,"gal","pt")`, 8, 1e-9},
+
+			// Information conversions
+			{`CONVERT(1,"byte","bit")`, 8, 0},
+			{`CONVERT(8,"bit","byte")`, 1, 0},
+
+			// SI prefix conversions
+			{`CONVERT(1,"km","m")`, 1000, 1e-9},
+			{`CONVERT(1,"m","cm")`, 100, 1e-9},
+			{`CONVERT(1,"mg","g")`, 0.001, 1e-12},
+			{`CONVERT(1,"kg","mg")`, 1e6, 1e-3},
+			{`CONVERT(1,"kW","W")`, 1000, 1e-9},
+			{`CONVERT(1,"MW","kW")`, 1000, 1e-9},
+
+			// Pressure
+			{`CONVERT(1,"atm","Pa")`, 101325, 1e-3},
+
+			// Force
+			{`CONVERT(1,"lbf","N")`, 4.4482216152605, 1e-6},
+
+			// Energy
+			{`CONVERT(1,"BTU","J")`, 1055.05585262, 1e-3},
+
+			// Power
+			{`CONVERT(1,"HP","W")`, 745.69987158227, 1e-3},
+
+			// Magnetism
+			{`CONVERT(1,"T","ga")`, 10000, 1e-9},
+
+			// Speed
+			{`CONVERT(1,"mph","m/s")`, 0.44704, 1e-6},
+			{`CONVERT(1,"kn","mph")`, 1.15077944802354, 1e-4},
+
+			// Area
+			{`CONVERT(1,"ha","m2")`, 10000, 1e-9},
+			{`CONVERT(1,"us_acre","m2")`, 4046.8564224, 1e-6},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("Eval(%q) = %v, want number", tt.formula, got)
+				}
+				if tt.tol == 0 {
+					if got.Num != tt.want {
+						t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want)
+					}
+				} else {
+					diff := got.Num - tt.want
+					if diff < 0 {
+						diff = -diff
+					}
+					if diff > tt.tol {
+						t.Errorf("Eval(%q) = %v, want %v (tol %v, diff %v)", tt.formula, got.Num, tt.want, tt.tol, diff)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Cross-category: mass vs distance
+			{`CONVERT(1,"kg","m")`, ErrValNA},
+			// Unknown units
+			{`CONVERT(1,"foo","bar")`, ErrValNA},
+			// Unknown from unit
+			{`CONVERT(1,"foo","kg")`, ErrValNA},
+			// Unknown to unit
+			{`CONVERT(1,"kg","bar")`, ErrValNA},
+			// Temperature vs mass
+			{`CONVERT(1,"C","kg")`, ErrValNA},
+			// Wrong arg count
+			{`CONVERT(1,"kg")`, ErrValVALUE},
+			{`CONVERT(1,"kg","g","extra")`, ErrValVALUE},
+			// Non-numeric first arg
+			{`CONVERT("abc","kg","g")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+}
+
 func TestGESTEP(t *testing.T) {
 	resolver := &mockResolver{}
 
