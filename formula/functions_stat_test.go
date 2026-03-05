@@ -4951,3 +4951,187 @@ func TestMINA(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// RANK.EQ
+// ---------------------------------------------------------------------------
+
+func TestRANKEQ(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(7),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(9),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr ErrorValue
+	}{
+		{name: "desc_top", formula: "RANK.EQ(9,A1:A5)", want: 1},
+		{name: "desc_mid", formula: "RANK.EQ(7,A1:A5)", want: 2},
+		{name: "desc_tie", formula: "RANK.EQ(3,A1:A5)", want: 4},
+		{name: "asc_bottom", formula: "RANK.EQ(3,A1:A5,1)", want: 1},
+		{name: "asc_top", formula: "RANK.EQ(9,A1:A5,1)", want: 5},
+		{name: "not_found", formula: "RANK.EQ(99,A1:A5)", wantErr: ErrValNA},
+		{name: "too_few_args", formula: "RANK.EQ(9)", wantErr: ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("got %v, want %g", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RANK.AVG
+// ---------------------------------------------------------------------------
+
+func TestRANKAVG(t *testing.T) {
+	// Dataset: {7, 3, 5, 3, 9}
+	// Descending sorted: 9(1), 7(2), 5(3), 3(4), 3(5)
+	// Ascending sorted:  3(1), 3(2), 5(3), 7(4), 9(5)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(7),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(9),
+		},
+	}
+
+	// Dataset with triple tie: {4, 4, 4, 1, 6}
+	// Descending: 6(1), 4(2), 4(3), 4(4), 1(5)
+	tripleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 3}: NumberVal(4),
+			{Col: 2, Row: 4}: NumberVal(1),
+			{Col: 2, Row: 5}: NumberVal(6),
+		},
+	}
+
+	// All same values: {5, 5, 5}
+	allSameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(5),
+			{Col: 3, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Single value: {10}
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(10),
+		},
+	}
+
+	// Negative values: {-3, -1, -3, 2, 0}
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(-3),
+			{Col: 5, Row: 2}: NumberVal(-1),
+			{Col: 5, Row: 3}: NumberVal(-3),
+			{Col: 5, Row: 4}: NumberVal(2),
+			{Col: 5, Row: 5}: NumberVal(0),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		want     float64
+		wantErr  ErrorValue
+	}{
+		// Basic descending (no ties)
+		{name: "desc_unique_top", formula: "RANK.AVG(9,A1:A5)", resolver: resolver, want: 1},
+		{name: "desc_unique_mid", formula: "RANK.AVG(7,A1:A5)", resolver: resolver, want: 2},
+		{name: "desc_unique_5", formula: "RANK.AVG(5,A1:A5)", resolver: resolver, want: 3},
+
+		// Descending with ties: two 3s occupy ranks 4 and 5, avg = 4.5
+		{name: "desc_tie_avg", formula: "RANK.AVG(3,A1:A5)", resolver: resolver, want: 4.5},
+
+		// Ascending (no ties)
+		{name: "asc_unique_top", formula: "RANK.AVG(9,A1:A5,1)", resolver: resolver, want: 5},
+		{name: "asc_unique_mid", formula: "RANK.AVG(7,A1:A5,1)", resolver: resolver, want: 4},
+
+		// Ascending with ties: two 3s occupy ranks 1 and 2, avg = 1.5
+		{name: "asc_tie_avg", formula: "RANK.AVG(3,A1:A5,1)", resolver: resolver, want: 1.5},
+
+		// Triple tie descending: three 4s occupy ranks 2,3,4 -> avg = 3
+		{name: "triple_tie_desc", formula: "RANK.AVG(4,B1:B5)", resolver: tripleResolver, want: 3},
+
+		// Triple tie ascending: three 4s occupy ranks 2,3,4 -> avg = 3
+		{name: "triple_tie_asc", formula: "RANK.AVG(4,B1:B5,1)", resolver: tripleResolver, want: 3},
+
+		// No ties in triple dataset
+		{name: "triple_unique_top_desc", formula: "RANK.AVG(6,B1:B5)", resolver: tripleResolver, want: 1},
+		{name: "triple_unique_bottom_desc", formula: "RANK.AVG(1,B1:B5)", resolver: tripleResolver, want: 5},
+
+		// All same values: three 5s occupy ranks 1,2,3 -> avg = 2
+		{name: "all_same_desc", formula: "RANK.AVG(5,C1:C3)", resolver: allSameResolver, want: 2},
+		{name: "all_same_asc", formula: "RANK.AVG(5,C1:C3,1)", resolver: allSameResolver, want: 2},
+
+		// Single value
+		{name: "single_value", formula: "RANK.AVG(10,D1:D1)", resolver: singleResolver, want: 1},
+
+		// Value not found
+		{name: "not_found", formula: "RANK.AVG(99,A1:A5)", resolver: resolver, wantErr: ErrValNA},
+
+		// Negative values descending: sorted desc: 2(1), 0(2), -1(3), -3(4), -3(5)
+		{name: "neg_no_tie_desc", formula: "RANK.AVG(2,E1:E5)", resolver: negResolver, want: 1},
+		{name: "neg_tie_desc", formula: "RANK.AVG(-3,E1:E5)", resolver: negResolver, want: 4.5},
+
+		// Negative values ascending: sorted asc: -3(1), -3(2), -1(3), 0(4), 2(5)
+		{name: "neg_tie_asc", formula: "RANK.AVG(-3,E1:E5,1)", resolver: negResolver, want: 1.5},
+		{name: "neg_no_tie_asc", formula: "RANK.AVG(2,E1:E5,1)", resolver: negResolver, want: 5},
+
+		// order=0 means descending (same as omitting)
+		{name: "order_zero_desc", formula: "RANK.AVG(3,A1:A5,0)", resolver: resolver, want: 4.5},
+
+		// Wrong argument count
+		{name: "too_few_args", formula: "RANK.AVG(9)", resolver: resolver, wantErr: ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("got %v, want %g", got, tt.want)
+			}
+		})
+	}
+}

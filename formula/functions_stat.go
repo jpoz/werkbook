@@ -43,6 +43,8 @@ func init() {
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("RANK", NoCtx(fnRANK))
+	Register("RANK.EQ", NoCtx(fnRANK))
+	Register("RANK.AVG", NoCtx(fnRANKAVG))
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
@@ -1143,6 +1145,53 @@ func fnRANK(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(float64(rank)), nil
+}
+
+// fnRANKAVG implements RANK.AVG. It behaves like RANK except that tied values
+// receive the average of the ranks they would span.
+func fnRANKAVG(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nums, e2 := collectNumeric(args[1:2])
+	if e2 != nil {
+		return *e2, nil
+	}
+	ascending := false
+	if len(args) == 3 {
+		order, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		ascending = order != 0
+	}
+	// Count how many values match (ties) and how many are strictly better.
+	ties := 0
+	better := 0
+	for _, v := range nums {
+		if v == num {
+			ties++
+		} else if ascending {
+			if v < num {
+				better++
+			}
+		} else {
+			if v > num {
+				better++
+			}
+		}
+	}
+	if ties == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	// The tied values span ranks (better+1) through (better+ties).
+	// Average = better + 1 + (ties-1)/2 = better + (ties+1)/2.
+	avg := float64(better) + (float64(ties)+1)/2
+	return NumberVal(avg), nil
 }
 
 func fnPERCENTRANK(args []Value) (Value, error) {
