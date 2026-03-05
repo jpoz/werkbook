@@ -24,6 +24,11 @@ func init() {
 	Register("ATAN2", NoCtx(fnATAN2))
 	Register("ATANH", NoCtx(fnATANH))
 	Register("BASE", NoCtx(fnBASE))
+	Register("BITAND", NoCtx(fnBITAND))
+	Register("BITLSHIFT", NoCtx(fnBITLSHIFT))
+	Register("BITOR", NoCtx(fnBITOR))
+	Register("BITRSHIFT", NoCtx(fnBITRSHIFT))
+	Register("BITXOR", NoCtx(fnBITXOR))
 	Register("CEILING", NoCtx(fnCEILING))
 	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
 	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
@@ -1030,4 +1035,64 @@ func fnTANH(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
 	return NumberVal(math.Tanh(n)), nil
+}
+
+const bitMaxVal = (1 << 48) - 1 // 2^48 - 1
+
+func validateBitArg(v Value) (int64, *Value) {
+	n, e := CoerceNum(v)
+	if e != nil { return 0, e }
+	if n < 0 || math.Floor(n) != n || n > bitMaxVal {
+		ev := ErrorVal(ErrValNUM); return 0, &ev
+	}
+	return int64(n), nil
+}
+
+func fnBITAND(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 & n2)), nil
+}
+func fnBITOR(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 | n2)), nil
+}
+func fnBITXOR(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 ^ n2)), nil
+}
+func fnBITLSHIFT(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
+	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	shift := int(sf)
+	var result int64
+	if shift >= 0 {
+		result = n << uint(shift)
+	} else {
+		result = n >> uint(-shift)
+	}
+	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(float64(result)), nil
+}
+func fnBITRSHIFT(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
+	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	shift := int(sf)
+	var result int64
+	if shift >= 0 {
+		result = n >> uint(shift)
+	} else {
+		result = n << uint(-shift)
+	}
+	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(float64(result)), nil
 }
