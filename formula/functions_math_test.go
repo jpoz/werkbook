@@ -2270,3 +2270,389 @@ func TestMDETERM_PermutationMatrix(t *testing.T) {
 		t.Errorf("permutation matrix: got %g, want -1", result.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// MINVERSE tests
+// ---------------------------------------------------------------------------
+
+func TestMINVERSE_1x1(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1 array, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if math.Abs(got.Array[0][0].Num-0.5) > 1e-10 {
+		t.Errorf("got %g, want 0.5", got.Array[0][0].Num)
+	}
+}
+
+func TestMINVERSE_2x2(t *testing.T) {
+	// {1,2;3,4} => inverse is {-2,1;1.5,-0.5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,2;3,4})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-2, 1}, {1.5, -0.5}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_2x2_Known(t *testing.T) {
+	// {4,7;2,6} => inverse is {0.6,-0.7;-0.2,0.4}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({4,7;2,6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{0.6, -0.7}, {-0.2, 0.4}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_3x3_Identity(t *testing.T) {
+	// Inverse of identity is identity.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,0,0;0,1,0;0,0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_3x3_General(t *testing.T) {
+	// {1,2,3;0,1,4;5,6,0} => inverse is {-24,18,5;20,-15,-4;-5,4,1}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,2,3;0,1,4;5,6,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-24, 18, 5}, {20, -15, -4}, {-5, 4, 1}}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_Singular(t *testing.T) {
+	// {1,2;2,4} is singular (det=0) => #NUM!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,2;2,4})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("expected #NUM!, got %v", got)
+	}
+}
+
+func TestMINVERSE_NonSquare(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,2,3;4,5,6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestMINVERSE_TextInArray(t *testing.T) {
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), StringVal("x")},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMINVERSE_EmptyInArray(t *testing.T) {
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), {Type: ValueEmpty}},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMINVERSE_WrongArgCount(t *testing.T) {
+	// No args.
+	result, err := fnMINVERSE([]Value{})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+
+	// Two args.
+	result, err = fnMINVERSE([]Value{NumberVal(1), NumberVal(2)})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMINVERSE_ScalarInput(t *testing.T) {
+	// Scalar 5 => 1/5 = 0.2
+	result, err := fnMINVERSE([]Value{NumberVal(5)})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", result.Type)
+	}
+	if math.Abs(result.Num-0.2) > 1e-10 {
+		t.Errorf("got %g, want 0.2", result.Num)
+	}
+}
+
+func TestMINVERSE_ScalarZero(t *testing.T) {
+	// Scalar 0 => singular => #NUM!
+	result, err := fnMINVERSE([]Value{NumberVal(0)})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNUM {
+		t.Errorf("expected #NUM!, got %v", result)
+	}
+}
+
+func TestMINVERSE_DiagonalMatrix(t *testing.T) {
+	// Diagonal {2,0;0,4} => inverse {0.5,0;0,0.25}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({2,0;0,4})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{0.5, 0}, {0, 0.25}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_3x3_Diagonal(t *testing.T) {
+	// {2,0,0;0,5,0;0,0,10} => {0.5,0,0;0,0.2,0;0,0,0.1}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({2,0,0;0,5,0;0,0,10})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{0.5, 0, 0}, {0, 0.2, 0}, {0, 0, 0.1}}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_NegativeNumbers(t *testing.T) {
+	// {-1,0;0,-2} => {-1,0;0,-0.5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({-1,0;0,-2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-1, 0}, {0, -0.5}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_VerifyProduct(t *testing.T) {
+	// A * A^-1 should be identity. Using {1,2;3,4}.
+	// A^-1 = {-2,1;1.5,-0.5}
+	// Product: {1*-2+2*1.5, 1*1+2*-0.5; 3*-2+4*1.5, 3*1+4*-0.5} = {1,0;0,1}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2;3,4},MINVERSE({1,2;3,4}))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_BooleanValues(t *testing.T) {
+	// {TRUE,FALSE;FALSE,TRUE} = identity => inverse is identity
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true), BoolVal(false)},
+			{BoolVal(false), BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(result.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_ErrorPropagation(t *testing.T) {
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), ErrorVal(ErrValDIV0)},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValDIV0 {
+		t.Errorf("expected #DIV/0!, got %v", result)
+	}
+}
+
+func TestMINVERSE_ErrorArgPropagation(t *testing.T) {
+	result, err := fnMINVERSE([]Value{
+		ErrorVal(ErrValREF),
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValREF {
+		t.Errorf("expected #REF!, got %v", result)
+	}
+}
+
+func TestMINVERSE_3x3_Singular(t *testing.T) {
+	// {1,2,3;4,5,6;7,8,9} is singular => #NUM!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,2,3;4,5,6;7,8,9})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("expected #NUM!, got %v", got)
+	}
+}
+
+func TestMINVERSE_Fractional(t *testing.T) {
+	// {0.5,0;0,2} => {2,0;0,0.5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({0.5,0;0,2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{2, 0}, {0, 0.5}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}

@@ -57,6 +57,7 @@ func init() {
 	Register("LOG10", NoCtx(fnLOG10))
 	Register("MOD", NoCtx(fnMOD))
 	Register("MDETERM", NoCtx(fnMDETERM))
+	Register("MINVERSE", NoCtx(fnMINVERSE))
 	Register("MMULT", NoCtx(fnMMULT))
 	Register("MROUND", NoCtx(fnMROUND))
 	Register("MULTINOMIAL", NoCtx(fnMULTINOMIAL))
@@ -1342,6 +1343,123 @@ func luDet(mat [][]float64, n int) float64 {
 		det *= a[i][i]
 	}
 	return det
+}
+
+func fnMINVERSE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	a := args[0]
+
+	// Propagate errors.
+	if a.Type == ValueError {
+		return a, nil
+	}
+
+	// Coerce scalar to 1x1 array.
+	if a.Type != ValueArray {
+		n, e := CoerceNum(a)
+		if e != nil {
+			return *e, nil
+		}
+		if n == 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		return NumberVal(1 / n), nil
+	}
+
+	rows := len(a.Array)
+	if rows == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cols := len(a.Array[0])
+	if cols == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Must be square.
+	if rows != cols {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n := rows
+
+	// Extract numeric matrix, rejecting empty/string values.
+	mat := make([][]float64, n)
+	for r := 0; r < n; r++ {
+		if len(a.Array[r]) != cols {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat[r][c] = num
+		}
+	}
+
+	// Compute inverse using Gauss-Jordan elimination with partial pivoting.
+	// Augment with identity matrix.
+	aug := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		aug[i] = make([]float64, 2*n)
+		copy(aug[i], mat[i])
+		aug[i][n+i] = 1
+	}
+
+	for col := 0; col < n; col++ {
+		// Partial pivoting: find the row with the largest absolute value.
+		maxVal := math.Abs(aug[col][col])
+		maxRow := col
+		for row := col + 1; row < n; row++ {
+			if v := math.Abs(aug[row][col]); v > maxVal {
+				maxVal = v
+				maxRow = row
+			}
+		}
+		if maxVal < 1e-15 {
+			return ErrorVal(ErrValNUM), nil // Singular matrix.
+		}
+		if maxRow != col {
+			aug[col], aug[maxRow] = aug[maxRow], aug[col]
+		}
+
+		// Scale pivot row.
+		pivot := aug[col][col]
+		for j := 0; j < 2*n; j++ {
+			aug[col][j] /= pivot
+		}
+
+		// Eliminate column in all other rows.
+		for row := 0; row < n; row++ {
+			if row == col {
+				continue
+			}
+			factor := aug[row][col]
+			for j := 0; j < 2*n; j++ {
+				aug[row][j] -= factor * aug[col][j]
+			}
+		}
+	}
+
+	// Extract inverse from augmented matrix.
+	result := make([][]Value, n)
+	for i := 0; i < n; i++ {
+		row := make([]Value, n)
+		for j := 0; j < n; j++ {
+			row[j] = NumberVal(aug[i][n+j])
+		}
+		result[i] = row
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnBITRSHIFT(args []Value) (Value, error) {
