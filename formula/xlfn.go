@@ -30,6 +30,8 @@ var xlfnPrefix = map[string]string{
 	"MAXIFS":         "_xlfn.",
 	"MINIFS":         "_xlfn.",
 	"MODE.SNGL":      "_xlfn.",
+	"NORM.S.DIST":   "_xlfn.",
+	"NORM.S.INV":    "_xlfn.",
 	"NUMBERVALUE":    "_xlfn.",
 	"PERCENTILE.EXC": "_xlfn.",
 	"PERCENTRANK.EXC": "_xlfn.",
