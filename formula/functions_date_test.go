@@ -536,3 +536,108 @@ func TestWORKDAY_INTL(t *testing.T) {
 		})
 	}
 }
+
+func TestNETWORKDAYS_INTL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Key dates (2025):
+	// Jan 1 = 45658 (Wed), Jan 4 = 45661 (Sat), Jan 5 = 45662 (Sun)
+	// Jan 10 = 45667 (Fri), Jan 31 = 45688 (Fri), Mar 15 = 45731 (Sat)
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// --- Default weekend (Sat/Sun, code 1) ---
+		{"default_basic", "NETWORKDAYS.INTL(45658,45667)", 8, false, 0},
+		{"default_explicit_1", "NETWORKDAYS.INTL(45658,45667,1)", 8, false, 0},
+		{"default_month", "NETWORKDAYS.INTL(45658,45688)", 23, false, 0},
+
+		// --- Numeric weekend codes (two-day) ---
+		{"weekend_2_sun_mon", "NETWORKDAYS.INTL(45658,45667,2)", 8, false, 0},
+		{"weekend_3_mon_tue", "NETWORKDAYS.INTL(45658,45667,3)", 8, false, 0},
+		{"weekend_4_tue_wed", "NETWORKDAYS.INTL(45658,45667,4)", 7, false, 0},
+		{"weekend_5_wed_thu", "NETWORKDAYS.INTL(45658,45667,5)", 6, false, 0},
+		{"weekend_6_thu_fri", "NETWORKDAYS.INTL(45658,45667,6)", 6, false, 0},
+		{"weekend_7_fri_sat", "NETWORKDAYS.INTL(45658,45667,7)", 7, false, 0},
+
+		// --- Numeric weekend codes (single-day) ---
+		{"weekend_11_sun_only", "NETWORKDAYS.INTL(45658,45667,11)", 9, false, 0},
+		{"weekend_12_mon_only", "NETWORKDAYS.INTL(45658,45667,12)", 9, false, 0},
+		{"weekend_13_tue_only", "NETWORKDAYS.INTL(45658,45667,13)", 9, false, 0},
+		{"weekend_14_wed_only", "NETWORKDAYS.INTL(45658,45667,14)", 8, false, 0},
+		{"weekend_15_thu_only", "NETWORKDAYS.INTL(45658,45667,15)", 8, false, 0},
+		{"weekend_16_fri_only", "NETWORKDAYS.INTL(45658,45667,16)", 8, false, 0},
+		{"weekend_17_sat_only", "NETWORKDAYS.INTL(45658,45667,17)", 9, false, 0},
+
+		// --- String weekend format ---
+		{"string_0000011_sat_sun", `NETWORKDAYS.INTL(45658,45667,"0000011")`, 8, false, 0},
+		{"string_1000001_sun_mon", `NETWORKDAYS.INTL(45658,45667,"1000001")`, 8, false, 0},
+		{"string_0000000_no_weekends", `NETWORKDAYS.INTL(45658,45667,"0000000")`, 10, false, 0},
+		{"string_0000110_fri_sat", `NETWORKDAYS.INTL(45658,45667,"0000110")`, 7, false, 0},
+
+		// --- With holidays ---
+		{"holiday_jan1", "NETWORKDAYS.INTL(45658,45667,1,45658)", 7, false, 0},
+		{"holiday_jan1_jan2", "NETWORKDAYS.INTL(45658,45667,1,{45658,45659})", 6, false, 0},
+		{"holiday_on_weekend", "NETWORKDAYS.INTL(45658,45667,1,45661)", 8, false, 0},
+		{"holiday_custom_weekend", "NETWORKDAYS.INTL(45658,45667,2,45658)", 7, false, 0},
+
+		// --- Negative range ---
+		{"negative_range_default", "NETWORKDAYS.INTL(45667,45658)", -8, false, 0},
+		{"negative_range_sun_only", "NETWORKDAYS.INTL(45667,45658,11)", -9, false, 0},
+		{"negative_range_sat_only", "NETWORKDAYS.INTL(45667,45658,17)", -9, false, 0},
+
+		// --- Same date ---
+		{"same_date_workday", "NETWORKDAYS.INTL(45658,45658)", 1, false, 0},
+		{"same_date_saturday", "NETWORKDAYS.INTL(45661,45661)", 0, false, 0},
+		{"same_date_sunday", "NETWORKDAYS.INTL(45662,45662)", 0, false, 0},
+		{"same_date_custom_workday", "NETWORKDAYS.INTL(45661,45661,11)", 1, false, 0},
+
+		// --- End on weekend ---
+		{"end_on_saturday", "NETWORKDAYS.INTL(45658,45731)", 53, false, 0},
+
+		// --- Matches NETWORKDAYS behavior ---
+		{"matches_networkdays", "NETWORKDAYS.INTL(45658,45667,1)", 8, false, 0},
+
+		// --- Invalid weekend codes ---
+		{"invalid_weekend_0", "NETWORKDAYS.INTL(45658,45667,0)", 0, true, ErrValVALUE},
+		{"invalid_weekend_8", "NETWORKDAYS.INTL(45658,45667,8)", 0, true, ErrValVALUE},
+		{"invalid_weekend_9", "NETWORKDAYS.INTL(45658,45667,9)", 0, true, ErrValVALUE},
+		{"invalid_weekend_10", "NETWORKDAYS.INTL(45658,45667,10)", 0, true, ErrValVALUE},
+		{"invalid_weekend_18", "NETWORKDAYS.INTL(45658,45667,18)", 0, true, ErrValVALUE},
+
+		// --- Invalid string weekends ---
+		{"invalid_string_all_ones", `NETWORKDAYS.INTL(45658,45667,"1111111")`, 0, true, ErrValVALUE},
+		{"invalid_string_too_short", `NETWORKDAYS.INTL(45658,45667,"000011")`, 0, true, ErrValVALUE},
+		{"invalid_string_too_long", `NETWORKDAYS.INTL(45658,45667,"00000110")`, 0, true, ErrValVALUE},
+		{"invalid_string_bad_char", `NETWORKDAYS.INTL(45658,45667,"000001x")`, 0, true, ErrValVALUE},
+
+		// --- Too few args ---
+		{"too_few_args", "NETWORKDAYS.INTL(45658)", 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
