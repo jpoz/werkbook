@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Register("AVERAGE", NoCtx(fnAVERAGE))
+	Register("AVERAGEA", NoCtx(fnAVERAGEA))
 	Register("AVEDEV", NoCtx(fnAVEDEV))
 	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
 	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
@@ -68,6 +69,70 @@ func fnAVERAGE(args []Value) (Value, error) {
 	count := 0
 	if e := IterateNumeric(args, func(n float64) { sum += n; count++ }); e != nil {
 		return *e, nil
+	}
+	if count == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(sum / float64(count)), nil
+}
+
+// fnAVERAGEA calculates the average of its arguments, including text and
+// logical values.  In arrays/ranges: numbers count as their value, TRUE=1,
+// FALSE=0, text strings=0, empty cells are ignored.  For direct (non-array)
+// arguments: booleans and numbers are coerced normally; text that cannot be
+// parsed as a number returns #VALUE!.
+func fnAVERAGEA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	sum := 0.0
+	count := 0
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						sum += cell.Num
+						count++
+					case ValueBool:
+						if cell.Bool {
+							sum += 1
+						}
+						count++
+					case ValueString:
+						// Text in a range counts as 0.
+						sum += 0
+						count++
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			sum += arg.Num
+			count++
+		case ValueBool:
+			if arg.Bool {
+				sum += 1
+			}
+			count++
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			sum += n
+			count++
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
 	}
 	if count == 0 {
 		return ErrorVal(ErrValDIV0), nil
