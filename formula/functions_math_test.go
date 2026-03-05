@@ -1458,3 +1458,105 @@ func TestBITRSHIFT(t *testing.T) {
 		})
 	}
 }
+
+func TestSERIESSUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Excel documentation example: cos(PI/4) via Taylor series
+		{"excel_example", "SERIESSUM(PI()/4,0,2,{1,-0.5,0.041666667,-0.001388889})", 0.707103, 1e-4},
+		// Single coefficient
+		{"single_coeff", "SERIESSUM(2,3,1,{5})", 40, 0},
+		// Single coefficient as scalar
+		{"scalar_coeff", "SERIESSUM(2,3,1,5)", 40, 0},
+		// x=0, n>0: 0^positive = 0, so result = 0
+		{"x_zero_n_pos", "SERIESSUM(0,1,1,{3,4,5})", 0, 0},
+		// x=0, n=0: 0^0 = 1 in math.Pow, so first coeff * 1 + rest * 0
+		{"x_zero_n_zero", "SERIESSUM(0,0,1,{7,3,5})", 7, 0},
+		// x=1: all powers are 1, so result = sum of coefficients
+		{"x_one", "SERIESSUM(1,2,3,{2,3,4})", 9, 0},
+		// Negative x
+		{"neg_x", "SERIESSUM(-2,0,1,{1,1})", -1, 0},
+		// Negative n: 2^(-1)=0.5, 2^0=1 => 3*0.5 + 4*1 = 5.5
+		{"neg_n", "SERIESSUM(2,-1,1,{3,4})", 5.5, 1e-10},
+		// m=0: all same power, result = sum(coeffs) * x^n
+		{"m_zero", "SERIESSUM(3,2,0,{1,2,3})", 54, 0},
+		// m=1: standard power series 1 + 2 + 4 + 8 = 15
+		{"m_one", "SERIESSUM(2,0,1,{1,1,1,1})", 15, 0},
+		// Large number of coefficients (10 terms, all 1, x=1)
+		{"many_coeffs", "SERIESSUM(1,0,1,{1,1,1,1,1,1,1,1,1,1})", 10, 0},
+		// Zero coefficients
+		{"zero_coeffs", "SERIESSUM(5,1,1,{0,0,0})", 0, 0},
+		// Fractional n and m: sqrt(4)=2, 4^1=4 => 2+4=6... wait, 4^0.5=2, 4^1=4 => 1*2+1*4=6
+		{"frac_n_m", "SERIESSUM(4,0.5,0.5,{1,1})", 6, 0},
+		// Boolean coercion for x: TRUE=1, 1^0=1, 1^1=1 => 2+3=5
+		{"bool_x", "SERIESSUM(TRUE,0,1,{2,3})", 5, 0},
+		// Negative m: 2^4=16, 2^2=4 => 16+4=20
+		{"neg_m", "SERIESSUM(2,4,-2,{1,1})", 20, 0},
+		// Single term with n=0, m=0: 10^0=1 => 3*1=3
+		{"single_n0_m0", "SERIESSUM(10,0,0,{3})", 3, 0},
+		// Two-row array of coefficients: {1,2;3,4} flattened = [1,2,3,4], x=1 => sum=10
+		{"multi_row_array", "SERIESSUM(1,0,1,{1,2;3,4})", 10, 0},
+		// x=2, n=0, m=2: 1*1 + 2*4 + 3*16 = 57
+		{"power_step_2", "SERIESSUM(2,0,2,{1,2,3})", 57, 0},
+		// Very small x: 0.001^0=1 => 1*1 + 1000*0.001 = 2
+		{"small_x", "SERIESSUM(0.001,0,1,{1,1000})", 2, 1e-10},
+		// x=0, n=0, m=0: all terms use 0^0=1, result = sum of coefficients
+		{"x0_n0_m0", "SERIESSUM(0,0,0,{2,3,5})", 10, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	// Error tests
+	seriesSumErrTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"too_few_args", "SERIESSUM(1,0,1)", ErrValVALUE},
+		{"too_many_args", "SERIESSUM(1,0,1,{1},2)", ErrValVALUE},
+		{"no_args", "SERIESSUM()", ErrValVALUE},
+		{"non_numeric_x", `SERIESSUM("abc",0,1,{1})`, ErrValVALUE},
+		{"non_numeric_n", `SERIESSUM(1,"abc",1,{1})`, ErrValVALUE},
+		{"non_numeric_m", `SERIESSUM(1,0,"abc",{1})`, ErrValVALUE},
+		{"non_numeric_coeff", `SERIESSUM(1,0,1,"abc")`, ErrValVALUE},
+	}
+
+	for _, tt := range seriesSumErrTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
