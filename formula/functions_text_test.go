@@ -3074,3 +3074,99 @@ func TestLOWER(t *testing.T) {
 		}
 	})
 }
+
+func TestUPPER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// String result tests
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{"all lowercase", `UPPER("hello")`, "HELLO"},
+		{"already uppercase", `UPPER("HELLO")`, "HELLO"},
+		{"mixed case", `UPPER("Hello World")`, "HELLO WORLD"},
+		{"mixed case sentence", `UPPER("e. e. cummings")`, "E. E. CUMMINGS"},
+		{"apartment address", `UPPER("Apt. 2B")`, "APT. 2B"},
+		{"numbers as string", `UPPER("abc123def")`, "ABC123DEF"},
+		{"pure number string", `UPPER("12345")`, "12345"},
+		{"number argument coerced", `UPPER(100)`, "100"},
+		{"empty string", `UPPER("")`, ""},
+		{"spaces only", `UPPER("   ")`, "   "},
+		{"special characters", `UPPER("!@#$%^&*()")`, "!@#$%^&*()"},
+		{"punctuation and letters", `UPPER("hello, world!")`, "HELLO, WORLD!"},
+		{"boolean TRUE", `UPPER(TRUE)`, "TRUE"},
+		{"boolean FALSE", `UPPER(FALSE)`, "FALSE"},
+		{"accented lowercase", `UPPER("café")`, "CAFÉ"},
+		{"german lowercase", `UPPER("strasse")`, "STRASSE"},
+		{"unicode accented", `UPPER("résumé")`, "RÉSUMÉ"},
+		{"single character", `UPPER("a")`, "A"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (type %d), want %q", tt.formula, got, got.Type, tt.want)
+			}
+		})
+	}
+
+	// Error: too many arguments
+	t.Run("too many args", func(t *testing.T) {
+		cf := evalCompile(t, `UPPER("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	// Error: no arguments
+	t.Run("no args", func(t *testing.T) {
+		cf := evalCompile(t, `UPPER()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	// Error propagation
+	t.Run("error propagation NA", func(t *testing.T) {
+		cf := evalCompile(t, `UPPER(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A error", got)
+		}
+	})
+
+	// Cell reference
+	t.Run("cell reference", func(t *testing.T) {
+		cellResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello world"),
+			},
+		}
+		cf := evalCompile(t, `UPPER(A1)`)
+		got, err := Eval(cf, cellResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "HELLO WORLD" {
+			t.Errorf("got %v, want %q", got, "HELLO WORLD")
+		}
+	})
+}

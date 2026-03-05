@@ -433,6 +433,9 @@ func fnUPPER(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
 	return StringVal(strings.ToUpper(ValueToString(args[0]))), nil
 }
 
