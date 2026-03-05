@@ -2276,6 +2276,372 @@ func TestXIRR_NegativeRate(t *testing.T) {
 	}
 }
 
+func TestXIRR_ExcelDocExample(t *testing.T) {
+	// Excel documentation example: XIRR(A3:A7, B3:B7, 0.1) = 0.373362535
+	// Values: -10000, 2750, 4250, 3250, 2750
+	// Dates: 1-Jan-08, 1-Mar-08, 30-Oct-08, 15-Feb-09, 1-Apr-09
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR excel doc: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-0.373362535) > 0.0001 {
+		t.Errorf("XIRR excel doc: got %f, want ~0.3734", v.Num)
+	}
+}
+
+func TestXIRR_WithoutGuess(t *testing.T) {
+	// Same as basic but without guess; default 0.1 should be used.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XIRR without guess", v, 0.3734)
+}
+
+func TestXIRR_WithExplicitGuess(t *testing.T) {
+	// Provide guess=0.5, should still converge to same answer.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates, NumberVal(0.5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XIRR with guess 0.5", v, 0.3734)
+}
+
+func TestXIRR_AllPositive(t *testing.T) {
+	// All positive cash flows should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR all positive", v)
+}
+
+func TestXIRR_AllNegative(t *testing.T) {
+	// All negative cash flows should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(-2000), NumberVal(-3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR all negative", v)
+}
+
+func TestXIRR_SingleCashFlow(t *testing.T) {
+	// Single cash flow (len < 2) should return #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR single cash flow", v)
+}
+
+func TestXIRR_DatesOutOfOrder(t *testing.T) {
+	// Dates not in chronological order should still work.
+	// Same data as basic but with shuffled order.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(4250), NumberVal(-10000), NumberVal(2750), NumberVal(2750), NumberVal(3250)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39751), NumberVal(39448), NumberVal(39508), NumberVal(39904), NumberVal(39859)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR dates out of order: expected number, got type %v", v.Type)
+	}
+	// Should converge to approximately the same result as the sorted case.
+	if math.Abs(v.Num-0.3734) > 0.01 {
+		t.Errorf("XIRR dates out of order: got %f, want ~0.3734", v.Num)
+	}
+}
+
+func TestXIRR_HighReturn(t *testing.T) {
+	// Investment that doubles in 6 months: ~300% annualized.
+	// -1000 on day 0, +2000 on day 182 (~6 months).
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR high return: expected number, got type %v", v.Type)
+	}
+	// Annualized return for doubling in ~182 days is very high (>100%).
+	if v.Num <= 1.0 {
+		t.Errorf("XIRR high return: expected rate > 1.0, got %f", v.Num)
+	}
+}
+
+func TestXIRR_LowReturn(t *testing.T) {
+	// Small return: -10000 invested, 10100 returned after 1 year (~1%).
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(10100)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR low return: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-0.01) > 0.005 {
+		t.Errorf("XIRR low return: got %f, want ~0.01", v.Num)
+	}
+}
+
+func TestXIRR_MonthlyCashFlows(t *testing.T) {
+	// Monthly cash flows over 12 months.
+	// -12000 initial investment, then 1100 each month for 12 months.
+	// Dates are approximately monthly starting from serial 39448 (Jan 1, 2008).
+	cfVals := []Value{NumberVal(-12000)}
+	cfDates := []Value{NumberVal(39448)}
+	for i := 1; i <= 12; i++ {
+		cfVals = append(cfVals, NumberVal(1100))
+		cfDates = append(cfDates, NumberVal(39448+float64(i*30)))
+	}
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{cfVals},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{cfDates},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR monthly: expected number, got type %v", v.Type)
+	}
+	// 12 payments of 1100 = 13200 on 12000 investment; positive return expected.
+	if v.Num <= 0 {
+		t.Errorf("XIRR monthly: expected positive rate, got %f", v.Num)
+	}
+}
+
+func TestXIRR_TooFewArgs(t *testing.T) {
+	// Only one argument should return #VALUE!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(5000)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals})
+	assertError(t, "XIRR too few args", v)
+}
+
+func TestXIRR_TooManyArgs(t *testing.T) {
+	// Four arguments should return #VALUE!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(5000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates, NumberVal(0.1), NumberVal(0.2)})
+	assertError(t, "XIRR too many args", v)
+}
+
+func TestXIRR_MismatchedArraySizes(t *testing.T) {
+	// Values has 3 elements, dates has 2 → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508)},
+		},
+	}
+	v, _ := fnXIRR([]Value{vals, dates})
+	assertError(t, "XIRR mismatched arrays", v)
+}
+
+func TestXIRR_MultipleCashFlows(t *testing.T) {
+	// Multiple irregular cash flows.
+	// -5000 initial, then small returns over 2 years.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(500), NumberVal(700), NumberVal(800), NumberVal(1000), NumberVal(1200), NumberVal(1500)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39539), NumberVal(39630), NumberVal(39722), NumberVal(39813), NumberVal(39904), NumberVal(39995)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR multiple cash flows: expected number, got type %v", v.Type)
+	}
+	// Total returns = 5700 on 5000, should be a positive rate.
+	if v.Num <= 0 {
+		t.Errorf("XIRR multiple cash flows: expected positive rate, got %f", v.Num)
+	}
+}
+
+func TestXIRR_BreakEven(t *testing.T) {
+	// Invest -10000, get back exactly 10000 after 1 year → rate ≈ 0.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(10000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR break even: expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num) > 0.01 {
+		t.Errorf("XIRR break even: got %f, want ~0.0", v.Num)
+	}
+}
+
+func TestXIRR_ZeroCashFlow(t *testing.T) {
+	// Include a zero cash flow in the middle; should still work.
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(0), NumberVal(12000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630), NumberVal(39813)},
+		},
+	}
+	v, err := fnXIRR([]Value{vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XIRR zero cash flow: expected number, got type %v", v.Type)
+	}
+	// 12000 return on 10000 in 1 year → ~20% return.
+	if math.Abs(v.Num-0.20) > 0.02 {
+		t.Errorf("XIRR zero cash flow: got %f, want ~0.20", v.Num)
+	}
+}
+
 // === CUMPRINC ===
 
 func TestCUMPRINC_FullLife30YrMortgage(t *testing.T) {

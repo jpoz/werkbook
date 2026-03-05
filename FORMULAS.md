@@ -301,7 +301,7 @@ Werkbook supports **303** Excel formula functions.
 | WORKDAY.INTL | Date & Time | 33 |
 | WRAPCOLS | Lookup & Reference | 20 |
 | WRAPROWS | Lookup & Reference | 19 |
-| XIRR | Financial | 3 |
+| XIRR | Financial | 19 |
 | XLOOKUP | Lookup & Reference | 21 |
 | XNPV | Financial | 1 |
 | XOR | Logical | 6 |
