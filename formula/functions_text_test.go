@@ -1151,6 +1151,195 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CONCAT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCONCATComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// --- Scalar-only tests (no ranges) ---
+	scalarTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic: two strings
+		{name: "two_strings", formula: `CONCAT("hello","world")`, want: "helloworld"},
+		// Basic: three strings
+		{name: "three_strings", formula: `CONCAT("a","b","c")`, want: "abc"},
+		// Many strings
+		{name: "many_strings", formula: `CONCAT("a","b","c","d","e","f")`, want: "abcdef"},
+		// Single argument
+		{name: "single_string", formula: `CONCAT("only")`, want: "only"},
+		// No arguments -> empty string
+		{name: "no_args", formula: `CONCAT()`, want: ""},
+		// Numbers coerced to text
+		{name: "number_int", formula: `CONCAT(42)`, want: "42"},
+		{name: "number_float", formula: `CONCAT(3.14)`, want: "3.14"},
+		{name: "two_numbers", formula: `CONCAT(1,2)`, want: "12"},
+		{name: "number_and_string", formula: `CONCAT("item",99)`, want: "item99"},
+		// Booleans coerced to text
+		{name: "bool_true", formula: `CONCAT(TRUE)`, want: "TRUE"},
+		{name: "bool_false", formula: `CONCAT(FALSE)`, want: "FALSE"},
+		{name: "bool_and_string", formula: `CONCAT("flag: ",TRUE)`, want: "flag: TRUE"},
+		// Empty strings
+		{name: "empty_string", formula: `CONCAT("")`, want: ""},
+		{name: "empty_between", formula: `CONCAT("a","","b")`, want: "ab"},
+		{name: "all_empty", formula: `CONCAT("","","")`, want: ""},
+		// Mixed types
+		{name: "mixed_types", formula: `CONCAT("count=",5,", ok=",TRUE)`, want: "count=5, ok=TRUE"},
+		{name: "mixed_with_bool_false", formula: `CONCAT(FALSE," ",0," ","x")`, want: "FALSE 0 x"},
+		// Special characters
+		{name: "special_chars", formula: `CONCAT("hello\n","world")`, want: "hello\\nworld"},
+		{name: "unicode", formula: `CONCAT("café"," ","naïve")`, want: "café naïve"},
+		{name: "symbols", formula: `CONCAT("@","#","$")`, want: "@#$"},
+		// Long result string
+		{name: "long_string", formula: `CONCAT("abcdefghij","abcdefghij","abcdefghij","abcdefghij","abcdefghij")`, want: "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"},
+	}
+
+	for _, tt := range scalarTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("%s: got type=%d str=%q, want %q", tt.name, got.Type, got.Str, tt.want)
+			}
+		})
+	}
+
+	// --- Error propagation tests ---
+	t.Run("error_propagation_div0", func(t *testing.T) {
+		cf := evalCompile(t, `CONCAT("a",1/0,"b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("expected #DIV/0! error, got type=%d err=%v str=%q", got.Type, got.Err, got.Str)
+		}
+	})
+
+	t.Run("error_propagation_first_arg", func(t *testing.T) {
+		cf := evalCompile(t, `CONCAT(1/0,"b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got type=%d str=%q", got.Type, got.Str)
+		}
+	})
+
+	// --- Range tests ---
+	t.Run("range_with_empty_cells", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a"),
+				// A2 is empty
+				{Col: 1, Row: 3}: StringVal("c"),
+			},
+		}
+		cf := evalCompile(t, `CONCAT(A1:A3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "ac" {
+			t.Errorf("range_with_empty_cells: got %q, want %q", got.Str, "ac")
+		}
+	})
+
+	t.Run("range_mixed_types", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("text"),
+				{Col: 1, Row: 2}: NumberVal(42),
+				{Col: 1, Row: 3}: BoolVal(true),
+			},
+		}
+		cf := evalCompile(t, `CONCAT(A1:A3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "text42TRUE" {
+			t.Errorf("range_mixed_types: got %q, want %q", got.Str, "text42TRUE")
+		}
+	})
+
+	t.Run("range_2d", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a"),
+				{Col: 2, Row: 1}: StringVal("b"),
+				{Col: 1, Row: 2}: StringVal("c"),
+				{Col: 2, Row: 2}: StringVal("d"),
+			},
+		}
+		cf := evalCompile(t, `CONCAT(A1:B2)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "abcd" {
+			t.Errorf("range_2d: got %q, want %q", got.Str, "abcd")
+		}
+	})
+
+	t.Run("range_error_propagation", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("ok"),
+				{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 3}: StringVal("after"),
+			},
+		}
+		cf := evalCompile(t, `CONCAT(A1:A3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("range_error_propagation: expected #N/A error, got type=%d err=%v", got.Type, got.Err)
+		}
+	})
+
+	t.Run("range_all_empty", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+		cf := evalCompile(t, `CONCAT(A1:A3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf("range_all_empty: got %q, want empty string", got.Str)
+		}
+	})
+
+	t.Run("multiple_ranges", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("X"),
+				{Col: 2, Row: 1}: StringVal("Y"),
+			},
+		}
+		cf := evalCompile(t, `CONCAT(A1:A1,B1:B1)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "XY" {
+			t.Errorf("multiple_ranges: got %q, want %q", got.Str, "XY")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // DOLLAR comprehensive tests
 // ---------------------------------------------------------------------------
 
