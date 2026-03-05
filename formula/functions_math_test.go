@@ -1476,8 +1476,7 @@ func TestSERIESSUM(t *testing.T) {
 		{"scalar_coeff", "SERIESSUM(2,3,1,5)", 40, 0},
 		// x=0, n>0: 0^positive = 0, so result = 0
 		{"x_zero_n_pos", "SERIESSUM(0,1,1,{3,4,5})", 0, 0},
-		// x=0, n=0: 0^0 = 1 in math.Pow, so first coeff * 1 + rest * 0
-		{"x_zero_n_zero", "SERIESSUM(0,0,1,{7,3,5})", 7, 0},
+		// x=0, n=0: Excel returns #NUM! (0^0 indeterminate) — tested in error cases below
 		// x=1: all powers are 1, so result = sum of coefficients
 		{"x_one", "SERIESSUM(1,2,3,{2,3,4})", 9, 0},
 		// Negative x
@@ -1506,8 +1505,7 @@ func TestSERIESSUM(t *testing.T) {
 		{"power_step_2", "SERIESSUM(2,0,2,{1,2,3})", 57, 0},
 		// Very small x: 0.001^0=1 => 1*1 + 1000*0.001 = 2
 		{"small_x", "SERIESSUM(0.001,0,1,{1,1000})", 2, 1e-10},
-		// x=0, n=0, m=0: all terms use 0^0=1, result = sum of coefficients
-		{"x0_n0_m0", "SERIESSUM(0,0,0,{2,3,5})", 10, 0},
+		// x=0, n=0, m=0: Excel returns #NUM! (0^0 indeterminate) — tested in error cases below
 	}
 
 	for _, tt := range numTests {
@@ -1545,6 +1543,8 @@ func TestSERIESSUM(t *testing.T) {
 		{"non_numeric_n", `SERIESSUM(1,"abc",1,{1})`, ErrValVALUE},
 		{"non_numeric_m", `SERIESSUM(1,0,"abc",{1})`, ErrValVALUE},
 		{"non_numeric_coeff", `SERIESSUM(1,0,1,"abc")`, ErrValVALUE},
+		{"x_zero_n_zero", "SERIESSUM(0,0,1,{7,3,5})", ErrValNUM},
+		{"x0_n0_m0", "SERIESSUM(0,0,0,{2,3,5})", ErrValNUM},
 	}
 
 	for _, tt := range seriesSumErrTests {

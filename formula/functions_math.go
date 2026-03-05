@@ -1116,7 +1116,12 @@ func fnSERIESSUM(args []Value) (Value, error) {
 		if ce != nil {
 			return *ce, nil
 		}
-		sum += c * math.Pow(x, n+float64(i)*m)
+		exp := n + float64(i)*m
+		// Excel returns #NUM! for 0^0 and 0^negative.
+		if x == 0 && exp <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sum += c * math.Pow(x, exp)
 	}
 	return NumberVal(sum), nil
 }
