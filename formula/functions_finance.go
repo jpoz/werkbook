@@ -17,6 +17,7 @@ func init() {
 	Register("PV", NoCtx(fnPV))
 	Register("RATE", NoCtx(fnRATE))
 	Register("DB", NoCtx(fnDB))
+	Register("DDB", NoCtx(fnDDB))
 	Register("SLN", NoCtx(fnSLN))
 	Register("XIRR", NoCtx(fnXIRR))
 	Register("XNPV", NoCtx(fnXNPV))
@@ -618,6 +619,95 @@ func fnDB(args []Value) (Value, error) {
 			// (cost - totalDepreciation) * rate
 			dep = (cost - totalDepreciation) * rate
 		}
+		totalDepreciation += dep
+	}
+
+	return NumberVal(dep), nil
+}
+
+// fnDDB implements DDB(cost, salvage, life, period, [factor]).
+// Returns the depreciation of an asset for a given period using the
+// double-declining balance method or another specified factor.
+func fnDDB(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	period, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	factor := 2.0
+	if len(args) == 5 {
+		factor, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// All arguments must be positive; life and period must be > 0.
+	if cost < 0 || salvage < 0 || life <= 0 || period <= 0 || factor <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if period > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: cost is 0, depreciation is always 0.
+	if cost == 0 {
+		return NumberVal(0), nil
+	}
+
+	// If salvage >= cost, no depreciation.
+	if salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// Compute depreciation for each period up to the requested one.
+	// DDB formula: dep = min(bookValue * (factor/life), bookValue - salvage)
+	totalDepreciation := 0.0
+	var dep float64
+	// Period can be fractional in the sense that we iterate integer periods
+	// up to math.Floor(period), but Excel DDB treats period as integer-based.
+	// We iterate through whole periods.
+	intPeriod := int(math.Floor(period))
+	for p := 1; p <= intPeriod; p++ {
+		bookValue := cost - totalDepreciation
+		dep = bookValue * (factor / life)
+		// Cannot depreciate below salvage value.
+		if bookValue-dep < salvage {
+			dep = bookValue - salvage
+		}
+		if dep < 0 {
+			dep = 0
+		}
+		totalDepreciation += dep
+	}
+
+	// Handle fractional period: if period has a fractional part,
+	// compute pro-rata depreciation for the remaining fraction.
+	frac := period - float64(intPeriod)
+	if frac > 0 {
+		bookValue := cost - totalDepreciation
+		fullDep := bookValue * (factor / life)
+		if bookValue-fullDep < salvage {
+			fullDep = bookValue - salvage
+		}
+		if fullDep < 0 {
+			fullDep = 0
+		}
+		dep = fullDep * frac
 		totalDepreciation += dep
 	}
 
