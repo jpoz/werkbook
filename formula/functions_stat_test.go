@@ -4720,7 +4720,7 @@ func TestPERCENTRANKEXC(t *testing.T) {
 		{name: "neg_min", formula: "PERCENTRANK.EXC(D1:D5,-10)", resolver: negResolver, wantNum: 0.166},
 		{name: "neg_max", formula: "PERCENTRANK.EXC(D1:D5,10)", resolver: negResolver, wantNum: 0.833},
 		{name: "neg_mid", formula: "PERCENTRANK.EXC(D1:D5,0)", resolver: negResolver, wantNum: 0.5},
-		{name: "neg_interp", formula: "PERCENTRANK.EXC(D1:D5,-3)", resolver: negResolver, wantNum: 0.399},
+		{name: "neg_interp", formula: "PERCENTRANK.EXC(D1:D5,-3)", resolver: negResolver, wantNum: 0.4},
 
 		// Unsorted data produces same result
 		{name: "unsorted_data", formula: "PERCENTRANK.EXC(A1:A9,9)", resolver: excelResolver, wantNum: 0.9},
