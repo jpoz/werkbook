@@ -1656,3 +1656,277 @@ func TestXIRR_NegativeRate(t *testing.T) {
 		t.Errorf("XIRR negative rate: expected negative rate, got %f", v.Num)
 	}
 }
+
+// === CUMPRINC ===
+
+func TestCUMPRINC_FullLife30YrMortgage(t *testing.T) {
+	// Total principal over full life of a 30-year mortgage should equal -PV.
+	// CUMPRINC(0.1/12, 360, 100000, 1, 360, 0) = -100000
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC full life", v, -100000)
+}
+
+func TestCUMPRINC_FirstYear(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 12, 0)
+	// Excel: -555.88 (approx)
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC first year", v, -555.88)
+}
+
+func TestCUMPRINC_SinglePeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 1, 0)
+	// First principal payment = PMT - interest on full balance
+	// PMT = -877.57, interest = -100000*0.1/12 = -833.33, principal = -877.57 - (-833.33) = -44.24
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC single period", v, -44.24)
+}
+
+func TestCUMPRINC_Type1(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 12, 1) — beginning of period payments
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With type=1, first period has 0 interest, so more principal is paid.
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC type=1: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Errorf("CUMPRINC type=1: expected negative, got %f", v.Num)
+	}
+}
+
+func TestCUMPRINC_SimpleLoan(t *testing.T) {
+	// CUMPRINC(0.05, 3, 1000, 1, 3, 0) — full life of simple 3-period loan
+	// Total principal should equal -1000
+	v, err := fnCumprinc(numArgs(0.05, 3, 1000, 1, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC simple loan", v, -1000)
+}
+
+func TestCUMPRINC_MiddlePeriods(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 13, 24, 0) — second year
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC middle periods: expected number, got type %v", v.Type)
+	}
+	// Second year principal should be more than first year (in absolute value)
+	firstYear, _ := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if v.Num >= firstYear.Num {
+		t.Errorf("CUMPRINC: second year principal (%f) should be more negative than first year (%f)", v.Num, firstYear.Num)
+	}
+}
+
+func TestCUMPRINC_LastPeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 360, 360, 0) — last payment
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 360, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC last period: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Errorf("CUMPRINC last period: expected negative, got %f", v.Num)
+	}
+}
+
+func TestCUMPRINC_Type1_FullLife(t *testing.T) {
+	// CUMPRINC(0.05, 3, 1000, 1, 3, 1) — full life with type=1
+	// Total principal should still equal -PV = -1000
+	v, err := fnCumprinc(numArgs(0.05, 3, 1000, 1, 3, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC type=1 full life", v, -1000)
+}
+
+func TestCUMPRINC_Type1_SingleFirstPeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 1, 1) — type=1, first period
+	// With beginning-of-period payment, interest for period 1 is 0,
+	// so principal = PMT
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pmt := pmtCore(0.1/12, 360, 100000, 0, 1)
+	assertClose(t, "CUMPRINC type=1 first period", v, pmt)
+}
+
+func TestCUMPRINC_HighRate(t *testing.T) {
+	// CUMPRINC(0.5, 10, 10000, 1, 10, 0) — 50% rate
+	v, err := fnCumprinc(numArgs(0.5, 10, 10000, 1, 10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC high rate", v, -10000)
+}
+
+func TestCUMPRINC_LowRate(t *testing.T) {
+	// CUMPRINC(0.001, 12, 5000, 1, 12, 0) — low rate, full life
+	v, err := fnCumprinc(numArgs(0.001, 12, 5000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC low rate", v, -5000)
+}
+
+func TestCUMPRINC_RelationshipWithCUMIPMT(t *testing.T) {
+	// CUMIPMT + CUMPRINC over full life should equal total payments (PMT * nper)
+	rate := 0.1 / 12
+	nper := 360.0
+	pv := 100000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 1, nper, 0))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 1, nper, 0))
+	pmt := pmtCore(rate, nper, pv, 0, 0)
+	totalPayments := pmt * nper
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("CUMIPMT(%f) + CUMPRINC(%f) = %f, total payments = %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_RelationshipWithCUMIPMT_Type1(t *testing.T) {
+	// Same relationship with type=1
+	rate := 0.08 / 12
+	nper := 120.0
+	pv := 50000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 1, nper, 1))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 1, nper, 1))
+	pmt := pmtCore(rate, nper, pv, 0, 1)
+	totalPayments := pmt * nper
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("Type1: CUMIPMT(%f) + CUMPRINC(%f) = %f, total payments = %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_RelationshipPartialRange(t *testing.T) {
+	// CUMIPMT + CUMPRINC for a partial range should equal PMT * number of periods
+	rate := 0.06 / 12
+	nper := 240.0
+	pv := 200000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 13, 24, 0))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 13, 24, 0))
+	pmt := pmtCore(rate, nper, pv, 0, 0)
+	totalPayments := pmt * 12
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("Partial: CUMIPMT(%f) + CUMPRINC(%f) = %f, expected %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_SinglePeriodMatchesPPMT(t *testing.T) {
+	// CUMPRINC for a single period should equal PPMT for that period
+	rate := 0.05 / 12
+	nper := 360.0
+	pv := 200000.0
+	for _, per := range []float64{1, 12, 60, 180, 360} {
+		cumP, _ := fnCumprinc(numArgs(rate, nper, pv, per, per, 0))
+		ppmt, _ := fnPPMT(numArgs(rate, per, nper, pv))
+		if math.Abs(cumP.Num-ppmt.Num) > 0.01 {
+			t.Errorf("per=%v: CUMPRINC(%f) != PPMT(%f)", per, cumP.Num, ppmt.Num)
+		}
+	}
+}
+
+func TestCUMPRINC_LargeLoan(t *testing.T) {
+	// CUMPRINC(0.04/12, 360, 1000000, 1, 360, 0) = -1000000
+	v, err := fnCumprinc(numArgs(0.04/12, 360, 1000000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC large loan", v, -1000000)
+}
+
+func TestCUMPRINC_ShortLoan(t *testing.T) {
+	// CUMPRINC(0.06/12, 12, 10000, 1, 12, 0) = -10000
+	v, err := fnCumprinc(numArgs(0.06/12, 12, 10000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC short loan", v, -10000)
+}
+
+func TestCUMPRINC_SumPartsEqualsTotal(t *testing.T) {
+	// Sum of first half + second half should equal total
+	rate := 0.1 / 12
+	nper := 360.0
+	pvVal := 100000.0
+	total, _ := fnCumprinc(numArgs(rate, nper, pvVal, 1, 360, 0))
+	first, _ := fnCumprinc(numArgs(rate, nper, pvVal, 1, 180, 0))
+	second, _ := fnCumprinc(numArgs(rate, nper, pvVal, 181, 360, 0))
+	sum := first.Num + second.Num
+	if math.Abs(sum-total.Num) > 0.01 {
+		t.Errorf("CUMPRINC parts: first(%f) + second(%f) = %f, total = %f", first.Num, second.Num, sum, total.Num)
+	}
+}
+
+func TestCUMPRINC_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12))
+	assertError(t, "CUMPRINC too few args", v)
+}
+
+func TestCUMPRINC_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, 0, 1))
+	assertError(t, "CUMPRINC too many args", v)
+}
+
+func TestCUMPRINC_ErrorRateZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0, 12, 1000, 1, 12, 0))
+	assertError(t, "CUMPRINC rate=0", v)
+}
+
+func TestCUMPRINC_ErrorRateNegative(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(-0.1, 12, 1000, 1, 12, 0))
+	assertError(t, "CUMPRINC rate<0", v)
+}
+
+func TestCUMPRINC_ErrorNperZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 0, 1000, 1, 1, 0))
+	assertError(t, "CUMPRINC nper=0", v)
+}
+
+func TestCUMPRINC_ErrorPvZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 0, 1, 12, 0))
+	assertError(t, "CUMPRINC pv=0", v)
+}
+
+func TestCUMPRINC_ErrorStartPeriodZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 0, 12, 0))
+	assertError(t, "CUMPRINC start=0", v)
+}
+
+func TestCUMPRINC_ErrorEndBeforeStart(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 6, 3, 0))
+	assertError(t, "CUMPRINC end<start", v)
+}
+
+func TestCUMPRINC_ErrorEndExceedsNper(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 13, 0))
+	assertError(t, "CUMPRINC end>nper", v)
+}
+
+func TestCUMPRINC_ErrorInvalidType(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, 2))
+	assertError(t, "CUMPRINC type=2", v)
+}
+
+func TestCUMPRINC_ErrorNegativeType(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, -1))
+	assertError(t, "CUMPRINC type=-1", v)
+}
