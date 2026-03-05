@@ -288,12 +288,31 @@ func fnDATEDIF(args []Value) (Value, error) {
 		}
 		return NumberVal(float64(m)), nil
 	case "YD":
-		totalDays := int(endSerial - startSerial)
-		years := end.Year() - start.Year()
-		if end.Month() < start.Month() || (end.Month() == start.Month() && end.Day() < start.Day()) {
-			years--
+		// Excel's YD algorithm: move end's month/day into start's year,
+		// then compute the day difference from start to the adjusted date.
+		endMonth := end.Month()
+		endDay := end.Day()
+
+		// Handle Feb 29: if end is Feb 29 and start's year is not a leap year,
+		// treat as Feb 28.
+		adjYear := start.Year()
+		if endMonth == 2 && endDay == 29 && !isLeapYear(adjYear) {
+			endDay = 28
 		}
-		days := totalDays - years*365
+
+		adjusted := time.Date(adjYear, endMonth, endDay, 0, 0, 0, 0, time.UTC)
+		if adjusted.Before(start) {
+			// Move to next year
+			adjYear++
+			// Re-check Feb 29 for the new year
+			if end.Month() == 2 && end.Day() == 29 && !isLeapYear(adjYear) {
+				adjusted = time.Date(adjYear, 2, 28, 0, 0, 0, 0, time.UTC)
+			} else {
+				adjusted = time.Date(adjYear, end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+			}
+		}
+
+		days := int(adjusted.Sub(start).Hours() / 24)
 		return NumberVal(float64(days)), nil
 	default:
 		return ErrorVal(ErrValNUM), nil
