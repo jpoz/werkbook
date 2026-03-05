@@ -184,7 +184,7 @@ Werkbook supports **303** Excel formula functions.
 | NORM.S.INV | Statistical | 27 |
 | NOT | Logical | 8 |
 | NOW | Date & Time | 2 |
-| NPER | Financial | 2 |
+| NPER | Financial | 3 |
 | NPV | Financial | 25 |
 | NUMBERVALUE | Text | - |
 | OCT2BIN | Engineering | 38 |

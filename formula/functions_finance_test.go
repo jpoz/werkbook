@@ -739,6 +739,165 @@ func TestNPER_ZeroRate(t *testing.T) {
 	assertClose(t, "NPER zero rate", v, 10)
 }
 
+func TestNPER_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Excel doc examples ---
+		{
+			name: "Excel doc: type=1, rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			args: numArgs(0.12/12, -100, -1000, 10000, 1),
+			want: 59.67,
+		},
+		{
+			name: "Excel doc: type=0 (default), rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			args: numArgs(0.12/12, -100, -1000, 10000),
+			want: 60.08,
+		},
+		{
+			name: "Excel doc: no fv, rate=12%/12, pmt=-100, pv=-1000",
+			args: numArgs(0.12/12, -100, -1000),
+			want: -9.58,
+		},
+
+		// --- Basic loan payoff ---
+		{
+			name: "basic loan: 1%/month, $100 payments, $1000 loan",
+			args: numArgs(0.01, -100, 1000),
+			want: 10.58,
+		},
+
+		// --- Zero rate ---
+		{
+			name: "zero rate: pmt only",
+			args: numArgs(0, -100, 1000),
+			want: 10,
+		},
+		{
+			name: "zero rate with fv",
+			args: numArgs(0, -200, 1000, 5000),
+			want: 30,
+		},
+		{
+			name: "zero rate: pmt=0 should error",
+			args: numArgs(0, 0, 1000),
+			wantErr: true,
+		},
+
+		// --- With future value ---
+		{
+			name: "loan with future value (balloon payment)",
+			args: numArgs(0.05/12, -500, 20000, 5000),
+			want: 53.67,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 end of period",
+			args: numArgs(0.06/12, -200, 10000, 0, 0),
+			want: 57.68,
+		},
+		{
+			name: "type=1 beginning of period (fewer periods)",
+			args: numArgs(0.06/12, -200, 10000, 0, 1),
+			want: 57.35,
+		},
+
+		// --- Saving scenario: positive pmt, negative fv ---
+		{
+			name: "saving: monthly $300 deposits to reach $50000",
+			args: numArgs(0.04/12, -300, 0, 50000),
+			want: 132.77,
+		},
+
+		// --- Large loan, small payment ---
+		{
+			name: "large loan small payment: 30yr mortgage check",
+			args: numArgs(0.06/12, -1199.10, 200000),
+			want: 360.00,
+		},
+
+		// --- Negative pmt (standard loan payments) ---
+		{
+			name: "negative pmt standard loan",
+			args: numArgs(0.08/12, -1000, 50000),
+			want: 61.02,
+		},
+
+		// --- Zero pmt with fv: result based on rate and pv/fv ---
+		{
+			name: "zero pmt with fv: compound growth only",
+			args: numArgs(0.05, 0, -1000, 2000),
+			want: 14.21,
+		},
+
+		// --- String coercion ---
+		{
+			name: "string coercion: all numeric strings",
+			args: []Value{StringVal("0.01"), StringVal("-100"), StringVal("1000")},
+			want: 10.58,
+		},
+		{
+			name: "string coercion: rate as string",
+			args: []Value{StringVal("0"), NumberVal(-250), NumberVal(1000)},
+			want: 4,
+		},
+
+		// --- Error: too few args ---
+		{
+			name: "error: too few args (2)",
+			args: numArgs(0.01, -100),
+			wantErr: true,
+		},
+		{
+			name: "error: too few args (1)",
+			args: numArgs(0.01),
+			wantErr: true,
+		},
+
+		// --- Error: too many args ---
+		{
+			name: "error: too many args (6)",
+			args: numArgs(0.01, -100, 1000, 0, 0, 99),
+			wantErr: true,
+		},
+
+		// --- Error: non-numeric ---
+		{
+			name: "error: non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(-100), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pmt",
+			args: []Value{NumberVal(0.01), StringVal("xyz"), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pv",
+			args: []Value{NumberVal(0.01), NumberVal(-100), StringVal("bad")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnNPER(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
 // === RATE ===
 
 func TestRATE_Loan(t *testing.T) {
