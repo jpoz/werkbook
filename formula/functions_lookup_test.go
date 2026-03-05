@@ -2796,6 +2796,203 @@ func TestFILTER_BoolFalseInInclude(t *testing.T) {
 	}
 }
 
+func TestXLOOKUP(t *testing.T) {
+	// Vertical data: A1:A5 = lookup, B1:B5 = return
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Vertical lookup/return arrays
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("Banana"),
+			{Col: 1, Row: 3}: StringVal("Cherry"),
+			{Col: 1, Row: 4}: StringVal("Date"),
+			{Col: 1, Row: 5}: StringVal("apple"), // duplicate, different case
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+
+			// Numeric sorted data: C1:C5 = lookup, D1:D5 = return
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(20),
+			{Col: 3, Row: 3}: NumberVal(30),
+			{Col: 3, Row: 4}: NumberVal(40),
+			{Col: 3, Row: 5}: NumberVal(50),
+			{Col: 4, Row: 1}: StringVal("ten"),
+			{Col: 4, Row: 2}: StringVal("twenty"),
+			{Col: 4, Row: 3}: StringVal("thirty"),
+			{Col: 4, Row: 4}: StringVal("forty"),
+			{Col: 4, Row: 5}: StringVal("fifty"),
+
+			// Horizontal data: E1:I1 = lookup, E2:I2 = return
+			{Col: 5, Row: 1}: StringVal("X"),
+			{Col: 6, Row: 1}: StringVal("Y"),
+			{Col: 7, Row: 1}: StringVal("Z"),
+			{Col: 5, Row: 2}: NumberVal(100),
+			{Col: 6, Row: 2}: NumberVal(200),
+			{Col: 7, Row: 2}: NumberVal(300),
+		},
+	}
+
+	t.Run("basic exact match string", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Cherry",A1:A5,B1:B5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("basic exact match number", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP(20,C1:C5,D1:D5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "twenty" {
+			t.Errorf("got %v, want twenty", got)
+		}
+	})
+
+	t.Run("not found without if_not_found returns NA", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Mango",A1:A5,B1:B5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("not found with if_not_found returns custom value", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Mango",A1:A5,B1:B5,"Not Found")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "Not Found" {
+			t.Errorf("got %v, want Not Found", got)
+		}
+	})
+
+	t.Run("case insensitive matching", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("BANANA",A1:A5,B1:B5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("multiple matches returns first found", func(t *testing.T) {
+		// "apple" matches row 1 (Apple) first due to case-insensitive compare
+		cf := evalCompile(t, `XLOOKUP("apple",A1:A5,B1:B5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10 (first match)", got)
+		}
+	})
+
+	t.Run("match_mode -1 exact or next smaller", func(t *testing.T) {
+		// Lookup 25 in sorted numeric array; next smaller is 20
+		cf := evalCompile(t, `XLOOKUP(25,C1:C5,D1:D5,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "twenty" {
+			t.Errorf("got %v, want twenty", got)
+		}
+	})
+
+	t.Run("match_mode 1 exact or next larger", func(t *testing.T) {
+		// Lookup 25 in sorted numeric array; next larger is 30
+		cf := evalCompile(t, `XLOOKUP(25,C1:C5,D1:D5,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	t.Run("match_mode -1 exact match found", func(t *testing.T) {
+		// Exact value exists; should return it
+		cf := evalCompile(t, `XLOOKUP(30,C1:C5,D1:D5,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	t.Run("horizontal lookup array", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Y",E1:G1,E2:G2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 200 {
+			t.Errorf("got %v, want 200", got)
+		}
+	})
+
+	t.Run("too few args returns error", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Apple",A1:A5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error for too few args", got)
+		}
+	})
+
+	t.Run("wildcard star pattern", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Ch*",A1:A5,B1:B5,,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("wildcard question mark pattern", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Dat?",A1:A5,B1:B5,,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 40 {
+			t.Errorf("got %v, want 40", got)
+		}
+	})
+
+	t.Run("if_not_found with numeric zero", func(t *testing.T) {
+		cf := evalCompile(t, `XLOOKUP("Missing",A1:A5,B1:B5,0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+}
+
 func TestXLOOKUP_WildcardMode(t *testing.T) {
 	// Data layout: D2:D4 = lookup values, E2:E4 = return values
 	resolver := &mockResolver{
