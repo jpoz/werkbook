@@ -3,15 +3,77 @@ package formula
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
 func init() {
+	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
 	Register("DEC2HEX", NoCtx(fnDec2Hex))
 	Register("DEC2OCT", NoCtx(fnDec2Oct))
 	Register("GESTEP", NoCtx(fnGESTEP))
+}
+
+// fnBin2Dec implements the Excel BIN2DEC function.
+// BIN2DEC(number) — converts a binary number string to decimal.
+// Input must contain only 0s and 1s, max 10 digits.
+// 10-digit numbers starting with 1 are negative (two's complement).
+func fnBin2Dec(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		// Format as integer string (e.g., 1001.0 → "1001").
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate length: max 10 binary digits.
+	if len(s) == 0 || len(s) > 10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Validate characters: only 0 and 1 allowed.
+	for _, c := range s {
+		if c != '0' && c != '1' {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	// Parse as unsigned binary.
+	v, err := strconv.ParseUint(s, 2, 64)
+	if err != nil {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Two's complement: 10-digit number starting with '1' is negative.
+	var result float64
+	if len(s) == 10 && s[0] == '1' {
+		result = float64(int64(v) - 1024)
+	} else {
+		result = float64(v)
+	}
+
+	return NumberVal(result), nil
 }
 
 // fnDELTA implements the Excel DELTA function.

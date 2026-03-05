@@ -4,6 +4,120 @@ import (
 	"testing"
 )
 
+func TestBIN2DEC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+		}{
+			// Basic string inputs
+			{`BIN2DEC("0")`, 0},
+			{`BIN2DEC("1")`, 1},
+			{`BIN2DEC("10")`, 2},
+			{`BIN2DEC("11")`, 3},
+			{`BIN2DEC("100")`, 4},
+			{`BIN2DEC("1001")`, 9},
+			{`BIN2DEC("1010")`, 10},
+			{`BIN2DEC("1100100")`, 100},
+			{`BIN2DEC("11111111")`, 255},
+
+			// Numeric inputs (coerced to string)
+			{"BIN2DEC(0)", 0},
+			{"BIN2DEC(1)", 1},
+			{"BIN2DEC(10)", 2},
+			{"BIN2DEC(11)", 3},
+			{"BIN2DEC(1001)", 9},
+			{"BIN2DEC(11111111)", 255},
+
+			// Max positive (9 digits)
+			{`BIN2DEC("111111111")`, 511},
+
+			// Negative two's complement (10 digits starting with 1)
+			{`BIN2DEC("1111111111")`, -1},
+			{`BIN2DEC("1111111110")`, -2},
+			{`BIN2DEC("1111111100")`, -4},
+			{`BIN2DEC("1111110000")`, -16},
+			{`BIN2DEC("1000000000")`, -512},
+			{`BIN2DEC("1000000001")`, -511},
+
+			// Padded with leading zeros
+			{`BIN2DEC("0000000001")`, 1},
+			{`BIN2DEC("0000000000")`, 0},
+			{`BIN2DEC("0111111111")`, 511},
+
+			// Single digit
+			{`BIN2DEC("0")`, 0},
+			{`BIN2DEC("1")`, 1},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Non-binary characters
+			{`BIN2DEC("2")`, ErrValNUM},
+			{`BIN2DEC("12345")`, ErrValNUM},
+			{`BIN2DEC("abc")`, ErrValNUM},
+			{`BIN2DEC("10102")`, ErrValNUM},
+			{`BIN2DEC("1010a")`, ErrValNUM},
+
+			// Too many digits (11 digits)
+			{`BIN2DEC("10000000000")`, ErrValNUM},
+			{`BIN2DEC("11111111111")`, ErrValNUM},
+
+			// Boolean rejection
+			{"BIN2DEC(TRUE)", ErrValVALUE},
+			{"BIN2DEC(FALSE)", ErrValVALUE},
+
+			// Non-numeric, non-string input
+			{`BIN2DEC("xyz")`, ErrValNUM},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"BIN2DEC()", "BIN2DEC(1,2)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestDELTA(t *testing.T) {
 	resolver := &mockResolver{}
 
