@@ -60,13 +60,17 @@ func (s *xlsxSheet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return d.Skip()
 }
 
-// MarshalXML writes the sheet element with the r:id attribute in the transitional namespace.
+// MarshalXML writes the sheet element with the r:id attribute.
+// We use the raw "r:id" local name to match the xmlns:r prefix declared
+// on the parent <workbook> element. Go's encoding/xml would otherwise
+// re-declare the namespace with a different prefix on every <sheet>,
+// which is semantically valid XML but triggers Excel's file-repair dialog.
 func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	start.Name = xml.Name{Local: "sheet"}
 	start.Attr = []xml.Attr{
 		{Name: xml.Name{Local: "name"}, Value: s.Name},
 		{Name: xml.Name{Local: "sheetId"}, Value: fmt.Sprintf("%d", s.SheetID)},
-		{Name: xml.Name{Space: NSOfficeDocument, Local: "id"}, Value: s.RID},
+		{Name: xml.Name{Local: "r:id"}, Value: s.RID},
 	}
 	if err := e.EncodeToken(start); err != nil {
 		return err
