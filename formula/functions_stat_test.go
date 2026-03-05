@@ -2473,6 +2473,394 @@ func TestQUARTILE(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// PERCENTILE.EXC
+// ---------------------------------------------------------------------------
+
+func TestPERCENTILEEXC(t *testing.T) {
+	// Excel docs example: {6,7,15,36,39,40,41,42,43,47,49} in A1:A11
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:  NumberVal(6),
+			{Col: 1, Row: 2}:  NumberVal(7),
+			{Col: 1, Row: 3}:  NumberVal(15),
+			{Col: 1, Row: 4}:  NumberVal(36),
+			{Col: 1, Row: 5}:  NumberVal(39),
+			{Col: 1, Row: 6}:  NumberVal(40),
+			{Col: 1, Row: 7}:  NumberVal(41),
+			{Col: 1, Row: 8}:  NumberVal(42),
+			{Col: 1, Row: 9}:  NumberVal(43),
+			{Col: 1, Row: 10}: NumberVal(47),
+			{Col: 1, Row: 11}: NumberVal(49),
+		},
+	}
+
+	// Standard dataset: {1,2,3,4,5,6,7,8} in B1:B8
+	stdResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 5}: NumberVal(5),
+			{Col: 2, Row: 6}: NumberVal(6),
+			{Col: 2, Row: 7}: NumberVal(7),
+			{Col: 2, Row: 8}: NumberVal(8),
+		},
+	}
+
+	// Single element in C1
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Two elements in D1:D2
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(10),
+			{Col: 4, Row: 2}: NumberVal(20),
+		},
+	}
+
+	// Four elements in E1:E4
+	fourResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(1),
+			{Col: 5, Row: 2}: NumberVal(2),
+			{Col: 5, Row: 3}: NumberVal(3),
+			{Col: 5, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Negative numbers in F1:F4
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(-10),
+			{Col: 6, Row: 2}: NumberVal(-5),
+			{Col: 6, Row: 3}: NumberVal(0),
+			{Col: 6, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// All same values in G1:G4
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(7),
+			{Col: 7, Row: 2}: NumberVal(7),
+			{Col: 7, Row: 3}: NumberVal(7),
+			{Col: 7, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Large dataset in H1:H20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 8, Row: i}] = NumberVal(float64(i))
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		wantNum  float64
+		wantErr  ErrorValue
+	}{
+		// Excel docs example: PERCENTILE.EXC({6,7,15,36,39,40,41,42,43,47,49}, 0.25) = 15
+		{"excel_example_25th", "PERCENTILE.EXC(A1:A11,0.25)", excelResolver, 15, 0},
+		// Excel docs example: PERCENTILE.EXC({6,7,15,36,39,40,41,42,43,47,49}, 0.75) = 43
+		{"excel_example_75th", "PERCENTILE.EXC(A1:A11,0.75)", excelResolver, 43, 0},
+		// Median (k=0.5) on excel data: rank=0.5*12=6, so nums[5]=40
+		{"excel_median", "PERCENTILE.EXC(A1:A11,0.5)", excelResolver, 40, 0},
+		// Standard dataset {1..8}: k=0.25, rank=0.25*9=2.25, interp between 2 and 3
+		{"std_25th", "PERCENTILE.EXC(B1:B8,0.25)", stdResolver, 2.25, 0},
+		// k=0.5, rank=0.5*9=4.5, interp between 4 and 5
+		{"std_50th", "PERCENTILE.EXC(B1:B8,0.5)", stdResolver, 4.5, 0},
+		// k=0.75, rank=0.75*9=6.75, interp between 7 and 8: 6+0.75*1=6.75
+		{"std_75th", "PERCENTILE.EXC(B1:B8,0.75)", stdResolver, 6.75, 0},
+		// k at exact integer rank: k=1/9≈0.1111, rank=1.0, → nums[0]=1
+		{"std_exact_first", "PERCENTILE.EXC(B1:B8,1/9)", stdResolver, 1, 0},
+		// k at exact integer rank: k=8/9≈0.8889, rank=8.0, → nums[7]=8
+		{"std_exact_last", "PERCENTILE.EXC(B1:B8,8/9)", stdResolver, 8, 0},
+		// k=0 → #NUM!
+		{"k_zero", "PERCENTILE.EXC(B1:B8,0)", stdResolver, 0, ErrValNUM},
+		// k=1 → #NUM!
+		{"k_one", "PERCENTILE.EXC(B1:B8,1)", stdResolver, 0, ErrValNUM},
+		// k negative → #NUM!
+		{"k_negative", "PERCENTILE.EXC(B1:B8,-0.5)", stdResolver, 0, ErrValNUM},
+		// k > 1 → #NUM!
+		{"k_over_one", "PERCENTILE.EXC(B1:B8,1.5)", stdResolver, 0, ErrValNUM},
+		// Single element: only k=0.5 works (rank=0.5*2=1)
+		{"single_median", "PERCENTILE.EXC(C1:C1,0.5)", singleResolver, 42, 0},
+		// Single element: k=0.25 → rank=0.25*2=0.5 < 1 → #NUM!
+		{"single_k25_num", "PERCENTILE.EXC(C1:C1,0.25)", singleResolver, 0, ErrValNUM},
+		// Single element: k=0.75 → rank=0.75*2=1.5 > 1 → #NUM!
+		{"single_k75_num", "PERCENTILE.EXC(C1:C1,0.75)", singleResolver, 0, ErrValNUM},
+		// Two elements: k=1/3 → rank=(1/3)*3=1 → nums[0]=10
+		{"two_exact_first", "PERCENTILE.EXC(D1:D2,1/3)", twoResolver, 10, 0},
+		// Two elements: k=2/3 → rank=(2/3)*3=2 → nums[1]=20
+		{"two_exact_last", "PERCENTILE.EXC(D1:D2,2/3)", twoResolver, 20, 0},
+		// Two elements: k=0.5 → rank=0.5*3=1.5 → 10+0.5*10=15
+		{"two_median", "PERCENTILE.EXC(D1:D2,0.5)", twoResolver, 15, 0},
+		// Four elements {1,2,3,4}: k=0.5 → rank=0.5*5=2.5 → 2+0.5=2.5
+		{"four_median", "PERCENTILE.EXC(E1:E4,0.5)", fourResolver, 2.5, 0},
+		// Four elements: k=0.2 → rank=0.2*5=1 → nums[0]=1
+		{"four_k20", "PERCENTILE.EXC(E1:E4,0.2)", fourResolver, 1, 0},
+		// Four elements: k=0.8 → rank=0.8*5=4 → nums[3]=4
+		{"four_k80", "PERCENTILE.EXC(E1:E4,0.8)", fourResolver, 4, 0},
+		// Four elements: k=0.1 → rank=0.1*5=0.5 < 1 → #NUM!
+		{"four_k10_num", "PERCENTILE.EXC(E1:E4,0.1)", fourResolver, 0, ErrValNUM},
+		// Four elements: k=0.9 → rank=0.9*5=4.5 > 4 → #NUM!
+		{"four_k90_num", "PERCENTILE.EXC(E1:E4,0.9)", fourResolver, 0, ErrValNUM},
+		// Negative numbers: k=0.5 → rank=0.5*5=2.5 → -5+0.5*5=-2.5
+		{"neg_median", "PERCENTILE.EXC(F1:F4,0.5)", negResolver, -2.5, 0},
+		// All same values: k=0.5 → rank=0.5*5=2.5 → 7+0.5*0=7
+		{"same_median", "PERCENTILE.EXC(G1:G4,0.5)", sameResolver, 7, 0},
+		// Empty array → #NUM!
+		{"empty_array", "PERCENTILE.EXC(Z1:Z3,0.5)", emptyResolver, 0, ErrValNUM},
+		// Large dataset {1..20}: k=0.25 → rank=0.25*21=5.25 → 5+0.25*1=5.25
+		{"large_25th", "PERCENTILE.EXC(H1:H20,0.25)", largeResolver, 5.25, 0},
+		// Large dataset: k=0.5 → rank=0.5*21=10.5 → 10+0.5*1=10.5
+		{"large_50th", "PERCENTILE.EXC(H1:H20,0.5)", largeResolver, 10.5, 0},
+		// Large dataset: k=0.75 → rank=0.75*21=15.75 → 15+0.75*1=15.75
+		{"large_75th", "PERCENTILE.EXC(H1:H20,0.75)", largeResolver, 15.75, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	// Wrong number of arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE.EXC(B1:B8)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// QUARTILE.EXC
+// ---------------------------------------------------------------------------
+
+func TestQUARTILEEXC(t *testing.T) {
+	// Excel docs example: {6,7,15,36,39,40,41,42,43,47,49} in A1:A11
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:  NumberVal(6),
+			{Col: 1, Row: 2}:  NumberVal(7),
+			{Col: 1, Row: 3}:  NumberVal(15),
+			{Col: 1, Row: 4}:  NumberVal(36),
+			{Col: 1, Row: 5}:  NumberVal(39),
+			{Col: 1, Row: 6}:  NumberVal(40),
+			{Col: 1, Row: 7}:  NumberVal(41),
+			{Col: 1, Row: 8}:  NumberVal(42),
+			{Col: 1, Row: 9}:  NumberVal(43),
+			{Col: 1, Row: 10}: NumberVal(47),
+			{Col: 1, Row: 11}: NumberVal(49),
+		},
+	}
+
+	// Standard dataset: {1,2,3,4,5,6,7,8} in B1:B8
+	stdResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 5}: NumberVal(5),
+			{Col: 2, Row: 6}: NumberVal(6),
+			{Col: 2, Row: 7}: NumberVal(7),
+			{Col: 2, Row: 8}: NumberVal(8),
+		},
+	}
+
+	// Four elements in C1:C4
+	fourResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 2}: NumberVal(2),
+			{Col: 3, Row: 3}: NumberVal(3),
+			{Col: 3, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Negative numbers in D1:D4
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(-10),
+			{Col: 4, Row: 2}: NumberVal(-5),
+			{Col: 4, Row: 3}: NumberVal(0),
+			{Col: 4, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// All same values in E1:E4
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(7),
+			{Col: 5, Row: 2}: NumberVal(7),
+			{Col: 5, Row: 3}: NumberVal(7),
+			{Col: 5, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Large dataset in F1:F20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 6, Row: i}] = NumberVal(float64(i))
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		wantNum  float64
+		wantErr  ErrorValue
+	}{
+		// Excel docs example: QUARTILE.EXC({6,7,...,49}, 1) = 15
+		{"excel_q1", "QUARTILE.EXC(A1:A11,1)", excelResolver, 15, 0},
+		// Excel docs example: QUARTILE.EXC({6,7,...,49}, 3) = 43
+		{"excel_q3", "QUARTILE.EXC(A1:A11,3)", excelResolver, 43, 0},
+		// QUARTILE.EXC(data, 2) = MEDIAN
+		{"excel_q2_median", "QUARTILE.EXC(A1:A11,2)", excelResolver, 40, 0},
+		// Standard dataset {1..8}: q1 → PERCENTILE.EXC(data, 0.25) = 2.25
+		{"std_q1", "QUARTILE.EXC(B1:B8,1)", stdResolver, 2.25, 0},
+		// q2 → PERCENTILE.EXC(data, 0.5) = 4.5
+		{"std_q2", "QUARTILE.EXC(B1:B8,2)", stdResolver, 4.5, 0},
+		// q3 → PERCENTILE.EXC(data, 0.75) = 6.75
+		{"std_q3", "QUARTILE.EXC(B1:B8,3)", stdResolver, 6.75, 0},
+		// quart=0 → #NUM! (unlike QUARTILE.INC)
+		{"q0_num", "QUARTILE.EXC(B1:B8,0)", stdResolver, 0, ErrValNUM},
+		// quart=4 → #NUM! (unlike QUARTILE.INC)
+		{"q4_num", "QUARTILE.EXC(B1:B8,4)", stdResolver, 0, ErrValNUM},
+		// quart negative → #NUM!
+		{"q_negative", "QUARTILE.EXC(B1:B8,-1)", stdResolver, 0, ErrValNUM},
+		// quart=5 → #NUM!
+		{"q_over_4", "QUARTILE.EXC(B1:B8,5)", stdResolver, 0, ErrValNUM},
+		// quart as float truncated to integer
+		{"q_float_1.7_truncates_to_1", "QUARTILE.EXC(B1:B8,1.7)", stdResolver, 2.25, 0},
+		{"q_float_3.9_truncates_to_3", "QUARTILE.EXC(B1:B8,3.9)", stdResolver, 6.75, 0},
+		// Four elements: q1 → k=0.25, rank=0.25*5=1.25 → 1+0.25=1.25
+		{"four_q1", "QUARTILE.EXC(C1:C4,1)", fourResolver, 1.25, 0},
+		// Four elements: q2 → k=0.5, rank=0.5*5=2.5 → 2+0.5=2.5
+		{"four_q2", "QUARTILE.EXC(C1:C4,2)", fourResolver, 2.5, 0},
+		// Four elements: q3 → k=0.75, rank=0.75*5=3.75 → 3+0.75=3.75
+		{"four_q3", "QUARTILE.EXC(C1:C4,3)", fourResolver, 3.75, 0},
+		// Negative numbers: q1 → k=0.25, rank=0.25*5=1.25 → -10+0.25*5=-8.75
+		{"neg_q1", "QUARTILE.EXC(D1:D4,1)", negResolver, -8.75, 0},
+		// Negative numbers: q2
+		{"neg_q2", "QUARTILE.EXC(D1:D4,2)", negResolver, -2.5, 0},
+		// Negative numbers: q3 → k=0.75, rank=0.75*5=3.75 → 0+0.75*5=3.75
+		{"neg_q3", "QUARTILE.EXC(D1:D4,3)", negResolver, 3.75, 0},
+		// All same values
+		{"same_q1", "QUARTILE.EXC(E1:E4,1)", sameResolver, 7, 0},
+		{"same_q2", "QUARTILE.EXC(E1:E4,2)", sameResolver, 7, 0},
+		{"same_q3", "QUARTILE.EXC(E1:E4,3)", sameResolver, 7, 0},
+		// Empty array → #NUM!
+		{"empty_array", "QUARTILE.EXC(Z1:Z3,1)", emptyResolver, 0, ErrValNUM},
+		// Large dataset {1..20}: q1 → PERCENTILE.EXC(data, 0.25) = 5.25
+		{"large_q1", "QUARTILE.EXC(F1:F20,1)", largeResolver, 5.25, 0},
+		// Large dataset: q2 → 10.5
+		{"large_q2", "QUARTILE.EXC(F1:F20,2)", largeResolver, 10.5, 0},
+		// Large dataset: q3 → 15.75
+		{"large_q3", "QUARTILE.EXC(F1:F20,3)", largeResolver, 15.75, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	// QUARTILE.EXC(x,q) == PERCENTILE.EXC(x, q*0.25) equivalence check
+	t.Run("equivalence_with_PERCENTILE_EXC", func(t *testing.T) {
+		for q := 1; q <= 3; q++ {
+			qf := evalCompile(t, "QUARTILE.EXC(B1:B8,"+string(rune('0'+q))+")")
+			qv, err := Eval(qf, stdResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval QUARTILE.EXC q=%d: %v", q, err)
+			}
+
+			pctStr := []string{"", "0.25", "0.5", "0.75"}[q]
+			pf := evalCompile(t, "PERCENTILE.EXC(B1:B8,"+pctStr+")")
+			pv, err := Eval(pf, stdResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval PERCENTILE.EXC q=%d: %v", q, err)
+			}
+
+			if math.Abs(qv.Num-pv.Num) > 1e-9 {
+				t.Errorf("QUARTILE.EXC(q=%d)=%g != PERCENTILE.EXC(k=%s)=%g", q, qv.Num, pctStr, pv.Num)
+			}
+		}
+	})
+
+	// Wrong number of arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "QUARTILE.EXC(B1:B8)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // TRIMMEAN
 // ---------------------------------------------------------------------------
 

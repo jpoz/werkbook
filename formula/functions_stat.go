@@ -39,7 +39,9 @@ func init() {
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
+	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
+	Register("QUARTILE.EXC", NoCtx(fnQUARTILEEXC))
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("RANK", NoCtx(fnRANK))
@@ -1100,6 +1102,60 @@ func fnQUARTILE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return fnPERCENTILE([]Value{args[0], NumberVal(q * 0.25)})
+}
+
+// fnPERCENTILEEXC implements PERCENTILE.EXC which returns the k-th percentile
+// using exclusive interpolation. k must be strictly between 0 and 1 (exclusive).
+// The rank is computed as k*(n+1), and if the rank falls outside [1, n] it
+// returns #NUM!.
+func fnPERCENTILEEXC(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	k, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	if k <= 0 || k >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	n := len(nums)
+	rank := k * float64(n+1)
+	if rank < 1 || rank > float64(n) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	intPart := int(rank)
+	frac := rank - float64(intPart)
+	if intPart >= n {
+		return NumberVal(nums[n-1]), nil
+	}
+	result := nums[intPart-1] + frac*(nums[intPart]-nums[intPart-1])
+	return NumberVal(result), nil
+}
+
+// fnQUARTILEEXC implements QUARTILE.EXC which returns the exclusive quartile.
+// quart must be 1, 2, or 3 (0 and 4 return #NUM!, unlike QUARTILE.INC).
+func fnQUARTILEEXC(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	q, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	q = math.Trunc(q)
+	if q <= 0 || q >= 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return fnPERCENTILEEXC([]Value{args[0], NumberVal(q * 0.25)})
 }
 
 func fnRANK(args []Value) (Value, error) {
