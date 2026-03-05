@@ -44,7 +44,7 @@ Werkbook supports **303** Excel formula functions.
 | COMBIN | Math & Trig | - |
 | COMBINA | Math & Trig | - |
 | CONCAT | Text | 33 |
-| CONCATENATE | Text | 3 |
+| CONCATENATE | Text | 38 |
 | CONVERT | Engineering | 57 |
 | CORREL | Statistical | 20 |
 | COS | Math & Trig | - |

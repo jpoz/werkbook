@@ -1151,6 +1151,165 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CONCATENATE comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCONCATENATEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// --- Scalar-only tests (CONCATENATE does NOT accept ranges) ---
+	scalarTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic: two strings
+		{name: "two_strings", formula: `CONCATENATE("hello","world")`, want: "helloworld"},
+		// Basic: three strings
+		{name: "three_strings", formula: `CONCATENATE("a","b","c")`, want: "abc"},
+		// Many strings
+		{name: "many_strings", formula: `CONCATENATE("a","b","c","d","e","f","g","h")`, want: "abcdefgh"},
+		// Single argument
+		{name: "single_string", formula: `CONCATENATE("only")`, want: "only"},
+		// No arguments -> empty string
+		{name: "no_args", formula: `CONCATENATE()`, want: ""},
+		// Numbers coerced to text
+		{name: "number_int", formula: `CONCATENATE(42)`, want: "42"},
+		{name: "number_float", formula: `CONCATENATE(3.14)`, want: "3.14"},
+		{name: "two_numbers", formula: `CONCATENATE(1,2)`, want: "12"},
+		{name: "number_and_string", formula: `CONCATENATE("item",99)`, want: "item99"},
+		{name: "negative_number", formula: `CONCATENATE("val:",-5)`, want: "val:-5"},
+		// Booleans coerced to text
+		{name: "bool_true", formula: `CONCATENATE(TRUE)`, want: "TRUE"},
+		{name: "bool_false", formula: `CONCATENATE(FALSE)`, want: "FALSE"},
+		{name: "bool_and_string", formula: `CONCATENATE("flag: ",TRUE)`, want: "flag: TRUE"},
+		{name: "bool_false_and_string", formula: `CONCATENATE("ok=",FALSE)`, want: "ok=FALSE"},
+		// Empty strings
+		{name: "empty_string", formula: `CONCATENATE("")`, want: ""},
+		{name: "empty_between", formula: `CONCATENATE("a","","b")`, want: "ab"},
+		{name: "all_empty", formula: `CONCATENATE("","","")`, want: ""},
+		// Mixed types
+		{name: "mixed_types", formula: `CONCATENATE("count=",5,", ok=",TRUE)`, want: "count=5, ok=TRUE"},
+		{name: "mixed_with_bool_false", formula: `CONCATENATE(FALSE," ",0," ","x")`, want: "FALSE 0 x"},
+		{name: "mixed_number_string_bool", formula: `CONCATENATE(1," + ",2," = ",TRUE)`, want: "1 + 2 = TRUE"},
+		// Numeric strings
+		{name: "numeric_strings", formula: `CONCATENATE("123","456")`, want: "123456"},
+		{name: "numeric_string_and_number", formula: `CONCATENATE("100",200)`, want: "100200"},
+		// Special characters
+		{name: "symbols", formula: `CONCATENATE("@","#","$")`, want: "@#$"},
+		{name: "spaces", formula: `CONCATENATE(" "," "," ")`, want: "   "},
+		{name: "punctuation", formula: `CONCATENATE("hello",", ","world","!")`, want: "hello, world!"},
+		// Unicode characters
+		{name: "unicode_accents", formula: `CONCATENATE("café"," ","naïve")`, want: "café naïve"},
+		{name: "unicode_emoji", formula: `CONCATENATE("hi"," 🎉")`, want: "hi 🎉"},
+		{name: "unicode_cjk", formula: `CONCATENATE("日本","語")`, want: "日本語"},
+		// Long result string
+		{name: "long_string", formula: `CONCATENATE("abcdefghij","abcdefghij","abcdefghij","abcdefghij","abcdefghij")`, want: "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"},
+	}
+
+	for _, tt := range scalarTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("%s: got type=%d str=%q, want %q", tt.name, got.Type, got.Str, tt.want)
+			}
+		})
+	}
+
+	// --- Error propagation tests ---
+	t.Run("error_propagation_div0", func(t *testing.T) {
+		cf := evalCompile(t, `CONCATENATE("a",1/0,"b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("expected #DIV/0! error, got type=%d err=%v str=%q", got.Type, got.Err, got.Str)
+		}
+	})
+
+	t.Run("error_propagation_first_arg", func(t *testing.T) {
+		cf := evalCompile(t, `CONCATENATE(1/0,"b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got type=%d str=%q", got.Type, got.Str)
+		}
+	})
+
+	t.Run("error_propagation_last_arg", func(t *testing.T) {
+		cf := evalCompile(t, `CONCATENATE("a","b",1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("expected #DIV/0! error, got type=%d err=%v str=%q", got.Type, got.Err, got.Str)
+		}
+	})
+
+	// --- Cell reference tests ---
+	t.Run("cell_references", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+				{Col: 2, Row: 1}: StringVal(" "),
+				{Col: 3, Row: 1}: StringVal("world"),
+			},
+		}
+		cf := evalCompile(t, `CONCATENATE(A1,B1,C1)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello world" {
+			t.Errorf("cell_references: got %q, want %q", got.Str, "hello world")
+		}
+	})
+
+	t.Run("cell_ref_with_number", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("count: "),
+				{Col: 2, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, `CONCATENATE(A1,B1)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "count: 42" {
+			t.Errorf("cell_ref_with_number: got %q, want %q", got.Str, "count: 42")
+		}
+	})
+
+	t.Run("cell_ref_empty_cell", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a"),
+				// B1 is empty
+				{Col: 3, Row: 1}: StringVal("c"),
+			},
+		}
+		cf := evalCompile(t, `CONCATENATE(A1,B1,C1)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "ac" {
+			t.Errorf("cell_ref_empty_cell: got %q, want %q", got.Str, "ac")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // CONCAT comprehensive tests
 // ---------------------------------------------------------------------------
 
