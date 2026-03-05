@@ -484,9 +484,15 @@ func formulaValueToValue(fv formula.Value) Value {
 	case formula.ValueError:
 		return Value{Type: TypeError, String: fv.Err.String()}
 	case formula.ValueArray:
-		// A single cell cannot hold an array result in a non-array context;
-		// Excel displays #VALUE! in this case.
-		return Value{Type: TypeError, String: formula.ErrValVALUE.String()}
+		// Dynamic array spill: return the top-left element of the array
+		// for the anchor cell. Full spill support is not yet implemented,
+		// but returning the first element matches Excel's behavior for
+		// the formula cell itself.
+		if len(fv.Array) > 0 && len(fv.Array[0]) > 0 {
+			return formulaValueToValue(fv.Array[0][0])
+		}
+		// Empty array — treat as numeric 0.
+		return Value{Type: TypeNumber, Number: 0}
 	default:
 		// Excel treats empty formula results as numeric 0.
 		return Value{Type: TypeNumber, Number: 0}

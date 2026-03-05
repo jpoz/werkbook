@@ -95,7 +95,7 @@ Werkbook supports **303** Excel formula functions.
 | EXP | Math & Trig | - |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
-| FILTER | Lookup & Reference | 25 |
+| FILTER | Lookup & Reference | 28 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
 | FISHERINV | Statistical | 15 |
@@ -242,7 +242,7 @@ Werkbook supports **303** Excel formula functions.
 | SLN | Financial | 6 |
 | SLOPE | Statistical | 16 |
 | SMALL | Statistical | 28 |
-| SORT | Logical | 20 |
+| SORT | Logical | 21 |
 | SQRT | Math & Trig | 29 |
 | SQRTPI | Math & Trig | - |
 | STANDARDIZE | Statistical | 16 |

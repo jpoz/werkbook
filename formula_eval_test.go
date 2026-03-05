@@ -238,3 +238,114 @@ func TestCrossSheetEmptyRefReturnsZero(t *testing.T) {
 		t.Errorf("A1 = %g, want 0", val.Number)
 	}
 }
+
+// TestFILTER_ArrayResultReturnsTopLeft verifies that FILTER formulas that
+// return an array produce the top-left element in the anchor cell, matching
+// Excel's dynamic array spill behavior for the formula cell.
+func TestFILTER_ArrayResultReturnsTopLeft(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// Set up data with some non-empty values and gaps.
+	s.SetValue("A1", "hello")
+	// A2 is empty
+	s.SetValue("A3", "world")
+	// A4, A5 are empty
+
+	// FILTER(A1:A5, A1:A5<>"") should return {"hello";"world"} as an array.
+	// The anchor cell should get the top-left element: "hello".
+	s.SetFormula("B1", `FILTER(A1:A5,A1:A5<>"")`)
+
+	val, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatalf("GetValue(B1): %v", err)
+	}
+	if val.Type != werkbook.TypeString {
+		t.Errorf("B1 type = %v, want TypeString", val.Type)
+	}
+	if val.String != "hello" {
+		t.Errorf("B1 = %q, want %q", val.String, "hello")
+	}
+}
+
+// TestFILTER_CrossSheetArrayResult verifies that FILTER works with
+// cross-sheet references and the array result returns the first element.
+func TestFILTER_CrossSheetArrayResult(t *testing.T) {
+	f := werkbook.New()
+	data, _ := f.NewSheet("Data")
+	out := f.Sheet("Sheet1")
+
+	data.SetValue("A1", "alpha")
+	data.SetValue("A2", "beta")
+	data.SetValue("A3", "gamma")
+	// A4..A10 are empty
+
+	out.SetFormula("A1", `FILTER(Data!A1:A10,Data!A1:A10<>"")`)
+
+	val, err := out.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeString {
+		t.Errorf("A1 type = %v, want TypeString", val.Type)
+	}
+	if val.String != "alpha" {
+		t.Errorf("A1 = %q, want %q", val.String, "alpha")
+	}
+}
+
+// TestSORTUNIQUEFILTER_NestedArrayFunctions verifies the common pattern
+// SORT(UNIQUE(FILTER(...))) which chains multiple dynamic array functions.
+func TestSORTUNIQUEFILTER_NestedArrayFunctions(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", "cherry")
+	s.SetValue("A2", "apple")
+	s.SetValue("A3", "banana")
+	s.SetValue("A4", "apple") // duplicate
+	// A5..A10 are empty
+
+	// SORT(UNIQUE(FILTER(A1:A10, A1:A10<>""))) should produce
+	// {"apple";"banana";"cherry"} and the anchor cell gets "apple".
+	s.SetFormula("B1", `SORT(UNIQUE(FILTER(A1:A10,A1:A10<>"")))`)
+
+	val, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatalf("GetValue(B1): %v", err)
+	}
+	if val.Type != werkbook.TypeString {
+		t.Errorf("B1 type = %v, want TypeString", val.Type)
+	}
+	if val.String != "apple" {
+		t.Errorf("B1 = %q, want %q", val.String, "apple")
+	}
+}
+
+// TestFILTER_NumericArrayResult verifies FILTER with numeric data returns
+// the top-left number from the filtered array.
+func TestFILTER_NumericArrayResult(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 100)
+	s.SetValue("A2", 200)
+	// A3..A5 are empty
+	s.SetValue("B1", "yes")
+	s.SetValue("B2", "no")
+	// B3..B5 are empty
+
+	// FILTER(A1:A5, B1:B5<>"") should return {100;200}, anchor gets 100.
+	s.SetFormula("C1", `FILTER(A1:A5,B1:B5<>"")`)
+
+	val, err := s.GetValue("C1")
+	if err != nil {
+		t.Fatalf("GetValue(C1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("C1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 100 {
+		t.Errorf("C1 = %g, want 100", val.Number)
+	}
+}
