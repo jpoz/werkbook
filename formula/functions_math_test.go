@@ -2057,3 +2057,216 @@ func TestMMULT_LargeValues(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// MDETERM tests
+// ---------------------------------------------------------------------------
+
+func TestMDETERM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// 1x1 matrix
+		{"MDETERM({5})", 5, 0},
+		{"MDETERM({0})", 0, 0},
+		{"MDETERM({-7})", -7, 0},
+
+		// 2x2 matrices
+		{"MDETERM({3,6;1,1})", -3, 0},
+		{"MDETERM({1,0;0,1})", 1, 0},    // identity
+		{"MDETERM({0,0;0,0})", 0, 0},    // zero matrix
+		{"MDETERM({2,0;0,3})", 6, 0},    // diagonal
+		{"MDETERM({1,2;2,4})", 0, 0},    // singular
+		{"MDETERM({-1,-2;3,4})", 2, 0},  // negative numbers
+
+		// 3x3 matrices
+		{"MDETERM({3,6,1;1,1,0;3,10,2})", 1, 1e-10},
+		{"MDETERM({1,0,0;0,1,0;0,0,1})", 1, 0},        // 3x3 identity
+		{"MDETERM({2,0,0;0,3,0;0,0,4})", 24, 1e-10},    // diagonal
+		{"MDETERM({1,2,3;4,5,6;7,8,9})", 0, 1e-10},     // singular
+
+		// 4x4 matrix
+		{"MDETERM({1,3,8,5;1,3,6,1;1,1,1,0;7,3,10,2})", 88, 1e-10},
+
+		// 5x5 identity
+		{"MDETERM({1,0,0,0,0;0,1,0,0,0;0,0,1,0,0;0,0,0,1,0;0,0,0,0,1})", 1, 0},
+
+		// Fractional values
+		{"MDETERM({0.5,1.5;2.5,3.5})", -2, 1e-10},
+	}
+
+	for _, tt := range numTests {
+		cf := evalCompile(t, tt.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Errorf("Eval(%q): %v", tt.formula, err)
+			continue
+		}
+		if got.Type != ValueNumber {
+			t.Errorf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			continue
+		}
+		if tt.tol == 0 {
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		} else {
+			if math.Abs(got.Num-tt.want) > tt.tol {
+				t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+			}
+		}
+	}
+}
+
+func TestMDETERM_Errors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		{"non-square 2x3", "MDETERM({1,2,3;4,5,6})", ErrValVALUE},
+		{"non-square 3x2", "MDETERM({1,2;3,4;5,6})", ErrValVALUE},
+		{"single row 1x3", "MDETERM({1,2,3})", ErrValVALUE},
+		{"wrong args: none", "MDETERM()", ErrValVALUE},
+		{"wrong args: two", "MDETERM({1},{2})", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}
+
+func TestMDETERM_TextInArray(t *testing.T) {
+	result, err := fnMDETERM([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), StringVal("x")},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("text in array: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMDETERM_EmptyInArray(t *testing.T) {
+	result, err := fnMDETERM([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), EmptyVal()},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("empty in array: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMDETERM_ErrorPropagation(t *testing.T) {
+	result, err := fnMDETERM([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), ErrorVal(ErrValDIV0)},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValDIV0 {
+		t.Errorf("error propagation: got %v, want #DIV/0!", result)
+	}
+}
+
+func TestMDETERM_ErrorArgPropagation(t *testing.T) {
+	result, err := fnMDETERM([]Value{
+		ErrorVal(ErrValNA),
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNA {
+		t.Errorf("error arg propagation: got %v, want #N/A", result)
+	}
+}
+
+func TestMDETERM_ScalarInput(t *testing.T) {
+	// Scalar input is treated as 1x1 matrix.
+	result, err := fnMDETERM([]Value{NumberVal(42)})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueNumber || result.Num != 42 {
+		t.Errorf("scalar input: got %v, want 42", result)
+	}
+}
+
+func TestMDETERM_BooleanValues(t *testing.T) {
+	// TRUE=1, FALSE=0 => det({TRUE,FALSE;FALSE,TRUE}) = 1*1 - 0*0 = 1
+	result, err := fnMDETERM([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true), BoolVal(false)},
+			{BoolVal(false), BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueNumber || result.Num != 1 {
+		t.Errorf("boolean identity: got %v, want 1", result)
+	}
+}
+
+func TestMDETERM_LargeValues(t *testing.T) {
+	// {1000,2000;3000,4000} => det = 1000*4000 - 2000*3000 = -2000000
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MDETERM({1000,2000;3000,4000})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", got.Type)
+	}
+	if got.Num != -2000000 {
+		t.Errorf("got %g, want -2000000", got.Num)
+	}
+}
+
+func TestMDETERM_PermutationMatrix(t *testing.T) {
+	// Permutation matrix: det = -1 (single swap from identity)
+	result, err := fnMDETERM([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0), NumberVal(1), NumberVal(0)},
+			{NumberVal(1), NumberVal(0), NumberVal(0)},
+			{NumberVal(0), NumberVal(0), NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMDETERM: %v", err)
+	}
+	if result.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", result.Type)
+	}
+	if result.Num != -1 {
+		t.Errorf("permutation matrix: got %g, want -1", result.Num)
+	}
+}
