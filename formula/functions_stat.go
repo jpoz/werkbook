@@ -2743,21 +2743,34 @@ func normSInv(p float64) float64 {
 		}
 	)
 
+	var x float64
 	if p < pLow {
 		// Lower region.
 		q := math.Sqrt(-2 * math.Log(p))
-		return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
+		x = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
 			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
-	}
-	if p <= pHigh {
+	} else if p <= pHigh {
 		// Central region.
 		q := p - 0.5
 		r := q * q
-		return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r + a[5]) * q /
+		x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r + a[5]) * q /
 			(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r + 1)
+	} else {
+		// Upper region.
+		q := math.Sqrt(-2 * math.Log(1-p))
+		x = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
+			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 	}
-	// Upper region.
-	q := math.Sqrt(-2 * math.Log(1-p))
-	return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
-		((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
+
+	// Refine with Newton-Raphson to achieve full float64 precision.
+	// Each iteration roughly doubles the number of correct digits.
+	// Acklam gives ~8 digits; two iterations bring us to ~16.
+	for range 2 {
+		phi := normSDistCDF(x)
+		pdf := normSDistPDF(x)
+		if pdf > 0 {
+			x -= (phi - p) / pdf
+		}
+	}
+	return x
 }

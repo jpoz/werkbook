@@ -12473,7 +12473,7 @@ func TestNORMSINV_argcount(t *testing.T) {
 }
 
 func TestNORMSINV_NORMSDIST_roundtrip(t *testing.T) {
-	const tol = 1e-6
+	const tol = 1e-14
 	resolver := &mockResolver{}
 
 	probs := []float64{0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.001, 0.999}
@@ -12684,7 +12684,7 @@ func TestNORMINV_argCount(t *testing.T) {
 }
 
 func TestNORMINV_NORMDIST_roundtrip(t *testing.T) {
-	const tol = 1e-6
+	const tol = 1e-14
 	resolver := &mockResolver{}
 
 	cases := []struct {
@@ -12693,6 +12693,7 @@ func TestNORMINV_NORMDIST_roundtrip(t *testing.T) {
 		sd   float64
 	}{
 		{0.1, 40, 1.5},
+		{0.025, 40, 1.5},
 		{0.25, 100, 15},
 		{0.5, 0, 1},
 		{0.75, -50, 10},
