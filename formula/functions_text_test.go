@@ -1948,3 +1948,197 @@ func TestARRAYTOTEXT(t *testing.T) {
 		})
 	}
 }
+
+func TestTEXTBEFORE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic cases
+		{`TEXTBEFORE("Hello World"," ")`, "Hello"},
+		{`TEXTBEFORE("Hello-World-Test","-")`, "Hello"},
+		{`TEXTBEFORE("Hello-World-Test","-",2)`, "Hello-World"},
+		{`TEXTBEFORE("Hello-World-Test","-",1)`, "Hello"},
+		// Negative instance_num (count from end)
+		{`TEXTBEFORE("Hello-World-Test","-",-1)`, "Hello-World"},
+		{`TEXTBEFORE("Hello-World-Test","-",-2)`, "Hello"},
+		// Case insensitive
+		{`TEXTBEFORE("Hello WORLD","world",1,1)`, "Hello "},
+		{`TEXTBEFORE("Hello WORLD","WORLD",1,0)`, "Hello "},
+		{`TEXTBEFORE("abcABCabc","abc",2,1)`, "abc"},
+		{`TEXTBEFORE("abcABCabc","abc",3,1)`, "abcABC"},
+		// if_not_found
+		{`TEXTBEFORE("Hello","x",1,0,0,"missing")`, "missing"},
+		{`TEXTBEFORE("Hello","x",1,0,0,"")`, ""},
+		// match_end=1: when delimiter not found, return full text
+		{`TEXTBEFORE("Hello","x",1,0,1)`, "Hello"},
+		// Empty delimiter returns ""
+		{`TEXTBEFORE("Hello","")`, ""},
+		{`TEXTBEFORE("Hello","",1)`, ""},
+		// Empty delimiter with instance > 1
+		{`TEXTBEFORE("Hello","",2)`, "H"},
+		{`TEXTBEFORE("Hello","",3)`, "He"},
+		// Delimiter at start of string
+		{`TEXTBEFORE("-Hello","-")`, ""},
+		// Delimiter at end of string
+		{`TEXTBEFORE("Hello-","-")`, "Hello"},
+		// Multi-char delimiter
+		{`TEXTBEFORE("Hello::World","::")`, "Hello"},
+		{`TEXTBEFORE("a::b::c","::",2)`, "a::b"},
+		// Text with no occurrence, using match_end
+		{`TEXTBEFORE("Hello","xyz",1,0,1)`, "Hello"},
+		// Repeated delimiter
+		{`TEXTBEFORE("aaa","a",1)`, ""},
+		{`TEXTBEFORE("aaa","a",2)`, "a"},
+		{`TEXTBEFORE("aaa","a",3)`, "aa"},
+		// Negative instance with empty delimiter
+		{`TEXTBEFORE("Hello","",-1)`, ""},
+		// match_end=1 with instance beyond count
+		{`TEXTBEFORE("a-b","-",2,0,1)`, "a-b"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error / #N/A cases
+	errTests := []struct {
+		formula string
+		wantErr ErrorValue
+	}{
+		// Not found returns #N/A
+		{`TEXTBEFORE("Hello","x")`, ErrValNA},
+		{`TEXTBEFORE("Hello","xyz")`, ErrValNA},
+		// instance_num=0 returns #VALUE!
+		{`TEXTBEFORE("Hello","-",0)`, ErrValVALUE},
+		// Too few args
+		{`TEXTBEFORE("Hello")`, ErrValVALUE},
+		// Instance beyond count without match_end
+		{`TEXTBEFORE("a-b","-",3)`, ErrValNA},
+		// Negative instance beyond count
+		{`TEXTBEFORE("a-b","-",-3)`, ErrValNA},
+		// Case sensitive mismatch
+		{`TEXTBEFORE("Hello","hello",1,0)`, ErrValNA},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTEXTAFTER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic cases
+		{`TEXTAFTER("Hello World"," ")`, "World"},
+		{`TEXTAFTER("Hello-World-Test","-")`, "World-Test"},
+		{`TEXTAFTER("Hello-World-Test","-",2)`, "Test"},
+		{`TEXTAFTER("Hello-World-Test","-",1)`, "World-Test"},
+		// Negative instance_num (count from end)
+		{`TEXTAFTER("Hello-World-Test","-",-1)`, "Test"},
+		{`TEXTAFTER("Hello-World-Test","-",-2)`, "World-Test"},
+		// Case insensitive
+		{`TEXTAFTER("Hello WORLD","world",1,1)`, ""},
+		{`TEXTAFTER("Hello WORLD test","world",1,1)`, " test"},
+		{`TEXTAFTER("abcABCabc","abc",2,1)`, "abc"},
+		{`TEXTAFTER("abcABCabc","abc",3,1)`, ""},
+		// if_not_found
+		{`TEXTAFTER("Hello","x",1,0,0,"missing")`, "missing"},
+		{`TEXTAFTER("Hello","x",1,0,0,"")`, ""},
+		// match_end=1: when delimiter not found, return ""
+		{`TEXTAFTER("Hello","x",1,0,1)`, ""},
+		// Empty delimiter returns full text
+		{`TEXTAFTER("Hello","")`, "Hello"},
+		{`TEXTAFTER("Hello","",1)`, "Hello"},
+		// Empty delimiter with instance > 1
+		{`TEXTAFTER("Hello","",2)`, "ello"},
+		{`TEXTAFTER("Hello","",3)`, "llo"},
+		// Delimiter at start of string
+		{`TEXTAFTER("-Hello","-")`, "Hello"},
+		// Delimiter at end of string
+		{`TEXTAFTER("Hello-","-")`, ""},
+		// Multi-char delimiter
+		{`TEXTAFTER("Hello::World","::")`, "World"},
+		{`TEXTAFTER("a::b::c","::",2)`, "c"},
+		// Text with no occurrence, using match_end
+		{`TEXTAFTER("Hello","xyz",1,0,1)`, ""},
+		// Repeated delimiter
+		{`TEXTAFTER("aaa","a",1)`, "aa"},
+		{`TEXTAFTER("aaa","a",2)`, "a"},
+		{`TEXTAFTER("aaa","a",3)`, ""},
+		// Negative instance with empty delimiter
+		{`TEXTAFTER("Hello","",-1)`, "Hello"},
+		// match_end=1 with instance beyond count
+		{`TEXTAFTER("a-b","-",2,0,1)`, ""},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error / #N/A cases
+	errTests := []struct {
+		formula string
+		wantErr ErrorValue
+	}{
+		// Not found returns #N/A
+		{`TEXTAFTER("Hello","x")`, ErrValNA},
+		{`TEXTAFTER("Hello","xyz")`, ErrValNA},
+		// instance_num=0 returns #VALUE!
+		{`TEXTAFTER("Hello","-",0)`, ErrValVALUE},
+		// Too few args
+		{`TEXTAFTER("Hello")`, ErrValVALUE},
+		// Instance beyond count without match_end
+		{`TEXTAFTER("a-b","-",3)`, ErrValNA},
+		// Negative instance beyond count
+		{`TEXTAFTER("a-b","-",-3)`, ErrValNA},
+		// Case sensitive mismatch
+		{`TEXTAFTER("Hello","hello",1,0)`, ErrValNA},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+			}
+		})
+	}
+}
