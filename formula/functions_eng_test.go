@@ -590,6 +590,123 @@ func TestDEC2OCT(t *testing.T) {
 	})
 }
 
+func TestHEX2DEC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+		}{
+			// Basic string inputs
+			{`HEX2DEC("0")`, 0},
+			{`HEX2DEC("1")`, 1},
+			{`HEX2DEC("A")`, 10},
+			{`HEX2DEC("F")`, 15},
+			{`HEX2DEC("10")`, 16},
+			{`HEX2DEC("FF")`, 255},
+			{`HEX2DEC("64")`, 100},
+			{`HEX2DEC("100")`, 256},
+			{`HEX2DEC("1F4")`, 500},
+			{`HEX2DEC("3E8")`, 1000},
+			{`HEX2DEC("FFFF")`, 65535},
+
+			// Case insensitive
+			{`HEX2DEC("ff")`, 255},
+			{`HEX2DEC("aB")`, 171},
+			{`HEX2DEC("a")`, 10},
+			{`HEX2DEC("f")`, 15},
+
+			// Numeric inputs (coerced to string)
+			{"HEX2DEC(0)", 0},
+			{"HEX2DEC(1)", 1},
+			{"HEX2DEC(100)", 256},
+			{"HEX2DEC(10)", 16},
+
+			// Negative two's complement (10 digits, first digit >= 8)
+			{`HEX2DEC("FFFFFFFFFF")`, -1},
+			{`HEX2DEC("FFFFFFFFFE")`, -2},
+			{`HEX2DEC("8000000000")`, -549755813888},
+			{`HEX2DEC("FFFFFFFF9C")`, -100},
+
+			// Max positive (10 digits, first digit < 8)
+			{`HEX2DEC("7FFFFFFFFF")`, 549755813887},
+
+			// Padded with leading zeros
+			{`HEX2DEC("00000000FF")`, 255},
+			{`HEX2DEC("0000000001")`, 1},
+			{`HEX2DEC("0000000000")`, 0},
+
+			// Single digit
+			{`HEX2DEC("0")`, 0},
+			{`HEX2DEC("9")`, 9},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Non-hex characters
+			{`HEX2DEC("G")`, ErrValNUM},
+			{`HEX2DEC("XYZZY")`, ErrValNUM},
+			{`HEX2DEC("1G")`, ErrValNUM},
+			{`HEX2DEC("ZZ")`, ErrValNUM},
+
+			// Too many digits (11 hex digits)
+			{`HEX2DEC("10000000000")`, ErrValNUM},
+			{`HEX2DEC("FFFFFFFFFFF")`, ErrValNUM},
+
+			// Empty string
+			{`HEX2DEC("")`, ErrValNUM},
+
+			// Boolean rejection
+			{"HEX2DEC(TRUE)", ErrValVALUE},
+			{"HEX2DEC(FALSE)", ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"HEX2DEC()", `HEX2DEC("1","2")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestGESTEP(t *testing.T) {
 	resolver := &mockResolver{}
 
