@@ -814,6 +814,237 @@ func TestNPV_Basic(t *testing.T) {
 	assertClose(t, "NPV basic", v, 1188.44)
 }
 
+func TestNPV_PositiveCashFlows(t *testing.T) {
+	// NPV(0.08, 1000, 2000, 3000)
+	// = 1000/1.08 + 2000/1.08^2 + 3000/1.08^3 = 925.93 + 1714.68 + 2381.50 = 5022.11
+	v, err := fnNPV(append(numArgs(0.08), numArgs(1000, 2000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV positive cash flows", v, 5022.10)
+}
+
+func TestNPV_MixedCashFlows(t *testing.T) {
+	// NPV(0.1, -5000, 2000, -1000, 4000, 3000)
+	v, err := fnNPV(append(numArgs(0.1), numArgs(-5000, 2000, -1000, 4000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// -5000/1.1 + 2000/1.1^2 + -1000/1.1^3 + 4000/1.1^4 + 3000/1.1^5
+	// = -4545.45 + 1652.89 + -751.31 + 2732.05 + 1862.76 = 950.94
+	assertClose(t, "NPV mixed cash flows", v, 950.94)
+}
+
+func TestNPV_SingleCashFlow(t *testing.T) {
+	// NPV(0.1, 1000) = 1000/1.1 = 909.09
+	v, err := fnNPV(append(numArgs(0.1), numArgs(1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV single cash flow", v, 909.09)
+}
+
+func TestNPV_ZeroRate(t *testing.T) {
+	// NPV(0, 1000, 2000, 3000) = 1000 + 2000 + 3000 = 6000
+	v, err := fnNPV(append(numArgs(0), numArgs(1000, 2000, 3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV zero rate", v, 6000.00)
+}
+
+func TestNPV_HighRate(t *testing.T) {
+	// NPV(1.0, 1000, 1000, 1000) = 1000/2 + 1000/4 + 1000/8 = 500 + 250 + 125 = 875
+	v, err := fnNPV(append(numArgs(1.0), numArgs(1000, 1000, 1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV high rate", v, 875.00)
+}
+
+func TestNPV_NegativeRate(t *testing.T) {
+	// NPV(-0.1, 1000, 1000, 1000)
+	// = 1000/0.9 + 1000/0.81 + 1000/0.729 = 1111.11 + 1234.57 + 1371.74 = 3717.42
+	v, err := fnNPV(append(numArgs(-0.1), numArgs(1000, 1000, 1000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV negative rate", v, 3717.42)
+}
+
+func TestNPV_RateMinusOne(t *testing.T) {
+	// NPV(-1, ...) → #DIV/0! because (1+rate)=0
+	v, _ := fnNPV(append(numArgs(-1), numArgs(1000)...))
+	assertError(t, "NPV rate=-1", v)
+}
+
+func TestNPV_ManyPeriods(t *testing.T) {
+	// NPV(0.05, 100 repeated 20 times)
+	// = sum of 100/1.05^i for i=1..20 = 100 * (1 - 1.05^-20) / 0.05 = 1246.22
+	args := numArgs(0.05)
+	for i := 0; i < 20; i++ {
+		args = append(args, NumberVal(100))
+	}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV many periods", v, 1246.22)
+}
+
+func TestNPV_RangeInput(t *testing.T) {
+	// NPV(0.1, {-10000, 3000, 4200, 6800}) — values passed as array
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)}},
+	}
+	v, err := fnNPV([]Value{NumberVal(0.1), arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV range input", v, 1188.44)
+}
+
+func TestNPV_AllNegativeCashFlows(t *testing.T) {
+	// NPV(0.1, -1000, -2000, -3000)
+	// = -1000/1.1 + -2000/1.21 + -3000/1.331 = -909.09 + -1652.89 + -2253.94 = -4815.93
+	v, err := fnNPV(append(numArgs(0.1), numArgs(-1000, -2000, -3000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV all negative", v, -4815.93)
+}
+
+func TestNPV_ZeroCashFlowsMixedIn(t *testing.T) {
+	// NPV(0.1, 0, 1000, 0, 2000) = 0/1.1 + 1000/1.21 + 0/1.331 + 2000/1.4641
+	// = 0 + 826.45 + 0 + 1366.03 = 2192.47
+	v, err := fnNPV(append(numArgs(0.1), numArgs(0, 1000, 0, 2000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV zero mixed in", v, 2192.47)
+}
+
+func TestNPV_TooFewArgs(t *testing.T) {
+	// NPV(0.1) — no values → #VALUE!
+	v, _ := fnNPV(numArgs(0.1))
+	assertError(t, "NPV too few args", v)
+}
+
+func TestNPV_NoArgs(t *testing.T) {
+	// NPV() — no args at all → #VALUE!
+	v, _ := fnNPV([]Value{})
+	assertError(t, "NPV no args", v)
+}
+
+func TestNPV_StringCoercionRate(t *testing.T) {
+	// NPV("0.1", -10000, 3000, 4200, 6800) — rate as numeric string
+	args := []Value{StringVal("0.1"), NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV string rate", v, 1188.44)
+}
+
+func TestNPV_StringCoercionValue(t *testing.T) {
+	// NPV(0.1, "1000") — value as numeric string (direct arg, coerced)
+	args := []Value{NumberVal(0.1), StringVal("1000")}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV string value", v, 909.09)
+}
+
+func TestNPV_BooleanCoercion(t *testing.T) {
+	// NPV(0.1, TRUE) — TRUE coerced to 1, so NPV = 1/1.1 = 0.909..
+	args := []Value{NumberVal(0.1), BoolVal(true)}
+	v, err := fnNPV(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV bool TRUE", v, 0.91)
+}
+
+func TestNPV_ErrorPropagationRate(t *testing.T) {
+	// NPV(#VALUE!, 1000) → error
+	args := []Value{ErrorVal(ErrValVALUE), NumberVal(1000)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV error rate", v)
+}
+
+func TestNPV_ErrorPropagationValue(t *testing.T) {
+	// NPV(0.1, #DIV/0!) → error
+	args := []Value{NumberVal(0.1), ErrorVal(ErrValDIV0)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV error value", v)
+}
+
+func TestNPV_NonNumericRate(t *testing.T) {
+	// NPV("abc", 1000) → #VALUE!
+	args := []Value{StringVal("abc"), NumberVal(1000)}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV non-numeric rate", v)
+}
+
+func TestNPV_NonNumericValue(t *testing.T) {
+	// NPV(0.1, "abc") — non-numeric string as direct arg → #VALUE!
+	args := []Value{NumberVal(0.1), StringVal("abc")}
+	v, _ := fnNPV(args)
+	assertError(t, "NPV non-numeric value", v)
+}
+
+func TestNPV_ExcelExample2(t *testing.T) {
+	// Excel doc example 2: NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000)
+	// = NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
+	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// NPV alone is 41922.06, then + (-40000) = 1922.06
+	assertClose(t, "NPV excel example 2", v, 41922.06)
+}
+
+func TestNPV_ExcelExample2WithLoss(t *testing.T) {
+	// Excel doc example 2 with loss: NPV(0.08, 8000, 9200, 10000, 12000, 14500, -9000) + (-40000)
+	// = -3749.47, so NPV alone = -3749.47 + 40000 = 36250.53
+	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500, -9000)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NPV excel example 2 with loss", v, 36250.53)
+}
+
+func TestNPV_InitialInvestmentPattern(t *testing.T) {
+	// Common pattern: initial cost + NPV of future cash flows
+	// NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
+	npv, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := npv.Num + (-40000)
+	if math.Abs(result-1922.06) > 0.01 {
+		t.Errorf("NPV initial investment pattern: got %f, want 1922.06", result)
+	}
+}
+
+func TestNPV_EmptyValueSkipped(t *testing.T) {
+	// Empty values in array should be skipped (period not advanced)
+	// NPV(0.1, {1000, <empty>, 2000}) should give same result as NPV(0.1, 1000, 2000)
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(1000), EmptyVal(), NumberVal(2000)}},
+	}
+	v, err := fnNPV([]Value{NumberVal(0.1), arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1000/1.1 + 2000/1.21 = 909.09 + 1652.89 = 2561.98
+	v2, _ := fnNPV(append(numArgs(0.1), numArgs(1000, 2000)...))
+	assertClose(t, "NPV empty skipped", v, v2.Num)
+}
+
 // === IRR ===
 
 func TestIRR_Basic(t *testing.T) {
