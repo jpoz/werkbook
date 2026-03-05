@@ -3,6 +3,7 @@ package formula
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestDATE(t *testing.T) {
@@ -265,6 +266,75 @@ func TestSerial60Boundary(t *testing.T) {
 				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
 			}
 			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestTIMEVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"noon", `TIMEVALUE("12:00")`, 0.5},
+		{"6:30 PM", `TIMEVALUE("6:30 PM")`, 0.7708333333333334},
+		{"midnight_0:00", `TIMEVALUE("0:00")`, 0},
+		{"23:59:59", `TIMEVALUE("23:59:59")`, 0.999988425925926},
+		{"1:30:45", `TIMEVALUE("1:30:45")`, 0.06302083333333333},
+		{"12:00 AM", `TIMEVALUE("12:00 AM")`, 0},
+		{"12:00 PM", `TIMEVALUE("12:00 PM")`, 0.5},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %.18g, want %.18g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEVALUE_extended(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"two_digit_year", `DATEVALUE("03/04/25")`, 45720},
+		{"date_with_time", `DATEVALUE("2025-03-04 12:00")`, 45720},
+		{"month_day_only", `DATEVALUE("March 4")`, func() float64 {
+			// Use current year
+			now := time.Now()
+			t := time.Date(now.Year(), 3, 4, 0, 0, 0, 0, time.UTC)
+			return math.Floor(TimeToExcelSerial(t))
+		}()},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
 				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
 			}
 		})
