@@ -3070,3 +3070,352 @@ func TestACOTH(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// MUNIT tests
+// ---------------------------------------------------------------------------
+
+func TestMUNIT_1x1(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1 array, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("got %g, want 1", got.Array[0][0].Num)
+	}
+}
+
+func TestMUNIT_2x2(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{1, 0}, {0, 1}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMUNIT_3x3(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := [][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMUNIT_4x4(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 4 {
+		t.Fatalf("expected 4 rows, got %d", len(got.Array))
+	}
+	for r := 0; r < 4; r++ {
+		if len(got.Array[r]) != 4 {
+			t.Fatalf("row %d: expected 4 cols, got %d", r, len(got.Array[r]))
+		}
+		for c := 0; c < 4; c++ {
+			var expected float64
+			if r == c {
+				expected = 1
+			}
+			if got.Array[r][c].Num != expected {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, expected)
+			}
+		}
+	}
+}
+
+func TestMUNIT_5x5_Diagonal(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	// Check all diagonal elements are 1.
+	for i := 0; i < 5; i++ {
+		if got.Array[i][i].Num != 1 {
+			t.Errorf("diagonal [%d][%d]: got %g, want 1", i, i, got.Array[i][i].Num)
+		}
+	}
+	// Check some off-diagonal elements are 0.
+	if got.Array[0][1].Num != 0 {
+		t.Errorf("[0][1]: got %g, want 0", got.Array[0][1].Num)
+	}
+	if got.Array[3][2].Num != 0 {
+		t.Errorf("[3][2]: got %g, want 0", got.Array[3][2].Num)
+	}
+}
+
+func TestMUNIT_Truncation_2_9(t *testing.T) {
+	// MUNIT(2.9) should truncate to MUNIT(2).
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(2.9)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 || got.Array[1][1].Num != 1 {
+		t.Error("diagonal values not 1")
+	}
+	if got.Array[0][1].Num != 0 || got.Array[1][0].Num != 0 {
+		t.Error("off-diagonal values not 0")
+	}
+}
+
+func TestMUNIT_Truncation_3_1(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(3.1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+}
+
+func TestMUNIT_Truncation_1_5(t *testing.T) {
+	// MUNIT(1.5) should truncate to MUNIT(1).
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(1.5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("got %g, want 1", got.Array[0][0].Num)
+	}
+}
+
+func TestMUNIT_StringCoercion(t *testing.T) {
+	// MUNIT("3") should work the same as MUNIT(3).
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `MUNIT("3")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+}
+
+func TestMUNIT_Error_Zero(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_Error_Negative(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_Error_NegativeLarge(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(-5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_Error_String(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `MUNIT("abc")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got type=%v", got.Type)
+	}
+}
+
+func TestMUNIT_Error_TooManyArgs(t *testing.T) {
+	got, err := fnMUNIT([]Value{NumberVal(3), NumberVal(2)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_Error_NoArgs(t *testing.T) {
+	got, err := fnMUNIT([]Value{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_Error_FractionTruncatesToZero(t *testing.T) {
+	// MUNIT(0.9) truncates to 0 => #VALUE!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(0.9)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestMUNIT_OffDiagonalAllZero(t *testing.T) {
+	// Verify every off-diagonal element is 0 for a 4x4 matrix.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			if r != c && got.Array[r][c].Num != 0 {
+				t.Errorf("off-diagonal [%d][%d]: got %g, want 0", r, c, got.Array[r][c].Num)
+			}
+		}
+	}
+}
+
+func TestMUNIT_AllDiagonalOne(t *testing.T) {
+	// Verify every diagonal element is 1 for a 4x4 matrix.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	for i := 0; i < 4; i++ {
+		if got.Array[i][i].Num != 1 {
+			t.Errorf("diagonal [%d][%d]: got %g, want 1", i, i, got.Array[i][i].Num)
+		}
+	}
+}
+
+func TestMUNIT_ValueTypes(t *testing.T) {
+	// All values in the result should be numbers.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MUNIT(3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Type != ValueNumber {
+				t.Errorf("[%d][%d]: expected ValueNumber, got %v", r, c, got.Array[r][c].Type)
+			}
+		}
+	}
+}
+
+func TestMUNIT_BoolTrue(t *testing.T) {
+	// TRUE coerces to 1, so MUNIT(TRUE) = MUNIT(1) = {{1}}.
+	got, err := fnMUNIT([]Value{BoolVal(true)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("got %g, want 1", got.Array[0][0].Num)
+	}
+}
+
+func TestMUNIT_BoolFalse(t *testing.T) {
+	// FALSE coerces to 0 => #VALUE!
+	got, err := fnMUNIT([]Value{BoolVal(false)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}

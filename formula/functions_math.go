@@ -66,6 +66,7 @@ func init() {
 	Register("MINVERSE", NoCtx(fnMINVERSE))
 	Register("MMULT", NoCtx(fnMMULT))
 	Register("MROUND", NoCtx(fnMROUND))
+	Register("MUNIT", NoCtx(fnMUNIT))
 	Register("MULTINOMIAL", NoCtx(fnMULTINOMIAL))
 	Register("ODD", NoCtx(fnODD))
 	Register("PERMUT", NoCtx(fnPERMUT))
@@ -1500,6 +1501,33 @@ func fnMINVERSE(args []Value) (Value, error) {
 		result[i] = row
 	}
 
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+func fnMUNIT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	dim := int(n) // truncate toward zero
+	if dim <= 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := make([][]Value, dim)
+	for i := 0; i < dim; i++ {
+		row := make([]Value, dim)
+		for j := 0; j < dim; j++ {
+			if i == j {
+				row[j] = NumberVal(1)
+			} else {
+				row[j] = NumberVal(0)
+			}
+		}
+		result[i] = row
+	}
 	return Value{Type: ValueArray, Array: result}, nil
 }
 

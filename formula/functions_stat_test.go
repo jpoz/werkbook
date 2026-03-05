@@ -7120,3 +7120,255 @@ func TestRSQ(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// STEYX
+// ---------------------------------------------------------------------------
+
+func TestSTEYX(t *testing.T) {
+	const tol = 1e-6
+
+	// Excel example data: y={2,3,9,1,8,7,5}, x={6,5,11,7,5,4,4}
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(6),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(11),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(8), {Col: 2, Row: 5}: NumberVal(5),
+			{Col: 1, Row: 6}: NumberVal(7), {Col: 2, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(5), {Col: 2, Row: 7}: NumberVal(4),
+		},
+	}
+
+	// Perfect fit: y={2,4,6}, x={1,2,3}
+	perfectResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(6), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Horizontal line y: y={5,5,5}, x={1,2,3}
+	horizontalYResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// All same x: y={1,2,3}, x={5,5,5}
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Only two data points: y={1,2}, x={3,4}
+	twoPairResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+
+	// Three points: y={1,3,2}, x={1,2,3}
+	threePointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Negative values: y={-3,-1,2,5}, x={-2,-1,0,1}
+	negativeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-3), {Col: 2, Row: 1}: NumberVal(-2),
+			{Col: 1, Row: 2}: NumberVal(-1), {Col: 2, Row: 2}: NumberVal(-1),
+			{Col: 1, Row: 3}: NumberVal(2), {Col: 2, Row: 3}: NumberVal(0),
+			{Col: 1, Row: 4}: NumberVal(5), {Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	// Large values (perfect fit): y={1e6,2e6,3e6}, x={100,200,300}
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1000000), {Col: 2, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(2000000), {Col: 2, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(3000000), {Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+
+	// Near-perfect fit: y={2,4.1,5.9}, x={1,2,3}
+	nearPerfectResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4.1), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(5.9), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Non-numeric values skipped (strings in some positions)
+	nonNumericResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(6),
+			{Col: 1, Row: 2}: StringVal("abc"), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(11),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: StringVal("xyz"),
+			{Col: 1, Row: 5}: NumberVal(8), {Col: 2, Row: 5}: NumberVal(5),
+			{Col: 1, Row: 6}: NumberVal(7), {Col: 2, Row: 6}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(5), {Col: 2, Row: 7}: NumberVal(4),
+		},
+	}
+
+	// Different length arrays
+	diffLenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+			{Col: 2, Row: 5}: NumberVal(8),
+		},
+	}
+
+	// Single point
+	singlePointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// Four points with scatter: y={10,20,15,25}, x={1,2,3,4}
+	fourPointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(20), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(15), {Col: 2, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(25), {Col: 2, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Decimal values (perfect fit): y={0.5,1.5,2.5,3.5}, x={0.1,0.2,0.3,0.4}
+	decimalResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0.5), {Col: 2, Row: 1}: NumberVal(0.1),
+			{Col: 1, Row: 2}: NumberVal(1.5), {Col: 2, Row: 2}: NumberVal(0.2),
+			{Col: 1, Row: 3}: NumberVal(2.5), {Col: 2, Row: 3}: NumberVal(0.3),
+			{Col: 1, Row: 4}: NumberVal(3.5), {Col: 2, Row: 4}: NumberVal(0.4),
+		},
+	}
+
+	// Too few valid after skipping non-numeric (only 2 valid pairs)
+	tooFewAfterSkipResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: StringVal("a"), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(7), {Col: 2, Row: 4}: StringVal("b"),
+		},
+	}
+
+	// All non-numeric
+	allNonNumericResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("a"), {Col: 2, Row: 1}: StringVal("x"),
+			{Col: 1, Row: 2}: StringVal("b"), {Col: 2, Row: 2}: StringVal("y"),
+			{Col: 1, Row: 3}: StringVal("c"), {Col: 2, Row: 3}: StringVal("z"),
+		},
+	}
+
+	// Five points: y={3,5,7,4,6}, x={1,3,5,2,4}
+	fivePointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(7), {Col: 2, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(2),
+			{Col: 1, Row: 5}: NumberVal(6), {Col: 2, Row: 5}: NumberVal(4),
+		},
+	}
+
+	// Zero x and y values: y={0,0,0,1}, x={0,1,2,3}
+	zeroYResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0), {Col: 2, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(0), {Col: 2, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(0), {Col: 2, Row: 3}: NumberVal(2),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: NumberVal(3),
+		},
+	}
+
+	// Negative slope: y={6,4,2}, x={1,2,3}
+	negSlopeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(6), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(2), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"Excel example", "STEYX(A1:A7,B1:B7)", excelResolver, 3.305719, false, 0},
+		{"Perfect linear fit", "STEYX(A1:A3,B1:B3)", perfectResolver, 0, false, 0},
+		{"Near-perfect fit", "STEYX(A1:A3,B1:B3)", nearPerfectResolver, 0.122474, false, 0},
+		{"Horizontal y line", "STEYX(A1:A3,B1:B3)", horizontalYResolver, 0, false, 0},
+		{"Constant x values", "STEYX(A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		{"Two points only", "STEYX(A1:A2,B1:B2)", twoPairResolver, 0, true, ErrValDIV0},
+		{"Single point", "STEYX(A1:A1,B1:B1)", singlePointResolver, 0, true, ErrValDIV0},
+		{"Three points minimum", "STEYX(A1:A3,B1:B3)", threePointResolver, 1.224745, false, 0},
+		{"Negative values", "STEYX(A1:A4,B1:B4)", negativeResolver, 0.387298, false, 0},
+		{"Large values perfect fit", "STEYX(A1:A3,B1:B3)", largeResolver, 0, false, 0},
+		{"Four points with scatter", "STEYX(A1:A4,B1:B4)", fourPointResolver, 4.743416, false, 0},
+		{"Decimal values perfect fit", "STEYX(A1:A4,B1:B4)", decimalResolver, 0, false, 0},
+		{"Non-numeric values skipped", "STEYX(A1:A7,B1:B7)", nonNumericResolver, 2.934247, false, 0},
+		{"Different length arrays", "STEYX(A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		{"Too few after skip", "STEYX(A1:A4,B1:B4)", tooFewAfterSkipResolver, 0, true, ErrValDIV0},
+		{"All non-numeric", "STEYX(A1:A3,B1:B3)", allNonNumericResolver, 0, true, ErrValDIV0},
+		{"No args", "STEYX()", excelResolver, 0, true, ErrValVALUE},
+		{"One arg", "STEYX(A1:A7)", excelResolver, 0, true, ErrValVALUE},
+		{"Three args", "STEYX(A1:A7,B1:B7,A1:A7)", excelResolver, 0, true, ErrValVALUE},
+		{"Five points", "STEYX(A1:A5,B1:B5)", fivePointResolver, 0.0, false, 0},
+		{"Zero y values", "STEYX(A1:A4,B1:B4)", zeroYResolver, 0.387298, false, 0},
+		{"Negative slope perfect", "STEYX(A1:A3,B1:B3)", negSlopeResolver, 0, false, 0},
+		{"Repeat Excel example", "STEYX(A1:A7,B1:B7)", excelResolver, 3.305719, false, 0},
+		{"Empty arrays", "STEYX(C1:C3,D1:D3)", excelResolver, 0, true, ErrValDIV0},
+		{"Non-numeric both positions", "STEYX(A1:A7,B1:B7)", nonNumericResolver, 2.934247, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %f, want %f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}

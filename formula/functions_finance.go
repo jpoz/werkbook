@@ -1309,5 +1309,9 @@ func fnRri(args []Value) (Value, error) {
 	if pv == 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
-	return NumberVal(math.Pow(fv/pv, 1.0/nper) - 1), nil
+	ratio := fv / pv
+	if ratio < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Pow(ratio, 1.0/nper) - 1), nil
 }

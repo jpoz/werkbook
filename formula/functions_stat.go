@@ -63,6 +63,7 @@ func init() {
 	Register("STDEVP", NoCtx(fnSTDEVP))
 	Register("STDEV.P", NoCtx(fnSTDEVP))
 	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
+	Register("STEYX", NoCtx(fnSTEYX))
 	Register("SUM", NoCtx(fnSUM))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
@@ -1982,6 +1983,69 @@ func fnFORECAST(args []Value) (Value, error) {
 		return errVal, nil
 	}
 	return NumberVal(intercept + slope*x), nil
+}
+
+// fnSTEYX returns the standard error of the predicted y-value for each x in
+// a linear regression.  STEYX(known_y's, known_x's).
+func fnSTEYX(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flatY := flattenValuesGeneric(args[0])
+	flatX := flattenValuesGeneric(args[1])
+
+	if len(flatY) != len(flatX) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flatY {
+		vy, vx := flatY[i], flatX[i]
+		if vy.Type == ValueError {
+			return vy, nil
+		}
+		if vx.Type == ValueError {
+			return vx, nil
+		}
+		if vy.Type != ValueNumber || vx.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, vx.Num)
+		ys = append(ys, vy.Num)
+	}
+
+	n := len(xs)
+	if n < 3 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute SSx, SSy, SSxy.
+	ssX, ssY, ssXY := 0.0, 0.0, 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		ssX += dx * dx
+		ssY += dy * dy
+		ssXY += dx * dy
+	}
+
+	if ssX == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	result := math.Sqrt((1 / float64(n-2)) * (ssY - ssXY*ssXY/ssX))
+	return NumberVal(result), nil
 }
 
 func fnGEOMEAN(args []Value) (Value, error) {
