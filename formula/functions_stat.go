@@ -503,7 +503,7 @@ func MatchesCriteria(v Value, criteria Value) bool {
 		}
 	}
 
-	if strings.ContainsAny(critStr, "*?") {
+	if containsWildcard(critStr) {
 		return WildcardMatch(ValueToString(v), critStr)
 	}
 
@@ -526,6 +526,24 @@ func CompareToCriteria(v Value, critValStr string) int {
 	return strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(critValStr))
 }
 
+// containsWildcard returns true if the criteria string contains unescaped
+// wildcard characters (* or ?) or escape sequences (~*, ~?, ~~) that need
+// processing.
+func containsWildcard(s string) bool {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '~':
+			// ~ followed by *, ?, or ~ is an escape sequence that needs processing
+			if i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
+				return true
+			}
+		case '*', '?':
+			return true
+		}
+	}
+	return false
+}
+
 func WildcardMatch(s, pattern string) bool {
 	return WildcardHelper(strings.ToLower(s), strings.ToLower(pattern))
 }
@@ -533,6 +551,22 @@ func WildcardMatch(s, pattern string) bool {
 func WildcardHelper(s, p string) bool {
 	for len(p) > 0 {
 		switch p[0] {
+		case '~':
+			// Escape sequence: ~* means literal *, ~? means literal ?, ~~ means literal ~
+			if len(p) >= 2 && (p[1] == '*' || p[1] == '?' || p[1] == '~') {
+				if len(s) == 0 || s[0] != p[1] {
+					return false
+				}
+				s = s[1:]
+				p = p[2:]
+			} else {
+				// Lone ~ at end or before non-special char: treat as literal ~
+				if len(s) == 0 || s[0] != '~' {
+					return false
+				}
+				s = s[1:]
+				p = p[1:]
+			}
 		case '*':
 			for len(p) > 0 && p[0] == '*' {
 				p = p[1:]
