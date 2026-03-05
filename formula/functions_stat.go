@@ -44,6 +44,7 @@ func init() {
 	Register("MODE", NoCtx(fnMODE))
 	Register("MODE.SNGL", NoCtx(fnMODE))
 	Register("PERMUTATIONA", NoCtx(fnPERMUTATIONA))
+	Register("PEARSON", NoCtx(fnCORREL))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
@@ -51,6 +52,7 @@ func init() {
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.EXC", NoCtx(fnPERCENTRANKEXC))
+	Register("RSQ", NoCtx(fnRSQ))
 	Register("RANK", NoCtx(fnRANK))
 	Register("RANK.EQ", NoCtx(fnRANK))
 	Register("RANK.AVG", NoCtx(fnRANKAVG))
@@ -1791,6 +1793,17 @@ func fnCORREL(args []Value) (Value, error) {
 	}
 
 	return NumberVal(cov / denom), nil
+}
+
+func fnRSQ(args []Value) (Value, error) {
+	r, err := fnCORREL(args)
+	if err != nil {
+		return r, err
+	}
+	if r.Type != ValueNumber {
+		return r, nil
+	}
+	return NumberVal(r.Num * r.Num), nil
 }
 
 // flattenValuesGeneric flattens a Value (possibly an array) into a 1D slice of Value.
