@@ -1395,6 +1395,9 @@ func fnPERCENTRANKEXC(args []Value) (Value, error) {
 
 // truncToSig truncates a float to sig decimal digits.
 func truncToSig(v float64, sig int) float64 {
+	// Round to 15 significant digits first (matching Excel precision)
+	// to eliminate FP noise before truncating.
+	v = roundTo15SigFigs(v)
 	pow := math.Pow(10, float64(sig))
 	return math.Floor(v*pow) / pow
 }
