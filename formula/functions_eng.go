@@ -9,6 +9,8 @@ import (
 
 func init() {
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
+	Register("BIN2HEX", NoCtx(fnBin2Hex))
+	Register("BIN2OCT", NoCtx(fnBin2Oct))
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
 	Register("DEC2HEX", NoCtx(fnDec2Hex))
@@ -76,6 +78,149 @@ func fnBin2Dec(args []Value) (Value, error) {
 	}
 
 	return NumberVal(result), nil
+}
+
+// parseBinToInt64 parses a binary string (max 10 digits, 0/1 only) to int64,
+// handling two's complement for 10-digit numbers starting with 1.
+// Returns the parsed value and an error Value if validation fails.
+func parseBinToInt64(args []Value) (int64, *Value) {
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return 0, &args[0]
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Validate length: max 10 binary digits.
+	if len(s) == 0 || len(s) > 10 {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Validate characters: only 0 and 1 allowed.
+	for _, c := range s {
+		if c != '0' && c != '1' {
+			v := ErrorVal(ErrValNUM)
+			return 0, &v
+		}
+	}
+
+	// Parse as unsigned binary.
+	u, err := strconv.ParseUint(s, 2, 64)
+	if err != nil {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Two's complement: 10-digit number starting with '1' is negative.
+	if len(s) == 10 && s[0] == '1' {
+		return int64(u) - 1024, nil
+	}
+	return int64(u), nil
+}
+
+// fnBin2Hex implements the Excel BIN2HEX function.
+// BIN2HEX(number, [places]) — converts a binary number string to hexadecimal.
+// Input must contain only 0s and 1s, max 10 digits.
+// 10-digit numbers starting with 1 are negative (two's complement).
+// Negative numbers produce 10-digit hex result (40-bit two's complement).
+func fnBin2Hex(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseBinToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^40 to get 10-digit hex representation.
+		result = fmt.Sprintf("%X", n+1099511627776)
+	} else {
+		result = fmt.Sprintf("%X", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnBin2Oct implements the Excel BIN2OCT function.
+// BIN2OCT(number, [places]) — converts a binary number string to octal.
+// Input must contain only 0s and 1s, max 10 digits.
+// 10-digit numbers starting with 1 are negative (two's complement).
+// Negative numbers produce 10-digit octal result (30-bit two's complement).
+func fnBin2Oct(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseBinToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^30 to get 10-digit octal representation.
+		result = fmt.Sprintf("%o", n+1073741824)
+	} else {
+		result = fmt.Sprintf("%o", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
 }
 
 // fnDELTA implements the Excel DELTA function.
