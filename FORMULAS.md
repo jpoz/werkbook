@@ -143,7 +143,7 @@ Werkbook supports **303** Excel formula functions.
 | ISOWEEKNUM | Date & Time | - |
 | ISTEXT | Information | - |
 | KURT | Statistical | 22 |
-| LARGE | Statistical | 4 |
+| LARGE | Statistical | 30 |
 | LCM | Math & Trig | - |
 | LEFT | Text | 42 |
 | LEN | Text | 29 |
