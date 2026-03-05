@@ -31,9 +31,11 @@ func init() {
 	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
 	Register("MAX", NoCtx(fnMAX))
+	Register("MAXA", NoCtx(fnMAXA))
 	Register("MAXIFS", NoCtx(fnMAXIFS))
 	Register("MEDIAN", NoCtx(fnMEDIAN))
 	Register("MIN", NoCtx(fnMIN))
+	Register("MINA", NoCtx(fnMINA))
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
@@ -215,6 +217,166 @@ func fnMAX(args []Value) (Value, error) {
 		return NumberVal(0), nil
 	}
 	return NumberVal(max), nil
+}
+
+// fnMAXA returns the largest value in args, including text and logical values.
+// In arrays/ranges: numbers count as their value, TRUE=1, FALSE=0, text
+// strings=0, empty cells are ignored.  For direct (non-array) arguments:
+// booleans and numbers are coerced normally; text that cannot be parsed as a
+// number returns #VALUE!.  Returns 0 when no values are found.
+func fnMAXA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	max := 0.0
+	found := false
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						if !found || cell.Num > max {
+							max = cell.Num
+							found = true
+						}
+					case ValueBool:
+						v := 0.0
+						if cell.Bool {
+							v = 1
+						}
+						if !found || v > max {
+							max = v
+							found = true
+						}
+					case ValueString:
+						// Text in a range counts as 0.
+						if !found || 0 > max {
+							max = 0
+							found = true
+						}
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			if !found || arg.Num > max {
+				max = arg.Num
+				found = true
+			}
+		case ValueBool:
+			v := 0.0
+			if arg.Bool {
+				v = 1
+			}
+			if !found || v > max {
+				max = v
+				found = true
+			}
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			if !found || n > max {
+				max = n
+				found = true
+			}
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(max), nil
+}
+
+// fnMINA returns the smallest value in args, including text and logical values.
+// In arrays/ranges: numbers count as their value, TRUE=1, FALSE=0, text
+// strings=0, empty cells are ignored.  For direct (non-array) arguments:
+// booleans and numbers are coerced normally; text that cannot be parsed as a
+// number returns #VALUE!.  Returns 0 when no values are found.
+func fnMINA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	min := 0.0
+	found := false
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						if !found || cell.Num < min {
+							min = cell.Num
+							found = true
+						}
+					case ValueBool:
+						v := 0.0
+						if cell.Bool {
+							v = 1
+						}
+						if !found || v < min {
+							min = v
+							found = true
+						}
+					case ValueString:
+						// Text in a range counts as 0.
+						if !found || 0 < min {
+							min = 0
+							found = true
+						}
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			if !found || arg.Num < min {
+				min = arg.Num
+				found = true
+			}
+		case ValueBool:
+			v := 0.0
+			if arg.Bool {
+				v = 1
+			}
+			if !found || v < min {
+				min = v
+				found = true
+			}
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			if !found || n < min {
+				min = n
+				found = true
+			}
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(min), nil
 }
 
 func fnLARGE(args []Value) (Value, error) {

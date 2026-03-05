@@ -4503,3 +4503,451 @@ func TestSKEW(t *testing.T) {
 		}
 	})
 }
+
+func TestMAXA(t *testing.T) {
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("single number", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("two numbers picks larger", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(3,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("TRUE direct arg counts as 1", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(TRUE,0.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("FALSE direct arg counts as 0", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(FALSE,-5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("numeric string direct arg", func(t *testing.T) {
+		cf := evalCompile(t, `MAXA("10",5)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("non-numeric string direct arg returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `MAXA("hello",10)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("range with text counts as 0", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(-3),
+			NumberVal(-5),
+			StringVal("hello"),
+		)
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// text=0 is the largest
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("range with TRUE counts as 1", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(0),
+			NumberVal(0.5),
+			BoolVal(true),
+		)
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("range with FALSE counts as 0", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(-1),
+			NumberVal(-2),
+			BoolVal(false),
+		)
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("empty range returns 0", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, &mockResolver{cells: map[CellAddr]Value{}}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("error in range propagates", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(1),
+			ErrorVal(ErrValDIV0),
+			NumberVal(3),
+		)
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("error direct arg propagates", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(1/0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("all negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MAXA(-10,-20,-5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -5 {
+			t.Errorf("got %v, want -5", got)
+		}
+	})
+
+	t.Run("Excel doc example", func(t *testing.T) {
+		// {0, 0.2, 0.5, 0.4, TRUE} => max is TRUE=1
+		resolver := valResolver(
+			NumberVal(0),
+			NumberVal(0.2),
+			NumberVal(0.5),
+			NumberVal(0.4),
+			BoolVal(true),
+		)
+		cf := evalCompile(t, "MAXA(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("mixed range and direct args", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(2),
+			NumberVal(3),
+		)
+		cf := evalCompile(t, "MAXA(A1:A2,10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("empty cells in range ignored", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(-5),
+			Value{Type: ValueEmpty},
+			NumberVal(-3),
+		)
+		cf := evalCompile(t, "MAXA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -3 {
+			t.Errorf("got %v, want -3", got)
+		}
+	})
+}
+
+func TestMINA(t *testing.T) {
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("single number", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("two numbers picks smaller", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(3,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("TRUE direct arg counts as 1", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(TRUE,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("FALSE direct arg counts as 0", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(FALSE,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("numeric string direct arg", func(t *testing.T) {
+		cf := evalCompile(t, `MINA("2",5)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("non-numeric string direct arg returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `MINA("hello",10)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("range with text counts as 0", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(3),
+			NumberVal(5),
+			StringVal("hello"),
+		)
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// text=0 is the smallest
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("range with TRUE counts as 1", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(2),
+			NumberVal(3),
+			BoolVal(true),
+		)
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("range with FALSE counts as 0", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(1),
+			NumberVal(2),
+			BoolVal(false),
+		)
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("empty range returns 0", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, &mockResolver{cells: map[CellAddr]Value{}}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("error in range propagates", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(1),
+			ErrorVal(ErrValDIV0),
+			NumberVal(3),
+		)
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("error direct arg propagates", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(1/0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("all positive numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MINA(10,20,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("Excel doc example", func(t *testing.T) {
+		// {FALSE, 0.2, 0.5, 0.4, 0.8} => min is FALSE=0
+		resolver := valResolver(
+			BoolVal(false),
+			NumberVal(0.2),
+			NumberVal(0.5),
+			NumberVal(0.4),
+			NumberVal(0.8),
+		)
+		cf := evalCompile(t, "MINA(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("mixed range and direct args", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(2),
+			NumberVal(3),
+		)
+		cf := evalCompile(t, "MINA(A1:A2,-10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -10 {
+			t.Errorf("got %v, want -10", got)
+		}
+	})
+
+	t.Run("empty cells in range ignored", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(5),
+			Value{Type: ValueEmpty},
+			NumberVal(3),
+		)
+		cf := evalCompile(t, "MINA(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+}
