@@ -278,7 +278,7 @@ Werkbook supports **303** Excel formula functions.
 | TODAY | Date & Time | 2 |
 | TOROW | Lookup & Reference | 20 |
 | TRANSPOSE | Lookup & Reference | 35 |
-| TRIM | Text | 6 |
+| TRIM | Text | 18 |
 | TRIMMEAN | Statistical | 23 |
 | TRUNC | Math & Trig | - |
 | TYPE | Information | - |

@@ -1041,6 +1041,24 @@ func TestTRIMEdgeCases(t *testing.T) {
 		{`TRIM("")`, ""},
 		{`TRIM("   ")`, ""},
 		{`TRIM("hello")`, "hello"},
+		// Leading spaces only
+		{`TRIM("   leading")`, "leading"},
+		// Trailing spaces only
+		{`TRIM("trailing   ")`, "trailing"},
+		// Both leading and trailing
+		{`TRIM("  both  ")`, "both"},
+		// Multiple internal spaces reduced to single
+		{`TRIM("a    b     c")`, "a b c"},
+		// Single space → empty string
+		{`TRIM(" ")`, ""},
+		// Multiple words with various spacing
+		{`TRIM("  the   quick   brown   fox  ")`, "the quick brown fox"},
+		// Tab characters — strings.Fields splits on all whitespace
+		{`TRIM("hello` + "\t" + `world")`, "hello world"},
+		// Number coercion (42 → "42", no spaces to trim)
+		{`TRIM(42)`, "42"},
+		// Boolean coercion (TRUE → "TRUE")
+		{`TRIM(TRUE)`, "TRUE"},
 	}
 
 	for _, tt := range tests {
@@ -1053,6 +1071,41 @@ func TestTRIMEdgeCases(t *testing.T) {
 		if got.Type != ValueString || got.Str != tt.want {
 			t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
 		}
+	}
+}
+
+func TestTRIMErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No arguments → #VALUE!
+	cf := evalCompile(t, `TRIM()`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(TRIM()): unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("TRIM() = %v, want #VALUE!", got)
+	}
+
+	// Too many arguments → #VALUE!
+	cf = evalCompile(t, `TRIM("a","b")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(TRIM(a,b)): unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("TRIM(a,b) = %v, want #VALUE!", got)
+	}
+
+	// Error propagation — TRIM does not guard against error args,
+	// so ValueToString converts the error to its string representation.
+	cf = evalCompile(t, `TRIM(1/0)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(TRIM(1/0)): unexpected error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "#DIV/0!" {
+		t.Errorf("TRIM(1/0) = %v, want string #DIV/0!", got)
 	}
 }
 
