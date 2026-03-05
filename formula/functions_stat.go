@@ -44,6 +44,7 @@ func init() {
 	Register("QUARTILE.EXC", NoCtx(fnQUARTILEEXC))
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
+	Register("PERCENTRANK.EXC", NoCtx(fnPERCENTRANKEXC))
 	Register("RANK", NoCtx(fnRANK))
 	Register("RANK.EQ", NoCtx(fnRANK))
 	Register("RANK.AVG", NoCtx(fnRANKAVG))
@@ -1321,6 +1322,73 @@ func fnPERCENTRANK(args []Value) (Value, error) {
 		rank = loRank + frac*(hiRank-loRank)
 	}
 
+	return NumberVal(truncToSig(rank, int(sig))), nil
+}
+
+func fnPERCENTRANKEXC(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Collect numeric values from the array argument.
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// x must be numeric.
+	x, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+
+	// Optional significance (default 3).
+	sig := 3.0
+	if len(args) == 3 {
+		s, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		sig = math.Trunc(s)
+		if sig < 1 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	sort.Float64s(nums)
+	n := len(nums)
+
+	// x outside data range → #N/A
+	if x < nums[0] || x > nums[n-1] {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// EXC uses rank/(n+1) where rank is 1-based position.
+	// With n values, results range from 1/(n+1) to n/(n+1), exclusive of 0 and 1.
+	denom := float64(n + 1)
+
+	// Find position of x in sorted data.
+	for i := 0; i < n; i++ {
+		if nums[i] == x {
+			rank := float64(i+1) / denom
+			return NumberVal(truncToSig(rank, int(sig))), nil
+		}
+		if nums[i] > x {
+			// Interpolate between nums[i-1] and nums[i].
+			lo := i - 1
+			loRank := float64(lo+1) / denom
+			hiRank := float64(i+1) / denom
+			frac := (x - nums[lo]) / (nums[i] - nums[lo])
+			rank := loRank + frac*(hiRank-loRank)
+			return NumberVal(truncToSig(rank, int(sig))), nil
+		}
+	}
+
+	// x equals the last element (already handled in loop, but just in case).
+	rank := float64(n) / denom
 	return NumberVal(truncToSig(rank, int(sig))), nil
 }
 

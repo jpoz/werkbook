@@ -4615,6 +4615,185 @@ func TestPERCENTRANK(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// PERCENTRANK.EXC
+// ---------------------------------------------------------------------------
+
+func TestPERCENTRANKEXC(t *testing.T) {
+	// Excel example data: {1,2,3,6,6,6,7,8,9} in A1:A9
+	excelResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(6),
+			{Col: 1, Row: 5}: NumberVal(6),
+			{Col: 1, Row: 6}: NumberVal(6),
+			{Col: 1, Row: 7}: NumberVal(7),
+			{Col: 1, Row: 8}: NumberVal(8),
+			{Col: 1, Row: 9}: NumberVal(9),
+		},
+	}
+
+	// Simple data: {1,2,3,4,5} in B1:B5
+	simpleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// Single element: {42} in C1
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Negative numbers: {-10,-5,0,5,10} in D1:D5
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(-10),
+			{Col: 4, Row: 2}: NumberVal(-5),
+			{Col: 4, Row: 3}: NumberVal(0),
+			{Col: 4, Row: 4}: NumberVal(5),
+			{Col: 4, Row: 5}: NumberVal(10),
+		},
+	}
+
+	// Mixed types: {10, "hello", 20, true, 30} in E1:E5
+	// Only 10, 20, 30 are numeric.
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(10),
+			{Col: 5, Row: 2}: StringVal("hello"),
+			{Col: 5, Row: 3}: NumberVal(20),
+			{Col: 5, Row: 4}: BoolVal(true),
+			{Col: 5, Row: 5}: NumberVal(30),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		wantNum  float64
+		wantErr  ErrorValue
+	}{
+		// Excel doc examples
+		{name: "excel_x=7", formula: "PERCENTRANK.EXC(A1:A9,7)", resolver: excelResolver, wantNum: 0.7},
+		{name: "excel_x=5.43", formula: "PERCENTRANK.EXC(A1:A9,5.43)", resolver: excelResolver, wantNum: 0.381},
+		{name: "excel_x=5.43_sig1", formula: "PERCENTRANK.EXC(A1:A9,5.43,1)", resolver: excelResolver, wantNum: 0.3},
+
+		// Simple data: rank = position/(n+1), n=5, denom=6
+		// {1,2,3,4,5}: positions 1..5 → ranks 1/6..5/6
+		{name: "simple_min", formula: "PERCENTRANK.EXC(B1:B5,1)", resolver: simpleResolver, wantNum: 0.166},
+		{name: "simple_mid", formula: "PERCENTRANK.EXC(B1:B5,3)", resolver: simpleResolver, wantNum: 0.5},
+		{name: "simple_max", formula: "PERCENTRANK.EXC(B1:B5,5)", resolver: simpleResolver, wantNum: 0.833},
+		{name: "simple_x=2", formula: "PERCENTRANK.EXC(B1:B5,2)", resolver: simpleResolver, wantNum: 0.333},
+		{name: "simple_x=4", formula: "PERCENTRANK.EXC(B1:B5,4)", resolver: simpleResolver, wantNum: 0.666},
+
+		// x outside range → #N/A
+		{name: "x_below_min", formula: "PERCENTRANK.EXC(B1:B5,0)", resolver: simpleResolver, wantErr: ErrValNA},
+		{name: "x_above_max", formula: "PERCENTRANK.EXC(B1:B5,6)", resolver: simpleResolver, wantErr: ErrValNA},
+
+		// Interpolation: x=1.5 between 1 (pos 1) and 2 (pos 2)
+		// loRank=1/6, hiRank=2/6, frac=0.5 → 1/6 + 0.5*(1/6) = 0.25
+		{name: "interp_1.5", formula: "PERCENTRANK.EXC(B1:B5,1.5)", resolver: simpleResolver, wantNum: 0.25},
+		{name: "interp_4.5", formula: "PERCENTRANK.EXC(B1:B5,4.5)", resolver: simpleResolver, wantNum: 0.75},
+
+		// Significance parameter
+		{name: "sig_1", formula: "PERCENTRANK.EXC(B1:B5,3,1)", resolver: simpleResolver, wantNum: 0.5},
+		{name: "sig_5", formula: "PERCENTRANK.EXC(B1:B5,2,5)", resolver: simpleResolver, wantNum: 0.33333},
+
+		// Single element: rank = 1/(1+1) = 0.5
+		{name: "single_element_match", formula: "PERCENTRANK.EXC(C1:C1,42)", resolver: singleResolver, wantNum: 0.5},
+		{name: "single_element_no_match_below", formula: "PERCENTRANK.EXC(C1:C1,10)", resolver: singleResolver, wantErr: ErrValNA},
+		{name: "single_element_no_match_above", formula: "PERCENTRANK.EXC(C1:C1,50)", resolver: singleResolver, wantErr: ErrValNA},
+
+		// Duplicate values: x=6 appears at positions 3,4,5 (0-indexed) → first at index 3 → rank=4/10=0.4
+		{name: "duplicate_value", formula: "PERCENTRANK.EXC(A1:A9,6)", resolver: excelResolver, wantNum: 0.4},
+
+		// Negative numbers: {-10,-5,0,5,10}, n=5, denom=6
+		{name: "neg_min", formula: "PERCENTRANK.EXC(D1:D5,-10)", resolver: negResolver, wantNum: 0.166},
+		{name: "neg_max", formula: "PERCENTRANK.EXC(D1:D5,10)", resolver: negResolver, wantNum: 0.833},
+		{name: "neg_mid", formula: "PERCENTRANK.EXC(D1:D5,0)", resolver: negResolver, wantNum: 0.5},
+		{name: "neg_interp", formula: "PERCENTRANK.EXC(D1:D5,-3)", resolver: negResolver, wantNum: 0.399},
+
+		// Unsorted data produces same result
+		{name: "unsorted_data", formula: "PERCENTRANK.EXC(A1:A9,9)", resolver: excelResolver, wantNum: 0.9},
+
+		// significance < 1 → #NUM!
+		{name: "sig_zero", formula: "PERCENTRANK.EXC(B1:B5,2,0)", resolver: simpleResolver, wantErr: ErrValNUM},
+		{name: "sig_negative", formula: "PERCENTRANK.EXC(B1:B5,2,-1)", resolver: simpleResolver, wantErr: ErrValNUM},
+
+		// Mixed types in array (non-numeric ignored)
+		// {10,20,30}, n=3, denom=4, x=20 at pos 1 (0-indexed) → rank=2/4=0.5
+		{name: "mixed_types", formula: "PERCENTRANK.EXC(E1:E5,20)", resolver: mixedResolver, wantNum: 0.5},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, tc.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tc.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tc.wantErr {
+					t.Errorf("expected error %d, got type=%d err=%d num=%v", tc.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got type=%d err=%d", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tc.wantNum) > 1e-9 {
+				t.Errorf("got %.10f, want %.10f", got.Num, tc.wantNum)
+			}
+		})
+	}
+
+	// Wrong argument count
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTRANK.EXC(B1:B5)")
+		got, err := Eval(cf, simpleResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("expected #VALUE!, got type=%d err=%d", got.Type, got.Err)
+		}
+	})
+
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTRANK.EXC(B1:B5,2,3,4)")
+		got, err := Eval(cf, simpleResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("expected #VALUE!, got type=%d err=%d", got.Type, got.Err)
+		}
+	})
+
+	// Empty array → #NUM!
+	t.Run("empty_array", func(t *testing.T) {
+		emptyResolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "PERCENTRANK.EXC(F1:F3,1)")
+		got, err := Eval(cf, emptyResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got type=%d err=%d", got.Type, got.Err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // SKEW
 // ---------------------------------------------------------------------------
 
