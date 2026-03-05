@@ -245,7 +245,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 }
 
 
-func cellDataToValue(cd ooxml.CellData, styles []*Style) Value {
+func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
 	switch cd.Type {
 	case "s":
 		// Shared-string cells are always strings. In Excel, a cell stored
