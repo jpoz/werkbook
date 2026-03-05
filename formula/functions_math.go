@@ -56,6 +56,7 @@ func init() {
 	Register("LOG", NoCtx(fnLOG))
 	Register("LOG10", NoCtx(fnLOG10))
 	Register("MOD", NoCtx(fnMOD))
+	Register("MMULT", NoCtx(fnMMULT))
 	Register("MROUND", NoCtx(fnMROUND))
 	Register("MULTINOMIAL", NoCtx(fnMULTINOMIAL))
 	Register("ODD", NoCtx(fnODD))
@@ -747,6 +748,108 @@ func fnLOG10(args []Value) (Value, error) {
 	if n <= 0 { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(math.Log10(n)), nil
 }
+func fnMMULT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Coerce both arguments to 2D arrays.
+	a1 := args[0]
+	a2 := args[1]
+
+	// Convert scalar/non-array values to 1x1 arrays.
+	if a1.Type != ValueArray {
+		if a1.Type == ValueError {
+			return a1, nil
+		}
+		a1 = Value{Type: ValueArray, Array: [][]Value{{a1}}}
+	}
+	if a2.Type != ValueArray {
+		if a2.Type == ValueError {
+			return a2, nil
+		}
+		a2 = Value{Type: ValueArray, Array: [][]Value{{a2}}}
+	}
+
+	m := len(a1.Array) // rows of array1
+	if m == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n := len(a1.Array[0]) // cols of array1
+	if n == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n2 := len(a2.Array) // rows of array2
+	if n2 == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p := len(a2.Array[0]) // cols of array2
+	if p == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Columns of array1 must equal rows of array2.
+	if n != n2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate all values are numeric and extract into float64 slices.
+	mat1 := make([][]float64, m)
+	for r := 0; r < m; r++ {
+		if len(a1.Array[r]) != n {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat1[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a1.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat1[r][c] = num
+		}
+	}
+
+	mat2 := make([][]float64, n2)
+	for r := 0; r < n2; r++ {
+		if len(a2.Array[r]) != p {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat2[r] = make([]float64, p)
+		for c := 0; c < p; c++ {
+			v := a2.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat2[r][c] = num
+		}
+	}
+
+	// Compute matrix product: result[i][j] = sum(mat1[i][k] * mat2[k][j]).
+	result := make([][]Value, m)
+	for i := 0; i < m; i++ {
+		row := make([]Value, p)
+		for j := 0; j < p; j++ {
+			var sum float64
+			for k := 0; k < n; k++ {
+				sum += mat1[i][k] * mat2[k][j]
+			}
+			row[j] = NumberVal(sum)
+		}
+		result[i] = row
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
 func fnMROUND(args []Value) (Value, error) {
 	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }

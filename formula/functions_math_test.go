@@ -1560,3 +1560,500 @@ func TestSERIESSUM(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// MMULT tests
+// ---------------------------------------------------------------------------
+
+func TestMMULT_2x2_times_2x2(t *testing.T) {
+	// {1,2;3,4} * {5,6;7,8} = {19,22;43,50}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2;3,4},{5,6;7,8})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{19, 22}, {43, 50}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_2x3_times_3x2(t *testing.T) {
+	// {1,2,3;4,5,6} * {7,8;9,10;11,12} = {58,64;139,154}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3;4,5,6},{7,8;9,10;11,12})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{58, 64}, {139, 154}}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_DotProduct_1x3_times_3x1(t *testing.T) {
+	// {1,2,3} * {4;5;6} = {32} (dot product: 1*4+2*5+3*6=32)
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3},{4;5;6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 32 {
+		t.Errorf("got %g, want 32", got.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_OuterProduct_3x1_times_1x3(t *testing.T) {
+	// {1;2;3} * {4,5,6} = {4,5,6;8,10,12;12,15,18}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1;2;3},{4,5,6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{4, 5, 6}, {8, 10, 12}, {12, 15, 18}}
+	if len(got.Array) != 3 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_IdentityMatrix(t *testing.T) {
+	// {1,2;3,4} * {1,0;0,1} = {1,2;3,4}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2;3,4},{1,0;0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_DimensionMismatch(t *testing.T) {
+	// {1,2;3,4} (2x2) * {1,2,3} (1x3) => columns(2) != rows(1) => #VALUE!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2;3,4},{1,2,3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("dimension mismatch: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMMULT_TextInArray1(t *testing.T) {
+	// Text in first array => #VALUE!
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), StringVal("x")},
+			{NumberVal(3), NumberVal(4)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(5), NumberVal(6)},
+			{NumberVal(7), NumberVal(8)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("text in array1: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMMULT_TextInArray2(t *testing.T) {
+	// Text in second array => #VALUE!
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3)},
+			{StringVal("hello")},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("text in array2: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMMULT_EmptyCellInArray(t *testing.T) {
+	// Empty cell in array => #VALUE!
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), EmptyVal()},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3)},
+			{NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("empty cell in array: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMMULT_SingleElements(t *testing.T) {
+	// {5} * {3} = {15}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({5},{3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if got.Array[0][0].Num != 15 {
+		t.Errorf("got %g, want 15", got.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_ZeroMatrix(t *testing.T) {
+	// {0,0;0,0} * {1,2;3,4} = {0,0;0,0}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({0,0;0,0},{1,2;3,4})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if got.Array[r][c].Num != 0 {
+				t.Errorf("[%d][%d]: got %g, want 0", r, c, got.Array[r][c].Num)
+			}
+		}
+	}
+}
+
+func TestMMULT_NegativeNumbers(t *testing.T) {
+	// {-1,-2;-3,-4} * {1,0;0,1} = {-1,-2;-3,-4}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({-1,-2;-3,-4},{1,0;0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-1, -2}, {-3, -4}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_WrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "MMULT({1,2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("too few args: got %v, want #VALUE!", got)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "MMULT({1},{2},{3})")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("too many args: got %v, want #VALUE!", got)
+	}
+
+	// No args
+	cf = evalCompile(t, "MMULT()")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("no args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMMULT_4x4Matrix(t *testing.T) {
+	// 4x4 identity * 4x4 matrix = same matrix
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(0), NumberVal(0), NumberVal(0)},
+			{NumberVal(0), NumberVal(1), NumberVal(0), NumberVal(0)},
+			{NumberVal(0), NumberVal(0), NumberVal(1), NumberVal(0)},
+			{NumberVal(0), NumberVal(0), NumberVal(0), NumberVal(1)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)},
+			{NumberVal(5), NumberVal(6), NumberVal(7), NumberVal(8)},
+			{NumberVal(9), NumberVal(10), NumberVal(11), NumberVal(12)},
+			{NumberVal(13), NumberVal(14), NumberVal(15), NumberVal(16)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	want := [][]float64{
+		{1, 2, 3, 4},
+		{5, 6, 7, 8},
+		{9, 10, 11, 12},
+		{13, 14, 15, 16},
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if result.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_ScalarTimesArray(t *testing.T) {
+	// scalar 3 coerced to {3} (1x1), times {2;4} (2x1) => dimension mismatch
+	// columns(1) == rows(2)? No => #VALUE!
+	result, err := fnMMULT([]Value{
+		NumberVal(3),
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(2)},
+			{NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("scalar times 2x1: got %v, want #VALUE!", result)
+	}
+}
+
+func TestMMULT_ScalarTimesScalar(t *testing.T) {
+	// scalar 3 * scalar 5 => 1x1 * 1x1 = {15}
+	result, err := fnMMULT([]Value{
+		NumberVal(3),
+		NumberVal(5),
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	if result.Array[0][0].Num != 15 {
+		t.Errorf("got %g, want 15", result.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_BooleanValues(t *testing.T) {
+	// Booleans are numeric: TRUE=1, FALSE=0
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true), BoolVal(false)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(5)},
+			{NumberVal(10)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	// TRUE*5 + FALSE*10 = 5
+	if result.Array[0][0].Num != 5 {
+		t.Errorf("got %g, want 5", result.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_FractionalNumbers(t *testing.T) {
+	// {0.5,1.5;2.5,3.5} * {1,0;0,1} = {0.5,1.5;2.5,3.5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({0.5,1.5;2.5,3.5},{1,0;0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{0.5, 1.5}, {2.5, 3.5}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_ErrorInArray(t *testing.T) {
+	// An error value in the array should propagate
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), ErrorVal(ErrValDIV0)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValDIV0 {
+		t.Errorf("error in array: got %v, want #DIV/0!", result)
+	}
+}
+
+func TestMMULT_3x2_times_2x3(t *testing.T) {
+	// {1,2;3,4;5,6} * {1,2,3;4,5,6} = {9,12,15;19,26,33;29,40,51}
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+			{NumberVal(5), NumberVal(6)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	want := [][]float64{{9, 12, 15}, {19, 26, 33}, {29, 40, 51}}
+	if len(result.Array) != 3 || len(result.Array[0]) != 3 {
+		t.Fatalf("expected 3x3, got %dx%d", len(result.Array), len(result.Array[0]))
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if result.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_WithCellRange(t *testing.T) {
+	// Use cell references: A1:B2 * C1:D2
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+			{Col: 3, Row: 1}: NumberVal(5),
+			{Col: 4, Row: 1}: NumberVal(6),
+			{Col: 3, Row: 2}: NumberVal(7),
+			{Col: 4, Row: 2}: NumberVal(8),
+		},
+	}
+	cf := evalCompile(t, "MMULT(A1:B2,C1:D2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{19, 22}, {43, 50}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_LargeValues(t *testing.T) {
+	// Large numbers: {1000,2000;3000,4000} * {5000,6000;7000,8000}
+	// = {1000*5000+2000*7000, 1000*6000+2000*8000; 3000*5000+4000*7000, 3000*6000+4000*8000}
+	// = {19000000, 22000000; 43000000, 50000000}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1000,2000;3000,4000},{5000,6000;7000,8000})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{19000000, 22000000}, {43000000, 50000000}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
