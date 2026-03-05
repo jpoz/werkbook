@@ -114,6 +114,20 @@ func TestSUBSTITUTE(t *testing.T) {
 		// Case-sensitive
 		{name: "case_sensitive", formula: `SUBSTITUTE("Hello","h","X")`, want: "Hello"},
 		{name: "case_match", formula: `SUBSTITUTE("Hello","H","X")`, want: "Xello"},
+		// Replace 3rd instance
+		{name: "replace_3rd", formula: `SUBSTITUTE("aXaXaX","a","Z",3)`, want: "aXaXZX"},
+		// Number coercion for text argument
+		{name: "number_coercion", formula: `SUBSTITUTE(12321,"2","9")`, want: "19391"},
+		// Multiple overlapping occurrences — replace all
+		{name: "multi_replace_all", formula: `SUBSTITUTE("aaaa","aa","X")`, want: "XX"},
+		// Delete specific instance
+		{name: "delete_2nd", formula: `SUBSTITUTE("abab","a","",2)`, want: "abb"},
+		// Excel doc example: replace "Sales" with "Cost"
+		{name: "excel_example_1", formula: `SUBSTITUTE("Sales Data","Sales","Cost")`, want: "Cost Data"},
+		// Excel doc example: replace 1st "1" with "2"
+		{name: "excel_example_2", formula: `SUBSTITUTE("Quarter 1, 2008","1","2",1)`, want: "Quarter 2, 2008"},
+		// Excel doc example: replace 3rd "1" with "2"
+		{name: "excel_example_3", formula: `SUBSTITUTE("Quarter 1, 2011","1","2",3)`, want: "Quarter 1, 2012"},
 	}
 
 	for _, tt := range tests {
@@ -133,14 +147,27 @@ func TestSUBSTITUTE(t *testing.T) {
 func TestSUBSTITUTEInvalidArgs(t *testing.T) {
 	resolver := &mockResolver{}
 
-	// instance_num < 1 => #VALUE!
-	cf := evalCompile(t, `SUBSTITUTE("abc","a","X",0)`)
-	got, err := Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "instance_zero", formula: `SUBSTITUTE("abc","a","X",0)`},
+		{name: "instance_negative", formula: `SUBSTITUTE("abc","a","X",-1)`},
+		{name: "too_few_args", formula: `SUBSTITUTE("abc","a")`},
+		{name: "too_many_args", formula: `SUBSTITUTE("abc","a","X",1,"extra")`},
 	}
-	if got.Type != ValueError || got.Err != ErrValVALUE {
-		t.Errorf("SUBSTITUTE instance 0: got %v, want #VALUE!", got)
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
 	}
 }
 
