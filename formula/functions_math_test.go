@@ -4985,3 +4985,83 @@ func TestINT(t *testing.T) {
 		})
 	}
 }
+
+func TestSQRT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Perfect squares
+		{"sqrt_0", "SQRT(0)", 0},
+		{"sqrt_1", "SQRT(1)", 1},
+		{"sqrt_4", "SQRT(4)", 2},
+		{"sqrt_9", "SQRT(9)", 3},
+		{"sqrt_16", "SQRT(16)", 4},
+		{"sqrt_25", "SQRT(25)", 5},
+		{"sqrt_100", "SQRT(100)", 10},
+		// Non-perfect squares
+		{"sqrt_2", "SQRT(2)", math.Sqrt2},
+		{"sqrt_3", "SQRT(3)", math.Sqrt(3)},
+		{"sqrt_10", "SQRT(10)", math.Sqrt(10)},
+		// Large number
+		{"sqrt_large", "SQRT(1000000)", 1000},
+		{"sqrt_large_non_perfect", "SQRT(999999)", math.Sqrt(999999)},
+		// Small decimals
+		{"sqrt_0.25", "SQRT(0.25)", 0.5},
+		{"sqrt_0.01", "SQRT(0.01)", 0.1},
+		{"sqrt_0.0001", "SQRT(0.0001)", 0.01},
+		// String coercion
+		{"string_coerce", "SQRT(\"9\")", 3},
+		{"string_coerce_decimal", "SQRT(\"0.25\")", 0.5},
+		// Boolean coercion
+		{"bool_true", "SQRT(TRUE)", 1},
+		{"bool_false", "SQRT(FALSE)", 0},
+		// Excel doc example: SQRT(ABS(-16)) = 4
+		{"excel_doc_abs_neg16", "SQRT(ABS(-16))", 4},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative", "SQRT(-1)", ErrValNUM},
+		{"negative_large", "SQRT(-100)", ErrValNUM},
+		{"no_args", "SQRT()", ErrValVALUE},
+		{"too_many_args", "SQRT(4,2)", ErrValVALUE},
+		{"non_numeric", "SQRT(\"abc\")", ErrValVALUE},
+		{"error_propagation", "SQRT(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
