@@ -373,3 +373,166 @@ func TestDATEVALUE_extended(t *testing.T) {
 		})
 	}
 }
+
+func TestWORKDAY_INTL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Reference dates:
+	// DATE(2025,1,1) = 45658 (Wednesday)
+	// DATE(2025,1,2) = 45659 (Thursday)
+	// DATE(2025,1,3) = 45660 (Friday)
+	// DATE(2025,1,4) = 45661 (Saturday)
+	// DATE(2025,1,5) = 45662 (Sunday)
+	// DATE(2025,1,6) = 45663 (Monday)
+	// DATE(2025,1,7) = 45664 (Tuesday)
+	// DATE(2025,1,8) = 45665 (Wednesday)
+	// DATE(2025,1,9) = 45666 (Thursday)
+	// DATE(2025,1,10) = 45667 (Friday)
+	// DATE(2025,1,13) = 45670 (Monday)
+	// DATE(2025,1,15) = 45672 (Wednesday)
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// --- Default weekend (Sat/Sun, code 1) ---
+		// 5 workdays from Wed Jan 1: Thu(1), Fri(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"default_5days", "WORKDAY.INTL(DATE(2025,1,1),5)", 45665, false, 0},
+		// 1 workday from Wed Jan 1 → Thu Jan 2
+		{"default_1day", "WORKDAY.INTL(DATE(2025,1,1),1)", 45659, false, 0},
+		// 10 workdays from Wed Jan 1 → Wed Jan 15
+		{"default_10days", "WORKDAY.INTL(DATE(2025,1,1),10)", 45672, false, 0},
+
+		// --- Explicit weekend=1 (same as default) ---
+		{"weekend1_5days", "WORKDAY.INTL(DATE(2025,1,1),5,1)", 45665, false, 0},
+
+		// --- Weekend=2 (Sun, Mon) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Tue(4), Wed(5) = Jan 8
+		{"weekend2_5days", "WORKDAY.INTL(DATE(2025,1,1),5,2)", 45665, false, 0},
+
+		// --- Weekend=11 (Sunday only) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Mon(4), Tue(5) = Jan 7
+		{"weekend11_5days", "WORKDAY.INTL(DATE(2025,1,1),5,11)", 45664, false, 0},
+
+		// --- Weekend=17 (Saturday only) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sun(3), Mon(4), Tue(5) = Jan 7
+		{"weekend17_5days", "WORKDAY.INTL(DATE(2025,1,1),5,17)", 45664, false, 0},
+
+		// --- Weekend=12 (Monday only) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Sun(4), Tue(5) = Jan 7
+		{"weekend12_5days", "WORKDAY.INTL(DATE(2025,1,1),5,12)", 45664, false, 0},
+
+		// --- String weekend: "0000011" (Sat+Sun off, same as default) ---
+		{"string_satsun", `WORKDAY.INTL(DATE(2025,1,1),5,"0000011")`, 45665, false, 0},
+
+		// --- String weekend: "1000001" (Mon+Sun off) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Tue(4), Wed(5) = Jan 8
+		{"string_monsun", `WORKDAY.INTL(DATE(2025,1,1),5,"1000001")`, 45665, false, 0},
+
+		// --- String weekend: "0000000" (no weekends, every day is a workday) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Sun(4), Mon(5) = Jan 6
+		{"string_noweekend", `WORKDAY.INTL(DATE(2025,1,1),5,"0000000")`, 45663, false, 0},
+
+		// --- String weekend: "1111100" (Mon-Fri off, Sat+Sun are workdays) ---
+		// From Wed Jan 1: Sat Jan 4(1), Sun Jan 5(2) = 45662
+		{"string_weekdays_off", `WORKDAY.INTL(DATE(2025,1,1),2,"1111100")`, 45662, false, 0},
+
+		// --- With holidays ---
+		// 5 workdays from Jan 1, holiday on Jan 2 (Thu):
+		// Fri(1), Mon(2), Tue(3), Wed(4), Thu Jan 9(5) = 45666
+		{"with_holiday", "WORKDAY.INTL(DATE(2025,1,1),5,1,DATE(2025,1,2))", 45666, false, 0},
+
+		// Holiday that falls on a weekend should not matter
+		// 5 workdays from Jan 1, holiday on Jan 4 (Sat — already weekend):
+		// Same as default: Thu(1), Fri(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"holiday_on_weekend", "WORKDAY.INTL(DATE(2025,1,1),5,1,DATE(2025,1,4))", 45665, false, 0},
+
+		// --- Negative days ---
+		// -1 workday from Thu Jan 2 → Wed Jan 1
+		{"negative_1", "WORKDAY.INTL(DATE(2025,1,2),-1)", 45658, false, 0},
+		// -5 workdays from Wed Jan 8 → Wed Jan 1
+		{"negative_5", "WORKDAY.INTL(DATE(2025,1,8),-5)", 45658, false, 0},
+		// -5 workdays from Wed Jan 8 with weekend=11 (Sun only):
+		// Tue(1), Mon(2), Sat(3), Fri(4), Thu(5) = Jan 2
+		{"negative_weekend11", "WORKDAY.INTL(DATE(2025,1,8),-5,11)", 45659, false, 0},
+
+		// --- Zero days ---
+		{"zero_days", "WORKDAY.INTL(DATE(2025,1,1),0)", 45658, false, 0},
+
+		// --- Invalid weekend: "1111111" (all days off) ---
+		{"invalid_all_ones", `WORKDAY.INTL(DATE(2025,1,1),5,"1111111")`, 0, true, ErrValVALUE},
+
+		// --- Invalid weekend: code 0 ---
+		{"invalid_code_0", "WORKDAY.INTL(DATE(2025,1,1),5,0)", 0, true, ErrValVALUE},
+
+		// --- Invalid weekend: code 8 ---
+		{"invalid_code_8", "WORKDAY.INTL(DATE(2025,1,1),5,8)", 0, true, ErrValVALUE},
+
+		// --- Invalid weekend: code 9 ---
+		{"invalid_code_9", "WORKDAY.INTL(DATE(2025,1,1),5,9)", 0, true, ErrValVALUE},
+
+		// --- Invalid weekend: code 10 ---
+		{"invalid_code_10", "WORKDAY.INTL(DATE(2025,1,1),5,10)", 0, true, ErrValVALUE},
+
+		// --- Invalid weekend: code 18 ---
+		{"invalid_code_18", "WORKDAY.INTL(DATE(2025,1,1),5,18)", 0, true, ErrValVALUE},
+
+		// --- Invalid weekend string: wrong length ---
+		{"invalid_string_short", `WORKDAY.INTL(DATE(2025,1,1),5,"001")`, 0, true, ErrValVALUE},
+
+		// --- Invalid weekend string: bad chars ---
+		{"invalid_string_chars", `WORKDAY.INTL(DATE(2025,1,1),5,"000002a")`, 0, true, ErrValVALUE},
+
+		// --- Large positive day count ---
+		// 250 workdays from Jan 1 2025 (default weekend, no holidays)
+		{"large_positive", "WORKDAY.INTL(DATE(2025,1,1),250)", 46008, false, 0},
+
+		// --- Weekend=3 (Mon, Tue) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Sun(4), Wed(5) = Jan 8
+		{"weekend3_5days", "WORKDAY.INTL(DATE(2025,1,1),5,3)", 45665, false, 0},
+
+		// --- Weekend=7 (Fri, Sat) ---
+		// From Wed Jan 1: Thu(1), Sun(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"weekend7_5days", "WORKDAY.INTL(DATE(2025,1,1),5,7)", 45665, false, 0},
+
+		// --- Too few args ---
+		{"too_few_args", "WORKDAY.INTL(DATE(2025,1,1))", 0, true, ErrValVALUE},
+
+		// --- Weekend=4 (Tue, Wed) ---
+		// From Wed Jan 1: Thu(1), Fri(2), Sat(3), Sun(4), Mon(5) = Jan 6
+		{"weekend4_5days", "WORKDAY.INTL(DATE(2025,1,1),5,4)", 45663, false, 0},
+
+		// --- Weekend=5 (Wed, Thu) ---
+		// From Wed Jan 1: Fri(1), Sat(2), Sun(3), Mon(4), Tue(5) = Jan 7
+		{"weekend5_5days", "WORKDAY.INTL(DATE(2025,1,1),5,5)", 45664, false, 0},
+
+		// --- Weekend=6 (Thu, Fri) ---
+		// From Wed Jan 1: Sat(1), Sun(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"weekend6_5days", "WORKDAY.INTL(DATE(2025,1,1),5,6)", 45665, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
