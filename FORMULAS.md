@@ -151,7 +151,7 @@ Werkbook supports **303** Excel formula functions.
 | LOG | Math & Trig | 1 |
 | LOG10 | Math & Trig | - |
 | LOOKUP | Lookup & Reference | - |
-| LOWER | Text | 1 |
+| LOWER | Text | 23 |
 | MATCH | Lookup & Reference | 16 |
 | MAX | Statistical | 31 |
 | MAXA | Statistical | 16 |
