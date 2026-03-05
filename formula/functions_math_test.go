@@ -5065,3 +5065,127 @@ func TestSQRT(t *testing.T) {
 		})
 	}
 }
+
+func TestLOG(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Basic default base 10
+		{"log10_of_10", "LOG(10)", 1, 0},
+		{"log10_of_100", "LOG(100)", 2, 0},
+		{"log10_of_1000", "LOG(1000)", 3, 1e-10},
+
+		// Explicit base 10
+		{"log_10_explicit", "LOG(10,10)", 1, 0},
+		{"log_100_explicit", "LOG(100,10)", 2, 0},
+
+		// Base 2
+		{"log2_of_8", "LOG(8,2)", 3, 0},
+		{"log2_of_16", "LOG(16,2)", 4, 0},
+		{"log2_of_1", "LOG(1,2)", 0, 0},
+
+		// Base e (natural log)
+		{"log_e_of_e", "LOG(EXP(1),EXP(1))", 1, 1e-10},
+
+		// LOG(1, any base) = 0
+		{"log_1_base10", "LOG(1)", 0, 0},
+		{"log_1_base7", "LOG(1,7)", 0, 0},
+		{"log_1_base100", "LOG(1,100)", 0, 0},
+
+		// LOG(base, base) = 1
+		{"log_base_base_5", "LOG(5,5)", 1, 1e-10},
+		{"log_base_base_3", "LOG(3,3)", 1, 1e-10},
+
+		// Fractional base
+		{"log_frac_base", "LOG(0.125,0.5)", 3, 1e-10},
+
+		// Large numbers
+		{"log_large", "LOG(1000000)", 6, 1e-10},
+		{"log_large_base2", "LOG(1048576,2)", 20, 1e-10},
+
+		// Excel doc examples
+		{"excel_example_1", "LOG(10)", 1, 0},
+		{"excel_example_2", "LOG(8,2)", 3, 0},
+		{"excel_example_3", "LOG(86,2.7182818)", 4.4543473, 1e-4},
+
+		// Boolean coercion: TRUE=1
+		{"log_true", "LOG(TRUE)", 0, 0},
+
+		// String coercion
+		{"log_string_10", "LOG(\"10\")", 1, 0},
+		{"log_string_base", "LOG(100,\"10\")", 2, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Negative number
+		{"negative_num", "LOG(-1)", ErrValNUM},
+		{"negative_num2", "LOG(-10)", ErrValNUM},
+
+		// Zero
+		{"zero_num", "LOG(0)", ErrValNUM},
+
+		// Base = 1 → #DIV/0!
+		{"base_1", "LOG(10,1)", ErrValDIV0},
+		{"base_1_any", "LOG(1,1)", ErrValDIV0},
+
+		// Base = 0 → #NUM!
+		{"base_0", "LOG(10,0)", ErrValNUM},
+
+		// Negative base → #NUM!
+		{"negative_base", "LOG(10,-2)", ErrValNUM},
+
+		// No args
+		{"no_args", "LOG()", ErrValVALUE},
+
+		// Too many args
+		{"too_many_args", "LOG(10,2,3)", ErrValVALUE},
+
+		// Error propagation
+		{"error_prop_num", "LOG(1/0)", ErrValDIV0},
+		{"error_prop_base", "LOG(10,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
