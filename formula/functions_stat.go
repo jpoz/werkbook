@@ -25,6 +25,7 @@ func init() {
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
 	Register("FISHER", NoCtx(fnFISHER))
+	Register("FREQUENCY", NoCtx(fnFREQUENCY))
 	Register("FISHERINV", NoCtx(fnFISHERINV))
 	Register("FORECAST", NoCtx(fnFORECAST))
 	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
@@ -2220,4 +2221,82 @@ func fnPERMUTATIONA(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(math.Pow(number, numberChosen)), nil
+}
+
+// fnFREQUENCY implements the Excel FREQUENCY(data_array, bins_array) function.
+// It counts how many values in data_array fall into each interval defined by
+// bins_array. The result is a vertical array with len(bins)+1 rows.
+func fnFREQUENCY(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// collectNums flattens an argument into a slice of float64 values,
+	// ignoring text, booleans, and empty cells (matching Excel behaviour
+	// for array arguments). Propagates errors.
+	collectNums := func(v Value) ([]float64, *Value) {
+		var nums []float64
+		if v.Type == ValueArray {
+			for _, row := range v.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return nil, &cell
+					}
+					if cell.Type == ValueNumber {
+						nums = append(nums, cell.Num)
+					}
+					// text, bool, empty → skip
+				}
+			}
+		} else {
+			if v.Type == ValueError {
+				return nil, &v
+			}
+			if v.Type == ValueNumber {
+				nums = append(nums, v.Num)
+			}
+		}
+		return nums, nil
+	}
+
+	data, errVal := collectNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	bins, errVal := collectNums(args[1])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	// If bins_array is empty, return single-element array with count of data.
+	if len(bins) == 0 {
+		result := [][]Value{{NumberVal(float64(len(data)))}}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
+
+	// Sort bins in ascending order.
+	sort.Float64s(bins)
+
+	// Build frequency counts: len(bins)+1 buckets.
+	counts := make([]float64, len(bins)+1)
+	for _, v := range data {
+		placed := false
+		for i, b := range bins {
+			if v <= b {
+				counts[i]++
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			counts[len(bins)]++
+		}
+	}
+
+	// Return as vertical array (n+1 rows, 1 column).
+	result := make([][]Value, len(counts))
+	for i, c := range counts {
+		result[i] = []Value{NumberVal(c)}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
