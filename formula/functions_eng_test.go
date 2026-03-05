@@ -139,10 +139,6 @@ func TestDEC2BIN(t *testing.T) {
 			// String coercion
 			{`DEC2BIN("9")`, "1001"},
 			{`DEC2BIN("0")`, "0"},
-
-			// Boolean input
-			{"DEC2BIN(TRUE)", "1"},
-			{"DEC2BIN(FALSE)", "0"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.formula, func(t *testing.T) {
@@ -181,6 +177,10 @@ func TestDEC2BIN(t *testing.T) {
 
 			// Places > 10
 			{"DEC2BIN(1,11)", ErrValNUM},
+
+			// Boolean input (engineering functions reject booleans)
+			{"DEC2BIN(TRUE)", ErrValVALUE},
+			{"DEC2BIN(FALSE)", ErrValVALUE},
 
 			// Non-numeric input
 			{`DEC2BIN("abc")`, ErrValVALUE},

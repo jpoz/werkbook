@@ -48,6 +48,11 @@ func fnDec2Bin(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
+	// Excel engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
 	num, e := CoerceNum(args[0])
 	if e != nil {
 		return *e, nil
