@@ -892,6 +892,373 @@ func TestAVERAGEIFWithSeparateRange(t *testing.T) {
 	}
 }
 
+func TestAVERAGEIF_ComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `AVERAGEIF(A1:A5,">25")`, 40},           // 30+40+50 = 120/3
+		{"less than", `AVERAGEIF(A1:A5,"<25")`, 15},              // 10+20 = 30/2
+		{"greater or equal", `AVERAGEIF(A1:A5,">=30")`, 40},      // 30+40+50 = 120/3
+		{"less or equal", `AVERAGEIF(A1:A5,"<=20")`, 15},         // 10+20 = 30/2
+		{"equal operator", `AVERAGEIF(A1:A5,"=30")`, 30},         // 30/1
+		{"not equal", `AVERAGEIF(A1:A5,"<>30")`, 30},             // 10+20+40+50 = 120/4
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAVERAGEIF_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20+30)/3 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF all match: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(30),
+		},
+	}
+	// Numeric exact match: average cells equal to 10
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,10)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+10)/2 = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("AVERAGEIF numeric criteria: got %v, want 10", got)
+	}
+}
+
+func TestAVERAGEIF_StringExactMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple"),
+			{Col: 1, Row: 2}: StringVal("banana"),
+			{Col: 1, Row: 3}: StringVal("apple"),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(15),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (5+15)/2 = 10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("AVERAGEIF string exact: got %v, want 10", got)
+	}
+}
+
+func TestAVERAGEIF_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("APPLE"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF case insensitive: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple pie"),
+			{Col: 1, Row: 2}: StringVal("apple sauce"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"apple*",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF wildcard *: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_WildcardQuestion(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cart"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	// "ca?" matches "cat" and "car" (3 chars), not "cart" (4 chars)
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"ca?",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+20)/2 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF wildcard ?: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_EmptyCellsIgnored(t *testing.T) {
+	// Empty cells in average_range should be ignored
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// {Col: 1, Row: 2} is empty
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">=0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only 10 and 30 match >=0 (empty cells don't match numeric criteria)
+	// (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF empty cells: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+		},
+	}
+	// ">5" only matches numeric values > 5
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,">5")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10 and 30 match, (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF mixed types: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_BooleanCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"TRUE",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (100+300)/2 = 200
+	if got.Type != ValueNumber || got.Num != 200 {
+		t.Errorf("AVERAGEIF boolean: got %v, want 200", got)
+	}
+}
+
+func TestAVERAGEIF_NoMatchDIV0(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("AVERAGEIF no match: got %v, want #DIV/0!", got)
+	}
+}
+
+func TestAVERAGEIF_StringNoMatchDIV0(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A2,"xyz",B1:B2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("AVERAGEIF string no match: got %v, want #DIV/0!", got)
+	}
+}
+
+func TestAVERAGEIF_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("AVERAGEIF too few args: got %v, want error", got)
+	}
+}
+
+func TestAVERAGEIF_AvgRangeSameSize(t *testing.T) {
+	// average_range and criteria_range are the same size
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,">=2",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 2 and 3 match (>=2); avg of B2,B3 = (200+300)/2 = 250
+	if got.Type != ValueNumber || got.Num != 250 {
+		t.Errorf("AVERAGEIF same size ranges: got %v, want 250", got)
+	}
+}
+
+func TestAVERAGEIF_WithoutAvgRange(t *testing.T) {
+	// When average_range is omitted, the criteria_range is used for averaging
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(20),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A4,">8")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10+15+20 = 45, count=3, avg=15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("AVERAGEIF without avg_range: got %v, want 15", got)
+	}
+}
+
+func TestAVERAGEIF_EqualStringOperator(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"=cat",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// (10+30)/2 = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF =string: got %v, want 20", got)
+	}
+}
+
+func TestAVERAGEIF_NotEqualString(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `AVERAGEIF(A1:A3,"<>cat",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Only "dog" matches, avg = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGEIF <>string: got %v, want 20", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // SUMIF with separate sum range
 // ---------------------------------------------------------------------------

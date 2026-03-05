@@ -21,7 +21,7 @@ Werkbook supports **303** Excel formula functions.
 | AVEDEV | Statistical | - |
 | AVERAGE | Statistical | 28 |
 | AVERAGEA | Statistical | 24 |
-| AVERAGEIF | Statistical | 3 |
+| AVERAGEIF | Statistical | 42 |
 | AVERAGEIFS | Statistical | - |
 | BASE | Math & Trig | - |
 | BIN2DEC | Engineering | 38 |
