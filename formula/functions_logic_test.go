@@ -879,3 +879,305 @@ func TestIFS(t *testing.T) {
 		}
 	})
 }
+
+func TestSWITCH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("match first value", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1, 1, "one", 2, "two", 3, "three")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "one" {
+			t.Errorf(`SWITCH(1, 1,"one", 2,"two", 3,"three") = %v, want "one"`, got)
+		}
+	})
+
+	t.Run("match second value", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(2, 1, "one", 2, "two", 3, "three")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "two" {
+			t.Errorf(`SWITCH(2, 1,"one", 2,"two", 3,"three") = %v, want "two"`, got)
+		}
+	})
+
+	t.Run("match last value", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(3, 1, "one", 2, "two", 3, "three")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "three" {
+			t.Errorf(`SWITCH(3, 1,"one", 2,"two", 3,"three") = %v, want "three"`, got)
+		}
+	})
+
+	t.Run("no match without default returns NA", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(99, 1, "one", 2, "two")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf(`SWITCH(99, 1,"one", 2,"two") = %v, want #N/A`, got)
+		}
+	})
+
+	t.Run("no match with default returns default", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(99, 1, "one", 2, "two", "none")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "none" {
+			t.Errorf(`SWITCH(99, 1,"one", 2,"two", "none") = %v, want "none"`, got)
+		}
+	})
+
+	t.Run("default value is numeric", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(99, 1, "one", 2, "two", -1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -1 {
+			t.Errorf(`SWITCH(99, 1,"one", 2,"two", -1) = %v, want -1`, got)
+		}
+	})
+
+	t.Run("string matching", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH("b", "a", 1, "b", 2, "c", 3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf(`SWITCH("b", "a",1, "b",2, "c",3) = %v, want 2`, got)
+		}
+	})
+
+	t.Run("number matching", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(3.14, 1, "int", 3.14, "pi", 2.72, "e")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "pi" {
+			t.Errorf(`SWITCH(3.14, ...) = %v, want "pi"`, got)
+		}
+	})
+
+	t.Run("boolean matching TRUE", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(TRUE, FALSE, "no", TRUE, "yes")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "yes" {
+			t.Errorf(`SWITCH(TRUE, FALSE,"no", TRUE,"yes") = %v, want "yes"`, got)
+		}
+	})
+
+	t.Run("boolean matching FALSE", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(FALSE, TRUE, "yes", FALSE, "no")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "no" {
+			t.Errorf(`SWITCH(FALSE, TRUE,"yes", FALSE,"no") = %v, want "no"`, got)
+		}
+	})
+
+	t.Run("string matching is case insensitive", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH("HELLO", "hello", 1, "world", 2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf(`SWITCH("HELLO", "hello",1, "world",2) = %v, want 1`, got)
+		}
+	})
+
+	t.Run("expression as first arg", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1+1, 1, "one", 2, "two", 3, "three")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "two" {
+			t.Errorf(`SWITCH(1+1, 1,"one", 2,"two", 3,"three") = %v, want "two"`, got)
+		}
+	})
+
+	t.Run("multiple pairs match returns first match", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1, 1, "first", 1, "second", 1, "third")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "first" {
+			t.Errorf(`SWITCH(1, 1,"first", 1,"second", 1,"third") = %v, want "first"`, got)
+		}
+	})
+
+	t.Run("error expression no match returns NA", func(t *testing.T) {
+		// 1/0 evaluates to #DIV/0! which doesn't match 1 or 2, so returns #N/A
+		cf := evalCompile(t, `SWITCH(1/0, 1, "one", 2, "two")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf(`SWITCH(1/0, 1,"one", 2,"two") = %v, want #N/A`, got)
+		}
+	})
+
+	t.Run("error expression with default returns default", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1/0, 1, "one", 2, "two", "fallback")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "fallback" {
+			t.Errorf(`SWITCH(1/0, ..., "fallback") = %v, want "fallback"`, got)
+		}
+	})
+
+	t.Run("error in matched result propagates", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1, 1, 1/0, 2, "two")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf(`SWITCH(1, 1, 1/0, ...) = %v, want #DIV/0!`, got)
+		}
+	})
+
+	t.Run("error in unmatched result does not propagate", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(2, 1, 1/0, 2, "two")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "two" {
+			t.Errorf(`SWITCH(2, 1, 1/0, 2,"two") = %v, want "two"`, got)
+		}
+	})
+
+	t.Run("mixed types no match", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH("hello", 1, "num", TRUE, "bool", "nomatch")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "nomatch" {
+			t.Errorf(`SWITCH("hello", 1,"num", TRUE,"bool", "nomatch") = %v, want "nomatch"`, got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1, 2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`SWITCH(1, 2) = %v, want #VALUE!`, got)
+		}
+	})
+
+	t.Run("single pair match", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(5, 5, "five")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "five" {
+			t.Errorf(`SWITCH(5, 5,"five") = %v, want "five"`, got)
+		}
+	})
+
+	t.Run("single pair no match returns NA", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(5, 6, "six")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf(`SWITCH(5, 6,"six") = %v, want #N/A`, got)
+		}
+	})
+
+	t.Run("zero matches zero", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(0, 1, "one", 0, "zero")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "zero" {
+			t.Errorf(`SWITCH(0, 1,"one", 0,"zero") = %v, want "zero"`, got)
+		}
+	})
+
+	t.Run("empty string matches empty string", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH("", "", "empty", "a", "letter")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "empty" {
+			t.Errorf(`SWITCH("", "","empty", "a","letter") = %v, want "empty"`, got)
+		}
+	})
+
+	t.Run("result can be numeric", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH("x", "a", 10, "x", 20, "z", 30)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf(`SWITCH("x", "a",10, "x",20, "z",30) = %v, want 20`, got)
+		}
+	})
+
+	t.Run("result can be boolean", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(1, 1, TRUE, 2, FALSE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf(`SWITCH(1, 1,TRUE, 2,FALSE) = %v, want TRUE`, got)
+		}
+	})
+
+	t.Run("weekday example from docs", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(2, 1, "Sunday", 2, "Monday", 3, "Tuesday", "No match")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "Monday" {
+			t.Errorf(`SWITCH(2, 1,"Sunday", 2,"Monday", ...) = %v, want "Monday"`, got)
+		}
+	})
+
+	t.Run("weekday no match with default", func(t *testing.T) {
+		cf := evalCompile(t, `SWITCH(99, 1, "Sunday", 2, "Monday", 3, "Tuesday", "No match")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "No match" {
+			t.Errorf(`SWITCH(99, ..., "No match") = %v, want "No match"`, got)
+		}
+	})
+}
