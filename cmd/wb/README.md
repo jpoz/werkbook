@@ -24,6 +24,15 @@ wb <command> [flags] <file>
 
 ## Commands
 
+### `capabilities` — Show machine-readable CLI metadata
+
+```bash
+wb capabilities
+```
+
+Returns structured metadata for commands, flags, modes, and agent-mode behavior.
+This is the preferred discovery entrypoint for agentic usage.
+
 ### `info` — Show workbook metadata
 
 ```bash
@@ -161,6 +170,17 @@ wb formula list
 
 Returns all registered formula functions.
 
+### `help` — Show help for a command
+
+```bash
+wb help read
+wb help formula list
+wb --mode agent help read
+```
+
+In default mode, help is human-readable text.
+In `--mode agent`, help is returned as structured JSON on stdout.
+
 ### `version` — Print version
 
 ```bash
@@ -196,6 +216,20 @@ Errors are written to stderr (or stdout when `--mode agent` is enabled):
     "hint": "Check the file path. Use 'wb create' to create a new file."
   }
 }
+```
+
+### Agent mode
+
+`--mode agent` makes the CLI easier for an LLM to drive:
+
+- Forces JSON envelopes to stdout for both success and error responses
+- Returns structured help data for `wb help` and `<command> --help`
+- Pairs naturally with `wb capabilities` for command discovery
+
+Example:
+
+```bash
+wb --mode agent help read
 ```
 
 ### Exit codes

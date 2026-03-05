@@ -633,6 +633,87 @@ func TestHelpFlag(t *testing.T) {
 	}
 }
 
+func TestHelpNestedSubcommand(t *testing.T) {
+	_, stderr, code := captureRun([]string{"help", "formula", "list"})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stderr, "Usage: wb formula list") {
+		t.Errorf("expected nested help text, got:\n%s", stderr)
+	}
+}
+
+func TestAgentHelpCommandJSON(t *testing.T) {
+	stdout, stderr, code := captureRun([]string{"--mode", "agent", "help", "read"})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got: %s", stderr)
+	}
+	resp := parseResponse(t, stdout)
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+	if resp.Command != "help" {
+		t.Fatalf("expected command=help, got %s", resp.Command)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var hd helpData
+	json.Unmarshal(data, &hd)
+	if hd.Topic != "command" {
+		t.Fatalf("expected topic=command, got %s", hd.Topic)
+	}
+	if hd.Command == nil {
+		t.Fatal("expected command help payload")
+	}
+	if len(hd.Command.Path) != 1 || hd.Command.Path[0] != "read" {
+		t.Fatalf("expected path [read], got %v", hd.Command.Path)
+	}
+	if len(hd.Command.SupportedFormats) != 3 {
+		t.Fatalf("expected supported formats for read, got %v", hd.Command.SupportedFormats)
+	}
+	if len(hd.GlobalFlags) == 0 {
+		t.Fatal("expected global flags in agent help payload")
+	}
+}
+
+func TestCapabilitiesCommand(t *testing.T) {
+	stdout, stderr, code := captureRun([]string{"capabilities"})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got: %s", stderr)
+	}
+	resp := parseResponse(t, stdout)
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+	if resp.Command != "capabilities" {
+		t.Fatalf("expected command=capabilities, got %s", resp.Command)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var spec toolSpec
+	json.Unmarshal(data, &spec)
+	if spec.Name != "wb" {
+		t.Fatalf("expected tool name wb, got %s", spec.Name)
+	}
+	foundRead := false
+	foundCapabilities := false
+	for _, cmd := range spec.Commands {
+		if cmd.Name == "read" {
+			foundRead = true
+		}
+		if cmd.Name == "capabilities" {
+			foundCapabilities = true
+		}
+	}
+	if !foundRead || !foundCapabilities {
+		t.Fatalf("expected read and capabilities commands, got %+v", spec.Commands)
+	}
+}
+
 // --- Has formula ---
 
 func TestReadHasFormula(t *testing.T) {

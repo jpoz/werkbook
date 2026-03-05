@@ -45,31 +45,7 @@ func cmdDep(args []string, globals globalFlags) int {
 	cmd := "dep"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb dep [flags] <file>
-
-Show the dependency graph for a cell or range.
-
-When neither --cell nor --range is provided, auto-discovers all formula
-cells on the target sheet and shows their dependencies.
-
-Flags:
-  --cell <A1>          Show deps for a single cell
-  --range <A1:D10>     Show deps for all formula cells in range
-  --sheet <name>       Sheet name (default: first sheet)
-  --direction <both>   "precedents", "dependents", or "both" (default)
-                       Note: "dependents" searches across ALL sheets.
-  --depth <N>          Depth of transitive deps (default: 1, -1 for all)
-                       Tip: use --depth 1 for large workbooks; --depth -1
-                       is best for small dependency chains.
-
-Examples:
-  wb dep data.xlsx                                   # all formulas on first sheet
-  wb dep --sheet Sheet2 data.xlsx                    # all formulas on Sheet2
-  wb dep --cell A1 data.xlsx                         # single cell
-  wb dep --range A1:D10 --format markdown data.xlsx  # range, markdown output
-  wb dep --cell A1 --depth -1 data.xlsx              # full transitive graph
-  wb dep --direction dependents --cell A1 data.xlsx  # dependents across all sheets`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var cellFlag, rangeFlag, sheetFlag, directionFlag string

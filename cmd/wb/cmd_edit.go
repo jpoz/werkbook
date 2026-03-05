@@ -26,42 +26,7 @@ func cmdEdit(args []string, globals globalFlags) int {
 	cmd := "edit"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb edit [flags] <file>
-
-Apply JSON patch operations to an existing workbook.
-
-Flags:
-  --patch <json>     Patch JSON array (or pass via stdin)
-  --sheet <name>     Default sheet for operations (default: first sheet)
-  --output <path>    Save to a different file (default: overwrite input)
-  --dry-run          Report changes without saving
-  --validate-only    Validate and apply in-memory only (never saves)
-  --atomic           Save only if all operations succeed (default)
-  --no-atomic        Allow partial saves when operations fail
-  --plan             Include a normalized operation plan in output
-
-Patch format:
-  [
-    {"cell": "A1", "value": "hello"},
-    {"cell": "B1", "value": 42},
-    {"cell": "C1", "formula": "SUM(A1:B1)"},
-    {"cell": "D1", "style": {"font": {"bold": true}}},
-    {"cell": "A1", "clear": true},
-    {"cell": "A1:C3", "clear": true},
-    {"add_sheet": "NewSheet"},
-    {"delete_sheet": "OldSheet"},
-    {"cell": "A", "column_width": 25.0},
-    {"row": 1, "row_height": 30.0}
-  ]
-
-Examples:
-  wb edit --patch '[{"cell":"A1","value":"updated"}]' data.xlsx
-  echo '[{"cell":"B1","formula":"SUM(A1:A10)"}]' | wb edit data.xlsx
-  wb edit --dry-run --patch '[{"cell":"A1","clear":true}]' data.xlsx
-
-Note: Setting cell values does not auto-expand formula ranges. If you add
-data beyond a range like SUM(B2:B3), update the formula separately.`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var sheetFlag, patchFlag, outputFlag string

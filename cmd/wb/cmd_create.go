@@ -35,40 +35,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 	cmd := "create"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb create [flags] <file>
-
-Create a new workbook from a JSON spec.
-
-Flags:
-  --spec <json>   Spec JSON (or pass via stdin)
-
-Unknown JSON fields are rejected.
-
-Spec format:
-  {
-    "sheets": ["Sheet1", "Sheet2"],
-    "cells": [
-      {"cell": "A1", "value": "Name"},
-      {"cell": "B1", "value": 42},
-      {"cell": "C1", "formula": "SUM(A1:B1)"}
-    ],
-    "rows": [
-      {"sheet": "Sheet1", "start": "A2", "data": [["Alice", 10], ["Bob", 20]]}
-    ]
-  }
-
-Fields:
-  sheets   Array of sheet names (default: ["Sheet1"])
-  cells    Array of cell patch operations (same format as edit)
-  rows     Array of row-oriented data blocks:
-    sheet  Target sheet (default: first sheet)
-    start  Top-left cell for the data block (default: "A1")
-    data   Array of rows, each an array of values (string, number, bool, null)
-
-Examples:
-  wb create --spec '{"sheets":["S1"],"cells":[{"cell":"A1","value":"hello"}]}' out.xlsx
-  echo '{"rows":[{"start":"A1","data":[["a","b"],[1,2]]}]}' | wb create out.xlsx`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var specFlag string

@@ -42,39 +42,7 @@ func cmdRead(args []string, globals globalFlags) int {
 	cmd := "read"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb read [flags] <file>
-
-Read cell data from a workbook. Returns stored/cached values.
-Use 'calc' to force formula recalculation.
-
-Flags:
-  --sheet <name>        Read from the named sheet (default: first sheet)
-  --all-sheets          Read all sheets (mutually exclusive with --sheet)
-  --range <A1:D10>      Read a specific range (default: full used range)
-  --limit <N>           Limit output to first N data rows
-  --head <N>            Alias for --limit
-  --where <expr>        Filter rows (repeatable, AND logic)
-                        Operators: =, !=, <, >, <=, >=
-                        Column ref: header name (with --headers) or letter (A, B)
-  --include-formulas    Include formula strings in output
-  --include-styles      Include style objects in output
-  --style-summary       Include human-readable style summary per cell
-  --headers             Treat first row as headers
-  --no-dates            Disable date detection; show numbers as-is
-
-Date cells are automatically detected and returned with type "date"
-and a "formatted" field containing an ISO 8601 date string.
-
-Examples:
-  wb read data.xlsx
-  wb read --range A1:C10 data.xlsx
-  wb read --headers --include-formulas data.xlsx
-  wb read --format csv --headers data.xlsx
-  wb read --limit 5 --headers data.xlsx
-  wb read --all-sheets --format markdown data.xlsx
-  wb read --headers --where "Status=Failed" data.xlsx
-  wb read --style-summary data.xlsx`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var sheetFlag, rangeFlag string

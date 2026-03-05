@@ -115,8 +115,10 @@ func run(args []string) int {
 		return cmdDep(cmdArgs, globals)
 	case "formula":
 		return cmdFormula(cmdArgs, globals)
+	case "capabilities":
+		return cmdCapabilities(cmdArgs, globals)
 	case "version":
-		return cmdVersion(globals)
+		return cmdVersion(cmdArgs, globals)
 	case "help", "--help", "-h":
 		return cmdHelp(cmdArgs, globals)
 	default:
@@ -176,32 +178,19 @@ func nextSuggestedCommands(command string) []string {
 		return []string{"wb read <file>", "wb formula list"}
 	case "formula":
 		return []string{"wb formula list"}
+	case "capabilities":
+		return []string{"wb help read", "wb version"}
+	case "help":
+		return []string{"wb capabilities", "wb version"}
 	case "version":
-		return []string{"wb help"}
+		return []string{"wb help", "wb capabilities"}
 	default:
-		return []string{"wb help", "wb version"}
+		return []string{"wb help", "wb capabilities"}
 	}
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, `Usage: wb <command> [flags] <file>
-
-Commands:
-  info      Show sheet metadata (dimensions, cell counts)
-  read      Read cell data for a range or full sheet
-  edit      Apply JSON patch array of cell changes
-  create    Create new workbook from JSON spec
-  calc      Force recalculation and return results
-  dep       Show cell dependency graph (precedents and dependents)
-  formula   Formula-related subcommands (e.g. 'formula list')
-  version   Print version info
-
-Global flags:
-  --format <json|markdown|csv>   Output format (default: json)
-  --mode <default|agent>         Output contract mode (default: default)
-  --compact                      Emit compact JSON (no indentation)
-
-Run 'wb <command> --help' for detailed command usage.`)
+	renderToolHelp(os.Stderr, wbToolSpec())
 }
 
 // hasHelpFlag checks if --help is present in the args.
@@ -216,29 +205,8 @@ func hasHelpFlag(args []string) bool {
 
 // cmdHelp dispatches to the per-command help by injecting --help.
 func cmdHelp(args []string, globals globalFlags) int {
-	if len(args) == 0 {
-		printUsage()
-		return ExitSuccess
+	if hasHelpFlag(args) {
+		return writeHelpTopic([]string{"help"}, globals)
 	}
-	switch args[0] {
-	case "info":
-		return cmdInfo([]string{"--help"}, globals)
-	case "read":
-		return cmdRead([]string{"--help"}, globals)
-	case "edit":
-		return cmdEdit([]string{"--help"}, globals)
-	case "create":
-		return cmdCreate([]string{"--help"}, globals)
-	case "calc":
-		return cmdCalc([]string{"--help"}, globals)
-	case "dep":
-		return cmdDep([]string{"--help"}, globals)
-	case "formula":
-		return cmdFormula([]string{"--help"}, globals)
-	case "version":
-		return cmdVersion(globals)
-	default:
-		writeError("", errUsage(fmt.Sprintf("unknown command %q", args[0])), globals)
-		return ExitUsage
-	}
+	return writeHelpTopic(args, globals)
 }

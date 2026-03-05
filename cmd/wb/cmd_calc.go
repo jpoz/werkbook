@@ -12,22 +12,7 @@ func cmdCalc(args []string, globals globalFlags) int {
 	cmd := "calc"
 
 	if hasHelpFlag(args) {
-		fmt.Fprintln(os.Stderr, `Usage: wb calc [flags] <file>
-
-Force recalculation of all formulas and return results.
-Unlike 'read' (which returns cached values), 'calc' evaluates every formula.
-
-Flags:
-  --sheet <name>       Recalculate and show the named sheet (default: first sheet)
-  --range <A1:D10>     Return results for a specific range (default: full used range)
-  --output <path>      Save the recalculated workbook to a file
-  --no-dates           Disable date detection; show numbers as-is
-
-Examples:
-  wb calc data.xlsx
-  wb calc --range A1:C10 data.xlsx
-  wb calc --output recalculated.xlsx data.xlsx`)
-		return ExitSuccess
+		return writeHelpTopic([]string{cmd}, globals)
 	}
 
 	var sheetFlag, rangeFlag, outputFlag string
