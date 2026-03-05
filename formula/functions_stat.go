@@ -74,8 +74,10 @@ func init() {
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("SKEW", NoCtx(fnSKEW))
 	Register("KURT", NoCtx(fnKURT))
+	Register("VARA", NoCtx(fnVARA))
 	Register("VARP", NoCtx(fnVARP))
 	Register("VAR.P", NoCtx(fnVARP))
+	Register("VARPA", NoCtx(fnVARPA))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -1695,6 +1697,117 @@ func fnVARP(args []Value) (Value, error) {
 	n := len(nums)
 	if n < 1 {
 		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(ssq / float64(n)), nil
+}
+
+// collectNumericA collects numeric values using the "A" variant rules:
+// In arrays/ranges: numbers kept, TRUE→1, FALSE→0, text→0, empty ignored, errors propagated.
+// Direct args: numbers kept, TRUE→1, FALSE→0, text coerced to number (error if not numeric), empty ignored.
+func collectNumericA(args []Value) ([]float64, *Value) {
+	cap := 0
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				cap += len(row)
+			}
+		} else {
+			cap++
+		}
+	}
+	nums := make([]float64, 0, cap)
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return nil, &cell
+					case ValueNumber:
+						nums = append(nums, cell.Num)
+					case ValueBool:
+						if cell.Bool {
+							nums = append(nums, 1)
+						} else {
+							nums = append(nums, 0)
+						}
+					case ValueString:
+						nums = append(nums, 0)
+					case ValueEmpty:
+						// ignored
+					}
+				}
+			}
+		} else {
+			switch arg.Type {
+			case ValueError:
+				return nil, &arg
+			case ValueEmpty:
+				// ignored
+			case ValueString:
+				n, e := CoerceNum(arg)
+				if e != nil {
+					return nil, e
+				}
+				nums = append(nums, n)
+			default:
+				n, e := CoerceNum(arg)
+				if e != nil {
+					return nil, e
+				}
+				nums = append(nums, n)
+			}
+		}
+	}
+	return nums, nil
+}
+
+func fnVARA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, ev := collectNumericA(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n-1)), nil
+}
+
+func fnVARPA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, ev := collectNumericA(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
 	}
 	return NumberVal(ssq / float64(n)), nil
 }
