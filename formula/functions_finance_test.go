@@ -66,6 +66,210 @@ func TestPMT_ZeroNper(t *testing.T) {
 	assertError(t, "PMT zero nper", v)
 }
 
+func TestPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Excel doc examples ---
+		{
+			name: "Excel doc: monthly payment 8%/12, 10 months, $10000",
+			args: numArgs(0.08/12, 10, 10000),
+			want: -1037.03,
+		},
+		{
+			name: "Excel doc: payment at beginning of period (type=1)",
+			args: numArgs(0.08/12, 10, 10000, 0, 1),
+			want: -1030.16,
+		},
+		{
+			name: "Excel doc: saving for $50k over 18 years at 6%",
+			args: numArgs(0.06/12, 18*12, 0, 50000),
+			want: -129.08,
+		},
+
+		// --- Car loan ---
+		{
+			name: "5-year car loan at 6.5%",
+			args: numArgs(0.065/12, 60, 25000),
+			want: -489.15,
+		},
+
+		// --- 15-year mortgage ---
+		{
+			name: "15-year mortgage at 4%",
+			args: numArgs(0.04/12, 180, 300000),
+			want: -2219.06,
+		},
+
+		// --- Zero interest rate with fv ---
+		{
+			name: "zero rate with future value",
+			args: numArgs(0, 12, 0, 6000),
+			want: -500,
+		},
+		{
+			name: "zero rate with pv and fv",
+			args: numArgs(0, 24, 1000, 2000),
+			want: -125,
+		},
+
+		// --- Future value: pv and fv combined ---
+		{
+			name: "pv and fv combined",
+			args: numArgs(0.06/12, 60, 10000, 5000),
+			want: -264.99,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 (end of period)",
+			args: numArgs(0.10/12, 120, 50000, 0, 0),
+			want: -660.75,
+		},
+		{
+			name: "type=1 (beginning of period)",
+			args: numArgs(0.10/12, 120, 50000, 0, 1),
+			want: -655.29,
+		},
+
+		// --- Negative pv (lender perspective) ---
+		{
+			name: "negative pv gives positive payment",
+			args: numArgs(0.05/12, 360, -200000),
+			want: 1073.64,
+		},
+
+		// --- Large nper ---
+		{
+			name: "large nper: 600 months (50 years)",
+			args: numArgs(0.03/12, 600, 100000),
+			want: -321.98,
+		},
+
+		// --- All zeros except nper ---
+		{
+			name: "all zeros: pv=0, fv=0, rate=0",
+			args: numArgs(0, 10, 0),
+			want: 0,
+		},
+
+		// --- Only pv, no fv ---
+		{
+			name: "only pv, fv defaults to 0",
+			args: numArgs(0.12/12, 48, 20000),
+			want: -526.68,
+		},
+
+		// --- Only fv, no pv ---
+		{
+			name: "only fv, pv=0",
+			args: numArgs(0.05/12, 60, 0, 20000),
+			want: -294.09,
+		},
+
+		// --- String coercion ---
+		{
+			name: "string coercion for rate",
+			args: []Value{StringVal("0.05"), NumberVal(12), NumberVal(1200)},
+			want: -135.39,
+		},
+		{
+			name: "string coercion for all numeric strings",
+			args: []Value{StringVal("0"), StringVal("10"), StringVal("1000")},
+			want: -100,
+		},
+
+		// --- Savings with type=1 and fv ---
+		{
+			name: "savings: type=1 with fv",
+			args: numArgs(0.06/12, 60, 0, 10000, 1),
+			want: -142.61,
+		},
+
+		// --- High interest rate ---
+		{
+			name: "high annual rate 24%",
+			args: numArgs(0.24/12, 36, 5000),
+			want: -196.16,
+		},
+
+		// --- Error: too few arguments ---
+		{
+			name: "error: too few args (2)",
+			args: numArgs(0.05, 12),
+			wantErr: true,
+		},
+		{
+			name: "error: too few args (0)",
+			args: []Value{},
+			wantErr: true,
+		},
+
+		// --- Error: too many arguments ---
+		{
+			name: "error: too many args (6)",
+			args: numArgs(0.05, 12, 1000, 0, 0, 0),
+			wantErr: true,
+		},
+
+		// --- Error: non-numeric ---
+		{
+			name: "error: non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(12), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric nper",
+			args: []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric pv",
+			args: []Value{NumberVal(0.05), NumberVal(12), StringVal("bad")},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric fv",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), StringVal("no")},
+			wantErr: true,
+		},
+		{
+			name: "error: non-numeric type",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), NumberVal(0), StringVal("x")},
+			wantErr: true,
+		},
+
+		// --- Error propagation ---
+		{
+			name: "error propagation in rate",
+			args: []Value{ErrorVal(ErrValNUM), NumberVal(12), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name: "error propagation in fv",
+			args: []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), ErrorVal(ErrValREF)},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := fnPMT(tt.args)
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if tt.wantErr {
+				assertError(t, tt.name, v)
+			} else {
+				assertClose(t, tt.name, v, tt.want)
+			}
+		})
+	}
+}
+
 // === FV ===
 
 func TestFV_Savings(t *testing.T) {
