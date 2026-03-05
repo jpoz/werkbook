@@ -1073,3 +1073,388 @@ func TestSEQUENCE_3x3StartNegStep(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// BITAND tests
+// ---------------------------------------------------------------------------
+
+func TestBITAND(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic_1_5", "BITAND(1,5)", 1},
+		{"basic_13_25", "BITAND(13,25)", 9},
+		{"both_zero", "BITAND(0,0)", 0},
+		{"one_zero", "BITAND(0,255)", 0},
+		{"zero_other", "BITAND(255,0)", 0},
+		{"same_number", "BITAND(42,42)", 42},
+		{"all_bits", "BITAND(255,255)", 255},
+		{"no_overlap", "BITAND(170,85)", 0},
+		{"full_overlap", "BITAND(15,15)", 15},
+		{"large_near_max", "BITAND(281474976710655,281474976710655)", 281474976710655},
+		{"large_partial", "BITAND(281474976710655,1)", 1},
+		{"bool_true", "BITAND(TRUE,3)", 1},
+		{"string_num", `BITAND("7",3)`, 3},
+		{"power_of_two", "BITAND(8,12)", 8},
+		{"mixed_bits", "BITAND(6,3)", 2},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative_first", "BITAND(-1,5)", ErrValNUM},
+		{"negative_second", "BITAND(5,-1)", ErrValNUM},
+		{"non_integer_first", "BITAND(1.5,5)", ErrValNUM},
+		{"non_integer_second", "BITAND(5,1.5)", ErrValNUM},
+		{"over_max_first", "BITAND(281474976710656,1)", ErrValNUM},
+		{"over_max_second", "BITAND(1,281474976710656)", ErrValNUM},
+		{"non_numeric_first", `BITAND("abc",1)`, ErrValVALUE},
+		{"non_numeric_second", `BITAND(1,"abc")`, ErrValVALUE},
+		{"too_few_args", "BITAND(1)", ErrValVALUE},
+		{"too_many_args", "BITAND(1,2,3)", ErrValVALUE},
+		{"no_args", "BITAND()", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BITOR tests
+// ---------------------------------------------------------------------------
+
+func TestBITOR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic_1_5", "BITOR(1,5)", 5},
+		{"basic_13_25", "BITOR(13,25)", 29},
+		{"both_zero", "BITOR(0,0)", 0},
+		{"one_zero", "BITOR(0,255)", 255},
+		{"zero_other", "BITOR(255,0)", 255},
+		{"same_number", "BITOR(42,42)", 42},
+		{"all_bits", "BITOR(255,255)", 255},
+		{"no_overlap", "BITOR(170,85)", 255},
+		{"full_overlap", "BITOR(15,15)", 15},
+		{"large_near_max", "BITOR(281474976710655,0)", 281474976710655},
+		{"bool_true", "BITOR(TRUE,2)", 3},
+		{"string_num", `BITOR("4",2)`, 6},
+		{"power_of_two", "BITOR(8,4)", 12},
+		{"mixed_bits", "BITOR(6,3)", 7},
+		{"one_and_two", "BITOR(1,2)", 3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative_first", "BITOR(-1,5)", ErrValNUM},
+		{"negative_second", "BITOR(5,-1)", ErrValNUM},
+		{"non_integer_first", "BITOR(1.5,5)", ErrValNUM},
+		{"non_integer_second", "BITOR(5,1.5)", ErrValNUM},
+		{"over_max_first", "BITOR(281474976710656,1)", ErrValNUM},
+		{"over_max_second", "BITOR(1,281474976710656)", ErrValNUM},
+		{"non_numeric_first", `BITOR("abc",1)`, ErrValVALUE},
+		{"non_numeric_second", `BITOR(1,"abc")`, ErrValVALUE},
+		{"too_few_args", "BITOR(1)", ErrValVALUE},
+		{"too_many_args", "BITOR(1,2,3)", ErrValVALUE},
+		{"no_args", "BITOR()", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BITXOR tests
+// ---------------------------------------------------------------------------
+
+func TestBITXOR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic_1_5", "BITXOR(1,5)", 4},
+		{"basic_13_25", "BITXOR(13,25)", 20},
+		{"both_zero", "BITXOR(0,0)", 0},
+		{"one_zero", "BITXOR(0,255)", 255},
+		{"zero_other", "BITXOR(255,0)", 255},
+		{"same_number", "BITXOR(42,42)", 0},
+		{"all_bits", "BITXOR(255,255)", 0},
+		{"no_overlap", "BITXOR(170,85)", 255},
+		{"full_overlap", "BITXOR(15,15)", 0},
+		{"large_near_max", "BITXOR(281474976710655,0)", 281474976710655},
+		{"large_xor_self", "BITXOR(281474976710655,281474976710655)", 0},
+		{"bool_true", "BITXOR(TRUE,3)", 2},
+		{"string_num", `BITXOR("7",3)`, 4},
+		{"power_of_two", "BITXOR(8,12)", 4},
+		{"mixed_bits", "BITXOR(6,3)", 5},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative_first", "BITXOR(-1,5)", ErrValNUM},
+		{"negative_second", "BITXOR(5,-1)", ErrValNUM},
+		{"non_integer_first", "BITXOR(1.5,5)", ErrValNUM},
+		{"non_integer_second", "BITXOR(5,1.5)", ErrValNUM},
+		{"over_max_first", "BITXOR(281474976710656,1)", ErrValNUM},
+		{"over_max_second", "BITXOR(1,281474976710656)", ErrValNUM},
+		{"non_numeric_first", `BITXOR("abc",1)`, ErrValVALUE},
+		{"non_numeric_second", `BITXOR(1,"abc")`, ErrValVALUE},
+		{"too_few_args", "BITXOR(1)", ErrValVALUE},
+		{"too_many_args", "BITXOR(1,2,3)", ErrValVALUE},
+		{"no_args", "BITXOR()", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BITLSHIFT tests
+// ---------------------------------------------------------------------------
+
+func TestBITLSHIFT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic_1_3", "BITLSHIFT(1,3)", 8},
+		{"basic_4_2", "BITLSHIFT(4,2)", 16},
+		{"shift_zero", "BITLSHIFT(255,0)", 255},
+		{"number_zero", "BITLSHIFT(0,10)", 0},
+		{"both_zero", "BITLSHIFT(0,0)", 0},
+		{"shift_one", "BITLSHIFT(1,1)", 2},
+		{"large_number", "BITLSHIFT(1,47)", 140737488355328},
+		{"negative_shift_right", "BITLSHIFT(16,-2)", 4},
+		{"negative_shift_zero", "BITLSHIFT(1,-1)", 0},
+		{"bool_true", "BITLSHIFT(TRUE,2)", 4},
+		{"string_num", `BITLSHIFT("8",1)`, 16},
+		{"shift_by_one", "BITLSHIFT(5,1)", 10},
+		{"max_val_shift_zero", "BITLSHIFT(281474976710655,0)", 281474976710655},
+		{"power_of_two", "BITLSHIFT(1,10)", 1024},
+		{"large_shift_neg", "BITLSHIFT(1024,-10)", 1},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative_number", "BITLSHIFT(-1,3)", ErrValNUM},
+		{"non_integer_number", "BITLSHIFT(1.5,3)", ErrValNUM},
+		{"non_integer_shift", "BITLSHIFT(1,1.5)", ErrValNUM},
+		{"over_max_number", "BITLSHIFT(281474976710656,1)", ErrValNUM},
+		{"result_over_max", "BITLSHIFT(1,48)", ErrValNUM},
+		{"result_over_max_large", "BITLSHIFT(281474976710655,1)", ErrValNUM},
+		{"non_numeric_number", `BITLSHIFT("abc",1)`, ErrValVALUE},
+		{"non_numeric_shift", `BITLSHIFT(1,"abc")`, ErrValVALUE},
+		{"too_few_args", "BITLSHIFT(1)", ErrValVALUE},
+		{"too_many_args", "BITLSHIFT(1,2,3)", ErrValVALUE},
+		{"no_args", "BITLSHIFT()", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BITRSHIFT tests
+// ---------------------------------------------------------------------------
+
+func TestBITRSHIFT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic_8_3", "BITRSHIFT(8,3)", 1},
+		{"basic_16_2", "BITRSHIFT(16,2)", 4},
+		{"shift_zero", "BITRSHIFT(255,0)", 255},
+		{"number_zero", "BITRSHIFT(0,10)", 0},
+		{"both_zero", "BITRSHIFT(0,0)", 0},
+		{"shift_one", "BITRSHIFT(2,1)", 1},
+		{"large_number", "BITRSHIFT(140737488355328,47)", 1},
+		{"negative_shift_left", "BITRSHIFT(4,-2)", 16},
+		{"shift_to_zero", "BITRSHIFT(1,1)", 0},
+		{"bool_true", "BITRSHIFT(TRUE,0)", 1},
+		{"string_num", `BITRSHIFT("16",1)`, 8},
+		{"shift_by_one", "BITRSHIFT(10,1)", 5},
+		{"max_val_shift_zero", "BITRSHIFT(281474976710655,0)", 281474976710655},
+		{"power_of_two", "BITRSHIFT(1024,10)", 1},
+		{"large_shift_neg", "BITRSHIFT(1,-10)", 1024},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"negative_number", "BITRSHIFT(-1,3)", ErrValNUM},
+		{"non_integer_number", "BITRSHIFT(1.5,3)", ErrValNUM},
+		{"non_integer_shift", "BITRSHIFT(1,1.5)", ErrValNUM},
+		{"over_max_number", "BITRSHIFT(281474976710656,1)", ErrValNUM},
+		{"result_over_max_neg_shift", "BITRSHIFT(1,-48)", ErrValNUM},
+		{"result_over_max_large", "BITRSHIFT(281474976710655,-1)", ErrValNUM},
+		{"non_numeric_number", `BITRSHIFT("abc",1)`, ErrValVALUE},
+		{"non_numeric_shift", `BITRSHIFT(1,"abc")`, ErrValVALUE},
+		{"too_few_args", "BITRSHIFT(1)", ErrValVALUE},
+		{"too_many_args", "BITRSHIFT(1,2,3)", ErrValVALUE},
+		{"no_args", "BITRSHIFT()", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
