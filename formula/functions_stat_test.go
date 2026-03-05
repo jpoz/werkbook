@@ -517,6 +517,65 @@ func TestCOUNTIFWildcard(t *testing.T) {
 	}
 }
 
+func TestCOUNTIFWildcardEscapes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Data!A1:A10
+			{Col: 1, Row: 1}: StringVal("hello"),
+			{Col: 1, Row: 2}: StringVal("has*star"),
+			{Col: 1, Row: 3}: StringVal("*star"),
+			{Col: 1, Row: 4}: StringVal("star*"),
+			{Col: 1, Row: 5}: StringVal("a?b"),
+			{Col: 1, Row: 6}: StringVal("has?question"),
+			{Col: 1, Row: 7}: StringVal("has~tilde"),
+			{Col: 1, Row: 8}: StringVal("plain"),
+			// B column for SUMIF
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(8),
+			{Col: 2, Row: 4}: NumberVal(4),
+			{Col: 2, Row: 5}: NumberVal(9),
+			{Col: 2, Row: 6}: NumberVal(3),
+			{Col: 2, Row: 7}: NumberVal(7),
+			{Col: 2, Row: 8}: NumberVal(2),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    float64
+	}{
+		// *~** means: anything, literal *, anything → cells containing *
+		{`COUNTIF(A1:A8,"*~**")`, 3}, // has*star, *star, star*
+		// *~?* means: anything, literal ?, anything → cells containing ?
+		{`COUNTIF(A1:A8,"*~?*")`, 2}, // a?b, has?question
+		// *~~* means: anything, literal ~, anything → cells containing ~
+		{`COUNTIF(A1:A8,"*~~*")`, 1}, // has~tilde
+		// ~*star means: literal * then "star"
+		{`COUNTIF(A1:A8,"~*star")`, 1}, // *star
+		// star~* means: "star" then literal *
+		{`COUNTIF(A1:A8,"star~*")`, 1}, // star*
+		// a~?b means: "a" then literal ? then "b"
+		{`COUNTIF(A1:A8,"a~?b")`, 1}, // a?b
+		// SUMIF with wildcard escapes
+		{`SUMIF(A1:A8,"*~**",B1:B8)`, 17}, // 5+8+4 = 17
+		{`SUMIF(A1:A8,"a~?b",B1:B8)`, 9},  // row 5 = 9
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.formula, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.formula, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCOUNTIFNumericCriteria(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
