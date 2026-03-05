@@ -166,7 +166,14 @@ func fnINDEX(args []Value) (Value, error) {
 		colNum = int(cn)
 	}
 
+	// Negative indices are invalid and return #VALUE! in Excel.
+	if ri < 0 || colNum < 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
 	// row_num=0 means return the entire column (or array if col_num=0 too).
+	// The result is an array; in a single-cell (non-array) context the
+	// caller will reduce this to #VALUE! automatically.
 	if ri == 0 && colNum == 0 {
 		return arr, nil
 	}
@@ -193,10 +200,10 @@ func fnINDEX(args []Value) (Value, error) {
 
 	ri--
 	colNum--
-	if ri < 0 || ri >= len(arr.Array) {
+	if ri >= len(arr.Array) {
 		return ErrorVal(ErrValREF), nil
 	}
-	if colNum < 0 || colNum >= len(arr.Array[ri]) {
+	if colNum >= len(arr.Array[ri]) {
 		return ErrorVal(ErrValREF), nil
 	}
 	return arr.Array[ri][colNum], nil

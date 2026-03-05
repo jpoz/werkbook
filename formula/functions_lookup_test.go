@@ -654,7 +654,7 @@ func TestINDEXEdgeCases(t *testing.T) {
 		t.Errorf("INDEX col OOB: got %v, want #REF!", got)
 	}
 
-	// Two-arg form (row only, col defaults to 0 which is first col)
+	// Two-arg form (row only, col defaults to 1 which is first col)
 	cf = evalCompile(t, "INDEX(A1:B2,2)")
 	got, err = Eval(cf, resolver, nil)
 	if err != nil {
@@ -662,6 +662,47 @@ func TestINDEXEdgeCases(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 30 {
 		t.Errorf("INDEX 2-arg: got %g, want 30", got.Num)
+	}
+
+	// row_num=0 returns entire column as an array (caller reduces to #VALUE!
+	// in single-cell context).
+	cf = evalCompile(t, "INDEX(A1:B2,0,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Errorf("INDEX row=0: got %v, want 2-row array", got)
+	}
+
+	// col_num=0 returns entire row as an array.
+	cf = evalCompile(t, "INDEX(A1:B2,1,0)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Errorf("INDEX col=0: got %v, want 1x2 array", got)
+	}
+
+	// Negative row_num => #VALUE!
+	cf = evalCompile(t, "INDEX(A1:B2,-1,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("INDEX negative row: got %v, want #VALUE!", got)
+	}
+
+	// Negative col_num => #VALUE!
+	cf = evalCompile(t, "INDEX(A1:B2,1,-1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("INDEX negative col: got %v, want #VALUE!", got)
 	}
 }
 
