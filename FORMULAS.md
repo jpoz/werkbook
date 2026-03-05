@@ -104,7 +104,7 @@ Werkbook supports **303** Excel formula functions.
 | FLOOR.MATH | Math & Trig | 37 |
 | FLOOR.PRECISE | Math & Trig | 36 |
 | FORECAST | Statistical | 20 |
-| FORECAST.LINEAR | Statistical | 3 |
+| FORECAST.LINEAR | Statistical | 22 |
 | FORMULATEXT | Information | 7 |
 | FREQUENCY | Statistical | 25 |
 | FV | Financial | 4 |
