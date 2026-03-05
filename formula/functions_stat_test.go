@@ -672,6 +672,270 @@ func TestCOUNTA(t *testing.T) {
 	if got.Type != ValueNumber || got.Num != 1 {
 		t.Errorf("COUNTA scalar: got %g, want 1", got.Num)
 	}
+
+	// --- Additional comprehensive tests ---
+
+	// All numbers → count all
+	t.Run("all_numbers", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Zero is counted (not empty)
+	t.Run("zero_is_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Empty string "" IS counted by COUNTA
+	t.Run("empty_string_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+				{Col: 1, Row: 2}: StringVal("text"),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Boolean values are counted
+	t.Run("booleans_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Error values are counted
+	t.Run("errors_counted", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 2}: ErrorVal(ErrValVALUE),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %g, want 2", got.Num)
+		}
+	})
+
+	// Mixed types: numbers, strings, booleans, errors
+	t.Run("mixed_types", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+				{Col: 1, Row: 2}: StringVal("abc"),
+				{Col: 1, Row: 3}: BoolVal(false),
+				{Col: 1, Row: 4}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 5}: NumberVal(0),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Range with gaps (sparse cells)
+	t.Run("range_with_gaps", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(3),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Multiple ranges
+	t.Run("multiple_ranges", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: StringVal("x"),
+				{Col: 2, Row: 2}: StringVal("y"),
+				{Col: 2, Row: 3}: StringVal("z"),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A2,B1:B3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Multiple scalar arguments
+	t.Run("multiple_scalars", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, `COUNTA(1,2,3)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %g, want 3", got.Num)
+		}
+	})
+
+	// Mix of scalars and ranges
+	t.Run("scalars_and_ranges", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, `COUNTA(A1:A2,"extra",99)`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %g, want 4", got.Num)
+		}
+	})
+
+	// Single cell reference (non-empty)
+	t.Run("single_cell_nonempty", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(99),
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
+
+	// Single cell reference (empty)
+	t.Run("single_cell_empty", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "COUNTA(A1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %g, want 0", got.Num)
+		}
+	})
+
+	// Scalar boolean TRUE
+	t.Run("scalar_boolean", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "COUNTA(TRUE)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
+
+	// Excel doc example: date, number, decimal, TRUE, #DIV/0! → 5
+	t.Run("excel_doc_example", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790),   // date serial
+				{Col: 1, Row: 2}: NumberVal(19),       // integer
+				{Col: 1, Row: 3}: NumberVal(22.24),    // decimal
+				{Col: 1, Row: 4}: BoolVal(true),       // TRUE
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0), // #DIV/0!
+			},
+		}
+		cf := evalCompile(t, "COUNTA(A1:A5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %g, want 5", got.Num)
+		}
+	})
+
+	// Scalar empty string "" is counted
+	t.Run("scalar_empty_string", func(t *testing.T) {
+		r := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, `COUNTA("")`)
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %g, want 1", got.Num)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
