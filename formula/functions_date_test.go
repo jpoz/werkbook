@@ -785,6 +785,121 @@ func TestDATEVALUEComprehensive(t *testing.T) {
 	}
 }
 
+func TestWORKDAY(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Key dates (2025) — serial numbers:
+	// Jan 1  = 45658 (Wed), Jan 2  = 45659 (Thu), Jan 3  = 45660 (Fri)
+	// Jan 4  = 45661 (Sat), Jan 5  = 45662 (Sun), Jan 6  = 45663 (Mon)
+	// Jan 7  = 45664 (Tue), Jan 8  = 45665 (Wed), Jan 9  = 45666 (Thu)
+	// Jan 10 = 45667 (Fri), Jan 13 = 45670 (Mon), Jan 15 = 45672 (Wed)
+	//
+	// Excel doc dates:
+	// 2008-10-01 (Wed) = 39722 (start), 2009-04-30 (Thu) = 39933 (result no holidays)
+	// 2009-05-05 (Tue) = 39938 (result with holidays)
+	// Holidays: 2008-11-26 = 39778, 2008-12-04 = 39786, 2009-01-21 = 39834
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// --- Basic: add workdays, result skips weekends ---
+		// 1 workday from Wed Jan 1 → Thu Jan 2
+		{"basic_1day_wed", "WORKDAY(45658,1)", 45659, false, 0},
+		// 2 workdays from Wed Jan 1 → Fri Jan 3
+		{"basic_2days_wed", "WORKDAY(45658,2)", 45660, false, 0},
+
+		// --- Add 0 days → same date (if weekday) ---
+		{"zero_days_weekday", "WORKDAY(45658,0)", 45658, false, 0},
+		// Add 0 days on Saturday → returns Saturday serial (implementation returns start)
+		{"zero_days_saturday", "WORKDAY(45661,0)", 45661, false, 0},
+
+		// --- Add 1 day on Friday → Monday ---
+		{"friday_plus_1", "WORKDAY(45660,1)", 45663, false, 0},
+
+		// --- Add 5 days → one week later (skipping weekend) ---
+		// Wed Jan 1 + 5 workdays: Thu(1), Fri(2), Mon(3), Tue(4), Wed(5) = Jan 8
+		{"five_days_skip_weekend", "WORKDAY(45658,5)", 45665, false, 0},
+
+		// --- Add 10 days → two weeks later ---
+		// Wed Jan 1 + 10 workdays = Wed Jan 15
+		{"ten_days", "WORKDAY(45658,10)", 45672, false, 0},
+
+		// --- Negative days (go backward) ---
+		// Mon Jan 6 - 1 workday → Fri Jan 3
+		{"negative_1", "WORKDAY(45663,-1)", 45660, false, 0},
+
+		// --- Negative days crossing weekend ---
+		// Mon Jan 6 - 3 workdays: Fri(1), Thu(2), Wed(3) = Jan 1
+		{"negative_cross_weekend", "WORKDAY(45663,-3)", 45658, false, 0},
+		// Wed Jan 8 - 5 workdays: Tue(1), Mon(2), Fri(3), Thu(4), Wed(5) = Jan 1
+		{"negative_5_cross_weekend", "WORKDAY(45665,-5)", 45658, false, 0},
+
+		// --- With holidays (skips them) ---
+		// Wed Jan 1 + 5, holiday on Thu Jan 2: Fri(1), Mon(2), Tue(3), Wed(4), Thu Jan 9(5) = 45666
+		{"with_one_holiday", "WORKDAY(45658,5,45659)", 45666, false, 0},
+
+		// --- Holiday on weekend (no extra skip) ---
+		// Wed Jan 1 + 5, holiday on Sat Jan 4: same as no holidays = Jan 8
+		{"holiday_on_weekend", "WORKDAY(45658,5,45661)", 45665, false, 0},
+
+		// --- Multiple holidays ---
+		// Wed Jan 1 + 5, holidays on Thu Jan 2 and Fri Jan 3:
+		// Mon(1), Tue(2), Wed(3), Thu(4), Fri Jan 10(5) = 45667
+		{"multiple_holidays", "WORKDAY(45658,5,{45659,45660})", 45667, false, 0},
+
+		// --- Start on weekend ---
+		// Sat Jan 4 + 1 workday → Mon Jan 6
+		{"start_saturday_plus1", "WORKDAY(45661,1)", 45663, false, 0},
+		// Sun Jan 5 + 1 workday → Mon Jan 6
+		{"start_sunday_plus1", "WORKDAY(45662,1)", 45663, false, 0},
+		// Sat Jan 4 - 1 workday → Fri Jan 3
+		{"start_saturday_minus1", "WORKDAY(45661,-1)", 45660, false, 0},
+
+		// --- Large number of days ---
+		// 250 workdays from Wed Jan 1 2025 = Wed Dec 17 2025 = 46008
+		{"large_positive", "WORKDAY(45658,250)", 46008, false, 0},
+
+		// --- Too few args → error ---
+		{"too_few_args_zero", "WORKDAY()", 0, true, ErrValVALUE},
+		{"too_few_args_one", "WORKDAY(45658)", 0, true, ErrValVALUE},
+
+		// --- Too many args → error ---
+		{"too_many_args", "WORKDAY(45658,5,45659,1)", 0, true, ErrValVALUE},
+
+		// --- Excel doc examples ---
+		// WORKDAY(10/1/2008, 151) = 4/30/2009 = 39933
+		{"excel_doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
+		// WORKDAY(10/1/2008, 151, {11/26/2008,12/4/2008,1/21/2009}) = 5/5/2009 = 39938
+		{"excel_doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Fatalf("%s: want error %v, got %v", tc.formula, tc.errVal, got)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestWORKDAY_INTL(t *testing.T) {
 	resolver := &mockResolver{}
 

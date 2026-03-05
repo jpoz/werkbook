@@ -297,7 +297,7 @@ Werkbook supports **303** Excel formula functions.
 | VSTACK | Lookup & Reference | 18 |
 | WEEKDAY | Date & Time | - |
 | WEEKNUM | Date & Time | - |
-| WORKDAY | Date & Time | 1 |
+| WORKDAY | Date & Time | 23 |
 | WORKDAY.INTL | Date & Time | 33 |
 | WRAPCOLS | Lookup & Reference | 20 |
 | WRAPROWS | Lookup & Reference | 19 |
