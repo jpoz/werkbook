@@ -17,6 +17,8 @@ func init() {
 	Register("ABS", NoCtx(fnABS))
 	Register("ACOS", NoCtx(fnACOS))
 	Register("ACOSH", NoCtx(fnACOSH))
+	Register("ACOT", NoCtx(fnACOT))
+	Register("ACOTH", NoCtx(fnACOTH))
 	Register("ARABIC", NoCtx(fnARABIC))
 	Register("ASIN", NoCtx(fnASIN))
 	Register("ASINH", NoCtx(fnASINH))
@@ -492,6 +494,17 @@ func fnACOSH(args []Value) (Value, error) {
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
 	if n < 1 { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(math.Acosh(n)), nil
+}
+func fnACOT(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Pi/2 - math.Atan(n)), nil
+}
+func fnACOTH(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if n >= -1 && n <= 1 { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(0.5 * math.Log((n+1)/(n-1))), nil
 }
 func fnARABIC(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
