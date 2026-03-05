@@ -56,6 +56,7 @@ func init() {
 	Register("LOG", NoCtx(fnLOG))
 	Register("LOG10", NoCtx(fnLOG10))
 	Register("MOD", NoCtx(fnMOD))
+	Register("MDETERM", NoCtx(fnMDETERM))
 	Register("MMULT", NoCtx(fnMMULT))
 	Register("MROUND", NoCtx(fnMROUND))
 	Register("MULTINOMIAL", NoCtx(fnMULTINOMIAL))
@@ -1227,6 +1228,120 @@ func fnSERIESSUM(args []Value) (Value, error) {
 		sum += c * math.Pow(x, exp)
 	}
 	return NumberVal(sum), nil
+}
+
+func fnMDETERM(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	a := args[0]
+
+	// Propagate errors.
+	if a.Type == ValueError {
+		return a, nil
+	}
+
+	// Coerce scalar to 1x1 array.
+	if a.Type != ValueArray {
+		n, e := CoerceNum(a)
+		if e != nil {
+			return *e, nil
+		}
+		return NumberVal(n), nil
+	}
+
+	rows := len(a.Array)
+	if rows == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cols := len(a.Array[0])
+	if cols == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Must be square.
+	if rows != cols {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n := rows
+
+	// Extract numeric matrix, rejecting empty/string values.
+	mat := make([][]float64, n)
+	for r := 0; r < n; r++ {
+		if len(a.Array[r]) != cols {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat[r][c] = num
+		}
+	}
+
+	// Compute determinant via LU decomposition with partial pivoting.
+	det := luDet(mat, n)
+	return NumberVal(det), nil
+}
+
+// luDet computes the determinant of an n×n matrix using LU decomposition
+// with partial pivoting.
+func luDet(mat [][]float64, n int) float64 {
+	if n == 1 {
+		return mat[0][0]
+	}
+	if n == 2 {
+		return mat[0][0]*mat[1][1] - mat[0][1]*mat[1][0]
+	}
+
+	// Work on a copy so we don't mutate the input.
+	a := make([][]float64, n)
+	for i := range a {
+		a[i] = make([]float64, n)
+		copy(a[i], mat[i])
+	}
+
+	sign := 1.0
+	for col := 0; col < n; col++ {
+		// Partial pivoting: find the row with the largest absolute value.
+		maxVal := math.Abs(a[col][col])
+		maxRow := col
+		for row := col + 1; row < n; row++ {
+			if v := math.Abs(a[row][col]); v > maxVal {
+				maxVal = v
+				maxRow = row
+			}
+		}
+		if maxVal == 0 {
+			return 0 // Singular matrix.
+		}
+		if maxRow != col {
+			a[col], a[maxRow] = a[maxRow], a[col]
+			sign = -sign
+		}
+		pivot := a[col][col]
+		for row := col + 1; row < n; row++ {
+			factor := a[row][col] / pivot
+			for j := col + 1; j < n; j++ {
+				a[row][j] -= factor * a[col][j]
+			}
+			a[row][col] = 0
+		}
+	}
+
+	det := sign
+	for i := 0; i < n; i++ {
+		det *= a[i][i]
+	}
+	return det
 }
 
 func fnBITRSHIFT(args []Value) (Value, error) {
