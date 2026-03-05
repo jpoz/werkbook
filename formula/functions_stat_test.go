@@ -181,6 +181,215 @@ func TestCOUNTBooleanInRange(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// COUNT – comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCOUNT(t *testing.T) {
+	tests := []struct {
+		name     string
+		formula  string
+		cells    map[CellAddr]Value
+		expected float64
+	}{
+		{
+			name:    "all numbers",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+			expected: 3,
+		},
+		{
+			name:    "strings not counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+				{Col: 1, Row: 2}: StringVal("world"),
+				{Col: 1, Row: 3}: StringVal("foo"),
+			},
+			expected: 0,
+		},
+		{
+			name:    "booleans in range not counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+			expected: 1,
+		},
+		{
+			name:    "empty cells not counted",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(30),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(50),
+			},
+			expected: 3,
+		},
+		{
+			name:    "all strings yields zero",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a"),
+				{Col: 1, Row: 2}: StringVal("b"),
+				{Col: 1, Row: 3}: StringVal("c"),
+			},
+			expected: 0,
+		},
+		{
+			name:    "mixed types only numbers counted",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(100),
+				{Col: 1, Row: 2}: StringVal("text"),
+				{Col: 1, Row: 3}: BoolVal(true),
+				// A4 empty
+				{Col: 1, Row: 5}: NumberVal(200),
+			},
+			expected: 2,
+		},
+		{
+			name:    "zero is counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 1, Row: 3}: NumberVal(1),
+			},
+			expected: 3,
+		},
+		{
+			name:    "error values not counted in range",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+			expected: 2,
+		},
+		{
+			name:    "multiple ranges",
+			formula: "COUNT(A1:A2,B1:B2)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: StringVal("x"),
+			},
+			expected: 3,
+		},
+		{
+			name:    "scalar number argument counted",
+			formula: "COUNT(42)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar string not counted",
+			formula: `COUNT("hello")`,
+			cells:   map[CellAddr]Value{},
+			expected: 0,
+		},
+		{
+			name:    "scalar boolean TRUE counted",
+			formula: "COUNT(TRUE)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar boolean FALSE counted",
+			formula: "COUNT(FALSE)",
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar string number counted",
+			formula: `COUNT("5")`,
+			cells:   map[CellAddr]Value{},
+			expected: 1,
+		},
+		{
+			name:    "scalar non-numeric string not counted",
+			formula: `COUNT("abc")`,
+			cells:   map[CellAddr]Value{},
+			expected: 0,
+		},
+		{
+			name:    "range with gaps",
+			formula: "COUNT(A1:A10)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}:  NumberVal(1),
+				{Col: 1, Row: 5}:  NumberVal(5),
+				{Col: 1, Row: 10}: NumberVal(10),
+			},
+			expected: 3,
+		},
+		{
+			name:    "negative numbers counted",
+			formula: "COUNT(A1:A3)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-1),
+				{Col: 1, Row: 2}: NumberVal(-99.5),
+				{Col: 1, Row: 3}: NumberVal(0),
+			},
+			expected: 3,
+		},
+		{
+			name:    "excel doc example COUNT(A2:A6) dates and numbers",
+			formula: "COUNT(A1:A5)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790), // 12/8/2008 as serial
+				{Col: 1, Row: 2}: NumberVal(19),
+				{Col: 1, Row: 3}: NumberVal(22.24),
+				{Col: 1, Row: 4}: BoolVal(true),
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0),
+			},
+			expected: 3,
+		},
+		{
+			name:    "excel doc example with extra scalar",
+			formula: "COUNT(A1:A5,2)",
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(39790),
+				{Col: 1, Row: 2}: NumberVal(19),
+				{Col: 1, Row: 3}: NumberVal(22.24),
+				{Col: 1, Row: 4}: BoolVal(true),
+				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0),
+			},
+			expected: 4,
+		},
+		{
+			name:    "mixed scalar args",
+			formula: `COUNT(1,2,"hi",TRUE,"3")`,
+			cells:   map[CellAddr]Value{},
+			expected: 4, // 1, 2, TRUE, "3"
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := &mockResolver{cells: tc.cells}
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.expected {
+				t.Errorf("%s: got %v (%g), want %g", tc.formula, got.Type, got.Num, tc.expected)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTIF
 // ---------------------------------------------------------------------------
 
