@@ -82,7 +82,9 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 
 		case OpLoadCell:
 			addr := cf.Refs[inst.Operand]
-			push(resolver.GetCellValue(addr))
+			v := resolver.GetCellValue(addr)
+			v.FromCell = true
+			push(v)
 
 		case OpLoadRange:
 			addr := cf.Ranges[inst.Operand]

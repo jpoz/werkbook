@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -16,9 +17,15 @@ func init() {
 	Register("PPMT", NoCtx(fnPPMT))
 	Register("PV", NoCtx(fnPV))
 	Register("RATE", NoCtx(fnRATE))
+	Register("DB", NoCtx(fnDB))
+	Register("DDB", NoCtx(fnDDB))
 	Register("SLN", NoCtx(fnSLN))
 	Register("XIRR", NoCtx(fnXIRR))
 	Register("XNPV", NoCtx(fnXNPV))
+	Register("DOLLARDE", NoCtx(fnDOLLARDE))
+	Register("DOLLARFR", NoCtx(fnDOLLARFR))
+	Register("EFFECT", NoCtx(fnEFFECT))
+	Register("NOMINAL", NoCtx(fnNOMINAL))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -506,6 +513,12 @@ func fnRATE(args []Value) (Value, error) {
 		}
 	}
 
+	// When pmt=0 and fv=0 the equation reduces to pv*(1+r)^nper = 0.
+	// If pv != 0 there is no rate that satisfies this, so return #NUM!.
+	if pmt == 0 && fv == 0 && pv != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
 	rate := guess
 	for iter := 0; iter < 100; iter++ {
 		if rate <= -1 {
@@ -541,6 +554,175 @@ func fnRATE(args []Value) (Value, error) {
 		rate = newRate
 	}
 	return ErrorVal(ErrValNUM), nil
+}
+
+// fnDB implements DB(cost, salvage, life, period, [month]).
+// Returns the depreciation of an asset for a given period using the
+// fixed-declining balance method.
+func fnDB(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	period, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	month := 12.0
+	if len(args) == 5 {
+		month, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// Validate inputs.
+	if cost < 0 || salvage < 0 || life <= 0 || period < 1 || month < 1 || month > 12 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// period must be <= life, or life+1 when month < 12.
+	maxPeriod := life
+	if month < 12 {
+		maxPeriod = life + 1
+	}
+	if period > maxPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: cost is 0, depreciation is always 0.
+	if cost == 0 {
+		return NumberVal(0), nil
+	}
+
+	// If salvage >= cost, no depreciation.
+	if salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// rate = 1 - ((salvage/cost)^(1/life)), rounded to 3 decimal places.
+	rate := 1 - math.Pow(salvage/cost, 1.0/life)
+	rate = math.Round(rate*1000) / 1000
+
+	// Compute depreciation for each period up to the requested one.
+	totalDepreciation := 0.0
+	var dep float64
+	for p := 1.0; p <= period; p++ {
+		if p == 1 {
+			// First period: cost * rate * month / 12
+			dep = cost * rate * month / 12
+		} else if p == life+1 {
+			// Last fractional period (only when month < 12):
+			// (cost - totalDepreciation) * rate * (12 - month) / 12
+			dep = (cost - totalDepreciation) * rate * (12 - month) / 12
+		} else {
+			// Intermediate periods:
+			// (cost - totalDepreciation) * rate
+			dep = (cost - totalDepreciation) * rate
+		}
+		totalDepreciation += dep
+	}
+
+	return NumberVal(dep), nil
+}
+
+// fnDDB implements DDB(cost, salvage, life, period, [factor]).
+// Returns the depreciation of an asset for a given period using the
+// double-declining balance method or another specified factor.
+func fnDDB(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	period, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	factor := 2.0
+	if len(args) == 5 {
+		factor, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// All arguments must be positive; life and period must be > 0.
+	if cost < 0 || salvage < 0 || life <= 0 || period <= 0 || factor <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if period > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: cost is 0, depreciation is always 0.
+	if cost == 0 {
+		return NumberVal(0), nil
+	}
+
+	// If salvage >= cost, no depreciation.
+	if salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// Compute depreciation for each period up to the requested one.
+	// DDB formula: dep = min(bookValue * (factor/life), bookValue - salvage)
+	totalDepreciation := 0.0
+	var dep float64
+	// Period can be fractional in the sense that we iterate integer periods
+	// up to math.Floor(period), but Excel DDB treats period as integer-based.
+	// We iterate through whole periods.
+	intPeriod := int(math.Floor(period))
+	for p := 1; p <= intPeriod; p++ {
+		bookValue := cost - totalDepreciation
+		dep = bookValue * (factor / life)
+		// Cannot depreciate below salvage value.
+		if bookValue-dep < salvage {
+			dep = bookValue - salvage
+		}
+		if dep < 0 {
+			dep = 0
+		}
+		totalDepreciation += dep
+	}
+
+	// Handle fractional period: if period has a fractional part,
+	// compute pro-rata depreciation for the remaining fraction.
+	frac := period - float64(intPeriod)
+	if frac > 0 {
+		bookValue := cost - totalDepreciation
+		fullDep := bookValue * (factor / life)
+		if bookValue-fullDep < salvage {
+			fullDep = bookValue - salvage
+		}
+		if fullDep < 0 {
+			fullDep = 0
+		}
+		dep = fullDep * frac
+		totalDepreciation += dep
+	}
+
+	return NumberVal(dep), nil
 }
 
 // fnSLN implements SLN(cost, salvage, life).
@@ -635,6 +817,137 @@ func coerceDateNum(v Value) (float64, *Value) {
 		}
 	}
 	return 0, e
+}
+
+// fnDOLLARDE implements DOLLARDE(fractional_dollar, fraction).
+// Converts a dollar price expressed as a fraction into a decimal number.
+func fnDOLLARDE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	fractionalDollar, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fraction, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	// Truncate fraction to integer.
+	fraction = math.Trunc(fraction)
+	if fraction < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if fraction < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Determine sign and work with absolute value.
+	sign := 1.0
+	if fractionalDollar < 0 {
+		sign = -1.0
+		fractionalDollar = -fractionalDollar
+	}
+
+	intPart := math.Floor(fractionalDollar)
+	fracPart := fractionalDollar - intPart
+
+	// The number of digits in fraction determines how many decimal digits to extract.
+	// e.g. fraction=16 has 2 digits, so we extract 2 decimal digits from fracPart.
+	nDigits := len(fmt.Sprintf("%d", int(fraction)))
+	divisor := math.Pow(10, float64(nDigits))
+
+	// Extract the fractional portion: fracPart * divisor gives the numerator.
+	numerator := fracPart * divisor
+	result := intPart + numerator/fraction
+
+	return NumberVal(sign * result), nil
+}
+
+// fnDOLLARFR implements DOLLARFR(decimal_dollar, fraction).
+// Converts a decimal dollar price into a fractional dollar number.
+func fnDOLLARFR(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	decimalDollar, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fraction, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	// Truncate fraction to integer.
+	fraction = math.Trunc(fraction)
+	if fraction < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if fraction < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Determine sign and work with absolute value.
+	sign := 1.0
+	if decimalDollar < 0 {
+		sign = -1.0
+		decimalDollar = -decimalDollar
+	}
+
+	intPart := math.Floor(decimalDollar)
+	fracPart := decimalDollar - intPart
+
+	// The number of digits in fraction determines positioning.
+	nDigits := len(fmt.Sprintf("%d", int(fraction)))
+	divisor := math.Pow(10, float64(nDigits))
+
+	// Multiply fractional part by fraction, then place in decimal position.
+	numerator := fracPart * fraction
+	result := intPart + numerator/divisor
+
+	return NumberVal(sign * result), nil
+}
+
+// fnEFFECT implements EFFECT(nominal_rate, npery).
+// Returns the effective annual interest rate.
+func fnEFFECT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nominalRate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	npery, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	npery = math.Trunc(npery)
+	if nominalRate <= 0 || npery < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Pow(1+nominalRate/npery, npery) - 1), nil
+}
+
+// fnNOMINAL implements NOMINAL(effect_rate, npery).
+// Returns the nominal annual interest rate.
+func fnNOMINAL(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	effectRate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	npery, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	npery = math.Trunc(npery)
+	if effectRate <= 0 || npery < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(npery * (math.Pow(1+effectRate, 1/npery) - 1)), nil
 }
 
 // fnXIRR implements XIRR(values, dates, [guess]).

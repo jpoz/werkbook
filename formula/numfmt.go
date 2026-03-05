@@ -17,7 +17,7 @@ import (
 // Features implemented:
 //   - Section separator ; (positive;negative;zero;text)
 //   - Literal text: "quoted", \escaped, and passthrough of $ - + / ( ) : ! ^ & ' ~ { } = < > space
-//   - Date/time codes: d dd ddd dddd m mm mmm mmmm yy yyyy h hh m mm s ss AM/PM
+//   - Date/time codes: d dd ddd dddd m mm mmm mmmm mmmmm yy yyyy h hh m mm s ss AM/PM
 //   - Elapsed time: [h] [m] [s] with optional decimal seconds
 //   - Number codes: 0 # . , % E+/E-
 //   - Fraction codes: # #/# etc
@@ -167,6 +167,81 @@ func sectionHasFormatCodes(section string) bool {
 		// Date/time codes — Y, D, H are unambiguous; M could be month or minute
 		// but is always a date/time code in Excel formats.
 		case 'Y', 'D', 'H', 'M':
+			return true
+		}
+	}
+	return false
+}
+
+// sectionHasNumberCodes returns true if the section contains number digit
+// placeholders (0, #, ?) outside of quoted strings and escape sequences.
+func sectionHasNumberCodes(section string) bool {
+	inQuote := false
+	for i := 0; i < len(section); i++ {
+		ch := section[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == '\\' && i+1 < len(section) {
+			i++
+			continue
+		}
+		if ch == '[' {
+			for i < len(section) && section[i] != ']' {
+				i++
+			}
+			continue
+		}
+		if ch == '0' || ch == '#' || ch == '?' {
+			return true
+		}
+	}
+	return false
+}
+
+// sectionHasUnquotedLetters returns true if the section contains unquoted,
+// unescaped alphabetic characters (a-z, A-Z) that are not part of recognised
+// format sequences like E+/E-.  This is used to detect invalid number format
+// strings such as "Value: 0" where alphabetic text should be quoted.
+func sectionHasUnquotedLetters(section string) bool {
+	inQuote := false
+	for i := 0; i < len(section); i++ {
+		ch := section[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == '\\' && i+1 < len(section) {
+			i++ // skip escaped char
+			continue
+		}
+		if ch == '[' {
+			for i < len(section) && section[i] != ']' {
+				i++
+			}
+			continue
+		}
+		if ch == '_' && i+1 < len(section) {
+			i++ // skip underscore + next char
+			continue
+		}
+		if ch == '*' && i+1 < len(section) {
+			i++ // skip asterisk + next char
+			continue
+		}
+		// E followed by + or - is scientific notation, not a literal letter.
+		if (ch == 'E' || ch == 'e') && i+1 < len(section) && (section[i+1] == '+' || section[i+1] == '-') {
+			i++ // skip the +/-
+			continue
+		}
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
 			return true
 		}
 	}
@@ -544,9 +619,13 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 					if month >= 1 && month <= 12 {
 						result.WriteString(shortMonths[month])
 					}
-				default: // 4+
+				case 4:
 					if month >= 1 && month <= 12 {
 						result.WriteString(longMonths[month])
+					}
+				default: // 5+ ("MMMMM" → first letter of month name)
+					if month >= 1 && month <= 12 {
+						result.WriteByte(longMonths[month][0])
 					}
 				}
 			}
@@ -1266,7 +1345,9 @@ func formatFraction(n float64, format string) string {
 	// formatFracDigits formats a number across the digit placeholders in
 	// the token range [from, to), respecting each placeholder type.
 	// When forceZero is true, the last digit shows '0' even for # or ? placeholders.
-	formatFracDigits := func(n, from, to int, forceZero bool) string {
+	// When leftAlign is true, the number is left-justified (trailing spaces for ?),
+	// which is the correct behavior for fraction denominators.
+	formatFracDigits := func(n, from, to int, forceZero, leftAlign bool) string {
 		places := 0
 		for i := from; i < to; i++ {
 			if isDigitTok(tokens[i].kind) {
@@ -1332,7 +1413,17 @@ func formatFraction(n float64, format string) string {
 				buf.WriteString(tok.value)
 			}
 		}
-		return buf.String()
+		result := buf.String()
+		// For left-aligned mode (denominators), move leading spaces to the end
+		// so that the number is left-justified within its field width.
+		if leftAlign {
+			trimmed := strings.TrimLeft(result, " ")
+			leadingSpaces := len(result) - len(trimmed)
+			if leadingSpaces > 0 {
+				result = trimmed + strings.Repeat(" ", leadingSpaces)
+			}
+		}
+		return result
 	}
 
 	// Build output.
@@ -1342,12 +1433,12 @@ func formatFraction(n float64, format string) string {
 	}
 
 	writeFrac := func(num int, forceNum bool) {
-		result.WriteString(formatFracDigits(num, numStart, numEnd, forceNum))
+		result.WriteString(formatFracDigits(num, numStart, numEnd, forceNum, false))
 		result.WriteString(preSlash)
 		result.WriteByte('/')
 		result.WriteString(postSlash)
 		if denomEnd > 0 {
-			result.WriteString(formatFracDigits(bestDen, denomStart, denomEnd, true))
+			result.WriteString(formatFracDigits(bestDen, denomStart, denomEnd, true, true))
 		} else {
 			result.WriteString(strconv.Itoa(bestDen))
 		}

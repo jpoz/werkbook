@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Register("AVERAGE", NoCtx(fnAVERAGE))
+	Register("AVERAGEA", NoCtx(fnAVERAGEA))
 	Register("AVEDEV", NoCtx(fnAVEDEV))
 	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
 	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
@@ -30,16 +31,24 @@ func init() {
 	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
 	Register("MAX", NoCtx(fnMAX))
+	Register("MAXA", NoCtx(fnMAXA))
 	Register("MAXIFS", NoCtx(fnMAXIFS))
 	Register("MEDIAN", NoCtx(fnMEDIAN))
 	Register("MIN", NoCtx(fnMIN))
+	Register("MINA", NoCtx(fnMINA))
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
+	Register("MODE.SNGL", NoCtx(fnMODE))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
+	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
+	Register("QUARTILE.EXC", NoCtx(fnQUARTILEEXC))
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
+	Register("PERCENTRANK.EXC", NoCtx(fnPERCENTRANKEXC))
 	Register("RANK", NoCtx(fnRANK))
+	Register("RANK.EQ", NoCtx(fnRANK))
+	Register("RANK.AVG", NoCtx(fnRANKAVG))
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
@@ -75,6 +84,70 @@ func fnAVERAGE(args []Value) (Value, error) {
 	return NumberVal(sum / float64(count)), nil
 }
 
+// fnAVERAGEA calculates the average of its arguments, including text and
+// logical values.  In arrays/ranges: numbers count as their value, TRUE=1,
+// FALSE=0, text strings=0, empty cells are ignored.  For direct (non-array)
+// arguments: booleans and numbers are coerced normally; text that cannot be
+// parsed as a number returns #VALUE!.
+func fnAVERAGEA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	sum := 0.0
+	count := 0
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						sum += cell.Num
+						count++
+					case ValueBool:
+						if cell.Bool {
+							sum += 1
+						}
+						count++
+					case ValueString:
+						// Text in a range counts as 0.
+						sum += 0
+						count++
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			sum += arg.Num
+			count++
+		case ValueBool:
+			if arg.Bool {
+				sum += 1
+			}
+			count++
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			sum += n
+			count++
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
+	}
+	if count == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(sum / float64(count)), nil
+}
+
 func fnCOUNT(args []Value) (Value, error) {
 	count := 0
 	for _, arg := range args {
@@ -90,7 +163,12 @@ func fnCOUNT(args []Value) (Value, error) {
 		case ValueNumber:
 			count++
 		case ValueBool:
-			count++
+			// Direct boolean args (e.g. COUNT(TRUE)) are counted,
+			// but booleans from cell references (e.g. COUNT(A1) where
+			// A1=TRUE) are not — matching Excel behavior.
+			if !arg.FromCell {
+				count++
+			}
 		case ValueString:
 			if _, err := strconv.ParseFloat(arg.Str, 64); err == nil {
 				count++
@@ -150,6 +228,166 @@ func fnMAX(args []Value) (Value, error) {
 		return NumberVal(0), nil
 	}
 	return NumberVal(max), nil
+}
+
+// fnMAXA returns the largest value in args, including text and logical values.
+// In arrays/ranges: numbers count as their value, TRUE=1, FALSE=0, text
+// strings=0, empty cells are ignored.  For direct (non-array) arguments:
+// booleans and numbers are coerced normally; text that cannot be parsed as a
+// number returns #VALUE!.  Returns 0 when no values are found.
+func fnMAXA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	max := 0.0
+	found := false
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						if !found || cell.Num > max {
+							max = cell.Num
+							found = true
+						}
+					case ValueBool:
+						v := 0.0
+						if cell.Bool {
+							v = 1
+						}
+						if !found || v > max {
+							max = v
+							found = true
+						}
+					case ValueString:
+						// Text in a range counts as 0.
+						if !found || 0 > max {
+							max = 0
+							found = true
+						}
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			if !found || arg.Num > max {
+				max = arg.Num
+				found = true
+			}
+		case ValueBool:
+			v := 0.0
+			if arg.Bool {
+				v = 1
+			}
+			if !found || v > max {
+				max = v
+				found = true
+			}
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			if !found || n > max {
+				max = n
+				found = true
+			}
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(max), nil
+}
+
+// fnMINA returns the smallest value in args, including text and logical values.
+// In arrays/ranges: numbers count as their value, TRUE=1, FALSE=0, text
+// strings=0, empty cells are ignored.  For direct (non-array) arguments:
+// booleans and numbers are coerced normally; text that cannot be parsed as a
+// number returns #VALUE!.  Returns 0 when no values are found.
+func fnMINA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	min := 0.0
+	found := false
+	for _, arg := range args {
+		switch arg.Type {
+		case ValueArray:
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return cell, nil
+					case ValueNumber:
+						if !found || cell.Num < min {
+							min = cell.Num
+							found = true
+						}
+					case ValueBool:
+						v := 0.0
+						if cell.Bool {
+							v = 1
+						}
+						if !found || v < min {
+							min = v
+							found = true
+						}
+					case ValueString:
+						// Text in a range counts as 0.
+						if !found || 0 < min {
+							min = 0
+							found = true
+						}
+					case ValueEmpty:
+						// Empty cells are ignored.
+					}
+				}
+			}
+		case ValueError:
+			return arg, nil
+		case ValueNumber:
+			if !found || arg.Num < min {
+				min = arg.Num
+				found = true
+			}
+		case ValueBool:
+			v := 0.0
+			if arg.Bool {
+				v = 1
+			}
+			if !found || v < min {
+				min = v
+				found = true
+			}
+		case ValueString:
+			// Direct text argument: try to coerce to number.
+			n, e := CoerceNum(arg)
+			if e != nil {
+				return *e, nil
+			}
+			if !found || n < min {
+				min = n
+				found = true
+			}
+		case ValueEmpty:
+			// Empty direct arguments are ignored.
+		}
+	}
+	if !found {
+		return NumberVal(0), nil
+	}
+	return NumberVal(min), nil
 }
 
 func fnLARGE(args []Value) (Value, error) {
@@ -250,40 +488,169 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 }
 
 // MatchesCriteria checks if a value matches Excel-style criteria.
+//
+// In Excel, booleans and numbers are distinct types for criteria matching:
+//   - Numeric criteria (e.g. 1) only match numeric cells, not booleans.
+//   - Boolean criteria (e.g. TRUE) only match boolean cells, not numbers.
+//   - String criteria with comparison operators (e.g. ">0") only compare
+//     against numeric cells; booleans are excluded from numeric comparisons.
+//   - String criteria "TRUE"/"FALSE" are coerced to boolean for matching.
 func MatchesCriteria(v Value, criteria Value) bool {
 	critStr := ValueToString(criteria)
 
-	if len(critStr) >= 2 {
+	if len(critStr) >= 1 {
+		// Extract operator and operand.
+		var op, operand string
 		switch {
 		case strings.HasPrefix(critStr, ">="):
-			return CompareToCriteria(v, critStr[2:]) >= 0
+			op, operand = ">=", critStr[2:]
 		case strings.HasPrefix(critStr, "<="):
-			return CompareToCriteria(v, critStr[2:]) <= 0
+			op, operand = "<=", critStr[2:]
 		case strings.HasPrefix(critStr, "<>"):
-			return CompareToCriteria(v, critStr[2:]) != 0
+			op, operand = "<>", critStr[2:]
 		case strings.HasPrefix(critStr, ">"):
-			return CompareToCriteria(v, critStr[1:]) > 0
+			op, operand = ">", critStr[1:]
 		case strings.HasPrefix(critStr, "<"):
-			return CompareToCriteria(v, critStr[1:]) < 0
+			op, operand = "<", critStr[1:]
 		case strings.HasPrefix(critStr, "="):
-			return CompareToCriteria(v, critStr[1:]) == 0
+			op, operand = "=", critStr[1:]
+		}
+		if op != "" {
+			return matchOperator(v, op, operand)
 		}
 	}
 
-	if strings.ContainsAny(critStr, "*?") {
+	switch classifyWildcard(critStr) {
+	case wildcardFull:
 		return WildcardMatch(ValueToString(v), critStr)
+	case wildcardEscape:
+		// Pattern has escape sequences but no unescaped wildcards (e.g. "~**").
+		// Do a case-insensitive literal comparison after unescaping.
+		return strings.EqualFold(ValueToString(v), unescapePattern(critStr))
 	}
 
-	if criteria.Type == ValueNumber {
-		n, e := CoerceNum(v)
-		if e != nil {
-			return false
-		}
-		return n == criteria.Num
+	// Boolean criteria: only match boolean cells.
+	if criteria.Type == ValueBool {
+		return v.Type == ValueBool && v.Bool == criteria.Bool
 	}
+
+	// Numeric criteria: match numeric cells, and also string cells whose
+	// content parses as the same number (Excel coerces strings to numbers
+	// for COUNTIF/SUMIF criteria matching). Booleans are excluded.
+	if criteria.Type == ValueNumber {
+		if v.Type == ValueNumber {
+			return v.Num == criteria.Num
+		}
+		if v.Type == ValueString {
+			if n, err := strconv.ParseFloat(v.Str, 64); err == nil {
+				return n == criteria.Num
+			}
+		}
+		return false
+	}
+
+	// String criteria "TRUE"/"FALSE": coerce to boolean for matching.
+	// In Excel, =COUNTIF(range,"TRUE") counts only boolean TRUE cells,
+	// not cells containing the string "TRUE".
+	upper := strings.ToUpper(strings.TrimSpace(critStr))
+	if upper == "TRUE" {
+		return v.Type == ValueBool && v.Bool
+	}
+	if upper == "FALSE" {
+		return v.Type == ValueBool && !v.Bool
+	}
+
+	// Other string criteria: use case-insensitive comparison.
 	return strings.EqualFold(ValueToString(v), critStr)
 }
 
+// matchOperator applies a comparison operator to a cell value and an operand
+// string, respecting Excel's type separation between booleans and numbers.
+func matchOperator(v Value, op, operand string) bool {
+	// "=" with empty operand matches only truly empty cells (TypeEmpty).
+	// This differs from bare "" criteria which matches both empty and empty-string cells.
+	if op == "=" && operand == "" {
+		return v.Type == ValueEmpty
+	}
+	// "<>" with empty operand: everything except truly empty cells.
+	// In Excel, empty-string cells are considered non-blank for <>.
+	if op == "<>" && operand == "" {
+		return v.Type != ValueEmpty
+	}
+	upper := strings.ToUpper(strings.TrimSpace(operand))
+
+	// If the operand is a boolean literal, compare against boolean type only.
+	if upper == "TRUE" || upper == "FALSE" {
+		critBool := upper == "TRUE"
+		if v.Type == ValueBool {
+			cmp := 0
+			if v.Bool != critBool {
+				if !v.Bool {
+					cmp = -1 // FALSE < TRUE
+				} else {
+					cmp = 1
+				}
+			}
+			return evalOp(op, cmp)
+		}
+		// Non-boolean value compared to boolean operand:
+		// For <> they are not equal; for = they are not equal;
+		// for ordering operators they don't match.
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
+	// If the operand is numeric, compare against numeric cells.
+	// For the "=" operator only, also match string cells whose content
+	// parses as the same number (Excel coerces text-numbers for equality
+	// in *IF criteria, but not for ordering operators like >, <, etc.).
+	// Booleans are excluded from numeric comparisons.
+	if cn, err := strconv.ParseFloat(operand, 64); err == nil {
+		if v.Type == ValueNumber {
+			return evalOp(op, cmpFloat(v.Num, cn))
+		}
+		if op == "=" && v.Type == ValueString {
+			if n, err2 := strconv.ParseFloat(v.Str, 64); err2 == nil {
+				return cmpFloat(n, cn) == 0
+			}
+		}
+		// Boolean or other non-numeric type vs numeric operand:
+		// For <> they are not equal; otherwise no match.
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
+	// Non-numeric, non-boolean operand: plain string comparison.
+	cmp := strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(operand))
+	return evalOp(op, cmp)
+}
+
+// evalOp applies a comparison operator to a cmp result (-1, 0, 1).
+func evalOp(op string, cmp int) bool {
+	switch op {
+	case ">=":
+		return cmp >= 0
+	case "<=":
+		return cmp <= 0
+	case "<>":
+		return cmp != 0
+	case ">":
+		return cmp > 0
+	case "<":
+		return cmp < 0
+	case "=":
+		return cmp == 0
+	}
+	return false
+}
+
+// CompareToCriteria compares a value to a criteria string. This is the
+// original type-agnostic version kept for backward compatibility with
+// external callers. Internal *IF functions use compareToCriteriaTyped.
 func CompareToCriteria(v Value, critValStr string) int {
 	if n, e := CoerceNum(v); e == nil {
 		if cn, err := strconv.ParseFloat(critValStr, 64); err == nil {
@@ -293,6 +660,71 @@ func CompareToCriteria(v Value, critValStr string) int {
 	return strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(critValStr))
 }
 
+// wildcardMode describes what wildcard processing a criteria string needs.
+type wildcardMode int
+
+const (
+	wildcardNone   wildcardMode = iota // no wildcards, no escapes
+	wildcardEscape                     // escape sequences only (e.g. "~**"), no unescaped wildcards
+	wildcardFull                       // has at least one unescaped wildcard (* or ?)
+)
+
+// classifyWildcard examines a criteria string and returns what kind of
+// wildcard processing it needs.
+//
+// In Excel, ~* escapes a literal * and also absorbs any immediately
+// following identical wildcard characters.  So "~**" has no unescaped
+// wildcards (it matches literal "**"), whereas "*~**" still has unescaped
+// wildcards at the leading and trailing positions.
+func classifyWildcard(s string) wildcardMode {
+	hasEscape := false
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '~':
+			if i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
+				hasEscape = true
+				escaped := s[i+1]
+				i++ // skip the escaped char
+				// Also skip any immediately following identical wildcard chars.
+				if escaped == '*' || escaped == '?' {
+					for i+1 < len(s) && s[i+1] == escaped {
+						i++
+					}
+				}
+			}
+		case '*', '?':
+			return wildcardFull
+		}
+	}
+	if hasEscape {
+		return wildcardEscape
+	}
+	return wildcardNone
+}
+
+// unescapePattern removes tilde escape sequences from a pattern,
+// returning the literal string it represents.  This is used when
+// the pattern has escape sequences but no unescaped wildcards.
+func unescapePattern(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '~' && i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
+			b.WriteByte(s[i+1])
+			i++ // skip escaped char
+			// Also emit any immediately following identical wildcard chars.
+			if s[i] == '*' || s[i] == '?' {
+				for i+1 < len(s) && s[i+1] == s[i] {
+					i++
+					b.WriteByte(s[i])
+				}
+			}
+		} else {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
 func WildcardMatch(s, pattern string) bool {
 	return WildcardHelper(strings.ToLower(s), strings.ToLower(pattern))
 }
@@ -300,6 +732,22 @@ func WildcardMatch(s, pattern string) bool {
 func WildcardHelper(s, p string) bool {
 	for len(p) > 0 {
 		switch p[0] {
+		case '~':
+			// Escape sequence: ~* means literal *, ~? means literal ?, ~~ means literal ~
+			if len(p) >= 2 && (p[1] == '*' || p[1] == '?' || p[1] == '~') {
+				if len(s) == 0 || s[0] != p[1] {
+					return false
+				}
+				s = s[1:]
+				p = p[2:]
+			} else {
+				// Lone ~ at end or before non-special char: treat as literal ~
+				if len(s) == 0 || s[0] != '~' {
+					return false
+				}
+				s = s[1:]
+				p = p[1:]
+			}
 		case '*':
 			for len(p) > 0 && p[0] == '*' {
 				p = p[1:]
@@ -873,6 +1321,60 @@ func fnQUARTILE(args []Value) (Value, error) {
 	return fnPERCENTILE([]Value{args[0], NumberVal(q * 0.25)})
 }
 
+// fnPERCENTILEEXC implements PERCENTILE.EXC which returns the k-th percentile
+// using exclusive interpolation. k must be strictly between 0 and 1 (exclusive).
+// The rank is computed as k*(n+1), and if the rank falls outside [1, n] it
+// returns #NUM!.
+func fnPERCENTILEEXC(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	k, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	if k <= 0 || k >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	sort.Float64s(nums)
+	n := len(nums)
+	rank := k * float64(n+1)
+	if rank < 1 || rank > float64(n) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	intPart := int(rank)
+	frac := rank - float64(intPart)
+	if intPart >= n {
+		return NumberVal(nums[n-1]), nil
+	}
+	result := nums[intPart-1] + frac*(nums[intPart]-nums[intPart-1])
+	return NumberVal(result), nil
+}
+
+// fnQUARTILEEXC implements QUARTILE.EXC which returns the exclusive quartile.
+// quart must be 1, 2, or 3 (0 and 4 return #NUM!, unlike QUARTILE.INC).
+func fnQUARTILEEXC(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	q, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	q = math.Trunc(q)
+	if q <= 0 || q >= 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return fnPERCENTILEEXC([]Value{args[0], NumberVal(q * 0.25)})
+}
+
 func fnRANK(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
@@ -916,6 +1418,53 @@ func fnRANK(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(float64(rank)), nil
+}
+
+// fnRANKAVG implements RANK.AVG. It behaves like RANK except that tied values
+// receive the average of the ranks they would span.
+func fnRANKAVG(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nums, e2 := collectNumeric(args[1:2])
+	if e2 != nil {
+		return *e2, nil
+	}
+	ascending := false
+	if len(args) == 3 {
+		order, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		ascending = order != 0
+	}
+	// Count how many values match (ties) and how many are strictly better.
+	ties := 0
+	better := 0
+	for _, v := range nums {
+		if v == num {
+			ties++
+		} else if ascending {
+			if v < num {
+				better++
+			}
+		} else {
+			if v > num {
+				better++
+			}
+		}
+	}
+	if ties == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	// The tied values span ranks (better+1) through (better+ties).
+	// Average = better + 1 + (ties-1)/2 = better + (ties+1)/2.
+	avg := float64(better) + (float64(ties)+1)/2
+	return NumberVal(avg), nil
 }
 
 func fnPERCENTRANK(args []Value) (Value, error) {
@@ -992,8 +1541,78 @@ func fnPERCENTRANK(args []Value) (Value, error) {
 	return NumberVal(truncToSig(rank, int(sig))), nil
 }
 
+func fnPERCENTRANKEXC(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Collect numeric values from the array argument.
+	nums, e := collectNumeric(args[:1])
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// x must be numeric.
+	x, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+
+	// Optional significance (default 3).
+	sig := 3.0
+	if len(args) == 3 {
+		s, e3 := CoerceNum(args[2])
+		if e3 != nil {
+			return *e3, nil
+		}
+		sig = math.Trunc(s)
+		if sig < 1 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	sort.Float64s(nums)
+	n := len(nums)
+
+	// x outside data range → #N/A
+	if x < nums[0] || x > nums[n-1] {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// EXC uses rank/(n+1) where rank is 1-based position.
+	// With n values, results range from 1/(n+1) to n/(n+1), exclusive of 0 and 1.
+	denom := float64(n + 1)
+
+	// Find position of x in sorted data.
+	for i := 0; i < n; i++ {
+		if nums[i] == x {
+			rank := float64(i+1) / denom
+			return NumberVal(truncToSig(rank, int(sig))), nil
+		}
+		if nums[i] > x {
+			// Interpolate between nums[i-1] and nums[i].
+			lo := i - 1
+			loRank := float64(lo+1) / denom
+			hiRank := float64(i+1) / denom
+			frac := (x - nums[lo]) / (nums[i] - nums[lo])
+			rank := loRank + frac*(hiRank-loRank)
+			return NumberVal(truncToSig(rank, int(sig))), nil
+		}
+	}
+
+	// x equals the last element (already handled in loop, but just in case).
+	rank := float64(n) / denom
+	return NumberVal(truncToSig(rank, int(sig))), nil
+}
+
 // truncToSig truncates a float to sig decimal digits.
 func truncToSig(v float64, sig int) float64 {
+	// Round to 15 significant digits first (matching Excel precision)
+	// to eliminate FP noise before truncating.
+	v = roundTo15SigFigs(v)
 	pow := math.Pow(10, float64(sig))
 	return math.Floor(v*pow) / pow
 }

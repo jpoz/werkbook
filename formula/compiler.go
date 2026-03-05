@@ -190,6 +190,12 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *FuncCall:
 		name := strings.ToUpper(n.Name)
+		// The _xludf. prefix means "user-defined function" in Excel's
+		// saved formula format. These are not real Excel functions and
+		// must always produce #NAME?.
+		if strings.HasPrefix(name, "_XLUDF.") {
+			return fmt.Errorf("unknown function %q", n.Name)
+		}
 		// Strip OOXML prefixes (_xlfn., _xlfn._xlws.) so formulas read
 		// from XLSX files compile correctly even if the prefix wasn't
 		// removed earlier.

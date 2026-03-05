@@ -3,6 +3,7 @@ package formula
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestDATE(t *testing.T) {
@@ -106,6 +107,39 @@ func TestDAY(t *testing.T) {
 	}
 }
 
+func TestYEARMONTHDAY_Serial0(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Excel serial 0 is "January 0, 1900" — a special sentinel.
+	// YEAR(0)=1900, MONTH(0)=1, DAY(0)=0.
+	cf := evalCompile(t, "YEAR(0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(YEAR(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1900 {
+		t.Errorf("YEAR(0) = %g, want 1900", got.Num)
+	}
+
+	cf = evalCompile(t, "MONTH(0)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(MONTH(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("MONTH(0) = %g, want 1", got.Num)
+	}
+
+	cf = evalCompile(t, "DAY(0)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(DAY(0)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DAY(0) = %g, want 0", got.Num)
+	}
+}
+
 func TestNOWTODAY(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -200,6 +234,18 @@ func TestDATEDIF(t *testing.T) {
 		{"YD_cross_year", `DATEDIF(45307,45736,"YD")`, 64},
 		{"YD_within_year", `DATEDIF(45307,45672,"YD")`, 365},
 		{"YD_same_date", `DATEDIF(45307,45307,"YD")`, 0},
+
+		// YD unit — leap year boundary cases (excel-audit edge cases)
+		{"YD_leap_mar1_to_mar1", `DATEDIF(DATE(2000,3,1),DATE(2004,3,1),"YD")`, 0},
+		{"YD_leap_jan1_to_jan1", `DATEDIF(DATE(2000,1,1),DATE(2008,1,1),"YD")`, 0},
+		{"YD_leap_feb28_to_mar1", `DATEDIF(DATE(2000,2,28),DATE(2004,3,1),"YD")`, 2},
+		{"YD_leap_jan1_to_jan2", `DATEDIF(DATE(2000,1,1),DATE(2004,1,2),"YD")`, 1},
+		{"YD_leap_jul1_to_jul1", `DATEDIF(DATE(2023,7,1),DATE(2024,7,1),"YD")`, 0},
+		{"YD_leap_mar1_to_mar2", `DATEDIF(DATE(2001,3,1),DATE(2004,3,2),"YD")`, 1},
+		{"YD_leap_dec1_to_dec1", `DATEDIF(DATE(2000,12,1),DATE(2004,12,1),"YD")`, 0},
+		{"YD_leap_feb29_to_feb29", `DATEDIF(DATE(2000,2,29),DATE(2004,2,29),"YD")`, 0},
+		{"YD_leap_feb29_to_mar1", `DATEDIF(DATE(2000,2,29),DATE(2004,3,1),"YD")`, 1},
+		{"YD_leap_century_jan1", `DATEDIF(DATE(1901,1,1),DATE(2001,1,1),"YD")`, 0},
 	}
 
 	for _, tc := range tests {
@@ -253,6 +299,75 @@ func TestSerial60Boundary(t *testing.T) {
 				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
 			}
 			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestTIMEVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"noon", `TIMEVALUE("12:00")`, 0.5},
+		{"6:30 PM", `TIMEVALUE("6:30 PM")`, 0.7708333333333334},
+		{"midnight_0:00", `TIMEVALUE("0:00")`, 0},
+		{"23:59:59", `TIMEVALUE("23:59:59")`, 0.999988425925926},
+		{"1:30:45", `TIMEVALUE("1:30:45")`, 0.06302083333333333},
+		{"12:00 AM", `TIMEVALUE("12:00 AM")`, 0},
+		{"12:00 PM", `TIMEVALUE("12:00 PM")`, 0.5},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if math.Abs(got.Num-tc.want) > 1e-12 {
+				t.Errorf("%s = %.18g, want %.18g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEVALUE_extended(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"two_digit_year", `DATEVALUE("03/04/25")`, 45720},
+		{"date_with_time", `DATEVALUE("2025-03-04 12:00")`, 45720},
+		{"month_day_only", `DATEVALUE("March 4")`, func() float64 {
+			// Use current year
+			now := time.Now()
+			t := time.Date(now.Year(), 3, 4, 0, 0, 0, 0, time.UTC)
+			return math.Floor(TimeToExcelSerial(t))
+		}()},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
 				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
 			}
 		})

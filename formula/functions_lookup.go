@@ -166,7 +166,14 @@ func fnINDEX(args []Value) (Value, error) {
 		colNum = int(cn)
 	}
 
+	// Negative indices are invalid and return #VALUE! in Excel.
+	if ri < 0 || colNum < 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
 	// row_num=0 means return the entire column (or array if col_num=0 too).
+	// The result is an array; in a single-cell (non-array) context the
+	// caller will reduce this to #VALUE! automatically.
 	if ri == 0 && colNum == 0 {
 		return arr, nil
 	}
@@ -193,10 +200,10 @@ func fnINDEX(args []Value) (Value, error) {
 
 	ri--
 	colNum--
-	if ri < 0 || ri >= len(arr.Array) {
+	if ri >= len(arr.Array) {
 		return ErrorVal(ErrValREF), nil
 	}
-	if colNum < 0 || colNum >= len(arr.Array[ri]) {
+	if colNum >= len(arr.Array[ri]) {
 		return ErrorVal(ErrValREF), nil
 	}
 	return arr.Array[ri][colNum], nil
@@ -259,22 +266,42 @@ func fnMATCH(args []Value) (Value, error) {
 		return NumberVal(float64(last + 1)), nil
 
 	case -1:
-		// Approximate match (descending). Same approach: skip empties,
-		// scan all values, track last position where value >= lookup.
-		last := -1
-		for i, v := range values {
+		// Approximate match (descending). Excel uses a binary search
+		// expecting descending-sorted data. We replicate that binary
+		// search so that unsorted data produces the same result (often
+		// #N/A) as Excel.
+		n := len(values)
+		if n == 0 {
+			return ErrorVal(ErrValNA), nil
+		}
+		lo, hi := 0, n-1
+		result := -1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			v := values[mid]
 			if v.Type == ValueEmpty {
+				// Treat empty as less than any lookup value, search left.
+				hi = mid - 1
 				continue
 			}
 			cmp := CompareValues(v, lookup)
-			if cmp >= 0 {
-				last = i
+			if cmp == 0 {
+				// Exact match – smallest value >= lookup.
+				return NumberVal(float64(mid + 1)), nil
+			} else if cmp > 0 {
+				// v > lookup – this is a candidate (>= lookup), but
+				// there might be a smaller one further right (descending).
+				result = mid
+				lo = mid + 1
+			} else {
+				// v < lookup – need larger values, go left (descending).
+				hi = mid - 1
 			}
 		}
-		if last < 0 {
+		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		return NumberVal(float64(last + 1)), nil
+		return NumberVal(float64(result + 1)), nil
 	}
 
 	return ErrorVal(ErrValVALUE), nil

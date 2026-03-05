@@ -143,28 +143,26 @@ func TestOR(t *testing.T) {
 		}
 	})
 
-	t.Run("string args treated as truthy", func(t *testing.T) {
-		// Non-empty strings are truthy via IsTruthy
-		tests := []struct {
-			formula string
-			want    bool
-		}{
-			{`OR("hello")`, true},
-			{`OR("TRUE")`, true},
-			{`OR("FALSE")`, true}, // non-empty string is truthy
-			{`OR("",FALSE)`, false},
-			{`OR("",TRUE)`, true},
-			{`OR("text",FALSE)`, true},
+	t.Run("direct string args return VALUE error", func(t *testing.T) {
+		// In Excel, direct string arguments to OR cause #VALUE!
+		tests := []string{
+			`OR("hello")`,
+			`OR("TRUE")`,
+			`OR("FALSE")`,
+			`OR("")`,
+			`OR("text",FALSE)`,
+			`OR("1")`,
+			`OR("0")`,
 		}
-		for _, tt := range tests {
-			t.Run(tt.formula, func(t *testing.T) {
-				cf := evalCompile(t, tt.formula)
+		for _, formula := range tests {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
 				got, err := Eval(cf, resolver, nil)
 				if err != nil {
-					t.Fatalf("Eval(%q): %v", tt.formula, err)
+					t.Fatalf("Eval(%q): %v", formula, err)
 				}
-				if got.Type != ValueBool || got.Bool != tt.want {
-					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("Eval(%q) = %v, want #VALUE!", formula, got)
 				}
 			})
 		}
@@ -317,6 +315,113 @@ func TestOR(t *testing.T) {
 		}
 		if got.Type != ValueBool || got.Bool != true {
 			t.Errorf("OR(A1:A3) = %v, want true", got)
+		}
+	})
+}
+
+func TestANDStringArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("direct string args return VALUE error", func(t *testing.T) {
+		tests := []string{
+			`AND("text")`,
+			`AND("1")`,
+			`AND("TRUE")`,
+		}
+		for _, formula := range tests {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", formula, err)
+				}
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("Eval(%q) = %v, want #VALUE!", formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("string in range is skipped", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("text"),
+				{Col: 1, Row: 2}: BoolVal(true),
+			},
+		}
+		cf := evalCompile(t, "AND(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("AND(A1:A2) = %v, want true", got)
+		}
+	})
+}
+
+func TestXORStringArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("direct string args are skipped", func(t *testing.T) {
+		// XOR skips strings (both direct and from ranges), unlike AND/OR which error.
+		tests := []struct {
+			formula string
+			want    bool
+		}{
+			{`XOR("text",1)`, true},    // skip "text", XOR(1) = true
+			{`XOR("text",TRUE)`, true}, // skip "text", XOR(TRUE) = true
+			{`XOR("1",0)`, false},      // skip "1", XOR(0) = false
+			{`XOR("0",0)`, false},      // skip "0", XOR(0) = false
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueBool || got.Bool != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("string in cell reference is skipped", func(t *testing.T) {
+		// XOR(Data!A1, 1) where A1 contains "text" → string is skipped, XOR(1) = TRUE
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("text"),
+				{Col: 1, Row: 2}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "XOR(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("XOR(A1:A2) = %v, want true (string skipped, only 1 counts)", got)
+		}
+	})
+}
+
+func TestORStringInRange(t *testing.T) {
+	t.Run("string in range is skipped", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("text"),
+				{Col: 1, Row: 2}: BoolVal(true),
+			},
+		}
+		cf := evalCompile(t, "OR(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("OR(A1:A2) = %v, want true", got)
 		}
 	})
 }
