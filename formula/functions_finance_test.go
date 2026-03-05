@@ -922,6 +922,182 @@ func TestRATE_NoSolution(t *testing.T) {
 	}
 }
 
+func TestRATE_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic: loan rate calculation ---
+		{
+			name: "basic 30yr mortgage rate",
+			// RATE(360, -1073.64, 200000) ≈ 0.05/12
+			args: numArgs(360, -1073.64, 200000),
+			want: 0.05 / 12,
+		},
+		// --- Excel doc example ---
+		{
+			name: "Excel doc: 4yr loan monthly, RATE(48, -200, 8000)",
+			// Excel says ~1% per month
+			args: numArgs(48, -200, 8000),
+			want: 0.0077,
+		},
+		// --- With future value ---
+		{
+			name: "with future value, pv to fv with payments",
+			// RATE(120, -100, 0, 20000) — saving $100/mo to reach $20000
+			args: numArgs(120, -100, 0, 20000),
+			want: 0.00596, // ~7.15% annual
+		},
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type=0 end of period (default)",
+			// RATE(60, -500, 25000, 0, 0)
+			args: numArgs(60, -500, 25000, 0, 0),
+			want: 0.003242,
+		},
+		{
+			name: "type=1 beginning of period",
+			// RATE(60, -500, 25000, 0, 1)
+			args: numArgs(60, -500, 25000, 0, 1),
+			want: 0.003231,
+		},
+		// --- With explicit guess ---
+		{
+			name: "explicit guess close to answer",
+			// RATE(360, -1073.64, 200000, 0, 0, 0.004)
+			args: numArgs(360, -1073.64, 200000, 0, 0, 0.004),
+			want: 0.05 / 12,
+		},
+		{
+			name: "explicit guess far from answer",
+			// RATE(48, -200, 8000, 0, 0, 0.5)
+			args: numArgs(48, -200, 8000, 0, 0, 0.5),
+			want: 0.0077,
+		},
+		// --- Zero payment: pv to fv only ---
+		{
+			name: "zero payment pv to fv",
+			// RATE(10, 0, -1000, 1500) — what rate turns 1000 into 1500 in 10 periods?
+			// (1+r)^10 = 1.5 → r ≈ 0.04138
+			args: numArgs(10, 0, -1000, 1500),
+			want: 0.04138,
+		},
+		// --- Savings scenario ---
+		{
+			name: "savings monthly contributions",
+			// RATE(240, -300, 0, 150000) — save $300/mo for 20yr to get $150k
+			args: numArgs(240, -300, 0, 150000),
+			want: 0.003055, // ~3.67% annual
+		},
+		// --- High rate result ---
+		{
+			name: "high rate result",
+			// RATE(12, -1000, 5000) — short loan, large payments relative to principal
+			args: numArgs(12, -1000, 5000),
+			want: 0.16943,
+		},
+		// --- Low rate result ---
+		{
+			name: "low rate result",
+			// RATE(360, -1000, 350000) — low rate mortgage
+			args: numArgs(360, -1000, 350000),
+			want: 0.000953,
+		},
+		// --- Negative nper → #NUM! ---
+		{
+			name: "negative nper",
+			args: numArgs(-12, -100, 1000),
+			want: 0,
+			wantErr: true,
+		},
+		// --- Zero nper → #NUM! ---
+		{
+			name: "zero nper",
+			args: numArgs(0, -100, 1000),
+			want: 0,
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnRATE(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestRATE_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "too few args",
+			args: numArgs(360, -1073.64),
+		},
+		{
+			name: "too many args",
+			args: numArgs(360, -1073.64, 200000, 0, 0, 0.1, 99),
+		},
+		{
+			name: "non-numeric nper",
+			args: []Value{StringVal("abc"), NumberVal(-1073.64), NumberVal(200000)},
+		},
+		{
+			name: "non-numeric pmt",
+			args: []Value{NumberVal(360), StringVal("abc"), NumberVal(200000)},
+		},
+		{
+			name: "non-numeric pv",
+			args: []Value{NumberVal(360), NumberVal(-1073.64), StringVal("abc")},
+		},
+		{
+			name: "no convergence pmt=0 fv=0 pv!=0",
+			// pmt=0, fv=0, pv≠0: no rate satisfies the equation
+			args: numArgs(60, 0, 50000),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnRATE(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestRATE_PMT_RoundTrip(t *testing.T) {
+	// Verify: PMT(RATE(nper, pmt, pv), nper, pv) ≈ pmt
+	nper := 360.0
+	pmt := -1073.64
+	pv := 200000.0
+
+	rateVal, err := fnRATE(numArgs(nper, pmt, pv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rateVal.Type != ValueNumber {
+		t.Fatalf("RATE returned non-number: %v", rateVal)
+	}
+
+	pmtVal, err := fnPMT(numArgs(rateVal.Num, nper, pv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PMT(RATE(...),...) round-trip", pmtVal, pmt)
+}
+
 // === IPMT ===
 
 func TestIPMT_FirstPayment(t *testing.T) {
