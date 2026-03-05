@@ -381,6 +381,427 @@ func TestSUMIFSArgErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SUMIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSUMIFS_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+			// Criteria range (B) — scores
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `SUMIFS(A1:A5,B1:B5,">30")`, 90},       // 40+50
+		{"less than", `SUMIFS(A1:A5,B1:B5,"<30")`, 30},           // 10+20
+		{"greater or equal", `SUMIFS(A1:A5,B1:B5,">=30")`, 120},  // 30+40+50
+		{"less or equal", `SUMIFS(A1:A5,B1:B5,"<=30")`, 60},      // 10+20+30
+		{"equal", `SUMIFS(A1:A5,B1:B5,"=30")`, 30},               // 30
+		{"not equal", `SUMIFS(A1:A5,B1:B5,"<>30")`, 120},         // 10+20+40+50
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("got %v, want %g", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSUMIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 1}: StringVal("apple"),
+			{Col: 2, Row: 2}: StringVal("banana"),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A2,B1:B2,"cherry")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("SUMIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestSUMIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(15),
+			{Col: 2, Row: 3}: NumberVal(25),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Errorf("SUMIFS all match: got %v, want 60", got)
+	}
+}
+
+func TestSUMIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Bananas"),
+		},
+	}
+
+	// Wildcard * matches any sequence of characters
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"A*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples(5) + Apples(4) + Artichokes(15) = 24
+	if got.Type != ValueNumber || got.Num != 24 {
+		t.Errorf("SUMIFS wildcard *: got %v, want 24", got)
+	}
+}
+
+func TestSUMIFS_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 1}: StringVal("cat"),
+			{Col: 2, Row: 2}: StringVal("car"),
+			{Col: 2, Row: 3}: StringVal("cab"),
+			{Col: 2, Row: 4}: StringVal("dogs"),
+		},
+	}
+
+	// ? matches any single character: "ca?" matches cat, car, cab but not dogs
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 10+20+30 = 60
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Errorf("SUMIFS wildcard ?: got %v, want 60", got)
+	}
+}
+
+func TestSUMIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: StringVal("Apple"),
+			{Col: 2, Row: 2}: StringVal("APPLE"),
+			{Col: 2, Row: 3}: StringVal("apple"),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All three should match case-insensitively: 100+200+300 = 600
+	if got.Type != ValueNumber || got.Num != 600 {
+		t.Errorf("SUMIFS case insensitive: got %v, want 600", got)
+	}
+}
+
+func TestSUMIFS_EmptyCellsInSumRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// A2 is empty (not in map)
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Empty cells in sum range contribute 0: 10+0+30 = 40
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Errorf("SUMIFS empty sum cells: got %v, want 40", got)
+	}
+}
+
+func TestSUMIFS_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("text"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// text is not numeric so CoerceNum skips it, TRUE coerces to 1: 10+0+30+1 = 41
+	if got.Type != ValueNumber || got.Num != 41 {
+		t.Errorf("SUMIFS mixed types: got %v, want 41", got)
+	}
+}
+
+func TestSUMIFS_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Only 1 arg — need at least 3
+	cf := evalCompile(t, "SUMIFS(A1:A3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("SUMIFS too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIFS_EvenArgsAfterSumRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// 4 args total: sum_range + 3 => (4-1)%2 != 0 => error
+	cf := evalCompile(t, `SUMIFS(A1:A1,B1:B1,1,C1:C1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("SUMIFS even args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIFS_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Exact numeric match: criteria=5 matches rows 1 and 3
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,5)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIFS numeric criteria: got %v, want 400", got)
+	}
+}
+
+func TestSUMIFS_BooleanCriteriaRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: BoolVal(true),
+			{Col: 2, Row: 2}: BoolVal(false),
+			{Col: 2, Row: 3}: BoolVal(true),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows 1 and 3 match TRUE: 10+30 = 40
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Errorf("SUMIFS boolean criteria: got %v, want 40", got)
+	}
+}
+
+func TestSUMIFS_StringCriteriaNotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Carrots"),
+		},
+	}
+
+	// Sum where product is NOT Bananas
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,"<>Bananas")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 5+10 = 15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("SUMIFS not-equal string: got %v, want 15", got)
+	}
+}
+
+func TestSUMIFS_MultipleCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A): quantities
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(22),
+			{Col: 1, Row: 6}: NumberVal(12),
+			// Product (B)
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Artichokes"),
+			{Col: 2, Row: 5}: StringVal("Bananas"),
+			{Col: 2, Row: 6}: StringVal("Bananas"),
+			// Salesperson (C)
+			{Col: 3, Row: 1}: StringVal("Tom"),
+			{Col: 3, Row: 2}: StringVal("Sarah"),
+			{Col: 3, Row: 3}: StringVal("Tom"),
+			{Col: 3, Row: 4}: StringVal("Sarah"),
+			{Col: 3, Row: 5}: StringVal("Tom"),
+			{Col: 3, Row: 6}: StringVal("Sarah"),
+		},
+	}
+
+	// Sum where product starts with "A*" AND salesperson is "Tom"
+	cf := evalCompile(t, `SUMIFS(A1:A6,B1:B6,"A*",C1:C6,"Tom")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples/Tom(5) + Artichokes/Tom(15) = 20
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("SUMIFS multiple criteria: got %v, want 20", got)
+	}
+}
+
+func TestSUMIFS_DateSerialNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A): amounts
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			// Date range (B): Excel serial numbers
+			// 44927 = 2023-01-01, 44958 = 2023-02-01, 44986 = 2023-03-01
+			{Col: 2, Row: 1}: NumberVal(44927),
+			{Col: 2, Row: 2}: NumberVal(44958),
+			{Col: 2, Row: 3}: NumberVal(44986),
+		},
+	}
+
+	// Sum amounts where date > 2023-01-15 (serial 44942)
+	cf := evalCompile(t, `SUMIFS(A1:A3,B1:B3,">44942")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// 44958 and 44986 > 44942: 200+300 = 500
+	if got.Type != ValueNumber || got.Num != 500 {
+		t.Errorf("SUMIFS date serials: got %v, want 500", got)
+	}
+}
+
+func TestSUMIFS_ThreeCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Sum range (A)
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			// Criteria range 1 (B) — region
+			{Col: 2, Row: 1}: StringVal("East"),
+			{Col: 2, Row: 2}: StringVal("East"),
+			{Col: 2, Row: 3}: StringVal("West"),
+			{Col: 2, Row: 4}: StringVal("East"),
+			// Criteria range 2 (C) — product
+			{Col: 3, Row: 1}: StringVal("Widget"),
+			{Col: 3, Row: 2}: StringVal("Gadget"),
+			{Col: 3, Row: 3}: StringVal("Widget"),
+			{Col: 3, Row: 4}: StringVal("Widget"),
+			// Criteria range 3 (D) — qty
+			{Col: 4, Row: 1}: NumberVal(10),
+			{Col: 4, Row: 2}: NumberVal(20),
+			{Col: 4, Row: 3}: NumberVal(30),
+			{Col: 4, Row: 4}: NumberVal(50),
+		},
+	}
+
+	// East AND Widget AND qty>10 => only row 4 (400)
+	cf := evalCompile(t, `SUMIFS(A1:A4,B1:B4,"East",C1:C4,"Widget",D1:D4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIFS three criteria: got %v, want 400", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // COUNTIFS — multiple criteria
 // ---------------------------------------------------------------------------
 
