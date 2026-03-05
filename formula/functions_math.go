@@ -67,6 +67,7 @@ func init() {
 	Register("ROUNDUP", NoCtx(fnROUNDUP))
 	Register("SEC", NoCtx(fnSEC))
 	Register("SECH", NoCtx(fnSECH))
+	Register("SEQUENCE", NoCtx(fnSEQUENCE))
 	Register("SIGN", NoCtx(fnSIGN))
 	Register("SIN", NoCtx(fnSIN))
 	Register("SINH", NoCtx(fnSINH))
@@ -965,6 +966,59 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 		return args
 	}
 	return out
+}
+
+func fnSEQUENCE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rowsF, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	rows := int(math.Trunc(rowsF))
+	cols := 1
+	if len(args) >= 2 {
+		colsF, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		cols = int(math.Trunc(colsF))
+	}
+	start := 1.0
+	if len(args) >= 3 {
+		s, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		start = s
+	}
+	step := 1.0
+	if len(args) >= 4 {
+		s, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		step = s
+	}
+	if rows <= 0 || cols <= 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+	// Single cell: return scalar number.
+	if rows == 1 && cols == 1 {
+		return NumberVal(start), nil
+	}
+	cur := start
+	result := make([][]Value, rows)
+	for r := 0; r < rows; r++ {
+		row := make([]Value, cols)
+		for c := 0; c < cols; c++ {
+			row[c] = NumberVal(cur)
+			cur += step
+		}
+		result[r] = row
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnTAN(args []Value) (Value, error) {
