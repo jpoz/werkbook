@@ -421,6 +421,420 @@ func TestCOUNTIFS(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// COUNTIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCOUNTIFS_SingleCriteriaNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(2),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A5,2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS single number: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_ComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(15),
+			{Col: 1, Row: 5}: NumberVal(20),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    float64
+		label   string
+	}{
+		{`COUNTIFS(A1:A5,">5")`, 3, ">5"},
+		{`COUNTIFS(A1:A5,"<=10")`, 3, "<=10"},
+		{`COUNTIFS(A1:A5,"<>10")`, 4, "<>10"},
+		{`COUNTIFS(A1:A5,">=10")`, 3, ">=10"},
+		{`COUNTIFS(A1:A5,"<10")`, 2, "<10"},
+		{`COUNTIFS(A1:A5,"=10")`, 1, "=10"},
+	}
+	for _, tt := range tests {
+		cf := evalCompile(t, tt.formula)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval %s: %v", tt.label, err)
+		}
+		if got.Type != ValueNumber || got.Num != tt.want {
+			t.Errorf("COUNTIFS %s: got %g, want %g", tt.label, got.Num, tt.want)
+		}
+	}
+}
+
+func TestCOUNTIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("COUNTIFS no matches: got %g, want 0", got.Num)
+	}
+}
+
+func TestCOUNTIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS all match: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MultipleCriteriaPairs(t *testing.T) {
+	// A = category, B = region, C = quantity
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("fruit"),
+			{Col: 1, Row: 2}: StringVal("veg"),
+			{Col: 1, Row: 3}: StringVal("fruit"),
+			{Col: 1, Row: 4}: StringVal("fruit"),
+			{Col: 2, Row: 1}: StringVal("east"),
+			{Col: 2, Row: 2}: StringVal("east"),
+			{Col: 2, Row: 3}: StringVal("west"),
+			{Col: 2, Row: 4}: StringVal("east"),
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(20),
+			{Col: 3, Row: 3}: NumberVal(30),
+			{Col: 3, Row: 4}: NumberVal(40),
+		},
+	}
+
+	// fruit AND east AND >5 => rows 1 (10) and 4 (40)
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"fruit",B1:B4,"east",C1:C4,">5")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS 3 pairs: got %g, want 2", got.Num)
+	}
+
+	// fruit AND west => row 3 only
+	cf = evalCompile(t, `COUNTIFS(A1:A4,"fruit",B1:B4,"west")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIFS fruit+west: got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple pie"),
+			{Col: 1, Row: 2}: StringVal("apple sauce"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 1, Row: 4}: StringVal("pineapple"),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"apple*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS wildcard *: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardQuestion(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cab"),
+			{Col: 1, Row: 4}: StringVal("cart"),
+		},
+	}
+	// "ca?" matches 3-char strings starting with "ca": cat, car, cab
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS wildcard ?: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("APPLE"),
+			{Col: 1, Row: 3}: StringVal("apple"),
+			{Col: 1, Row: 4}: StringVal("banana"),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS case-insensitive: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_EmptyCells(t *testing.T) {
+	// Rows 2 and 4 have no value in column A (empty)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+		},
+	}
+	// Count where A>0: only rows 1 and 3 have numeric values >0
+	cf := evalCompile(t, `COUNTIFS(A1:A4,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS empty cells: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_BooleanValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 4}: BoolVal(false),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS boolean TRUE: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 1, Row: 5}: StringVal("5"),
+		},
+	}
+	// Numeric criteria 5 matches NumberVal(5) and StringVal("5") (coerced)
+	cf := evalCompile(t, `COUNTIFS(A1:A5,5)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS mixed types: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_ErrorNoArgs(t *testing.T) {
+	cf := evalCompile(t, `COUNTIFS()`)
+	got, err := Eval(cf, &mockResolver{}, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("COUNTIFS no args: expected error, got type %v", got.Type)
+	}
+}
+
+func TestCOUNTIFS_ErrorOddArgs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A1,"=1",A1:A1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("COUNTIFS odd args: expected error, got type %v", got.Type)
+	}
+}
+
+func TestCOUNTIFS_DateSerialNumbers(t *testing.T) {
+	// Excel serial: 44197 = 2021-01-01, 44228 = 2021-02-01, 44256 = 2021-03-01
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(44197),
+			{Col: 1, Row: 2}: NumberVal(44228),
+			{Col: 1, Row: 3}: NumberVal(44256),
+			{Col: 1, Row: 4}: NumberVal(44300),
+		},
+	}
+	// Count dates after 2021-02-01 (serial > 44228)
+	cf := evalCompile(t, `COUNTIFS(A1:A4,">44228")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS date serials: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_MultipleRangesAND(t *testing.T) {
+	// Test that all criteria pairs must match (AND logic)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: StringVal("yes"),
+			{Col: 2, Row: 2}: StringVal("no"),
+			{Col: 2, Row: 3}: StringVal("yes"),
+		},
+	}
+	// A>15 AND B="yes" => only row 3 (30, yes)
+	cf := evalCompile(t, `COUNTIFS(A1:A3,">15",B1:B3,"yes")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("COUNTIFS AND logic: got %g, want 1", got.Num)
+	}
+}
+
+func TestCOUNTIFS_SameRangeTwice(t *testing.T) {
+	// Use same range with two different criteria (between logic)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 1, Row: 4}: NumberVal(15),
+			{Col: 1, Row: 5}: NumberVal(20),
+		},
+	}
+	// A>=5 AND A<=15 => rows 2,3,4
+	cf := evalCompile(t, `COUNTIFS(A1:A5,">=5",A1:A5,"<=15")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS same range twice: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_TextExact(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("yes"),
+			{Col: 1, Row: 2}: StringVal("Yes"),
+			{Col: 1, Row: 3}: StringVal("YES"),
+			{Col: 1, Row: 4}: StringVal("no"),
+			{Col: 1, Row: 5}: StringVal("yesss"),
+		},
+	}
+	// "yes" matches case-insensitively but must be exact (not "yesss")
+	cf := evalCompile(t, `COUNTIFS(A1:A5,"yes")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("COUNTIFS text exact: got %g, want 3", got.Num)
+	}
+}
+
+func TestCOUNTIFS_NotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(0),
+			{Col: 1, Row: 4}: NumberVal(10),
+		},
+	}
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"<>0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS <>0: got %g, want 2", got.Num)
+	}
+}
+
+func TestCOUNTIFS_WildcardWithCriteriaPair(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("apple"),
+			{Col: 1, Row: 2}: StringVal("apricot"),
+			{Col: 1, Row: 3}: StringVal("banana"),
+			{Col: 1, Row: 4}: StringVal("avocado"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+	// A starts with "a" AND B>15
+	cf := evalCompile(t, `COUNTIFS(A1:A4,"a*",B1:B4,">15")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// apricot (20>15) and avocado (40>15) => 2
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNTIFS wildcard+criteria: got %g, want 2", got.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // AVERAGEIF
 // ---------------------------------------------------------------------------
 

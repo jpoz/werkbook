@@ -55,7 +55,7 @@ Werkbook supports **303** Excel formula functions.
 | COUNTA | Statistical | 3 |
 | COUNTBLANK | Statistical | 5 |
 | COUNTIF | Statistical | 17 |
-| COUNTIFS | Statistical | 2 |
+| COUNTIFS | Statistical | 46 |
 | COVAR | Statistical | - |
 | COVARIANCE.P | Statistical | - |
 | COVARIANCE.S | Statistical | - |
