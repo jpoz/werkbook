@@ -132,6 +132,18 @@ func TestRATE_Loan(t *testing.T) {
 	assertClose(t, "RATE loan", v, 0.05/12)
 }
 
+func TestRATE_NoSolution(t *testing.T) {
+	// RATE(60, 0, 50000) — pmt=0, fv=0, pv≠0: no solution exists.
+	// Excel returns #NUM!.
+	v, err := fnRATE(numArgs(60, 0, 50000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected #NUM! error, got %v", v)
+	}
+}
+
 // === IPMT ===
 
 func TestIPMT_FirstPayment(t *testing.T) {

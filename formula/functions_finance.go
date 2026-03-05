@@ -513,6 +513,12 @@ func fnRATE(args []Value) (Value, error) {
 		}
 	}
 
+	// When pmt=0 and fv=0 the equation reduces to pv*(1+r)^nper = 0.
+	// If pv != 0 there is no rate that satisfies this, so return #NUM!.
+	if pmt == 0 && fv == 0 && pv != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
 	rate := guess
 	for iter := 0; iter < 100; iter++ {
 		if rate <= -1 {
