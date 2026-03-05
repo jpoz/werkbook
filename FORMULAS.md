@@ -148,7 +148,7 @@ Werkbook supports **303** Excel formula functions.
 | LEFT | Text | 42 |
 | LEN | Text | 29 |
 | LN | Math & Trig | - |
-| LOG | Math & Trig | 1 |
+| LOG | Math & Trig | 35 |
 | LOG10 | Math & Trig | - |
 | LOOKUP | Lookup & Reference | - |
 | LOWER | Text | 23 |
