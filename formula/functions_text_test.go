@@ -1431,3 +1431,66 @@ func TestTEXTDigitPlaceholders(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// T comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("string_returns_string", func(t *testing.T) {
+		cf := evalCompile(t, `T("hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello" {
+			t.Errorf("T(\"hello\") = %v, want string(hello)", got)
+		}
+	})
+
+	t.Run("number_returns_empty", func(t *testing.T) {
+		cf := evalCompile(t, `T(123)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf("T(123) = %v, want empty string", got)
+		}
+	})
+
+	t.Run("bool_returns_empty", func(t *testing.T) {
+		cf := evalCompile(t, `T(TRUE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf("T(TRUE) = %v, want empty string", got)
+		}
+	})
+
+	t.Run("error_propagates_div0", func(t *testing.T) {
+		cf := evalCompile(t, `T(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("T(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagates_na", func(t *testing.T) {
+		cf := evalCompile(t, `T(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("T(NA()) = %v, want error", got)
+		}
+	})
+}

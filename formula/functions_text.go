@@ -674,6 +674,9 @@ func fnT(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
 	if args[0].Type == ValueString {
 		return args[0], nil
 	}
