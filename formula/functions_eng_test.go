@@ -218,6 +218,135 @@ func TestDEC2BIN(t *testing.T) {
 	})
 }
 
+func TestDEC2HEX(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{"DEC2HEX(0)", "0"},
+			{"DEC2HEX(1)", "1"},
+			{"DEC2HEX(9)", "9"},
+			{"DEC2HEX(10)", "A"},
+			{"DEC2HEX(15)", "F"},
+			{"DEC2HEX(16)", "10"},
+			{"DEC2HEX(100)", "64"},
+			{"DEC2HEX(255)", "FF"},
+			{"DEC2HEX(256)", "100"},
+			{"DEC2HEX(1000)", "3E8"},
+			{"DEC2HEX(65535)", "FFFF"},
+
+			// With places
+			{"DEC2HEX(255,4)", "00FF"},
+			{"DEC2HEX(1,8)", "00000001"},
+			{"DEC2HEX(0,4)", "0000"},
+			{"DEC2HEX(10,1)", "A"},
+			{"DEC2HEX(255,10)", "00000000FF"},
+
+			// Negative numbers (two's complement)
+			{"DEC2HEX(-1)", "FFFFFFFFFF"},
+			{"DEC2HEX(-2)", "FFFFFFFFFE"},
+			{"DEC2HEX(-100)", "FFFFFFFF9C"},
+			{"DEC2HEX(-256)", "FFFFFFFF00"},
+			{"DEC2HEX(-16)", "FFFFFFFFF0"},
+
+			// Boundaries
+			{"DEC2HEX(549755813887)", "7FFFFFFFFF"},
+			{"DEC2HEX(-549755813888)", "8000000000"},
+
+			// Non-integer truncation
+			{"DEC2HEX(15.9)", "F"},
+			{"DEC2HEX(15.1)", "F"},
+			{"DEC2HEX(-1.9)", "FFFFFFFFFF"},
+			{"DEC2HEX(100.7)", "64"},
+
+			// String coercion
+			{`DEC2HEX("255")`, "FF"},
+			{`DEC2HEX("0")`, "0"},
+			{`DEC2HEX("100")`, "64"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Out of range
+			{"DEC2HEX(549755813888)", ErrValNUM},
+			{"DEC2HEX(-549755813889)", ErrValNUM},
+			{"DEC2HEX(999999999999)", ErrValNUM},
+			{"DEC2HEX(-999999999999)", ErrValNUM},
+
+			// Places too small
+			{"DEC2HEX(255,1)", ErrValNUM},
+			{"DEC2HEX(256,2)", ErrValNUM},
+			{"DEC2HEX(65535,3)", ErrValNUM},
+
+			// Places = 0
+			{"DEC2HEX(1,0)", ErrValNUM},
+
+			// Negative places
+			{"DEC2HEX(1,-1)", ErrValNUM},
+
+			// Places > 10
+			{"DEC2HEX(1,11)", ErrValNUM},
+
+			// Boolean input (engineering functions reject booleans)
+			{"DEC2HEX(TRUE)", ErrValVALUE},
+			{"DEC2HEX(FALSE)", ErrValVALUE},
+
+			// Non-numeric input
+			{`DEC2HEX("abc")`, ErrValVALUE},
+
+			// Non-numeric places
+			{`DEC2HEX(1,"abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"DEC2HEX()", "DEC2HEX(1,2,3)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestDEC2OCT(t *testing.T) {
 	resolver := &mockResolver{}
 
