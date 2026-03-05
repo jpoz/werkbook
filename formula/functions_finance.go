@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ func init() {
 	Register("SLN", NoCtx(fnSLN))
 	Register("XIRR", NoCtx(fnXIRR))
 	Register("XNPV", NoCtx(fnXNPV))
+	Register("DOLLARDE", NoCtx(fnDOLLARDE))
+	Register("DOLLARFR", NoCtx(fnDOLLARFR))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -806,6 +809,95 @@ func coerceDateNum(v Value) (float64, *Value) {
 		}
 	}
 	return 0, e
+}
+
+// fnDOLLARDE implements DOLLARDE(fractional_dollar, fraction).
+// Converts a dollar price expressed as a fraction into a decimal number.
+func fnDOLLARDE(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	fractionalDollar, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fraction, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	// Truncate fraction to integer.
+	fraction = math.Trunc(fraction)
+	if fraction < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if fraction < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Determine sign and work with absolute value.
+	sign := 1.0
+	if fractionalDollar < 0 {
+		sign = -1.0
+		fractionalDollar = -fractionalDollar
+	}
+
+	intPart := math.Floor(fractionalDollar)
+	fracPart := fractionalDollar - intPart
+
+	// The number of digits in fraction determines how many decimal digits to extract.
+	// e.g. fraction=16 has 2 digits, so we extract 2 decimal digits from fracPart.
+	nDigits := len(fmt.Sprintf("%d", int(fraction)))
+	divisor := math.Pow(10, float64(nDigits))
+
+	// Extract the fractional portion: fracPart * divisor gives the numerator.
+	numerator := fracPart * divisor
+	result := intPart + numerator/fraction
+
+	return NumberVal(sign * result), nil
+}
+
+// fnDOLLARFR implements DOLLARFR(decimal_dollar, fraction).
+// Converts a decimal dollar price into a fractional dollar number.
+func fnDOLLARFR(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	decimalDollar, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	fraction, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	// Truncate fraction to integer.
+	fraction = math.Trunc(fraction)
+	if fraction < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if fraction < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Determine sign and work with absolute value.
+	sign := 1.0
+	if decimalDollar < 0 {
+		sign = -1.0
+		decimalDollar = -decimalDollar
+	}
+
+	intPart := math.Floor(decimalDollar)
+	fracPart := decimalDollar - intPart
+
+	// The number of digits in fraction determines positioning.
+	nDigits := len(fmt.Sprintf("%d", int(fraction)))
+	divisor := math.Pow(10, float64(nDigits))
+
+	// Multiply fractional part by fraction, then place in decimal position.
+	numerator := fracPart * fraction
+	result := intPart + numerator/divisor
+
+	return NumberVal(sign * result), nil
 }
 
 // fnXIRR implements XIRR(values, dates, [guess]).

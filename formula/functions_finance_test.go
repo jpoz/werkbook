@@ -757,6 +757,291 @@ func TestDDB_ErrorFactorZero(t *testing.T) {
 	assertError(t, "DDB factor=0", v)
 }
 
+// === DOLLARDE ===
+
+func TestDOLLARDE_ExcelExample1(t *testing.T) {
+	// DOLLARDE(1.02, 16) = 1.125
+	v, err := fnDOLLARDE(numArgs(1.02, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.02,16)", v, 1.125)
+}
+
+func TestDOLLARDE_ExcelExample2(t *testing.T) {
+	// DOLLARDE(1.1, 32) = 1.3125
+	v, err := fnDOLLARDE(numArgs(1.1, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.1,32)", v, 1.3125)
+}
+
+func TestDOLLARDE_WholeNumber(t *testing.T) {
+	// DOLLARDE(5.0, 8) = 5.0
+	v, err := fnDOLLARDE(numArgs(5.0, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(5.0,8)", v, 5.0)
+}
+
+func TestDOLLARDE_Fraction8(t *testing.T) {
+	// DOLLARDE(1.4, 8) = 1.5 (4/8 = 0.5)
+	v, err := fnDOLLARDE(numArgs(1.4, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.4,8)", v, 1.5)
+}
+
+func TestDOLLARDE_Fraction4(t *testing.T) {
+	// DOLLARDE(1.1, 4) = 1.25 (1/4 = 0.25)
+	v, err := fnDOLLARDE(numArgs(1.1, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.1,4)", v, 1.25)
+}
+
+func TestDOLLARDE_Fraction2(t *testing.T) {
+	// DOLLARDE(1.1, 2) = 1.5 (1/2 = 0.5)
+	v, err := fnDOLLARDE(numArgs(1.1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.1,2)", v, 1.5)
+}
+
+func TestDOLLARDE_Negative(t *testing.T) {
+	// DOLLARDE(-1.02, 16) = -1.125
+	v, err := fnDOLLARDE(numArgs(-1.02, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(-1.02,16)", v, -1.125)
+}
+
+func TestDOLLARDE_Zero(t *testing.T) {
+	// DOLLARDE(0, 16) = 0
+	v, err := fnDOLLARDE(numArgs(0, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(0,16)", v, 0)
+}
+
+func TestDOLLARDE_FractionTruncated(t *testing.T) {
+	// DOLLARDE(1.02, 16.9) should truncate fraction to 16 => 1.125
+	v, err := fnDOLLARDE(numArgs(1.02, 16.9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.02,16.9)", v, 1.125)
+}
+
+func TestDOLLARDE_Fraction1(t *testing.T) {
+	// DOLLARDE(1.5, 1) = 1 + 5/1 = 6
+	v, err := fnDOLLARDE(numArgs(1.5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.5,1)", v, 6.0)
+}
+
+func TestDOLLARDE_LargeFraction(t *testing.T) {
+	// DOLLARDE(1.001, 100) = 1 + 1/100 = 1.01
+	v, err := fnDOLLARDE(numArgs(1.001, 100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(1.001,100)", v, 1.01)
+}
+
+func TestDOLLARDE_ErrorFractionNegative(t *testing.T) {
+	v, _ := fnDOLLARDE(numArgs(1.02, -1))
+	assertError(t, "DOLLARDE fraction<0", v)
+}
+
+func TestDOLLARDE_ErrorFractionZero(t *testing.T) {
+	v, _ := fnDOLLARDE(numArgs(1.02, 0))
+	assertError(t, "DOLLARDE fraction=0", v)
+}
+
+func TestDOLLARDE_ErrorFractionBetween0And1(t *testing.T) {
+	// Fraction 0.5 truncates to 0 => #DIV/0!
+	v, _ := fnDOLLARDE(numArgs(1.02, 0.5))
+	assertError(t, "DOLLARDE fraction=0.5", v)
+}
+
+func TestDOLLARDE_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnDOLLARDE(numArgs(1.02))
+	assertError(t, "DOLLARDE too few args", v)
+}
+
+func TestDOLLARDE_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnDOLLARDE(numArgs(1.02, 16, 99))
+	assertError(t, "DOLLARDE too many args", v)
+}
+
+func TestDOLLARDE_NegativeWithFraction8(t *testing.T) {
+	// DOLLARDE(-1.4, 8) = -1.5
+	v, err := fnDOLLARDE(numArgs(-1.4, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARDE(-1.4,8)", v, -1.5)
+}
+
+// === DOLLARFR ===
+
+func TestDOLLARFR_ExcelExample1(t *testing.T) {
+	// DOLLARFR(1.125, 16) = 1.02
+	v, err := fnDOLLARFR(numArgs(1.125, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.125,16)", v, 1.02)
+}
+
+func TestDOLLARFR_ExcelExample2(t *testing.T) {
+	// DOLLARFR(1.125, 32) = 1.04
+	v, err := fnDOLLARFR(numArgs(1.125, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.125,32)", v, 1.04)
+}
+
+func TestDOLLARFR_WholeNumber(t *testing.T) {
+	// DOLLARFR(5.0, 8) = 5.0
+	v, err := fnDOLLARFR(numArgs(5.0, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(5.0,8)", v, 5.0)
+}
+
+func TestDOLLARFR_Fraction8(t *testing.T) {
+	// DOLLARFR(1.5, 8) = 1.4 (0.5 * 8 = 4, placed as .4 since 8 is 1 digit)
+	v, err := fnDOLLARFR(numArgs(1.5, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.5,8)", v, 1.4)
+}
+
+func TestDOLLARFR_Fraction4(t *testing.T) {
+	// DOLLARFR(1.25, 4) = 1.1 (0.25 * 4 = 1, placed as .1)
+	v, err := fnDOLLARFR(numArgs(1.25, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.25,4)", v, 1.1)
+}
+
+func TestDOLLARFR_Fraction2(t *testing.T) {
+	// DOLLARFR(1.5, 2) = 1.1 (0.5 * 2 = 1, placed as .1)
+	v, err := fnDOLLARFR(numArgs(1.5, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.5,2)", v, 1.1)
+}
+
+func TestDOLLARFR_Negative(t *testing.T) {
+	// DOLLARFR(-1.125, 16) = -1.02
+	v, err := fnDOLLARFR(numArgs(-1.125, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(-1.125,16)", v, -1.02)
+}
+
+func TestDOLLARFR_Zero(t *testing.T) {
+	// DOLLARFR(0, 16) = 0
+	v, err := fnDOLLARFR(numArgs(0, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(0,16)", v, 0)
+}
+
+func TestDOLLARFR_FractionTruncated(t *testing.T) {
+	// DOLLARFR(1.125, 16.9) should truncate to 16 => 1.02
+	v, err := fnDOLLARFR(numArgs(1.125, 16.9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.125,16.9)", v, 1.02)
+}
+
+func TestDOLLARFR_Fraction1(t *testing.T) {
+	// DOLLARFR(6.0, 1) = 1 + ? ... actually 6.0 integer=6, frac=0, so 6.0
+	v, err := fnDOLLARFR(numArgs(6.0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(6.0,1)", v, 6.0)
+}
+
+func TestDOLLARFR_LargeFraction(t *testing.T) {
+	// DOLLARFR(1.01, 100) = 1.001 (0.01 * 100 = 1, placed as .001)
+	v, err := fnDOLLARFR(numArgs(1.01, 100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(1.01,100)", v, 1.001)
+}
+
+func TestDOLLARFR_ErrorFractionNegative(t *testing.T) {
+	v, _ := fnDOLLARFR(numArgs(1.125, -1))
+	assertError(t, "DOLLARFR fraction<0", v)
+}
+
+func TestDOLLARFR_ErrorFractionZero(t *testing.T) {
+	v, _ := fnDOLLARFR(numArgs(1.125, 0))
+	assertError(t, "DOLLARFR fraction=0", v)
+}
+
+func TestDOLLARFR_ErrorFractionBetween0And1(t *testing.T) {
+	// Fraction 0.5 truncates to 0 => #DIV/0!
+	v, _ := fnDOLLARFR(numArgs(1.125, 0.5))
+	assertError(t, "DOLLARFR fraction=0.5", v)
+}
+
+func TestDOLLARFR_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnDOLLARFR(numArgs(1.125))
+	assertError(t, "DOLLARFR too few args", v)
+}
+
+func TestDOLLARFR_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnDOLLARFR(numArgs(1.125, 16, 99))
+	assertError(t, "DOLLARFR too many args", v)
+}
+
+func TestDOLLARFR_NegativeWithFraction8(t *testing.T) {
+	// DOLLARFR(-1.5, 8) = -1.4
+	v, err := fnDOLLARFR(numArgs(-1.5, 8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DOLLARFR(-1.5,8)", v, -1.4)
+}
+
+func TestDOLLARDE_DOLLARFR_RoundTrip(t *testing.T) {
+	// DOLLARDE(DOLLARFR(1.125, 16), 16) should equal 1.125
+	fr, err := fnDOLLARFR(numArgs(1.125, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	de, err := fnDOLLARDE(numArgs(fr.Num, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "round-trip DOLLARDE(DOLLARFR(1.125,16),16)", de, 1.125)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{
