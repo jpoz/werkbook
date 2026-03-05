@@ -94,6 +94,133 @@ func TestMathErrors(t *testing.T) {
 	}
 }
 
+func TestPOWER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Basic exponentiation
+		{"2_cubed", "POWER(2,3)", 8, 0},
+		{"5_squared", "POWER(5,2)", 25, 0},
+
+		// Power of 0 → 1
+		{"power_of_zero", "POWER(7,0)", 1, 0},
+		{"large_base_power_zero", "POWER(999,0)", 1, 0},
+
+		// Power of 1 → same number
+		{"power_of_one", "POWER(7,1)", 7, 0},
+		{"neg_base_power_one", "POWER(-3,1)", -3, 0},
+
+		// Number 0, positive power → 0
+		{"zero_base_pos_power", "POWER(0,5)", 0, 0},
+		{"zero_base_large_power", "POWER(0,100)", 0, 0},
+
+		// Negative base, integer power
+		{"neg_base_even_power", "POWER(-3,2)", 9, 0},
+		{"neg_base_odd_power", "POWER(-3,3)", -27, 0},
+		{"neg_base_power_4", "POWER(-2,4)", 16, 0},
+
+		// Negative base, fractional power (odd root) → real result
+		{"neg_base_cube_root", "POWER(-8,1/3)", -2, 1e-10},
+
+		// Fractional power (square root)
+		{"square_root", "POWER(4,0.5)", 2, 1e-10},
+		{"cube_root_pos", "POWER(27,1/3)", 3, 1e-10},
+		{"fourth_root", "POWER(16,0.25)", 2, 1e-10},
+
+		// Negative power (reciprocal)
+		{"neg_power", "POWER(2,-1)", 0.5, 1e-10},
+		{"neg_power_squared", "POWER(2,-2)", 0.25, 1e-10},
+		{"neg_power_3", "POWER(10,-3)", 0.001, 1e-10},
+
+		// Large values
+		{"large_result", "POWER(10,10)", 1e10, 0},
+		{"large_base", "POWER(100,3)", 1e6, 0},
+
+		// String coercion
+		{"string_base", "POWER(\"2\",3)", 8, 0},
+		{"string_power", "POWER(2,\"3\")", 8, 0},
+		{"string_both", "POWER(\"5\",\"2\")", 25, 0},
+
+		// Boolean coercion
+		{"bool_true_base", "POWER(TRUE,5)", 1, 0},
+		{"bool_false_base_pos", "POWER(FALSE,5)", 0, 0},
+		{"bool_true_power", "POWER(3,TRUE)", 3, 0},
+		{"bool_false_power", "POWER(3,FALSE)", 1, 0},
+
+		// Excel doc examples
+		{"doc_ex1", "POWER(5,2)", 25, 0},
+		{"doc_ex2", "POWER(98.6,3.2)", 2401077.2220695773, 1e-3},
+		{"doc_ex3", "POWER(4,5/4)", 5.656854249, 1e-6},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else {
+				if math.Abs(got.Num-tt.wantNum) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.wantNum, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// 0^0 → #NUM!
+		{"zero_power_zero", "POWER(0,0)", ErrValNUM},
+		// 0^negative → #DIV/0!
+		{"zero_neg_power", "POWER(0,-1)", ErrValDIV0},
+		{"zero_neg_power_2", "POWER(0,-5)", ErrValDIV0},
+		// Negative base, fractional (non-odd-root) power → #NUM!
+		{"neg_base_frac_power", "POWER(-4,0.5)", ErrValNUM},
+		{"neg_base_even_frac", "POWER(-8,1/4)", ErrValNUM},
+		{"neg_base_arb_frac", "POWER(-2,1.5)", ErrValNUM},
+		// Too few args
+		{"no_args", "POWER()", ErrValVALUE},
+		{"one_arg", "POWER(2)", ErrValVALUE},
+		// Too many args
+		{"three_args", "POWER(2,3,4)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric_base", "POWER(\"abc\",2)", ErrValVALUE},
+		{"non_numeric_power", "POWER(2,\"abc\")", ErrValVALUE},
+		// Error propagation
+		{"err_div0_base", "POWER(1/0,2)", ErrValDIV0},
+		{"err_div0_power", "POWER(2,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestABS(t *testing.T) {
 	resolver := &mockResolver{}
 
