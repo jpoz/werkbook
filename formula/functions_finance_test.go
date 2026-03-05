@@ -2044,6 +2044,106 @@ func TestSLN_ZeroLife(t *testing.T) {
 	assertError(t, "SLN zero life", v)
 }
 
+func TestSLN_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Excel documentation example
+		{"excel doc example", numArgs(30000, 7500, 10), 2250, false},
+		// Zero salvage value
+		{"zero salvage", numArgs(30000, 0, 10), 3000, false},
+		// Salvage equals cost → zero depreciation
+		{"salvage equals cost", numArgs(10000, 10000, 5), 0, false},
+		// Salvage > cost → negative depreciation
+		{"salvage greater than cost", numArgs(5000, 8000, 10), -300, false},
+		// Life = 1
+		{"life is 1", numArgs(10000, 2000, 1), 8000, false},
+		// Large values
+		{"large values", numArgs(1e9, 1e6, 20), 4.995e7, false},
+		// Small decimals
+		{"small decimals", numArgs(0.50, 0.10, 4), 0.10, false},
+		// Zero cost
+		{"zero cost", numArgs(0, 0, 10), 0, false},
+		// Zero cost with salvage → negative
+		{"zero cost with salvage", numArgs(0, 5000, 10), -500, false},
+		// Negative cost
+		{"negative cost", numArgs(-10000, 2000, 5), -2400, false},
+		// Fractional life
+		{"fractional life", numArgs(10000, 0, 2.5), 4000, false},
+		// Large life
+		{"large life", numArgs(10000, 0, 1000), 10, false},
+		// Negative salvage
+		{"negative salvage", numArgs(10000, -2000, 5), 2400, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestSLN_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		// Life = 0 → #DIV/0!
+		{"life zero", numArgs(30000, 7500, 0)},
+		// Too few args
+		{"too few args 0", []Value{}},
+		{"too few args 1", numArgs(30000)},
+		{"too few args 2", numArgs(30000, 7500)},
+		// Too many args
+		{"too many args", numArgs(30000, 7500, 10, 1)},
+		// Non-numeric string
+		{"non-numeric cost", []Value{StringVal("abc"), NumberVal(7500), NumberVal(10)}},
+		{"non-numeric salvage", []Value{NumberVal(30000), StringVal("xyz"), NumberVal(10)}},
+		{"non-numeric life", []Value{NumberVal(30000), NumberVal(7500), StringVal("abc")}},
+		// Error propagation
+		{"error in cost", []Value{ErrorVal(ErrValNUM), NumberVal(7500), NumberVal(10)}},
+		{"error in salvage", []Value{NumberVal(30000), ErrorVal(ErrValDIV0), NumberVal(10)}},
+		{"error in life", []Value{NumberVal(30000), NumberVal(7500), ErrorVal(ErrValVALUE)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestSLN_StringCoercion(t *testing.T) {
+	// Numeric strings should be coerced
+	v, err := fnSLN([]Value{StringVal("30000"), StringVal("7500"), StringVal("10")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SLN string coercion", v, 2250)
+}
+
+func TestSLN_BoolCoercion(t *testing.T) {
+	// TRUE=1, FALSE=0: SLN(TRUE, FALSE, TRUE) = SLN(1,0,1) = 1
+	v, err := fnSLN([]Value{boolArg(true), boolArg(false), boolArg(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SLN bool coercion", v, 1)
+}
+
 // === XNPV ===
 
 func TestXNPV_Basic(t *testing.T) {
