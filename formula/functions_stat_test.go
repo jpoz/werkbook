@@ -4289,6 +4289,439 @@ func TestLARGEComprehensive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SMALL — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSMALLComprehensive(t *testing.T) {
+	t.Run("k=1 returns smallest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("k=2 returns second smallest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("k=last returns largest", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-3),
+				{Col: 1, Row: 2}: NumberVal(-7),
+				{Col: 1, Row: 3}: NumberVal(-1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -7 {
+			t.Errorf("got %v, want -7", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-5),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 1, Row: 3}: NumberVal(-2),
+				{Col: 1, Row: 4}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A4,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("duplicates in array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(1),
+				{Col: 1, Row: 4}: NumberVal(4),
+			},
+		}
+		// k=2 should return 4 (second smallest, which is a duplicate)
+		cf := evalCompile(t, "SMALL(A1:A4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("k too large returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A2,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k=0 returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A1,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("k negative returns NUM error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A2,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("single element array k=1", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("decimal values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0.1),
+				{Col: 1, Row: 2}: NumberVal(0.3),
+				{Col: 1, Row: 3}: NumberVal(0.2),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0.2 {
+			t.Errorf("got %v, want 0.2", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(8),
+				{Col: 1, Row: 2}: NumberVal(8),
+				{Col: 1, Row: 3}: NumberVal(8),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 8 {
+			t.Errorf("got %v, want 8", got)
+		}
+	})
+
+	t.Run("empty cells in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				// A2 is empty
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+		// k=3 should be #NUM! since only 2 numeric values
+		cf = evalCompile(t, "SMALL(A1:A3,3)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("strings in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(15),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+		// Only 2 numeric values, k=2 should work
+		cf = evalCompile(t, "SMALL(A1:A3,2)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("booleans in range are ignored", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: BoolVal(true),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		// Booleans in ranges are not numeric, so only 2 values
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "SMALL(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{}
+		cf := evalCompile(t, "SMALL(A1:A3,1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("large dataset", func(t *testing.T) {
+		cells := make(map[CellAddr]Value)
+		for i := 1; i <= 100; i++ {
+			cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		}
+		resolver := &mockResolver{cells: cells}
+		cf := evalCompile(t, "SMALL(A1:A100,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+		// 50th smallest in 1..100 is 50
+		cf = evalCompile(t, "SMALL(A1:A100,50)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 50 {
+			t.Errorf("got %v, want 50", got)
+		}
+	})
+
+	t.Run("k as decimal is truncated", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+		}
+		// k=2.9 should be truncated to 2
+		cf := evalCompile(t, "SMALL(A1:A3,2.9)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("error in array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 3}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, "SMALL(A1:A3,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("scalar argument instead of array", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(99),
+			},
+		}
+		// SMALL with a single cell reference (scalar), k=1
+		cf := evalCompile(t, "SMALL(A1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 99 {
+			t.Errorf("got %v, want 99", got)
+		}
+	})
+
+	t.Run("Excel example from docs", func(t *testing.T) {
+		// Excel docs: Data={3,4,5,2,3,4,6,4,7} SMALL(A2:A10,4)=4
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(8),
+				{Col: 1, Row: 4}: NumberVal(2), {Col: 2, Row: 4}: NumberVal(3),
+				{Col: 1, Row: 5}: NumberVal(3), {Col: 2, Row: 5}: NumberVal(7),
+				{Col: 1, Row: 6}: NumberVal(4), {Col: 2, Row: 6}: NumberVal(12),
+				{Col: 1, Row: 7}: NumberVal(6), {Col: 2, Row: 7}: NumberVal(54),
+				{Col: 1, Row: 8}: NumberVal(4), {Col: 2, Row: 8}: NumberVal(8),
+				{Col: 1, Row: 9}: NumberVal(7), {Col: 2, Row: 9}: NumberVal(23),
+			},
+		}
+		// SMALL(A1:A9,4) => sorted: {2,3,3,4,4,4,5,6,7} => 4th = 4
+		cf := evalCompile(t, "SMALL(A1:A9,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("SMALL k=4: got %v, want 4", got)
+		}
+		// SMALL(B1:B9,2) => sorted: {1,3,4,7,8,8,12,23,54} => 2nd = 3
+		cf = evalCompile(t, "SMALL(B1:B9,2)")
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("SMALL k=2: got %v, want 3", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Error propagation in range functions
 // ---------------------------------------------------------------------------
 
