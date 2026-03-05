@@ -99,6 +99,207 @@ func TestCountBlank(t *testing.T) {
 			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
 		}
 	})
+
+	t.Run("all empty range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("COUNTBLANK: got %g, want 5", got.Num)
+		}
+	})
+
+	t.Run("no empty cells returns 0", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("zero is not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+				{Col: 1, Row: 2}: NumberVal(0),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("boolean FALSE is not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(false),
+				{Col: 1, Row: 2}: BoolVal(true),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("strings are not blank", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+				{Col: 1, Row: 2}: StringVal("world"),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("2D range with mixed content", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(6),
+				// A2 empty
+				{Col: 1, Row: 3}: NumberVal(4),
+				// B1 empty
+				{Col: 2, Row: 2}: NumberVal(27),
+				{Col: 2, Row: 3}: NumberVal(34),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("COUNTBLANK: got %g, want 2", got.Num)
+		}
+	})
+
+	t.Run("single non-empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("COUNTBLANK: got %g, want 0", got.Num)
+		}
+	})
+
+	t.Run("single empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("COUNTBLANK: got %g, want 1", got.Num)
+		}
+	})
+
+	t.Run("large range with gaps", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}:  NumberVal(1),
+				{Col: 1, Row: 5}:  NumberVal(5),
+				{Col: 1, Row: 10}: NumberVal(10),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("COUNTBLANK: got %g, want 7", got.Num)
+		}
+	})
+
+	t.Run("mix of empty strings and missing cells", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+				// A2 missing
+				{Col: 1, Row: 3}: StringVal(""),
+				{Col: 1, Row: 4}: NumberVal(1),
+			},
+		}
+
+		cf := evalCompile(t, "COUNTBLANK(A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("COUNTBLANK: got %g, want 3", got.Num)
+		}
+	})
+
+	t.Run("no args returns VALUE error", func(t *testing.T) {
+		got, err := fnCOUNTBLANK([]Value{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too many args returns VALUE error", func(t *testing.T) {
+		got, err := fnCOUNTBLANK([]Value{NumberVal(1), NumberVal(2)})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

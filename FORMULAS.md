@@ -53,7 +53,7 @@ Werkbook supports **303** Excel formula functions.
 | COTH | Math & Trig | - |
 | COUNT | Statistical | 26 |
 | COUNTA | Statistical | 18 |
-| COUNTBLANK | Statistical | 5 |
+| COUNTBLANK | Statistical | 15 |
 | COUNTIF | Statistical | 17 |
 | COUNTIFS | Statistical | 46 |
 | COVAR | Statistical | - |
