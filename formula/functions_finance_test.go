@@ -1074,6 +1074,280 @@ func TestIRR_NoSolution(t *testing.T) {
 	assertError(t, "IRR no solution", v)
 }
 
+func TestIRR_AllNegative(t *testing.T) {
+	// All negative values — no solution → #NUM!
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-100), NumberVal(-200), NumberVal(-300)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr})
+	assertError(t, "IRR all negative", v)
+}
+
+func TestIRR_SingleValue(t *testing.T) {
+	// Single value → #NUM! (need at least 2 cash flows)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr})
+	assertError(t, "IRR single value", v)
+}
+
+func TestIRR_TwoValues(t *testing.T) {
+	// Two values: invest -1000, return 1100 → IRR = 0.10
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1100)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR two values", v, 0.10)
+}
+
+func TestIRR_WithExplicitGuess(t *testing.T) {
+	// Same as basic but with explicit guess of 0.05
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, NumberVal(0.05)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR with guess", v, 0.1634)
+}
+
+func TestIRR_DefaultGuess(t *testing.T) {
+	// Without guess, default is 0.1. Same result as with explicit guess.
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v1, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2, err := fnIRR([]Value{arr, NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(v1.Num-v2.Num) > 1e-9 {
+		t.Errorf("IRR default guess: results differ: %f vs %f", v1.Num, v2.Num)
+	}
+}
+
+func TestIRR_HighReturnRate(t *testing.T) {
+	// Invest -100, get 500 back → IRR = 4.0 (400%)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-100), NumberVal(500)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR high return", v, 4.0)
+}
+
+func TestIRR_LowReturnRate(t *testing.T) {
+	// Invest -10000, get 10010 back in 10 periods → very low IRR
+	flows := make([]Value, 11)
+	flows[0] = NumberVal(-10000)
+	for i := 1; i <= 10; i++ {
+		flows[i] = NumberVal(1001)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// IRR should be very close to 0, slightly positive
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR low return: expected number, got %v", v.Type)
+	}
+	if v.Num < -0.01 || v.Num > 0.02 {
+		t.Errorf("IRR low return: got %f, want near 0", v.Num)
+	}
+}
+
+func TestIRR_BreakEven(t *testing.T) {
+	// Invest -1000, return 1000 → IRR = 0
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR break even", v, 0.0)
+}
+
+func TestIRR_MonthlyCashFlows(t *testing.T) {
+	// Monthly: invest -10000, receive 900/month for 12 months
+	flows := make([]Value, 13)
+	flows[0] = NumberVal(-10000)
+	for i := 1; i <= 12; i++ {
+		flows[i] = NumberVal(900)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Monthly IRR for these cash flows (~1.6% per month)
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR monthly: expected number, got %v", v.Type)
+	}
+	if v.Num < 0.01 || v.Num > 0.05 {
+		t.Errorf("IRR monthly: got %f, want between 0.01 and 0.05", v.Num)
+	}
+}
+
+func TestIRR_IrregularCashFlows(t *testing.T) {
+	// Irregular: negative initial, mix of positive and negative later
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(1000), NumberVal(-500), NumberVal(3000), NumberVal(4000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR irregular: expected number, got %v", v.Type)
+	}
+	// Just verify it returns a valid rate (positive for profitable flows)
+	if v.Num < 0 || v.Num > 1 {
+		t.Errorf("IRR irregular: got %f, want reasonable rate", v.Num)
+	}
+}
+
+func TestIRR_LargeNumberOfPeriods(t *testing.T) {
+	// 50 periods: invest -50000, receive 1200/period
+	flows := make([]Value, 51)
+	flows[0] = NumberVal(-50000)
+	for i := 1; i <= 50; i++ {
+		flows[i] = NumberVal(1200)
+	}
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{flows},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("IRR large periods: expected number, got %v", v.Type)
+	}
+	// Should be a small positive rate (~1.2%)
+	if v.Num < 0 || v.Num > 0.05 {
+		t.Errorf("IRR large periods: got %f, want small positive rate", v.Num)
+	}
+}
+
+func TestIRR_TooFewArgs(t *testing.T) {
+	v, _ := fnIRR([]Value{})
+	assertError(t, "IRR too few args", v)
+}
+
+func TestIRR_TooManyArgs(t *testing.T) {
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(1100)},
+		},
+	}
+	v, _ := fnIRR([]Value{arr, NumberVal(0.1), NumberVal(0.2)})
+	assertError(t, "IRR too many args", v)
+}
+
+func TestIRR_ExcelDocExample1(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000}) = -2.1% (-0.021)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000), NumberVal(18000), NumberVal(21000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 4yr", v, -0.02)
+}
+
+func TestIRR_ExcelDocExample2(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000, 26000}) = 8.7% (0.087)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000), NumberVal(18000), NumberVal(21000), NumberVal(26000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 5yr", v, 0.087)
+}
+
+func TestIRR_ExcelDocExample3(t *testing.T) {
+	// Excel doc: IRR({-70000, 12000, 15000}, -10%) = -44.4% (-0.444)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-70000), NumberVal(12000), NumberVal(15000)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, NumberVal(-0.10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR excel doc 2yr with guess", v, -0.44)
+}
+
+func TestIRR_EmptyGuessIgnored(t *testing.T) {
+	// Empty guess should be treated as default (0.1)
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(3000), NumberVal(4200), NumberVal(6800)},
+		},
+	}
+	v, err := fnIRR([]Value{arr, Value{Type: ValueEmpty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "IRR empty guess", v, 0.1634)
+}
+
 // === SLN ===
 
 func TestSLN_Basic(t *testing.T) {
