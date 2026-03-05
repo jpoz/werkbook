@@ -185,7 +185,7 @@ Werkbook supports **303** Excel formula functions.
 | NOT | Logical | 8 |
 | NOW | Date & Time | 2 |
 | NPER | Financial | 2 |
-| NPV | Financial | 1 |
+| NPV | Financial | 25 |
 | NUMBERVALUE | Text | - |
 | OCT2BIN | Engineering | 38 |
 | OCT2DEC | Engineering | 43 |
