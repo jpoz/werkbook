@@ -29,6 +29,7 @@ func init() {
 	Register("REPLACE", NoCtx(fnREPLACE))
 	Register("REPT", NoCtx(fnREPT))
 	Register("RIGHT", NoCtx(fnRIGHT))
+	Register("ROMAN", NoCtx(fnROMAN))
 	Register("SEARCH", NoCtx(fnSEARCH))
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
 	Register("T", NoCtx(fnT))
@@ -793,4 +794,106 @@ func fnVALUEFn(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return NumberVal(num), nil
+}
+
+// romanPair maps an integer value to its Roman numeral representation.
+type romanPair struct {
+	val int
+	sym string
+}
+
+// romanTables contains the value-to-symbol tables for each ROMAN form level (0-4).
+// Form 0 is classic Roman numerals; higher forms allow increasingly non-standard
+// subtractive pairs for more compact output.
+var romanTables = [5][]romanPair{
+	// Form 0: Classic
+	{
+		{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+		{100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 1
+	{
+		{1000, "M"}, {950, "LM"}, {900, "CM"}, {500, "D"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {95, "VC"}, {90, "XC"}, {50, "L"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 2
+	{
+		{1000, "M"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 3
+	{
+		{1000, "M"}, {995, "VM"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {495, "VD"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 4: Simplified (most concise)
+	{
+		{1000, "M"}, {999, "IM"}, {995, "VM"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {499, "ID"}, {495, "VD"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+}
+
+func fnROMAN(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	number := int(n)
+
+	if number < 0 || number > 3999 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if number == 0 {
+		return StringVal(""), nil
+	}
+
+	form := 0
+	if len(args) == 2 {
+		// TRUE -> 0 (Classic), FALSE -> 4 (Simplified)
+		if args[1].Type == ValueBool {
+			if args[1].Bool {
+				form = 0
+			} else {
+				form = 4
+			}
+		} else {
+			f, e := CoerceNum(args[1])
+			if e != nil {
+				return *e, nil
+			}
+			form = int(f)
+		}
+	}
+	if form < 0 {
+		form = 0
+	}
+	if form > 4 {
+		form = 4
+	}
+
+	table := romanTables[form]
+	var b strings.Builder
+	rem := number
+	for _, p := range table {
+		for rem >= p.val {
+			b.WriteString(p.sym)
+			rem -= p.val
+		}
+	}
+	return StringVal(b.String()), nil
 }
