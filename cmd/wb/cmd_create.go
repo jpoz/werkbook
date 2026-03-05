@@ -16,15 +16,19 @@ type createSpec struct {
 }
 
 type createRow struct {
-	Sheet string          `json:"sheet"`
-	Start string          `json:"start"`
+	Sheet string              `json:"sheet"`
+	Start string              `json:"start"`
 	Data  [][]json.RawMessage `json:"data"`
 }
 
 type createData struct {
-	File   string `json:"file"`
-	Sheets int    `json:"sheets"`
-	Cells  int    `json:"cells"`
+	File       string     `json:"file"`
+	Sheets     int        `json:"sheets"`
+	Cells      int        `json:"cells"`
+	Applied    int        `json:"applied"`
+	Failed     int        `json:"failed"`
+	Saved      bool       `json:"saved"`
+	Operations []opResult `json:"operations,omitempty"`
 }
 
 func cmdCreate(args []string, globals globalFlags) int {
@@ -37,6 +41,8 @@ Create a new workbook from a JSON spec.
 
 Flags:
   --spec <json>   Spec JSON (or pass via stdin)
+
+Unknown JSON fields are rejected.
 
 Spec format:
   {
@@ -109,7 +115,7 @@ Examples:
 
 	var spec createSpec
 	if len(specBytes) > 0 {
-		if err := json.Unmarshal(specBytes, &spec); err != nil {
+		if err := strictUnmarshal(specBytes, &spec); err != nil {
 			writeError(cmd, errInvalidSpec(err), globals)
 			return ExitValidate
 		}
@@ -136,21 +142,45 @@ Examples:
 
 	// Apply cell operations, then row operations.
 	allOps := append(spec.Cells, rowOps...)
+	var results []opResult
 	cellsApplied := 0
 	if len(allOps) > 0 {
-		_, cellsApplied = applyPatches(f, allOps, defaultSheet)
+		results, cellsApplied = applyPatches(f, allOps, defaultSheet)
+	}
+	failed := len(allOps) - cellsApplied
+
+	data := createData{
+		File:       filePath,
+		Sheets:     len(f.SheetNames()),
+		Cells:      cellsApplied,
+		Applied:    cellsApplied,
+		Failed:     failed,
+		Saved:      false,
+		Operations: results,
+	}
+
+	if failed > 0 {
+		resp := &Response{
+			OK:      false,
+			Command: cmd,
+			Data:    data,
+			Error: &ErrorInfo{
+				Code:    ErrCodePartialFailure,
+				Message: fmt.Sprintf("%d of %d operations failed", failed, len(allOps)),
+				Hint:    "Workbook was not saved. Check the 'operations' array for per-operation errors.",
+			},
+			Meta: buildMeta(cmd, globals),
+		}
+		writeResponse(resp, globals, true)
+		return ExitPartial
 	}
 
 	if err := f.SaveAs(filePath); err != nil {
 		writeError(cmd, errFileSave(filePath, err), globals)
 		return ExitFileIO
 	}
+	data.Saved = true
 
-	data := createData{
-		File:   filePath,
-		Sheets: len(f.SheetNames()),
-		Cells:  cellsApplied,
-	}
 	writeSuccess(cmd, data, globals)
 	return ExitSuccess
 }

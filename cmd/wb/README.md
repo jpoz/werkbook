@@ -19,6 +19,8 @@ wb <command> [flags] <file>
 | Flag | Description |
 |------|-------------|
 | `--format <json\|markdown\|csv>` | Output format (default: `json`) |
+| `--mode <default\|agent>` | Output contract mode (default: `default`) |
+| `--compact` | Emit compact JSON (no indentation) |
 
 ## Commands
 
@@ -78,6 +80,10 @@ Accepts a JSON array of patch operations via `--patch` or stdin.
 | `--sheet <name>` | Default sheet for operations (default: first) |
 | `--output <path>` | Save to a different file (default: overwrite input) |
 | `--dry-run` | Report changes without saving |
+| `--validate-only` | Validate and apply in-memory only (never saves) |
+| `--atomic` | Save only if all operations succeed (default) |
+| `--no-atomic` | Allow partial saves when operations fail |
+| `--plan` | Include a normalized operation plan in output |
 
 #### Patch operations
 
@@ -104,6 +110,7 @@ echo '{"rows":[{"start":"A1","data":[["a","b"],[1,2]]}]}' | wb create out.xlsx
 ```
 
 Accepts a JSON spec via `--spec` or stdin.
+Unknown JSON fields are rejected.
 
 | Flag | Description |
 |------|-------------|
@@ -168,11 +175,16 @@ All commands return structured JSON by default:
 {
   "ok": true,
   "command": "read",
-  "data": { ... }
+  "data": { ... },
+  "meta": {
+    "schema_version": "wb.v1",
+    "tool_version": "dev",
+    "elapsed_ms": 3
+  }
 }
 ```
 
-Errors are written to stderr:
+Errors are written to stderr (or stdout when `--mode agent` is enabled):
 
 ```json
 {

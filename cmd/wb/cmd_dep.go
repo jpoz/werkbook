@@ -18,14 +18,14 @@ type depData struct {
 }
 
 type depCellEntry struct {
-	Ref         string         `json:"ref"`
-	Sheet       string         `json:"sheet"`
-	Formula     string         `json:"formula,omitempty"`
-	Value       any            `json:"value"`
-	Type        string         `json:"type"`
-	Precedents  []depCellBrief `json:"precedents,omitempty"`
-	PrecRanges  []depRange     `json:"precedent_ranges,omitempty"`
-	Dependents  []depCellBrief `json:"dependents,omitempty"`
+	Ref        string         `json:"ref"`
+	Sheet      string         `json:"sheet"`
+	Formula    string         `json:"formula,omitempty"`
+	Value      any            `json:"value"`
+	Type       string         `json:"type"`
+	Precedents []depCellBrief `json:"precedents,omitempty"`
+	PrecRanges []depRange     `json:"precedent_ranges,omitempty"`
+	Dependents []depCellBrief `json:"dependents,omitempty"`
 }
 
 type depRange struct {

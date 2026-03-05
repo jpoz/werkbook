@@ -14,19 +14,19 @@ const (
 
 // Error code constants.
 const (
-	ErrCodeFileNotFound    = "FILE_NOT_FOUND"
-	ErrCodeFileOpenFailed  = "FILE_OPEN_FAILED"
-	ErrCodeFileSaveFailed  = "FILE_SAVE_FAILED"
-	ErrCodeSheetNotFound   = "SHEET_NOT_FOUND"
-	ErrCodeInvalidRange    = "INVALID_RANGE"
-	ErrCodeInvalidPatch    = "INVALID_PATCH"
-	ErrCodeInvalidSpec     = "INVALID_SPEC"
-	ErrCodeInvalidFormat   = "INVALID_FORMAT"
-	ErrCodeUsage           = "USAGE"
-	ErrCodeInternal        = "INTERNAL"
-	ErrCodePartialFailure  = "PARTIAL_FAILURE"
-	ErrCodeValidation      = "VALIDATION"
-	ErrCodeEncryptedFile   = "ENCRYPTED_FILE"
+	ErrCodeFileNotFound   = "FILE_NOT_FOUND"
+	ErrCodeFileOpenFailed = "FILE_OPEN_FAILED"
+	ErrCodeFileSaveFailed = "FILE_SAVE_FAILED"
+	ErrCodeSheetNotFound  = "SHEET_NOT_FOUND"
+	ErrCodeInvalidRange   = "INVALID_RANGE"
+	ErrCodeInvalidPatch   = "INVALID_PATCH"
+	ErrCodeInvalidSpec    = "INVALID_SPEC"
+	ErrCodeInvalidFormat  = "INVALID_FORMAT"
+	ErrCodeUsage          = "USAGE"
+	ErrCodeInternal       = "INTERNAL"
+	ErrCodePartialFailure = "PARTIAL_FAILURE"
+	ErrCodeValidation     = "VALIDATION"
+	ErrCodeEncryptedFile  = "ENCRYPTED_FILE"
 )
 
 func errFileNotFound(path string, err error) *ErrorInfo {

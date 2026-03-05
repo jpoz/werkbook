@@ -92,7 +92,7 @@ func styleToJSON(s *werkbook.Style) *styleJSON {
 // jsonToStyle converts JSON bytes into a werkbook.Style.
 func jsonToStyle(data json.RawMessage) (*werkbook.Style, error) {
 	var sj styleJSON
-	if err := json.Unmarshal(data, &sj); err != nil {
+	if err := strictUnmarshal(data, &sj); err != nil {
 		return nil, err
 	}
 	s := &werkbook.Style{

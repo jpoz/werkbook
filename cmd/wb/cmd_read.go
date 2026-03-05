@@ -24,7 +24,7 @@ type readMultiData struct {
 }
 
 type rowData struct {
-	Row   int                `json:"row"`
+	Row   int                 `json:"row"`
 	Cells map[string]cellData `json:"cells"`
 }
 

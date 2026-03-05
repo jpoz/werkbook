@@ -769,6 +769,186 @@ func TestEditPartialFailure(t *testing.T) {
 	}
 }
 
+func TestEditAtomicDefaultSkipsSaveOnPartialFailure(t *testing.T) {
+	path := createTestFile(t)
+	patch := `[{"cell":"A1","value":"Changed"},{"delete_sheet":"NoSuchSheet"}]`
+	_, stderr, code := captureRun([]string{"edit", path, "--patch", patch})
+	if code != ExitPartial {
+		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
+	}
+	resp := parseResponse(t, stderr)
+	data, _ := json.Marshal(resp.Data)
+	var ed editData
+	json.Unmarshal(data, &ed)
+	if ed.Saved {
+		t.Fatal("expected saved=false in atomic partial failure")
+	}
+
+	// A1 should remain unchanged because atomic mode skips save.
+	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	if code2 != 0 {
+		t.Fatalf("expected read exit 0, got %d", code2)
+	}
+	if !strings.Contains(stdout2, "Name") {
+		t.Fatalf("expected A1 to remain Name, got: %s", stdout2)
+	}
+}
+
+func TestEditNoAtomicAllowsPartialSave(t *testing.T) {
+	path := createTestFile(t)
+	patch := `[{"cell":"A1","value":"Changed"},{"delete_sheet":"NoSuchSheet"}]`
+	_, stderr, code := captureRun([]string{"edit", "--no-atomic", path, "--patch", patch})
+	if code != ExitPartial {
+		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
+	}
+	resp := parseResponse(t, stderr)
+	data, _ := json.Marshal(resp.Data)
+	var ed editData
+	json.Unmarshal(data, &ed)
+	if !ed.Saved {
+		t.Fatal("expected saved=true with --no-atomic")
+	}
+
+	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	if code2 != 0 {
+		t.Fatalf("expected read exit 0, got %d", code2)
+	}
+	if !strings.Contains(stdout2, "Changed") {
+		t.Fatalf("expected A1 to be Changed, got: %s", stdout2)
+	}
+}
+
+func TestEditValidateOnlyDoesNotSave(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRun([]string{"edit", "--validate-only", path, "--patch", `[{"cell":"A1","value":"Changed"}]`})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var ed editData
+	json.Unmarshal(data, &ed)
+	if !ed.ValidateOnly || !ed.DryRun {
+		t.Fatalf("expected validate_only and dry_run true, got %+v", ed)
+	}
+	if ed.Saved {
+		t.Fatal("expected saved=false with --validate-only")
+	}
+
+	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	if code2 != 0 {
+		t.Fatalf("expected read exit 0, got %d", code2)
+	}
+	if !strings.Contains(stdout2, "Name") {
+		t.Fatalf("expected A1 to remain Name, got: %s", stdout2)
+	}
+}
+
+func TestEditUnknownPatchFieldRejected(t *testing.T) {
+	path := createTestFile(t)
+	_, stderr, code := captureRun([]string{"edit", path, "--patch", `[{"cell":"A1","value":"x","bogus":1}]`})
+	if code != ExitValidate {
+		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error == nil || resp.Error.Code != ErrCodeInvalidPatch {
+		t.Fatalf("expected INVALID_PATCH, got %+v", resp.Error)
+	}
+}
+
+func TestEditUnknownStyleFieldRejected(t *testing.T) {
+	path := createTestFile(t)
+	patch := `[{"cell":"A1","style":{"font":{"bold":true,"bogus":1}}}]`
+	_, stderr, code := captureRun([]string{"edit", path, "--patch", patch})
+	if code != ExitPartial {
+		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error == nil || resp.Error.Code != ErrCodePartialFailure {
+		t.Fatalf("expected PARTIAL_FAILURE, got %+v", resp.Error)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var ed editData
+	json.Unmarshal(data, &ed)
+	if len(ed.Operations) == 0 || ed.Operations[0].Status != "error" {
+		t.Fatalf("expected first operation error, got %+v", ed.Operations)
+	}
+}
+
+func TestCreateUnknownSpecFieldRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.xlsx")
+	_, stderr, code := captureRun([]string{"create", path, "--spec", `{"sheets":["S1"],"bogus":1}`})
+	if code != ExitValidate {
+		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error == nil || resp.Error.Code != ErrCodeInvalidSpec {
+		t.Fatalf("expected INVALID_SPEC, got %+v", resp.Error)
+	}
+}
+
+func TestCreatePartialFailureDoesNotSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "partial.xlsx")
+	spec := `{"cells":[{"cell":"A1","value":"ok"},{"cell":"ZZZ1","value":1}]}`
+	_, stderr, code := captureRun([]string{"create", path, "--spec", spec})
+	if code != ExitPartial {
+		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
+	}
+	resp := parseResponse(t, stderr)
+	data, _ := json.Marshal(resp.Data)
+	var cd createData
+	json.Unmarshal(data, &cd)
+	if cd.Saved {
+		t.Fatal("expected saved=false on create partial failure")
+	}
+	if cd.Failed != 1 {
+		t.Fatalf("expected failed=1, got %d", cd.Failed)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected output file to not exist, stat err=%v", err)
+	}
+}
+
+func TestModeAgentForcesJSONEnvelope(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRun([]string{"--mode", "agent", "--format", "markdown", "read", "--headers", path})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.Contains(stdout, "| Name | Value |") {
+		t.Fatalf("expected JSON envelope, got markdown: %s", stdout)
+	}
+	resp := parseResponse(t, stdout)
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+	if resp.Meta == nil {
+		t.Fatal("expected meta in response")
+	}
+	if resp.Meta.Mode != modeAgent {
+		t.Fatalf("expected meta.mode=%q, got %q", modeAgent, resp.Meta.Mode)
+	}
+	if len(resp.Meta.Warnings) == 0 {
+		t.Fatal("expected warning for forced json format")
+	}
+}
+
+func TestCompactJSON(t *testing.T) {
+	stdout, _, code := captureRun([]string{"--compact", "version"})
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if strings.Contains(stdout, "\n  ") {
+		t.Fatalf("expected compact json (no indentation), got: %s", stdout)
+	}
+	resp := parseResponse(t, strings.TrimSpace(stdout))
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+}
+
 // --- Global --help flag ---
 
 func TestGlobalHelpFlag(t *testing.T) {
