@@ -157,7 +157,7 @@ Werkbook supports **303** Excel formula functions.
 | MAXA | Statistical | 16 |
 | MAXIFS | Statistical | 4 |
 | MDETERM | Math & Trig | 31 |
-| MEDIAN | Statistical | - |
+| MEDIAN | Statistical | 27 |
 | MID | Text | 50 |
 | MIN | Statistical | 30 |
 | MINA | Statistical | 16 |
