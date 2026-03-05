@@ -194,7 +194,7 @@ Werkbook supports **303** Excel formula functions.
 | OR | Logical | 48 |
 | PDURATION | Financial | 21 |
 | PEARSON | Statistical | 23 |
-| PERCENTILE | Statistical | 1 |
+| PERCENTILE | Statistical | 31 |
 | PERCENTILE.EXC | Statistical | 31 |
 | PERCENTRANK | Statistical | 26 |
 | PERCENTRANK.EXC | Statistical | 29 |

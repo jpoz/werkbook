@@ -5048,6 +5048,222 @@ func TestQUARTILE(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// PERCENTILE
+// ---------------------------------------------------------------------------
+
+func TestPERCENTILE(t *testing.T) {
+	// Excel docs example: {1,2,3,4} in A1:A4
+	basicResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Single element: B1=42
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Two elements: C1=10, C2=20
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(20),
+		},
+	}
+
+	// Large dataset {1..20} in D1:D20
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 4, Row: i}] = NumberVal(float64(i))
+	}
+
+	// All same values: E1:E4 = 7
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(7),
+			{Col: 5, Row: 2}: NumberVal(7),
+			{Col: 5, Row: 3}: NumberVal(7),
+			{Col: 5, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Negative numbers: F1:F4 = {-10, -5, 0, 5}
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(-10),
+			{Col: 6, Row: 2}: NumberVal(-5),
+			{Col: 6, Row: 3}: NumberVal(0),
+			{Col: 6, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Non-numeric mixed: G1=1, G2="hello", G3=3, G4=TRUE
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(1),
+			{Col: 7, Row: 2}: StringVal("hello"),
+			{Col: 7, Row: 3}: NumberVal(3),
+			{Col: 7, Row: 4}: BoolVal(true),
+		},
+	}
+
+	// Error in range: H1=1, H2=#DIV/0!, H3=3
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 8, Row: 1}: NumberVal(1),
+			{Col: 8, Row: 2}: ErrorVal(ErrValDIV0),
+			{Col: 8, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Excel doc example: {1,2,3,6,6,6,7,8,9} → PERCENTILE(data, 0.3) is from the docs
+	// Using simpler data set matching Excel example
+	excelDocResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 9, Row: 1}: NumberVal(1),
+			{Col: 9, Row: 2}: NumberVal(2),
+			{Col: 9, Row: 3}: NumberVal(3),
+			{Col: 9, Row: 4}: NumberVal(6),
+			{Col: 9, Row: 5}: NumberVal(6),
+			{Col: 9, Row: 6}: NumberVal(6),
+			{Col: 9, Row: 7}: NumberVal(7),
+			{Col: 9, Row: 8}: NumberVal(8),
+			{Col: 9, Row: 9}: NumberVal(9),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		want     float64
+		wantErr  ErrorValue
+	}{
+		// Basic: PERCENTILE({1,2,3,4}, 0.5) → median = 2.5
+		{"basic_median", "PERCENTILE(A1:A4,0.5)", basicResolver, 2.5, 0},
+		// k=0 → minimum
+		{"k_zero_min", "PERCENTILE(A1:A4,0)", basicResolver, 1, 0},
+		// k=1 → maximum
+		{"k_one_max", "PERCENTILE(A1:A4,1)", basicResolver, 4, 0},
+		// k=0.25 → first quartile: rank=0.25*3=0.75, 1+0.75*(2-1)=1.75
+		{"k_25th", "PERCENTILE(A1:A4,0.25)", basicResolver, 1.75, 0},
+		// k=0.75 → third quartile: rank=0.75*3=2.25, 3+0.25*(4-3)=3.25
+		{"k_75th", "PERCENTILE(A1:A4,0.75)", basicResolver, 3.25, 0},
+		// k=0.1: rank=0.1*3=0.3, 1+0.3*(2-1)=1.3
+		{"k_10th", "PERCENTILE(A1:A4,0.1)", basicResolver, 1.3, 0},
+		// k=0.9: rank=0.9*3=2.7, 3+0.7*(4-3)=3.7
+		{"k_90th", "PERCENTILE(A1:A4,0.9)", basicResolver, 3.7, 0},
+		// Single element array: any k returns that element
+		{"single_k0", "PERCENTILE(B1:B1,0)", singleResolver, 42, 0},
+		{"single_k05", "PERCENTILE(B1:B1,0.5)", singleResolver, 42, 0},
+		{"single_k1", "PERCENTILE(B1:B1,1)", singleResolver, 42, 0},
+		// Two element array: k=0.5 → 15
+		{"two_median", "PERCENTILE(C1:C2,0.5)", twoResolver, 15, 0},
+		// Two element: k=0 → 10, k=1 → 20
+		{"two_k0", "PERCENTILE(C1:C2,0)", twoResolver, 10, 0},
+		{"two_k1", "PERCENTILE(C1:C2,1)", twoResolver, 20, 0},
+		// Large array {1..20}: k=0.5 → rank=0.5*19=9.5, 10+0.5*(11-10)=10.5
+		{"large_median", "PERCENTILE(D1:D20,0.5)", largeResolver, 10.5, 0},
+		// Large array: k=0.25 → rank=0.25*19=4.75, 5+0.75*(6-5)=5.75
+		{"large_25th", "PERCENTILE(D1:D20,0.25)", largeResolver, 5.75, 0},
+		// Large array: k=0.75 → rank=0.75*19=14.25, 15+0.25*(16-15)=15.25
+		{"large_75th", "PERCENTILE(D1:D20,0.75)", largeResolver, 15.25, 0},
+		// All same values → that value regardless of k
+		{"same_k0", "PERCENTILE(E1:E4,0)", sameResolver, 7, 0},
+		{"same_k05", "PERCENTILE(E1:E4,0.5)", sameResolver, 7, 0},
+		{"same_k1", "PERCENTILE(E1:E4,1)", sameResolver, 7, 0},
+		// Negative numbers: sorted {-10,-5,0,5}, k=0.5 → rank=1.5, -5+0.5*5=-2.5
+		{"neg_median", "PERCENTILE(F1:F4,0.5)", negResolver, -2.5, 0},
+		// Negative: k=0 → -10
+		{"neg_k0", "PERCENTILE(F1:F4,0)", negResolver, -10, 0},
+		// Negative: k=1 → 5
+		{"neg_k1", "PERCENTILE(F1:F4,1)", negResolver, 5, 0},
+		// k < 0 → #NUM!
+		{"k_negative", "PERCENTILE(A1:A4,-0.1)", basicResolver, 0, ErrValNUM},
+		// k > 1 → #NUM!
+		{"k_over_one", "PERCENTILE(A1:A4,1.5)", basicResolver, 0, ErrValNUM},
+		// Empty array → #NUM!
+		{"empty_array", "PERCENTILE(Z1:Z3,0.5)", emptyResolver, 0, ErrValNUM},
+		// Non-numeric values in array are ignored: {1,3} → k=0.5 → 2
+		{"mixed_ignore_strings", "PERCENTILE(G1:G4,0.5)", mixedResolver, 2, 0},
+		// Excel doc example: PERCENTILE({1,2,3,6,6,6,7,8,9},0.3)
+		// rank=0.3*8=2.4, sorted[2]=3, sorted[3]=6 → 3+0.4*(6-3)=4.2
+		{"excel_doc_example", "PERCENTILE(I1:I9,0.3)", excelDocResolver, 4.2, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %v, want number", got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.want)
+			}
+		})
+	}
+
+	// Error propagation: error in range propagates
+	t.Run("error_propagation", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(H1:H3,0.5)")
+		got, err := Eval(cf, errResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	// Too few arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(A1:A4)")
+		got, err := Eval(cf, basicResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	// Too many arguments
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, "PERCENTILE(A1:A4,0.5,1)")
+		got, err := Eval(cf, basicResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // PERCENTILE.EXC
 // ---------------------------------------------------------------------------
 
