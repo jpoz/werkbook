@@ -4341,3 +4341,933 @@ func TestWRAPROWS_ViaEval(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// WRAPCOLS
+// ---------------------------------------------------------------------------
+
+func TestWRAPCOLS_Exact(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5,6}, 3) → {1,4;2,5;3,6}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5), NumberVal(6)}}},
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3x2, got %v", got)
+	}
+	want := [][]float64{{1, 4}, {2, 5}, {3, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestWRAPCOLS_Padding(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5}, 3) → {1,4;2,5;3,#N/A}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}}},
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 3x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[2][1].Type != ValueError || got.Array[2][1].Err != ErrValNA {
+		t.Errorf("expected #N/A padding, got %v", got.Array[2][1])
+	}
+}
+
+func TestWRAPCOLS_CustomPad(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5}, 3, 0) → {1,4;2,5;3,0}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}}},
+		NumberVal(3),
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Array[2][1].Type != ValueNumber || got.Array[2][1].Num != 0 {
+		t.Errorf("expected 0 padding, got %v", got.Array[2][1])
+	}
+}
+
+func TestWRAPCOLS_WrapOne(t *testing.T) {
+	// WRAPCOLS({1,2,3}, 1) → {1,2,3}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+func TestWRAPCOLS_ZeroWrapCount(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}},
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_NegativeWrapCount(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}},
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_SingleElement(t *testing.T) {
+	// WRAPCOLS({5}, 1) → 5
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5)}}},
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 5 {
+		t.Errorf("expected 5, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_WrapLargerThanVector(t *testing.T) {
+	// WRAPCOLS({1,2,3}, 5) → column of {1;2;3;#N/A;#N/A}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(5),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 5 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 5x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[3][0].Type != ValueError || got.Array[3][0].Err != ErrValNA {
+		t.Errorf("expected #N/A padding at [3][0], got %v", got.Array[3][0])
+	}
+}
+
+func TestWRAPCOLS_NoArgs(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_TooManyArgs(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{NumberVal(1), NumberVal(1), NumberVal(0), NumberVal(0)})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_ErrorPassthrough(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{ErrorVal(ErrValVALUE), NumberVal(2)})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_ColumnVector(t *testing.T) {
+	// WRAPCOLS({1;2;3;4;5;6}, 2) → {1,3,5;2,4,6}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+			{NumberVal(4)}, {NumberVal(5)}, {NumberVal(6)},
+		}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := [][]float64{{1, 3, 5}, {2, 4, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestWRAPCOLS_StringPad(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5}, 3, "x") → {1,4;2,5;3,"x"}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}}},
+		NumberVal(3),
+		StringVal("x"),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Array[2][1].Type != ValueString || got.Array[2][1].Str != "x" {
+		t.Errorf("expected 'x' padding, got %v", got.Array[2][1])
+	}
+}
+
+func TestWRAPCOLS_Scalar(t *testing.T) {
+	// WRAPCOLS(5, 1) → 5
+	got, err := fnWRAPCOLS([]Value{NumberVal(5), NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 5 {
+		t.Errorf("expected 5, got %v", got)
+	}
+}
+
+func TestWRAPCOLS_WrapTwo(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5}, 2) → {1,3,5;2,4,#N/A}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][2].Num != 5 {
+		t.Errorf("[0][2]: expected 5, got %g", got.Array[0][2].Num)
+	}
+	if got.Array[1][2].Type != ValueError || got.Array[1][2].Err != ErrValNA {
+		t.Errorf("[1][2]: expected #N/A, got %v", got.Array[1][2])
+	}
+}
+
+func TestWRAPCOLS_MixedTypes(t *testing.T) {
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), StringVal("a"), BoolVal(true), NumberVal(4)}}},
+		NumberVal(2),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("[0][0]: expected 1, got %v", got.Array[0][0])
+	}
+	if got.Array[1][0].Str != "a" {
+		t.Errorf("[1][0]: expected 'a', got %v", got.Array[1][0])
+	}
+	if got.Array[0][1].Type != ValueBool || !got.Array[0][1].Bool {
+		t.Errorf("[0][1]: expected TRUE, got %v", got.Array[0][1])
+	}
+	if got.Array[1][1].Num != 4 {
+		t.Errorf("[1][1]: expected 4, got %v", got.Array[1][1])
+	}
+}
+
+func TestWRAPCOLS_WrapEqualToLength(t *testing.T) {
+	// WRAPCOLS({1,2,3}, 3) → {1;2;3}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		NumberVal(3),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 3x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d][0]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestWRAPCOLS_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "WRAPCOLS({1,2,3,4,5,6}, 3)")
+	got, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 3x2 array, got %v", got)
+	}
+	want := [][]float64{{1, 4}, {2, 5}, {3, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestWRAPCOLS_EightElements(t *testing.T) {
+	// WRAPCOLS({1,2,3,4,5,6,7,8}, 4) → {1,5;2,6;3,7;4,8}
+	got, err := fnWRAPCOLS([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5), NumberVal(6), NumberVal(7), NumberVal(8)}}},
+		NumberVal(4),
+	})
+	if err != nil {
+		t.Fatalf("fnWRAPCOLS: %v", err)
+	}
+	if len(got.Array) != 4 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 4x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := [][]float64{{1, 5}, {2, 6}, {3, 7}, {4, 8}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HSTACK
+// ---------------------------------------------------------------------------
+
+func TestHSTACK_TwoColumnVectors(t *testing.T) {
+	// HSTACK({1;2},{3;4}) → {1,3;2,4}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3)}, {NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	want := [][]float64{{1, 3}, {2, 4}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestHSTACK_TwoRowArrays(t *testing.T) {
+	// HSTACK({1,2},{3,4}) → {1,2,3,4}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 4 {
+		t.Fatalf("expected 1x4, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3, 4} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+func TestHSTACK_Scalars(t *testing.T) {
+	// HSTACK(1,2,3) → {1,2,3}
+	got, err := fnHSTACK([]Value{NumberVal(1), NumberVal(2), NumberVal(3)})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+func TestHSTACK_DifferentRowCounts(t *testing.T) {
+	// HSTACK({1;2;3},{4;5}) → {1,4;2,5;3,#N/A}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(4)}, {NumberVal(5)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 3x2, got %v", got)
+	}
+	if got.Array[2][1].Type != ValueError || got.Array[2][1].Err != ErrValNA {
+		t.Errorf("expected #N/A at [2][1], got %v", got.Array[2][1])
+	}
+}
+
+func TestHSTACK_SingleArray(t *testing.T) {
+	// HSTACK({1,2;3,4}) → {1,2;3,4}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestHSTACK_SingleScalar(t *testing.T) {
+	// HSTACK(42) → 42
+	got, err := fnHSTACK([]Value{NumberVal(42)})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestHSTACK_ThreeArrays(t *testing.T) {
+	// HSTACK({1},{2},{3}) with column vectors → {1,2,3}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+func TestHSTACK_ErrorPassthrough(t *testing.T) {
+	got, err := fnHSTACK([]Value{ErrorVal(ErrValVALUE), NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestHSTACK_NoArgs(t *testing.T) {
+	got, err := fnHSTACK([]Value{})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestHSTACK_MixedScalarAndArray(t *testing.T) {
+	// HSTACK(1, {2;3}) → {1,2;#N/A,3}  (scalar treated as 1x1, padded)
+	got, err := fnHSTACK([]Value{
+		NumberVal(1),
+		{Type: ValueArray, Array: [][]Value{{NumberVal(2)}, {NumberVal(3)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("[0][0]: expected 1, got %v", got.Array[0][0])
+	}
+	if got.Array[1][0].Type != ValueError || got.Array[1][0].Err != ErrValNA {
+		t.Errorf("[1][0]: expected #N/A, got %v", got.Array[1][0])
+	}
+}
+
+func TestHSTACK_TwoByTwoArrays(t *testing.T) {
+	// HSTACK({1,2;3,4},{5,6;7,8}) → {1,2,5,6;3,4,7,8}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}, {NumberVal(7), NumberVal(8)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 4 {
+		t.Fatalf("expected 2x4, got %v", got)
+	}
+	want := [][]float64{{1, 2, 5, 6}, {3, 4, 7, 8}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestHSTACK_StringValues(t *testing.T) {
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{StringVal("a")}}},
+		{Type: ValueArray, Array: [][]Value{{StringVal("b")}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2, got %v", got)
+	}
+	if got.Array[0][0].Str != "a" || got.Array[0][1].Str != "b" {
+		t.Errorf("expected [a,b], got %v", got.Array[0])
+	}
+}
+
+func TestHSTACK_MultipleRowPadding(t *testing.T) {
+	// HSTACK({1;2;3;4},{5}) → {1,5;2,#N/A;3,#N/A;4,#N/A}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)}, {NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 4 {
+		t.Fatalf("expected 4 rows, got %d", len(got.Array))
+	}
+	if got.Array[0][1].Num != 5 {
+		t.Errorf("[0][1]: expected 5, got %v", got.Array[0][1])
+	}
+	for i := 1; i < 4; i++ {
+		if got.Array[i][1].Type != ValueError || got.Array[i][1].Err != ErrValNA {
+			t.Errorf("[%d][1]: expected #N/A, got %v", i, got.Array[i][1])
+		}
+	}
+}
+
+func TestHSTACK_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "HSTACK({1;2;3},{4;5;6})")
+	got, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 3x2 array, got %v", got)
+	}
+	want := [][]float64{{1, 4}, {2, 5}, {3, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestHSTACK_BoolValues(t *testing.T) {
+	got, err := fnHSTACK([]Value{BoolVal(true), BoolVal(false)})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2, got %v", got)
+	}
+	if got.Array[0][0].Type != ValueBool || !got.Array[0][0].Bool {
+		t.Errorf("[0][0]: expected TRUE, got %v", got.Array[0][0])
+	}
+	if got.Array[0][1].Type != ValueBool || got.Array[0][1].Bool {
+		t.Errorf("[0][1]: expected FALSE, got %v", got.Array[0][1])
+	}
+}
+
+func TestHSTACK_FourScalars(t *testing.T) {
+	// HSTACK(1,2,3,4) → {1,2,3,4}
+	got, err := fnHSTACK([]Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 4 {
+		t.Fatalf("expected 1x4, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3, 4} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+func TestHSTACK_DifferentWidths(t *testing.T) {
+	// HSTACK({1,2},{3}) → {1,2,3}
+	got, err := fnHSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnHSTACK: %v", err)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[0][i].Num != w {
+			t.Errorf("[0][%d]: got %g, want %g", i, got.Array[0][i].Num, w)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VSTACK
+// ---------------------------------------------------------------------------
+
+func TestVSTACK_TwoRowArrays(t *testing.T) {
+	// VSTACK({1,2},{3,4}) → {1,2;3,4}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestVSTACK_TwoColumnVectors(t *testing.T) {
+	// VSTACK({1;2},{3;4}) → {1;2;3;4}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}, {NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3)}, {NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 4 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 4x1, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3, 4} {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d][0]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestVSTACK_Scalars(t *testing.T) {
+	// VSTACK(1,2,3) → {1;2;3}
+	got, err := fnVSTACK([]Value{NumberVal(1), NumberVal(2), NumberVal(3)})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 3x1, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3} {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d][0]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestVSTACK_DifferentColumnCounts(t *testing.T) {
+	// VSTACK({1,2,3},{4,5}) → {1,2,3;4,5,#N/A}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(4), NumberVal(5)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3, got %v", got)
+	}
+	if got.Array[1][2].Type != ValueError || got.Array[1][2].Err != ErrValNA {
+		t.Errorf("expected #N/A at [1][2], got %v", got.Array[1][2])
+	}
+}
+
+func TestVSTACK_SingleArray(t *testing.T) {
+	// VSTACK({1,2;3,4}) → {1,2;3,4}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestVSTACK_SingleScalar(t *testing.T) {
+	// VSTACK(42) → 42
+	got, err := fnVSTACK([]Value{NumberVal(42)})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("expected 42, got %v", got)
+	}
+}
+
+func TestVSTACK_ThreeArrays(t *testing.T) {
+	// VSTACK({1,2},{3,4},{5,6}) → {1,2;3,4;5,6}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 3 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 3x2, got %v", got)
+	}
+	want := [][]float64{{1, 2}, {3, 4}, {5, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestVSTACK_ErrorPassthrough(t *testing.T) {
+	got, err := fnVSTACK([]Value{ErrorVal(ErrValVALUE), NumberVal(1)})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestVSTACK_NoArgs(t *testing.T) {
+	got, err := fnVSTACK([]Value{})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", got)
+	}
+}
+
+func TestVSTACK_MixedScalarAndArray(t *testing.T) {
+	// VSTACK(1, {2,3}) → {1,#N/A;2,3}
+	got, err := fnVSTACK([]Value{
+		NumberVal(1),
+		{Type: ValueArray, Array: [][]Value{{NumberVal(2), NumberVal(3)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("[0][0]: expected 1, got %v", got.Array[0][0])
+	}
+	if got.Array[0][1].Type != ValueError || got.Array[0][1].Err != ErrValNA {
+		t.Errorf("[0][1]: expected #N/A, got %v", got.Array[0][1])
+	}
+}
+
+func TestVSTACK_TwoByTwoArrays(t *testing.T) {
+	// VSTACK({1,2;3,4},{5,6;7,8}) → {1,2;3,4;5,6;7,8}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}, {NumberVal(7), NumberVal(8)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 4 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 4x2, got %v", got)
+	}
+	want := [][]float64{{1, 2}, {3, 4}, {5, 6}, {7, 8}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestVSTACK_StringValues(t *testing.T) {
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{StringVal("a")}}},
+		{Type: ValueArray, Array: [][]Value{{StringVal("b")}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1, got %v", got)
+	}
+	if got.Array[0][0].Str != "a" || got.Array[1][0].Str != "b" {
+		t.Errorf("expected [a;b], got %v", got)
+	}
+}
+
+func TestVSTACK_MultipleColumnPadding(t *testing.T) {
+	// VSTACK({1,2,3,4},{5}) → {1,2,3,4;5,#N/A,#N/A,#N/A}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[1]) != 4 {
+		t.Fatalf("expected 2x4, got %v", got)
+	}
+	if got.Array[1][0].Num != 5 {
+		t.Errorf("[1][0]: expected 5, got %v", got.Array[1][0])
+	}
+	for i := 1; i < 4; i++ {
+		if got.Array[1][i].Type != ValueError || got.Array[1][i].Err != ErrValNA {
+			t.Errorf("[1][%d]: expected #N/A, got %v", i, got.Array[1][i])
+		}
+	}
+}
+
+func TestVSTACK_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "VSTACK({1,2,3},{4,5,6})")
+	got, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 2x3 array, got %v", got)
+	}
+	want := [][]float64{{1, 2, 3}, {4, 5, 6}}
+	for i, wr := range want {
+		for j, w := range wr {
+			if got.Array[i][j].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", i, j, got.Array[i][j].Num, w)
+			}
+		}
+	}
+}
+
+func TestVSTACK_BoolValues(t *testing.T) {
+	got, err := fnVSTACK([]Value{BoolVal(true), BoolVal(false)})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1, got %v", got)
+	}
+	if got.Array[0][0].Type != ValueBool || !got.Array[0][0].Bool {
+		t.Errorf("[0][0]: expected TRUE, got %v", got.Array[0][0])
+	}
+	if got.Array[1][0].Type != ValueBool || got.Array[1][0].Bool {
+		t.Errorf("[1][0]: expected FALSE, got %v", got.Array[1][0])
+	}
+}
+
+func TestVSTACK_FourScalars(t *testing.T) {
+	// VSTACK(1,2,3,4) → {1;2;3;4}
+	got, err := fnVSTACK([]Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 4 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 4x1, got %v", got)
+	}
+	for i, w := range []float64{1, 2, 3, 4} {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d][0]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestVSTACK_DifferentWidths(t *testing.T) {
+	// VSTACK({1},{2,3}) → {1,#N/A;2,3}
+	got, err := fnVSTACK([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(2), NumberVal(3)}}},
+	})
+	if err != nil {
+		t.Fatalf("fnVSTACK: %v", err)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %v", got)
+	}
+	if got.Array[0][0].Num != 1 {
+		t.Errorf("[0][0]: expected 1, got %v", got.Array[0][0])
+	}
+	if got.Array[0][1].Type != ValueError || got.Array[0][1].Err != ErrValNA {
+		t.Errorf("[0][1]: expected #N/A, got %v", got.Array[0][1])
+	}
+	if got.Array[1][0].Num != 2 {
+		t.Errorf("[1][0]: expected 2, got %v", got.Array[1][0])
+	}
+	if got.Array[1][1].Num != 3 {
+		t.Errorf("[1][1]: expected 3, got %v", got.Array[1][1])
+	}
+}

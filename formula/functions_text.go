@@ -38,6 +38,7 @@ func init() {
 	Register("TEXTAFTER", NoCtx(fnTextAfter))
 	Register("TEXTBEFORE", NoCtx(fnTextBefore))
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
+	Register("TEXTSPLIT", NoCtx(fnTextSplit))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
@@ -1321,4 +1322,198 @@ func fnTextAfter(args []Value) (Value, error) {
 	}
 
 	return StringVal(text[pos+len(delimiter):]), nil
+}
+
+// collectDelimiters extracts a list of delimiter strings from a Value.
+// If the value is an array, all non-empty string elements are collected.
+// Otherwise the single string value is returned.
+func collectDelimiters(v Value) []string {
+	if v.Type == ValueArray {
+		var delims []string
+		for _, row := range v.Array {
+			for _, cell := range row {
+				delims = append(delims, ValueToString(cell))
+			}
+		}
+		return delims
+	}
+	return []string{ValueToString(v)}
+}
+
+// textSplitByDelimiters splits text by any of the given delimiters.
+// When caseInsensitive is true, matching is case-insensitive but the
+// original text segments are preserved. Returns the split parts.
+func textSplitByDelimiters(text string, delimiters []string, caseInsensitive bool) []string {
+	if len(delimiters) == 0 {
+		return []string{text}
+	}
+
+	searchText := text
+	searchDelims := delimiters
+	if caseInsensitive {
+		searchText = strings.ToLower(text)
+		searchDelims = make([]string, len(delimiters))
+		for i, d := range delimiters {
+			searchDelims[i] = strings.ToLower(d)
+		}
+	}
+
+	var parts []string
+	start := 0
+	for start <= len(text) {
+		// Find the earliest match among all delimiters.
+		bestIdx := -1
+		bestLen := 0
+		for i, d := range searchDelims {
+			if d == "" {
+				continue
+			}
+			idx := strings.Index(searchText[start:], d)
+			if idx >= 0 && (bestIdx == -1 || idx < bestIdx || (idx == bestIdx && len(delimiters[i]) > bestLen)) {
+				bestIdx = idx
+				bestLen = len(delimiters[i])
+			}
+		}
+		if bestIdx < 0 {
+			// No more delimiters found; take the rest.
+			parts = append(parts, text[start:])
+			break
+		}
+		parts = append(parts, text[start:start+bestIdx])
+		start += bestIdx + bestLen
+		// If delimiter is at the very end, append a trailing empty part.
+		if start == len(text) {
+			parts = append(parts, "")
+			break
+		}
+	}
+	return parts
+}
+
+func fnTextSplit(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// arg 0: text
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// arg 1: col_delimiter
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	colDelims := collectDelimiters(args[1])
+
+	// arg 2: row_delimiter (optional)
+	var rowDelims []string
+	hasRowDelim := false
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
+		if args[2].Type == ValueError {
+			return args[2], nil
+		}
+		rowDelims = collectDelimiters(args[2])
+		hasRowDelim = true
+	}
+
+	// arg 3: ignore_empty (optional, default FALSE)
+	ignoreEmpty := false
+	if len(args) >= 4 && args[3].Type != ValueEmpty {
+		if args[3].Type == ValueError {
+			return args[3], nil
+		}
+		ignoreEmpty = IsTruthy(args[3])
+	}
+
+	// arg 4: match_mode (optional, default 0 = case-sensitive)
+	caseInsensitive := false
+	if len(args) >= 5 && args[4].Type != ValueEmpty {
+		if args[4].Type == ValueError {
+			return args[4], nil
+		}
+		m, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		caseInsensitive = int(m) == 1
+	}
+
+	// arg 5: pad_with (optional, default #N/A)
+	padWith := ErrorVal(ErrValNA)
+	if len(args) >= 6 && args[5].Type != ValueEmpty {
+		padWith = args[5]
+	}
+
+	// Split into rows first, then columns.
+	var rowTexts []string
+	if hasRowDelim {
+		rowTexts = textSplitByDelimiters(text, rowDelims, caseInsensitive)
+	} else {
+		rowTexts = []string{text}
+	}
+
+	// Filter empty row texts if ignore_empty.
+	if ignoreEmpty {
+		filtered := rowTexts[:0]
+		for _, rt := range rowTexts {
+			if rt != "" {
+				filtered = append(filtered, rt)
+			}
+		}
+		rowTexts = filtered
+	}
+
+	// Split each row by col_delimiter.
+	var rows [][]string
+	for _, rt := range rowTexts {
+		cols := textSplitByDelimiters(rt, colDelims, caseInsensitive)
+		if ignoreEmpty {
+			filtered := cols[:0]
+			for _, c := range cols {
+				if c != "" {
+					filtered = append(filtered, c)
+				}
+			}
+			cols = filtered
+		}
+		rows = append(rows, cols)
+	}
+
+	// If everything was filtered out, return empty string.
+	if len(rows) == 0 {
+		return StringVal(""), nil
+	}
+
+	// Find the maximum column count for padding.
+	maxCols := 0
+	for _, r := range rows {
+		if len(r) > maxCols {
+			maxCols = len(r)
+		}
+	}
+	if maxCols == 0 {
+		return StringVal(""), nil
+	}
+
+	// Build the result array.
+	result := make([][]Value, len(rows))
+	for i, r := range rows {
+		result[i] = make([]Value, maxCols)
+		for j := 0; j < maxCols; j++ {
+			if j < len(r) {
+				result[i][j] = StringVal(r[j])
+			} else {
+				result[i][j] = padWith
+			}
+		}
+	}
+
+	// If the result is 1x1, return the scalar.
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
 }
