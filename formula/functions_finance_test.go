@@ -1956,8 +1956,9 @@ func TestMIRR_ExcelExample(t *testing.T) {
 }
 
 func TestMIRR_AllNegative(t *testing.T) {
+	// Excel returns -1 when all cash flows are negative (FV of positives is 0).
 	v, _ := fnMirr([]Value{mirrArray(-1, -2, -3), NumberVal(0.1), NumberVal(0.1)})
-	assertError(t, "MIRR all negative", v)
+	assertClose(t, "MIRR all negative", v, -1.0)
 }
 
 func TestMIRR_AllPositive(t *testing.T) {

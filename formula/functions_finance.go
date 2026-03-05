@@ -1132,17 +1132,16 @@ func fnMirr(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 
-	// Must have at least one positive and one negative value.
-	hasPos, hasNeg := false, false
+	// Must have at least one negative value (otherwise PV of negatives is 0 → division by zero).
+	// All-negative is valid in Excel (returns -1 because FV of positives is 0).
+	hasNeg := false
 	for _, cf := range cashFlows {
-		if cf > 0 {
-			hasPos = true
-		}
 		if cf < 0 {
 			hasNeg = true
+			break
 		}
 	}
-	if !hasPos || !hasNeg {
+	if !hasNeg {
 		return ErrorVal(ErrValDIV0), nil
 	}
 
