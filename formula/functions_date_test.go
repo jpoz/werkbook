@@ -478,6 +478,108 @@ func TestDATEVALUE_extended(t *testing.T) {
 	}
 }
 
+func TestDATEVALUEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Various date formats
+		{"slash_m_d_yyyy", `DATEVALUE("1/1/2023")`, 44927, false, 0},
+		{"slash_mm_dd_yyyy", `DATEVALUE("01/01/2023")`, 44927, false, 0},
+		{"month_name_full", `DATEVALUE("January 1, 2023")`, 44927, false, 0},
+		{"iso_format", `DATEVALUE("2023-01-01")`, 44927, false, 0},
+		{"slash_yyyy_mm_dd", `DATEVALUE("2023/01/01")`, 44927, false, 0},
+		{"dash_d_mon_yyyy", `DATEVALUE("1-Jan-2023")`, 44927, false, 0},
+		{"dash_dd_mon_yyyy", `DATEVALUE("01-Jan-2023")`, 44927, false, 0},
+
+		// End of year
+		{"dec_31_2023", `DATEVALUE("12/31/2023")`, 45291, false, 0},
+
+		// Known serial: 1/1/1900 = 1
+		{"jan_1_1900", `DATEVALUE("1/1/1900")`, 1, false, 0},
+
+		// After the leap year bug: 3/1/1900 = 61
+		{"mar_1_1900", `DATEVALUE("3/1/1900")`, 61, false, 0},
+
+		// Leap year date
+		{"leap_year_feb29_2024", `DATEVALUE("2/29/2024")`, 45351, false, 0},
+		{"leap_year_feb29_2000", `DATEVALUE("2/29/2000")`, 36585, false, 0},
+
+		// Excel doc examples
+		{"doc_8_22_2011", `DATEVALUE("8/22/2011")`, 40777, false, 0},
+		{"doc_22_may_2011", `DATEVALUE("22-May-2011")`, 40685, false, 0},
+		{"doc_2011_02_23", `DATEVALUE("2011/02/23")`, 40597, false, 0},
+		{"doc_jan1_2008", `DATEVALUE("1/1/2008")`, 39448, false, 0},
+
+		// Two-digit years
+		{"two_digit_year_25", `DATEVALUE("01/01/25")`, 45658, false, 0},
+		{"two_digit_year_99", `DATEVALUE("12/31/99")`, 36525, false, 0},
+		{"two_digit_year_00", `DATEVALUE("1/1/00")`, 36526, false, 0},
+
+		// Date with time portion (time should be ignored)
+		{"datetime_iso_with_time", `DATEVALUE("2023-06-15 14:30")`, 45092, false, 0},
+		{"datetime_with_seconds", `DATEVALUE("2023-06-15 14:30:45")`, 45092, false, 0},
+
+		// Mid-year dates
+		{"jul_4_2000", `DATEVALUE("7/4/2000")`, 36711, false, 0},
+		{"feb_28_1900", `DATEVALUE("2/28/1900")`, 59, false, 0},
+
+		// Invalid date string → #VALUE!
+		{"invalid_string", `DATEVALUE("not a date")`, 0, true, ErrValVALUE},
+		{"invalid_gibberish", `DATEVALUE("abc123")`, 0, true, ErrValVALUE},
+
+		// Empty string → #VALUE!
+		{"empty_string", `DATEVALUE("")`, 0, true, ErrValVALUE},
+
+		// Non-date string → #VALUE!
+		{"non_date_hello", `DATEVALUE("hello world")`, 0, true, ErrValVALUE},
+
+		// Number input: DATEVALUE coerces to string, which won't parse as a date format
+		{"number_input", `DATEVALUE(12345)`, 0, true, ErrValVALUE},
+		{"number_zero", `DATEVALUE(0)`, 0, true, ErrValVALUE},
+
+		// Too few args → #VALUE!
+		{"too_few_args", `DATEVALUE()`, 0, true, ErrValVALUE},
+
+		// Too many args → #VALUE!
+		{"too_many_args", `DATEVALUE("1/1/2023","extra")`, 0, true, ErrValVALUE},
+
+		// Error propagation
+		{"error_propagation_ref", `DATEVALUE(1/0)`, 0, true, ErrValDIV0},
+
+		// Boolean input (TRUE → "1", FALSE → "0", neither parses as date)
+		{"bool_true", `DATEVALUE(TRUE)`, 0, true, ErrValVALUE},
+		{"bool_false", `DATEVALUE(FALSE)`, 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestWORKDAY_INTL(t *testing.T) {
 	resolver := &mockResolver{}
 

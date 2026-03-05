@@ -65,7 +65,7 @@ Werkbook supports **303** Excel formula functions.
 | CUMPRINC | Financial | 29 |
 | DATE | Date & Time | 49 |
 | DATEDIF | Date & Time | 18 |
-| DATEVALUE | Date & Time | 4 |
+| DATEVALUE | Date & Time | 38 |
 | DAY | Date & Time | 5 |
 | DAYS | Date & Time | - |
 | DAYS360 | Date & Time | 7 |
