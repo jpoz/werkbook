@@ -2183,3 +2183,303 @@ func TestMIRR_EmptyValuesSkipped(t *testing.T) {
 	}
 	assertClose(t, "MIRR empty skipped", v, 0.10)
 }
+
+// === PDURATION ===
+
+func TestPDURATION_Basic(t *testing.T) {
+	// PDURATION(0.025, 2000, 2200) ≈ 3.859
+	v, err := fnPduration(numArgs(0.025, 2000, 2200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION basic", v, 3.86)
+}
+
+func TestPDURATION_DoublingAt10Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.1, 1000, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION doubling 10%", v, 7.27)
+}
+
+func TestPDURATION_DoublingAt1Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.01, 100, 200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION doubling 1%", v, 69.66)
+}
+
+func TestPDURATION_TripleAt5Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 3000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION triple 5%", v, 22.52)
+}
+
+func TestPDURATION_SmallRate(t *testing.T) {
+	v, err := fnPduration(numArgs(0.001, 500, 600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION small rate", v, 182.41)
+}
+
+func TestPDURATION_LargeRate(t *testing.T) {
+	v, err := fnPduration(numArgs(1.0, 100, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION large rate", v, 3.32)
+}
+
+func TestPDURATION_SmallGrowth(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 1001))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION small growth", v, 0.02)
+}
+
+func TestPDURATION_LargeValues(t *testing.T) {
+	v, err := fnPduration(numArgs(0.08, 1000000, 2000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION large values", v, 9.01)
+}
+
+func TestPDURATION_FractionalRate(t *testing.T) {
+	v, err := fnPduration(numArgs(0.0375, 5000, 7500))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION fractional rate", v, 11.01)
+}
+
+func TestPDURATION_PVEqualsFV(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION pv=fv", v, 0.0)
+}
+
+func TestPDURATION_FVLessThanPV(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 2000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("PDURATION fv<pv: expected negative number, got %v", v)
+	}
+}
+
+func TestPDURATION_ErrorRateZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0, 1000, 2000))
+	assertError(t, "PDURATION rate=0", v)
+}
+
+func TestPDURATION_ErrorRateNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(-0.05, 1000, 2000))
+	assertError(t, "PDURATION rate<0", v)
+}
+
+func TestPDURATION_ErrorPVZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 0, 2000))
+	assertError(t, "PDURATION pv=0", v)
+}
+
+func TestPDURATION_ErrorPVNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, -1000, 2000))
+	assertError(t, "PDURATION pv<0", v)
+}
+
+func TestPDURATION_ErrorFVZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, 0))
+	assertError(t, "PDURATION fv=0", v)
+}
+
+func TestPDURATION_ErrorFVNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, -2000))
+	assertError(t, "PDURATION fv<0", v)
+}
+
+func TestPDURATION_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000))
+	assertError(t, "PDURATION too few args", v)
+}
+
+func TestPDURATION_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, 2000, 1))
+	assertError(t, "PDURATION too many args", v)
+}
+
+func TestPDURATION_ErrorStringArg(t *testing.T) {
+	v, _ := fnPduration([]Value{StringVal("abc"), NumberVal(1000), NumberVal(2000)})
+	assertError(t, "PDURATION string arg", v)
+}
+
+func TestPDURATION_ErrorNoArgs(t *testing.T) {
+	v, _ := fnPduration([]Value{})
+	assertError(t, "PDURATION no args", v)
+}
+
+// === RRI ===
+
+func TestRRI_Basic(t *testing.T) {
+	v, err := fnRri(numArgs(96, 10000, 11000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI basic: expected number, got %v", v)
+	}
+	if math.Abs(v.Num-0.000988) > 0.001 {
+		t.Errorf("RRI basic: got %f, want ~0.000988", v.Num)
+	}
+}
+
+func TestRRI_SinglePeriod(t *testing.T) {
+	v, err := fnRri(numArgs(1, 100, 110))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI single period", v, 0.10)
+}
+
+func TestRRI_AnnualDoublingRate(t *testing.T) {
+	v, err := fnRri(numArgs(12, 1000, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI annual doubling", v, 0.06)
+}
+
+func TestRRI_NegativeGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 500))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("RRI negative growth: expected negative number, got %v", v)
+	}
+}
+
+func TestRRI_NoGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI no growth", v, 0.0)
+}
+
+func TestRRI_LargeNper(t *testing.T) {
+	v, err := fnRri(numArgs(360, 100000, 200000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI large nper: expected number, got %v", v)
+	}
+	if math.Abs(v.Num-0.001928) > 0.001 {
+		t.Errorf("RRI large nper: got %f, want ~0.001928", v.Num)
+	}
+}
+
+func TestRRI_SmallValues(t *testing.T) {
+	v, err := fnRri(numArgs(5, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI small values", v, 0.15)
+}
+
+func TestRRI_LargeGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 100, 10000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI large growth", v, 0.58)
+}
+
+func TestRRI_FVZero(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI fv=0", v, -1.0)
+}
+
+func TestRRI_NegativePV(t *testing.T) {
+	v, err := fnRri(numArgs(10, -1000, -2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI negative pv: expected number, got %v", v)
+	}
+}
+
+func TestRRI_NegativeFV(t *testing.T) {
+	v, err := fnRri(numArgs(1, 100, -50))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI negative fv single period", v, -1.5)
+}
+
+func TestRRI_ErrorNperZero(t *testing.T) {
+	v, _ := fnRri(numArgs(0, 1000, 2000))
+	assertError(t, "RRI nper=0", v)
+}
+
+func TestRRI_ErrorNperNegative(t *testing.T) {
+	v, _ := fnRri(numArgs(-5, 1000, 2000))
+	assertError(t, "RRI nper<0", v)
+}
+
+func TestRRI_ErrorPVZero(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 0, 2000))
+	assertError(t, "RRI pv=0", v)
+}
+
+func TestRRI_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 1000))
+	assertError(t, "RRI too few args", v)
+}
+
+func TestRRI_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 1000, 2000, 1))
+	assertError(t, "RRI too many args", v)
+}
+
+func TestRRI_ErrorStringArg(t *testing.T) {
+	v, _ := fnRri([]Value{StringVal("abc"), NumberVal(1000), NumberVal(2000)})
+	assertError(t, "RRI string arg", v)
+}
+
+func TestRRI_ErrorNoArgs(t *testing.T) {
+	v, _ := fnRri([]Value{})
+	assertError(t, "RRI no args", v)
+}
+
+func TestRRI_FractionalNper(t *testing.T) {
+	v, err := fnRri(numArgs(0.5, 1000, 1100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI fractional nper", v, 0.21)
+}
+
+func TestRRI_VerySmallNper(t *testing.T) {
+	v, err := fnRri(numArgs(0.01, 1000, 1010))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI very small nper: expected number, got %v", v)
+	}
+}
