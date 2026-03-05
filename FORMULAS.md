@@ -4,7 +4,7 @@ Werkbook supports **303** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
-| ABS | Math & Trig | 5 |
+| ABS | Math & Trig | 26 |
 | ACOS | Math & Trig | - |
 | ACOSH | Math & Trig | - |
 | ACOT | Math & Trig | 25 |
