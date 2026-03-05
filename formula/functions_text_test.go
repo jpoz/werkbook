@@ -1165,6 +1165,107 @@ func TestCHOOSEEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CHOOSE comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCHOOSEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	type want struct {
+		typ ValueType
+		num float64
+		str string
+		b   bool
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Basic selection
+		{name: "first_value", formula: `CHOOSE(1,"a","b","c")`, want: want{typ: ValueString, str: "a"}},
+		{name: "second_value", formula: `CHOOSE(2,"a","b","c")`, want: want{typ: ValueString, str: "b"}},
+		{name: "third_value", formula: `CHOOSE(3,"a","b","c")`, want: want{typ: ValueString, str: "c"}},
+		{name: "last_value", formula: `CHOOSE(4,"w","x","y","z")`, want: want{typ: ValueString, str: "z"}},
+
+		// Single value
+		{name: "single_value", formula: `CHOOSE(1,"x")`, want: want{typ: ValueString, str: "x"}},
+
+		// Various return types
+		{name: "return_number", formula: `CHOOSE(2,10,20,30)`, want: want{typ: ValueNumber, num: 20}},
+		{name: "return_bool_true", formula: `CHOOSE(1,TRUE,FALSE)`, want: want{typ: ValueBool, b: true}},
+		{name: "return_bool_false", formula: `CHOOSE(2,TRUE,FALSE)`, want: want{typ: ValueBool, b: false}},
+		{name: "return_string", formula: `CHOOSE(1,"hello")`, want: want{typ: ValueString, str: "hello"}},
+
+		// Decimal index truncated
+		{name: "decimal_index_2.9", formula: `CHOOSE(2.9,"a","b","c")`, want: want{typ: ValueString, str: "b"}},
+		{name: "decimal_index_1.5", formula: `CHOOSE(1.5,"first","second")`, want: want{typ: ValueString, str: "first"}},
+
+		// String coercion of index
+		{name: "string_index", formula: `CHOOSE("2","a","b","c")`, want: want{typ: ValueString, str: "b"}},
+
+		// Boolean as index (TRUE=1)
+		{name: "bool_true_index", formula: `CHOOSE(TRUE,"a","b","c")`, want: want{typ: ValueString, str: "a"}},
+
+		// Excel doc examples
+		{name: "excel_doc_example", formula: `CHOOSE(3,"Wide",115,"world",8)`, want: want{typ: ValueString, str: "world"}},
+
+		// Error: index out of range (too high)
+		{name: "index_too_high", formula: `CHOOSE(5,"a","b","c")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		// Error: index = 0
+		{name: "index_zero", formula: `CHOOSE(0,"a","b")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		// Error: negative index
+		{name: "negative_index", formula: `CHOOSE(-1,"a","b")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		// Error: no values (only index)
+		{name: "no_values", formula: `CHOOSE(1)`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error propagation in index
+		{name: "error_in_index", formula: `CHOOSE(1/0,"a","b")`, want: want{typ: ValueError, err: ErrValDIV0}},
+
+		// Error in selected value propagates
+		{name: "error_in_selected_value", formula: `CHOOSE(2,"a",1/0,"c")`, want: want{typ: ValueError, err: ErrValDIV0}},
+
+		// Error in unselected value doesn't propagate (args are pre-evaluated by
+		// the engine, but CHOOSE only returns the selected one; if the unselected
+		// arg evaluates to an error it's in the arg list but never returned).
+		{name: "error_in_unselected_value", formula: `CHOOSE(1,"ok",1/0)`, want: want{typ: ValueString, str: "ok"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueString:
+				if got.Str != tt.want.str {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want.str)
+				}
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueBool:
+				if got.Bool != tt.want.b {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want.b)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // CONCAT with range arguments
 // ---------------------------------------------------------------------------
 

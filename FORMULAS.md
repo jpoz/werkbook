@@ -36,7 +36,7 @@ Werkbook supports **303** Excel formula functions.
 | CEILING.MATH | Math & Trig | 37 |
 | CEILING.PRECISE | Math & Trig | 37 |
 | CHAR | Text | 8 |
-| CHOOSE | Text | 3 |
+| CHOOSE | Text | 24 |
 | CLEAN | Text | - |
 | CODE | Text | 12 |
 | COLUMN | Information | - |
