@@ -2337,6 +2337,18 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 		// String "less than"
 		{name: "str_lt", v: NumberVal(3), crit: StringVal("<5"), want: true},
 		{name: "str_lt_fail", v: NumberVal(10), crit: StringVal("<5"), want: false},
+		// "=" criteria matches only truly empty cells
+		{name: "equals_empty_matches_empty", v: EmptyVal(), crit: StringVal("="), want: true},
+		{name: "equals_empty_no_match_str", v: StringVal("hello"), crit: StringVal("="), want: false},
+		{name: "equals_empty_no_match_num", v: NumberVal(0), crit: StringVal("="), want: false},
+		{name: "equals_empty_no_match_empty_str", v: StringVal(""), crit: StringVal("="), want: false},
+		// Numeric criteria matches string cells containing the same number
+		{name: "num_crit_matches_str_20", v: StringVal("20"), crit: NumberVal(20), want: true},
+		{name: "num_crit_no_match_str_abc", v: StringVal("abc"), crit: NumberVal(20), want: false},
+		// Numeric operand with "=" operator matches text-numbers
+		{name: "eq20_matches_str_20", v: StringVal("20"), crit: StringVal("=20"), want: true},
+		// Numeric operand with ordering operators does NOT match text-numbers
+		{name: "gt10_no_match_str_15", v: StringVal("15"), crit: StringVal(">10"), want: false},
 	}
 
 	for _, tt := range tests {

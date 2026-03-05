@@ -498,7 +498,7 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 func MatchesCriteria(v Value, criteria Value) bool {
 	critStr := ValueToString(criteria)
 
-	if len(critStr) >= 2 {
+	if len(critStr) >= 1 {
 		// Extract operator and operand.
 		var op, operand string
 		switch {
@@ -529,12 +529,19 @@ func MatchesCriteria(v Value, criteria Value) bool {
 		return v.Type == ValueBool && v.Bool == criteria.Bool
 	}
 
-	// Numeric criteria: only match numeric cells, not booleans.
+	// Numeric criteria: match numeric cells, and also string cells whose
+	// content parses as the same number (Excel coerces strings to numbers
+	// for COUNTIF/SUMIF criteria matching). Booleans are excluded.
 	if criteria.Type == ValueNumber {
-		if v.Type != ValueNumber {
-			return false
+		if v.Type == ValueNumber {
+			return v.Num == criteria.Num
 		}
-		return v.Num == criteria.Num
+		if v.Type == ValueString {
+			if n, err := strconv.ParseFloat(v.Str, 64); err == nil {
+				return n == criteria.Num
+			}
+		}
+		return false
 	}
 
 	// String criteria "TRUE"/"FALSE": coerce to boolean for matching.
@@ -555,6 +562,16 @@ func MatchesCriteria(v Value, criteria Value) bool {
 // matchOperator applies a comparison operator to a cell value and an operand
 // string, respecting Excel's type separation between booleans and numbers.
 func matchOperator(v Value, op, operand string) bool {
+	// "=" with empty operand matches only truly empty cells (TypeEmpty).
+	// This differs from bare "" criteria which matches both empty and empty-string cells.
+	if op == "=" && operand == "" {
+		return v.Type == ValueEmpty
+	}
+	// "<>" with empty operand: everything except truly empty cells.
+	// In Excel, empty-string cells are considered non-blank for <>.
+	if op == "<>" && operand == "" {
+		return v.Type != ValueEmpty
+	}
 	upper := strings.ToUpper(strings.TrimSpace(operand))
 
 	// If the operand is a boolean literal, compare against boolean type only.
@@ -580,11 +597,19 @@ func matchOperator(v Value, op, operand string) bool {
 		return false
 	}
 
-	// If the operand is numeric, only compare against numeric cells.
+	// If the operand is numeric, compare against numeric cells.
+	// For the "=" operator only, also match string cells whose content
+	// parses as the same number (Excel coerces text-numbers for equality
+	// in *IF criteria, but not for ordering operators like >, <, etc.).
 	// Booleans are excluded from numeric comparisons.
 	if cn, err := strconv.ParseFloat(operand, 64); err == nil {
 		if v.Type == ValueNumber {
 			return evalOp(op, cmpFloat(v.Num, cn))
+		}
+		if op == "=" && v.Type == ValueString {
+			if n, err2 := strconv.ParseFloat(v.Str, 64); err2 == nil {
+				return cmpFloat(n, cn) == 0
+			}
 		}
 		// Boolean or other non-numeric type vs numeric operand:
 		// For <> they are not equal; otherwise no match.
