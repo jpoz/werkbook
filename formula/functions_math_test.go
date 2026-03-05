@@ -17,6 +17,7 @@ func TestMathFunctions(t *testing.T) {
 		{"ABS(3)", 3, 0},
 		{"POWER(2,3)", 8, 0},
 		{"POWER(4,0.5)", 2, 1e-10},
+		{"POWER(-8,1/3)", -2, 1e-10},
 		{"SQRT(16)", 4, 0},
 		{"SQRT(2)", math.Sqrt2, 1e-10},
 		{"INT(5.9)", 5, 0},
@@ -70,6 +71,9 @@ func TestMathErrors(t *testing.T) {
 		// MOD precision overflow: |n/d| exceeds 2^53
 		{"MOD(1e18,3)", ErrValNUM},
 		{"FLOOR(2.5,0)", ErrValDIV0},
+		{"POWER(0,0)", ErrValNUM},
+		{"POWER(0,-1)", ErrValDIV0},
+		{"LOG(1,1)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {

@@ -329,6 +329,28 @@ func fnPOWER(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
+	// Excel: POWER(0,0) returns #NUM!
+	if base == 0 && exp == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Excel: POWER(0, negative) returns #DIV/0!
+	if base == 0 && exp < 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	// Handle negative base with fractional exponent: detect unit fractions 1/n
+	// where n is an odd integer, which allows computing real-valued roots.
+	if base < 0 && exp != math.Floor(exp) {
+		recip := 1.0 / exp
+		rounded := math.Round(recip)
+		if math.Abs(recip-rounded) < 1e-9 && int(rounded)%2 != 0 {
+			// Odd root of negative number: -|base|^(1/n) * sign
+			root := math.Pow(math.Abs(base), exp)
+			if math.IsNaN(root) || math.IsInf(root, 0) {
+				return ErrorVal(ErrValNUM), nil
+			}
+			return NumberVal(-root), nil
+		}
+	}
 	result := math.Pow(base, exp)
 	if math.IsNaN(result) || math.IsInf(result, 0) {
 		return ErrorVal(ErrValNUM), nil
@@ -693,7 +715,8 @@ func fnLOG(args []Value) (Value, error) {
 	base := 10.0
 	if len(args) == 2 {
 		base, e = CoerceNum(args[1]); if e != nil { return *e, nil }
-		if base <= 0 || base == 1 { return ErrorVal(ErrValNUM), nil }
+		if base <= 0 { return ErrorVal(ErrValNUM), nil }
+		if base == 1 { return ErrorVal(ErrValDIV0), nil }
 	}
 	return NumberVal(math.Log(n) / math.Log(base)), nil
 }
