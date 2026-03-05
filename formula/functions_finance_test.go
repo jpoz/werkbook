@@ -1042,6 +1042,304 @@ func TestDOLLARDE_DOLLARFR_RoundTrip(t *testing.T) {
 	assertClose(t, "round-trip DOLLARDE(DOLLARFR(1.125,16),16)", de, 1.125)
 }
 
+// === EFFECT ===
+
+func TestEFFECT_ExcelExample(t *testing.T) {
+	// EFFECT(0.0525, 4) = 0.0535427
+	v, err := fnEFFECT(numArgs(0.0525, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT excel example", v, 0.0535427)
+}
+
+func TestEFFECT_Monthly(t *testing.T) {
+	// EFFECT(0.12, 12) = (1+0.01)^12 - 1 = 0.126825
+	v, err := fnEFFECT(numArgs(0.12, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT monthly", v, 0.126825)
+}
+
+func TestEFFECT_Annual(t *testing.T) {
+	// EFFECT(0.10, 1) = 0.10 (compounding once = nominal)
+	v, err := fnEFFECT(numArgs(0.10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT annual", v, 0.10)
+}
+
+func TestEFFECT_SemiAnnual(t *testing.T) {
+	// EFFECT(0.10, 2) = (1+0.05)^2 - 1 = 0.1025
+	v, err := fnEFFECT(numArgs(0.10, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT semi-annual", v, 0.1025)
+}
+
+func TestEFFECT_Quarterly(t *testing.T) {
+	// EFFECT(0.08, 4) = (1+0.02)^4 - 1 = 0.08243216
+	v, err := fnEFFECT(numArgs(0.08, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT quarterly", v, 0.08243216)
+}
+
+func TestEFFECT_Daily(t *testing.T) {
+	// EFFECT(0.10, 365) ≈ 0.10515578
+	v, err := fnEFFECT(numArgs(0.10, 365))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT daily", v, 0.10515578)
+}
+
+func TestEFFECT_Weekly(t *testing.T) {
+	// EFFECT(0.10, 52) ≈ 0.10506479
+	v, err := fnEFFECT(numArgs(0.10, 52))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT weekly", v, 0.10506479)
+}
+
+func TestEFFECT_HighRate(t *testing.T) {
+	// EFFECT(1.0, 12) = (1+1/12)^12 - 1 ≈ 1.61303529
+	v, err := fnEFFECT(numArgs(1.0, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("EFFECT high rate: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-1.61303529) > 0.01 {
+		t.Errorf("EFFECT high rate: got %f, want 1.61303529", v.Num)
+	}
+}
+
+func TestEFFECT_SmallRate(t *testing.T) {
+	// EFFECT(0.001, 12) ≈ 0.001000416
+	v, err := fnEFFECT(numArgs(0.001, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("EFFECT small rate: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.001000416) > 0.000001 {
+		t.Errorf("EFFECT small rate: got %f, want ~0.001000416", v.Num)
+	}
+}
+
+func TestEFFECT_NperyTruncated(t *testing.T) {
+	// EFFECT(0.10, 4.9) should truncate npery to 4
+	v1, _ := fnEFFECT(numArgs(0.10, 4))
+	v2, _ := fnEFFECT(numArgs(0.10, 4.9))
+	if v1.Num != v2.Num {
+		t.Errorf("EFFECT npery truncation: EFFECT(0.10,4)=%f != EFFECT(0.10,4.9)=%f", v1.Num, v2.Num)
+	}
+}
+
+func TestEFFECT_LargeNpery(t *testing.T) {
+	// EFFECT(0.05, 1000) approaches e^0.05 - 1 ≈ 0.05127
+	v, err := fnEFFECT(numArgs(0.05, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "EFFECT large npery", v, 0.05127)
+}
+
+func TestEFFECT_ErrorZeroRate(t *testing.T) {
+	v, _ := fnEFFECT(numArgs(0, 4))
+	assertError(t, "EFFECT rate=0", v)
+}
+
+func TestEFFECT_ErrorNegativeRate(t *testing.T) {
+	v, _ := fnEFFECT(numArgs(-0.05, 4))
+	assertError(t, "EFFECT rate<0", v)
+}
+
+func TestEFFECT_ErrorNperyZero(t *testing.T) {
+	v, _ := fnEFFECT(numArgs(0.10, 0))
+	assertError(t, "EFFECT npery=0", v)
+}
+
+func TestEFFECT_ErrorNperyFraction(t *testing.T) {
+	// npery=0.5 truncates to 0 => #NUM!
+	v, _ := fnEFFECT(numArgs(0.10, 0.5))
+	assertError(t, "EFFECT npery=0.5", v)
+}
+
+func TestEFFECT_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnEFFECT(numArgs(0.10))
+	assertError(t, "EFFECT too few args", v)
+}
+
+func TestEFFECT_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnEFFECT(numArgs(0.10, 4, 1))
+	assertError(t, "EFFECT too many args", v)
+}
+
+// === NOMINAL ===
+
+func TestNOMINAL_ExcelExample(t *testing.T) {
+	// NOMINAL(0.053543, 4) ≈ 0.0525003
+	v, err := fnNOMINAL(numArgs(0.053543, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL excel example", v, 0.0525003)
+}
+
+func TestNOMINAL_Monthly(t *testing.T) {
+	// NOMINAL(0.126825, 12) ≈ 0.12
+	v, err := fnNOMINAL(numArgs(0.126825, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL monthly", v, 0.12)
+}
+
+func TestNOMINAL_Annual(t *testing.T) {
+	// NOMINAL(0.10, 1) = 0.10
+	v, err := fnNOMINAL(numArgs(0.10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL annual", v, 0.10)
+}
+
+func TestNOMINAL_SemiAnnual(t *testing.T) {
+	// NOMINAL(0.1025, 2) ≈ 0.10
+	v, err := fnNOMINAL(numArgs(0.1025, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL semi-annual", v, 0.10)
+}
+
+func TestNOMINAL_Quarterly(t *testing.T) {
+	// NOMINAL(0.08243216, 4) ≈ 0.08
+	v, err := fnNOMINAL(numArgs(0.08243216, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL quarterly", v, 0.08)
+}
+
+func TestNOMINAL_Daily(t *testing.T) {
+	// NOMINAL(0.10515578, 365) ≈ 0.10
+	v, err := fnNOMINAL(numArgs(0.10515578, 365))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL daily", v, 0.10)
+}
+
+func TestNOMINAL_Weekly(t *testing.T) {
+	// NOMINAL(0.10506479, 52) ≈ 0.10
+	v, err := fnNOMINAL(numArgs(0.10506479, 52))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL weekly", v, 0.10)
+}
+
+func TestNOMINAL_HighRate(t *testing.T) {
+	// NOMINAL(1.0, 12) — high effective rate
+	v, err := fnNOMINAL(numArgs(1.0, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("NOMINAL high rate: expected number, got %v", v.Type)
+	}
+	// Verify round-trip: EFFECT(NOMINAL(1.0, 12), 12) ≈ 1.0
+	eff, _ := fnEFFECT(numArgs(v.Num, 12))
+	if math.Abs(eff.Num-1.0) > 0.01 {
+		t.Errorf("NOMINAL high rate round-trip: EFFECT(%f,12)=%f, want 1.0", v.Num, eff.Num)
+	}
+}
+
+func TestNOMINAL_SmallRate(t *testing.T) {
+	// NOMINAL(0.001, 12) ≈ 0.000999584
+	v, err := fnNOMINAL(numArgs(0.001, 12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("NOMINAL small rate: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.000999584) > 0.000001 {
+		t.Errorf("NOMINAL small rate: got %f, want ~0.000999584", v.Num)
+	}
+}
+
+func TestNOMINAL_NperyTruncated(t *testing.T) {
+	// NOMINAL(0.10, 4.9) should truncate npery to 4
+	v1, _ := fnNOMINAL(numArgs(0.10, 4))
+	v2, _ := fnNOMINAL(numArgs(0.10, 4.9))
+	if v1.Num != v2.Num {
+		t.Errorf("NOMINAL npery truncation: NOMINAL(0.10,4)=%f != NOMINAL(0.10,4.9)=%f", v1.Num, v2.Num)
+	}
+}
+
+func TestNOMINAL_LargeNpery(t *testing.T) {
+	// NOMINAL(0.05127, 1000) ≈ 0.05
+	v, err := fnNOMINAL(numArgs(0.05127, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "NOMINAL large npery", v, 0.05)
+}
+
+func TestNOMINAL_ErrorZeroRate(t *testing.T) {
+	v, _ := fnNOMINAL(numArgs(0, 4))
+	assertError(t, "NOMINAL rate=0", v)
+}
+
+func TestNOMINAL_ErrorNegativeRate(t *testing.T) {
+	v, _ := fnNOMINAL(numArgs(-0.05, 4))
+	assertError(t, "NOMINAL rate<0", v)
+}
+
+func TestNOMINAL_ErrorNperyZero(t *testing.T) {
+	v, _ := fnNOMINAL(numArgs(0.10, 0))
+	assertError(t, "NOMINAL npery=0", v)
+}
+
+func TestNOMINAL_ErrorNperyFraction(t *testing.T) {
+	// npery=0.5 truncates to 0 => #NUM!
+	v, _ := fnNOMINAL(numArgs(0.10, 0.5))
+	assertError(t, "NOMINAL npery=0.5", v)
+}
+
+func TestNOMINAL_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnNOMINAL(numArgs(0.10))
+	assertError(t, "NOMINAL too few args", v)
+}
+
+func TestNOMINAL_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnNOMINAL(numArgs(0.10, 4, 1))
+	assertError(t, "NOMINAL too many args", v)
+}
+
+func TestEFFECT_NOMINAL_RoundTrip(t *testing.T) {
+	// NOMINAL(EFFECT(0.08, 4), 4) should give back 0.08
+	eff, _ := fnEFFECT(numArgs(0.08, 4))
+	nom, _ := fnNOMINAL(numArgs(eff.Num, 4))
+	assertClose(t, "EFFECT->NOMINAL round-trip", nom, 0.08)
+
+	// EFFECT(NOMINAL(0.10, 12), 12) should give back 0.10
+	nom2, _ := fnNOMINAL(numArgs(0.10, 12))
+	eff2, _ := fnEFFECT(numArgs(nom2.Num, 12))
+	assertClose(t, "NOMINAL->EFFECT round-trip", eff2, 0.10)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{
