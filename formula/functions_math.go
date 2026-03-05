@@ -42,6 +42,10 @@ func init() {
 	Register("CSCH", NoCtx(fnCSCH))
 	Register("DECIMAL", NoCtx(fnDECIMAL))
 	Register("DEGREES", NoCtx(fnDEGREES))
+	Register("ERF", NoCtx(fnERF))
+	Register("ERF.PRECISE", NoCtx(fnERFPRECISE))
+	Register("ERFC", NoCtx(fnERFC))
+	Register("ERFC.PRECISE", NoCtx(fnERFCPRECISE))
 	Register("EVEN", NoCtx(fnEVEN))
 	Register("EXP", NoCtx(fnEXP))
 	Register("FACT", NoCtx(fnFACT))
@@ -653,6 +657,30 @@ func fnSECH(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
 	return NumberVal(1 / math.Cosh(n)), nil
+}
+func fnERF(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 { return ErrorVal(ErrValVALUE), nil }
+	lower, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) == 1 {
+		return NumberVal(math.Erf(lower)), nil
+	}
+	upper, e := CoerceNum(args[1]); if e != nil { return *e, nil }
+	return NumberVal(math.Erf(upper) - math.Erf(lower)), nil
+}
+func fnERFPRECISE(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erf(n)), nil
+}
+func fnERFC(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erfc(n)), nil
+}
+func fnERFCPRECISE(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erfc(n)), nil
 }
 func fnEVEN(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }

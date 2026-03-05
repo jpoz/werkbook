@@ -2656,3 +2656,267 @@ func TestMINVERSE_Fractional(t *testing.T) {
 		}
 	}
 }
+
+func TestERF(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{"zero", "ERF(0)", 0},
+		{"one", "ERF(1)", 0.8427007929497149},
+		{"two", "ERF(2)", 0.9953222650189527},
+		{"negative_one", "ERF(-1)", -0.8427007929497149},
+		{"half", "ERF(0.5)", 0.5204998778130465},
+		{"0.745", "ERF(0.745)", 0.7079289200957377},
+		{"large", "ERF(6)", 1.0},
+		{"large_neg", "ERF(-6)", -1.0},
+		{"small", "ERF(0.01)", 0.011283415555849618},
+		{"bool_true", "ERF(TRUE)", 0.8427007929497149},
+		{"bool_false", "ERF(FALSE)", 0},
+		{"string_num", "ERF(\"1\")", 0.8427007929497149},
+		{"two_args_0_1", "ERF(0,1)", 0.8427007929497149},
+		{"two_args_1_2", "ERF(1,2)", 0.15262147207903781},
+		{"two_args_same", "ERF(1,1)", 0},
+		{"two_args_neg", "ERF(-1,1)", 1.6854015858994299},
+		{"two_args_reverse", "ERF(2,1)", -0.15262147207903781},
+		{"string_num_two", "ERF(\"0\",\"1\")", 0.8427007929497149},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ERF()", ErrValVALUE},
+		{"too_many_args", "ERF(1,2,3)", ErrValVALUE},
+		{"non_numeric", "ERF(\"abc\")", ErrValVALUE},
+		{"non_numeric_second", "ERF(1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestERFPRECISE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{"zero", "ERF.PRECISE(0)", 0},
+		{"one", "ERF.PRECISE(1)", 0.8427007929497149},
+		{"two", "ERF.PRECISE(2)", 0.9953222650189527},
+		{"negative_one", "ERF.PRECISE(-1)", -0.8427007929497149},
+		{"half", "ERF.PRECISE(0.5)", 0.5204998778130465},
+		{"0.745", "ERF.PRECISE(0.745)", 0.7079289200957377},
+		{"large", "ERF.PRECISE(6)", 1.0},
+		{"large_neg", "ERF.PRECISE(-6)", -1.0},
+		{"small", "ERF.PRECISE(0.01)", 0.011283415555849618},
+		{"bool_true", "ERF.PRECISE(TRUE)", 0.8427007929497149},
+		{"bool_false", "ERF.PRECISE(FALSE)", 0},
+		{"string_num", "ERF.PRECISE(\"1\")", 0.8427007929497149},
+		{"three", "ERF.PRECISE(3)", 0.9999779095030014},
+		{"neg_half", "ERF.PRECISE(-0.5)", -0.5204998778130465},
+		{"quarter", "ERF.PRECISE(0.25)", 0.27632639016823696},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ERF.PRECISE()", ErrValVALUE},
+		{"too_many_args", "ERF.PRECISE(1,2)", ErrValVALUE},
+		{"non_numeric", "ERF.PRECISE(\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestERFC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{"zero", "ERFC(0)", 1},
+		{"one", "ERFC(1)", 0.15729920705028513},
+		{"two", "ERFC(2)", 0.004677734981047266},
+		{"negative_one", "ERFC(-1)", 1.8427007929497148},
+		{"half", "ERFC(0.5)", 0.4795001221869535},
+		{"0.745", "ERFC(0.745)", 0.2920710799042623},
+		{"large", "ERFC(6)", 0},
+		{"large_neg", "ERFC(-6)", 2},
+		{"small", "ERFC(0.01)", 0.9887165844441506},
+		{"bool_true", "ERFC(TRUE)", 0.15729920705028513},
+		{"bool_false", "ERFC(FALSE)", 1},
+		{"string_num", "ERFC(\"1\")", 0.15729920705028513},
+		{"three", "ERFC(3)", 0.000022090496998585438},
+		{"neg_half", "ERFC(-0.5)", 1.5204998778130465},
+		{"quarter", "ERFC(0.25)", 0.723673609831763},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ERFC()", ErrValVALUE},
+		{"too_many_args", "ERFC(1,2)", ErrValVALUE},
+		{"non_numeric", "ERFC(\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestERFCPRECISE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		{"zero", "ERFC.PRECISE(0)", 1},
+		{"one", "ERFC.PRECISE(1)", 0.15729920705028513},
+		{"two", "ERFC.PRECISE(2)", 0.004677734981047266},
+		{"negative_one", "ERFC.PRECISE(-1)", 1.8427007929497148},
+		{"half", "ERFC.PRECISE(0.5)", 0.4795001221869535},
+		{"0.745", "ERFC.PRECISE(0.745)", 0.2920710799042623},
+		{"large", "ERFC.PRECISE(6)", 0},
+		{"large_neg", "ERFC.PRECISE(-6)", 2},
+		{"small", "ERFC.PRECISE(0.01)", 0.9887165844441506},
+		{"bool_true", "ERFC.PRECISE(TRUE)", 0.15729920705028513},
+		{"bool_false", "ERFC.PRECISE(FALSE)", 1},
+		{"string_num", "ERFC.PRECISE(\"1\")", 0.15729920705028513},
+		{"three", "ERFC.PRECISE(3)", 0.000022090496998585438},
+		{"neg_half", "ERFC.PRECISE(-0.5)", 1.5204998778130465},
+		{"quarter", "ERFC.PRECISE(0.25)", 0.723673609831763},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ERFC.PRECISE()", ErrValVALUE},
+		{"too_many_args", "ERFC.PRECISE(1,2)", ErrValVALUE},
+		{"non_numeric", "ERFC.PRECISE(\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
