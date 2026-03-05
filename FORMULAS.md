@@ -32,7 +32,7 @@ Werkbook supports **303** Excel formula functions.
 | BITOR | Math & Trig | 26 |
 | BITRSHIFT | Math & Trig | 26 |
 | BITXOR | Math & Trig | 26 |
-| CEILING | Math & Trig | 4 |
+| CEILING | Math & Trig | 51 |
 | CEILING.MATH | Math & Trig | 37 |
 | CEILING.PRECISE | Math & Trig | 37 |
 | CHAR | Text | 8 |

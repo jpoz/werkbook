@@ -94,6 +94,130 @@ func TestMathErrors(t *testing.T) {
 	}
 }
 
+func TestCEILING(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic: round up to nearest integer (significance=1)
+		{"pos_int_ceil", "CEILING(4.1,1)", 5},
+		{"pos_half_ceil", "CEILING(2.5,1)", 3},
+		{"pos_exact", "CEILING(7,1)", 7},
+		{"pos_small_frac", "CEILING(0.1,1)", 1},
+
+		// Significance of 0.5, 0.1, 10, 100
+		{"sig_0.5", "CEILING(4.2,0.5)", 4.5},
+		{"sig_0.1", "CEILING(4.21,0.1)", 4.3},
+		{"sig_10", "CEILING(42,10)", 50},
+		{"sig_100", "CEILING(450,100)", 500},
+
+		// Negative number with negative significance (rounds away from zero)
+		{"neg_neg_sig", "CEILING(-2.5,-1)", -3},
+		{"neg_neg_sig_2", "CEILING(-2.5,-2)", -4},
+		{"neg_neg_sig_5", "CEILING(-7,-5)", -10},
+
+		// Negative number with positive significance (rounds toward zero)
+		{"neg_pos_sig", "CEILING(-2.5,1)", -2},
+		{"neg_pos_sig_2", "CEILING(-4.1,2)", -4},
+		{"neg_pos_sig_5", "CEILING(-8.1,5)", -5},
+
+		// Zero → 0
+		{"zero_zero", "CEILING(0,1)", 0},
+		{"zero_neg_sig", "CEILING(0,5)", 0},
+
+		// Number already at significance boundary → unchanged
+		{"exact_boundary", "CEILING(6,3)", 6},
+		{"exact_boundary_neg", "CEILING(-6,-3)", -6},
+		{"exact_boundary_neg_pos_sig", "CEILING(-6,3)", -6},
+
+		// Significance = 0 → 0
+		{"sig_zero_pos", "CEILING(6.3,0)", 0},
+		{"sig_zero_neg", "CEILING(-6.3,0)", 0},
+		{"sig_zero_zero", "CEILING(0,0)", 0},
+
+		// Very small significance
+		{"small_sig", "CEILING(0.234,0.01)", 0.24},
+		{"small_sig_2", "CEILING(1.001,0.001)", 1.001},
+
+		// Large numbers
+		{"large_num", "CEILING(1234567,1000)", 1235000},
+		{"large_exact", "CEILING(1000000,1000)", 1000000},
+
+		// Decimal significance
+		{"dec_sig_0.05", "CEILING(4.42,0.05)", 4.45},
+		{"dec_sig_0.25", "CEILING(1.1,0.25)", 1.25},
+
+		// Excel doc examples
+		{"doc_ex1", "CEILING(2.5,1)", 3},
+		{"doc_ex2", "CEILING(-2.5,-2)", -4},
+		{"doc_ex3", "CEILING(-2.5,2)", -2},
+		{"doc_ex4", "CEILING(1.5,0.1)", 1.5},
+		{"doc_ex5", "CEILING(0.234,0.01)", 0.24},
+
+		// String coercion of numeric strings
+		{"string_num", "CEILING(\"4.1\",1)", 5},
+		{"string_sig", "CEILING(4.1,\"1\")", 5},
+		{"string_both", "CEILING(\"4.1\",\"1\")", 5},
+
+		// Boolean coercion
+		{"bool_true_num", "CEILING(TRUE,1)", 1},
+		{"bool_false_num", "CEILING(FALSE,1)", 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Too few args
+		{"no_args", "CEILING()", ErrValVALUE},
+		{"one_arg", "CEILING(1)", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "CEILING(1,2,3)", ErrValVALUE},
+		// Non-numeric
+		{"non_numeric_num", "CEILING(\"abc\",1)", ErrValVALUE},
+		{"non_numeric_sig", "CEILING(1,\"abc\")", ErrValVALUE},
+		// Positive number with negative significance → #NUM!
+		{"pos_neg_sig", "CEILING(2.5,-1)", ErrValNUM},
+		{"pos_neg_sig_2", "CEILING(10,-5)", ErrValNUM},
+		// Error propagation
+		{"err_prop_num", "CEILING(1/0,1)", ErrValDIV0},
+		{"err_prop_sig", "CEILING(1,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCEILINGMATH(t *testing.T) {
 	resolver := &mockResolver{}
 
