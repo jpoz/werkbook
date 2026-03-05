@@ -155,7 +155,7 @@ Werkbook supports **303** Excel formula functions.
 | MATCH | Lookup & Reference | 16 |
 | MAX | Statistical | 31 |
 | MAXA | Statistical | 16 |
-| MAXIFS | Statistical | 4 |
+| MAXIFS | Statistical | 45 |
 | MDETERM | Math & Trig | 31 |
 | MEDIAN | Statistical | 27 |
 | MID | Text | 50 |

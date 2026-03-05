@@ -8105,6 +8105,480 @@ func TestMAXA(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// MAXIFS — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestMAXIFS_SingleCriteria(t *testing.T) {
+	// Excel doc Example 1: =MAXIFS(A2:A7,B2:B7,1) => 91
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A): grades
+			{Col: 1, Row: 1}: NumberVal(89),
+			{Col: 1, Row: 2}: NumberVal(93),
+			{Col: 1, Row: 3}: NumberVal(96),
+			{Col: 1, Row: 4}: NumberVal(85),
+			{Col: 1, Row: 5}: NumberVal(91),
+			{Col: 1, Row: 6}: NumberVal(88),
+			// criteria range (B): weights
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(2),
+			{Col: 2, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 5}: NumberVal(1),
+			{Col: 2, Row: 6}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A6,B1:B6,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows with weight=1: 89, 91, 88 => max=91
+	if got.Type != ValueNumber || got.Num != 91 {
+		t.Errorf("MAXIFS single criteria: got %v, want 91", got)
+	}
+}
+
+func TestMAXIFS_MultipleCriteria(t *testing.T) {
+	// Excel doc Example 3: =MAXIFS(A2:A7,B2:B7,"b",D2:D7,">100") => 50
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A): weights
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(100),
+			{Col: 1, Row: 4}: NumberVal(1),
+			{Col: 1, Row: 5}: NumberVal(1),
+			{Col: 1, Row: 6}: NumberVal(50),
+			// criteria range 1 (B): grades
+			{Col: 2, Row: 1}: StringVal("b"),
+			{Col: 2, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 3}: StringVal("a"),
+			{Col: 2, Row: 4}: StringVal("b"),
+			{Col: 2, Row: 5}: StringVal("a"),
+			{Col: 2, Row: 6}: StringVal("b"),
+			// criteria range 2 (D): levels
+			{Col: 4, Row: 1}: NumberVal(100),
+			{Col: 4, Row: 2}: NumberVal(100),
+			{Col: 4, Row: 3}: NumberVal(200),
+			{Col: 4, Row: 4}: NumberVal(300),
+			{Col: 4, Row: 5}: NumberVal(100),
+			{Col: 4, Row: 6}: NumberVal(400),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A6,B1:B6,"b",D1:D6,">100")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// grade="b" AND level>100: row4(1,300) and row6(50,400) => max=50
+	if got.Type != ValueNumber || got.Num != 50 {
+		t.Errorf("MAXIFS multiple criteria: got %v, want 50", got)
+	}
+}
+
+func TestMAXIFS_NoMatches(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 1}: StringVal("apple"),
+			{Col: 2, Row: 2}: StringVal("banana"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A2,B1:B2,"cherry")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// No matches => 0
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("MAXIFS no matches: got %v, want 0", got)
+	}
+}
+
+func TestMAXIFS_AllMatch(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,">0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All rows match => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS all match: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+			// criteria range (B)
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `MAXIFS(A1:A5,B1:B5,">30")`, 50},
+		{"less than", `MAXIFS(A1:A5,B1:B5,"<30")`, 20},
+		{"greater or equal", `MAXIFS(A1:A5,B1:B5,">=30")`, 50},
+		{"less or equal", `MAXIFS(A1:A5,B1:B5,"<=30")`, 30},
+		{"equal", `MAXIFS(A1:A5,B1:B5,"=30")`, 30},
+		{"not equal", `MAXIFS(A1:A5,B1:B5,"<>30")`, 50},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("MAXIFS %s: got %v, want %g", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMAXIFS_StringCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Apples"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"Apples")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples rows: 5, 10 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS string criteria: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(15),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Apples"),
+			{Col: 2, Row: 3}: StringVal("Artichokes"),
+			{Col: 2, Row: 4}: StringVal("Bananas"),
+		},
+	}
+
+	// Wildcard * matches any sequence of characters
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"A*")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// A* matches Apples(5), Apples(4), Artichokes(15) => max=15
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("MAXIFS wildcard *: got %v, want 15", got)
+	}
+}
+
+func TestMAXIFS_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(5),
+			{Col: 2, Row: 1}: StringVal("cat"),
+			{Col: 2, Row: 2}: StringVal("car"),
+			{Col: 2, Row: 3}: StringVal("cab"),
+			{Col: 2, Row: 4}: StringVal("dogs"),
+		},
+	}
+
+	// ? matches any single character: "ca?" matches cat, car, cab but not dogs
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"ca?")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// cat(10), car(20), cab(30) => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS wildcard ?: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 1}: StringVal("Apple"),
+			{Col: 2, Row: 2}: StringVal("APPLE"),
+			{Col: 2, Row: 3}: StringVal("apple"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"apple")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// All three should match case-insensitively: max(100,200,300) = 300
+	if got.Type != ValueNumber || got.Num != 300 {
+		t.Errorf("MAXIFS case insensitive: got %v, want 300", got)
+	}
+}
+
+func TestMAXIFS_NegativeNumbers(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-10),
+			{Col: 1, Row: 2}: NumberVal(-20),
+			{Col: 1, Row: 3}: NumberVal(-5),
+			{Col: 1, Row: 4}: NumberVal(-15),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(2),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Rows with criteria=1: -10, -20, -15 => max=-10
+	if got.Type != ValueNumber || got.Num != -10 {
+		t.Errorf("MAXIFS negative numbers: got %v, want -10", got)
+	}
+}
+
+func TestMAXIFS_MixedTypesInMaxRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("text"),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: BoolVal(true),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+			{Col: 2, Row: 4}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// "text" is not numeric and is skipped; TRUE coerces to 1
+	// Numeric values: 10, 30, 1 => max=30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS mixed types: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_EmptyCellsInMaxRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			// A2 is empty (not in map)
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 2, Row: 3}: NumberVal(1),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Empty cell coerces to 0: max(10, 0, 30) = 30
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAXIFS empty cells: got %v, want 30", got)
+	}
+}
+
+func TestMAXIFS_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Only 1 arg — need at least 3
+	cf := evalCompile(t, "MAXIFS(A1:A3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMAXIFS_UnpairedCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// 4 args total: max_range + 3 => (4-1)%2 != 0 => error
+	cf := evalCompile(t, `MAXIFS(A1:A1,B1:B1,1,C1:C1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS unpaired criteria: got %v, want #VALUE!", got)
+	}
+}
+
+func TestMAXIFS_StringNotEqual(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(22),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 1}: StringVal("Apples"),
+			{Col: 2, Row: 2}: StringVal("Bananas"),
+			{Col: 2, Row: 3}: StringVal("Apples"),
+		},
+	}
+
+	// Max where product is NOT Bananas
+	cf := evalCompile(t, `MAXIFS(A1:A3,B1:B3,"<>Bananas")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Apples rows: 5, 10 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS not-equal string: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_ExcelDocExample2(t *testing.T) {
+	// Excel doc Example 2: =MAXIFS(A2:A5,B3:B6,"a") => 10
+	// criteria_range and max_range aren't aligned but same shape
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range A2:A5
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(1),
+			{Col: 1, Row: 4}: NumberVal(100),
+			{Col: 1, Row: 5}: NumberVal(1),
+			// criteria range B3:B6
+			{Col: 2, Row: 3}: StringVal("a"),
+			{Col: 2, Row: 4}: StringVal("a"),
+			{Col: 2, Row: 5}: StringVal("b"),
+			{Col: 2, Row: 6}: StringVal("a"),
+		},
+	}
+
+	cf := evalCompile(t, `MAXIFS(A2:A5,B3:B6,"a")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// "a" matches positions 1,2,4 => max_range values 10,1,1 => max=10
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Errorf("MAXIFS Excel doc example 2: got %v, want 10", got)
+	}
+}
+
+func TestMAXIFS_ThreeCriteriaPairs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// max range (A)
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			// criteria range 1 (B): region
+			{Col: 2, Row: 1}: StringVal("East"),
+			{Col: 2, Row: 2}: StringVal("West"),
+			{Col: 2, Row: 3}: StringVal("East"),
+			{Col: 2, Row: 4}: StringVal("East"),
+			// criteria range 2 (C): product
+			{Col: 3, Row: 1}: StringVal("Widget"),
+			{Col: 3, Row: 2}: StringVal("Widget"),
+			{Col: 3, Row: 3}: StringVal("Gadget"),
+			{Col: 3, Row: 4}: StringVal("Widget"),
+			// criteria range 3 (D): quantity
+			{Col: 4, Row: 1}: NumberVal(5),
+			{Col: 4, Row: 2}: NumberVal(15),
+			{Col: 4, Row: 3}: NumberVal(20),
+			{Col: 4, Row: 4}: NumberVal(25),
+		},
+	}
+
+	// East AND Widget AND qty>10 => only row 4 (400)
+	cf := evalCompile(t, `MAXIFS(A1:A4,B1:B4,"East",C1:C4,"Widget",D1:D4,">10")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("MAXIFS three criteria: got %v, want 400", got)
+	}
+}
+
+func TestMAXIFS_NonArrayMaxRange(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// max_range is a scalar, not an array => #VALUE!
+	cf := evalCompile(t, `MAXIFS(5,A1:A1,1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("MAXIFS non-array max_range: got %v, want #VALUE!", got)
+	}
+}
+
 func TestMINA(t *testing.T) {
 	valResolver := func(vals ...Value) *mockResolver {
 		m := &mockResolver{cells: map[CellAddr]Value{}}
