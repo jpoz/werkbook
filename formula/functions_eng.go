@@ -14,6 +14,7 @@ func init() {
 	Register("DEC2HEX", NoCtx(fnDec2Hex))
 	Register("DEC2OCT", NoCtx(fnDec2Oct))
 	Register("GESTEP", NoCtx(fnGESTEP))
+	Register("HEX2DEC", NoCtx(fnHex2Dec))
 }
 
 // fnBin2Dec implements the Excel BIN2DEC function.
@@ -277,6 +278,126 @@ func fnDec2Oct(args []Value) (Value, error) {
 	}
 
 	return StringVal(result), nil
+}
+
+// fnHex2Dec implements the Excel HEX2DEC function.
+// HEX2DEC(number) — converts a hexadecimal number string to decimal.
+// Input must contain only hex chars (0-9, A-F, a-f), max 10 digits.
+// 10-digit numbers starting with 8-F are negative (two's complement).
+func fnHex2Dec(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		// Format as integer string (e.g., 100.0 → "100").
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate length: max 10 hex digits, not empty.
+	if len(s) == 0 || len(s) > 10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Validate characters: only hex chars allowed.
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	// Parse as unsigned hex.
+	v, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Two's complement: 10-digit number with first digit >= 8 is negative.
+	var result float64
+	if len(s) == 10 && s[0] >= '8' {
+		result = float64(int64(v) - 1099511627776) // subtract 2^40
+	} else {
+		result = float64(v)
+	}
+
+	return NumberVal(result), nil
+}
+
+// fnOct2Dec implements the Excel OCT2DEC function.
+// OCT2DEC(number) — converts an octal number string to decimal.
+// Input must contain only octal chars (0-7), max 10 digits.
+// 10-digit numbers starting with 4-7 are negative (two's complement, 30-bit).
+func fnOct2Dec(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		// Format as integer string (e.g., 144.0 → "144").
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate length: max 10 octal digits, not empty.
+	if len(s) == 0 || len(s) > 10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Validate characters: only 0-7 allowed.
+	for _, c := range s {
+		if c < '0' || c > '7' {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	// Parse as unsigned octal.
+	v, err := strconv.ParseUint(s, 8, 64)
+	if err != nil {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Two's complement: 10-digit number with first digit >= 4 is negative.
+	var result float64
+	if len(s) == 10 && s[0] >= '4' {
+		result = float64(int64(v) - 1073741824) // subtract 2^30
+	} else {
+		result = float64(v)
+	}
+
+	return NumberVal(result), nil
 }
 
 // fnGESTEP implements the Excel GESTEP function.
