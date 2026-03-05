@@ -6927,6 +6927,59 @@ func TestFORECAST(t *testing.T) {
 		{"fractional_x", "FORECAST(2.5,A1:A3,B1:B3)", linearResolver, 6.0, false, 0},
 		// FORECAST.LINEAR with two points
 		{"linear_two_points", "FORECAST.LINEAR(10,A1:A2,B1:B2)", twoPairResolver, 9.0, false, 0},
+
+		// --- Additional FORECAST.LINEAR-specific tests ---
+
+		// FORECAST.LINEAR: perfect linear y=2x+1, predict x=5 -> 11
+		{"fl_perfect_linear", "FORECAST.LINEAR(5,A1:A3,B1:B3)", linearResolver, 11.0, false, 0},
+		// FORECAST.LINEAR: horizontal line (all y same) -> predict same y
+		{"fl_horizontal_line", "FORECAST.LINEAR(99,A1:A3,B1:B3)", &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+			},
+		}, 5.0, false, 0},
+		// FORECAST.LINEAR: extrapolation beyond data range
+		{"fl_extrapolation_high", "FORECAST.LINEAR(100,A1:A3,B1:B3)", linearResolver, 201.0, false, 0},
+		// FORECAST.LINEAR: extrapolation below data range (negative x)
+		{"fl_extrapolation_low", "FORECAST.LINEAR(-10,A1:A3,B1:B3)", linearResolver, -19.0, false, 0},
+		// FORECAST.LINEAR: interpolation within data range
+		{"fl_interpolation", "FORECAST.LINEAR(1.5,A1:A3,B1:B3)", linearResolver, 4.0, false, 0},
+		// FORECAST.LINEAR: negative x and y values
+		{"fl_negative_values", "FORECAST.LINEAR(-1,A1:A3,B1:B3)", negValsResolver, -10.0, false, 0},
+		// FORECAST.LINEAR: single data point -> #DIV/0!
+		{"fl_single_point_div0", "FORECAST.LINEAR(5,A1:A1,B1:B1)", singlePairResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: mismatched array sizes -> #N/A
+		{"fl_mismatched_arrays", "FORECAST.LINEAR(5,A1:A3,B1:B5)", diffLenResolver, 0, true, ErrValNA},
+		// FORECAST.LINEAR: empty arrays -> #DIV/0!
+		{"fl_empty_arrays", "FORECAST.LINEAR(5,A1:A3,B1:B3)", emptyResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: non-numeric string in x arg -> #VALUE!
+		{"fl_non_numeric_x", "FORECAST.LINEAR(\"hello\",A1:A3,B1:B3)", linearResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: too many args -> #VALUE!
+		{"fl_too_many_args", "FORECAST.LINEAR(5,A1:A3,B1:B3,A1:A3)", linearResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: Excel doc example with x=30
+		{"fl_excel_doc_example", "FORECAST.LINEAR(30,A1:A5,B1:B5)", excelResolver, 10.607253, false, 0},
+		// FORECAST.LINEAR: large dataset y=2x+1, predict x=50 -> 101
+		{"fl_large_dataset", "FORECAST.LINEAR(50,A1:A20,B1:B20)", largeResolver, 101.0, false, 0},
+		// FORECAST.LINEAR: decimal/fractional values in data
+		{"fl_decimal_values", "FORECAST.LINEAR(3.5,A1:A3,B1:B3)", &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1.5), {Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 1, Row: 2}: NumberVal(3.0), {Col: 2, Row: 2}: NumberVal(1.0),
+				{Col: 1, Row: 3}: NumberVal(4.5), {Col: 2, Row: 3}: NumberVal(1.5),
+			},
+		}, 10.5, false, 0},
+		// FORECAST.LINEAR: x=0 returns intercept
+		{"fl_x_zero_intercept", "FORECAST.LINEAR(0,A1:A3,B1:B3)", linearResolver, 1.0, false, 0},
+		// FORECAST.LINEAR: constant x values -> #DIV/0!
+		{"fl_constant_x_div0", "FORECAST.LINEAR(5,A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		// FORECAST.LINEAR: error propagation from arrays
+		{"fl_error_propagation", "FORECAST.LINEAR(5,A1:A3,B1:B3)", errResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: mixed types skip non-numeric pairs
+		{"fl_mixed_types_skip", "FORECAST.LINEAR(10,A1:A4,B1:B4)", mixedResolver, 11.0, false, 0},
+		// FORECAST.LINEAR: very large x value
+		{"fl_very_large_x", "FORECAST.LINEAR(1000000,A1:A3,B1:B3)", linearResolver, 2000001.0, false, 0},
 	}
 
 	for _, tt := range tests {
