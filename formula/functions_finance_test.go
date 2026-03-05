@@ -306,6 +306,248 @@ func TestXIRR_DateStrings(t *testing.T) {
 	}
 }
 
+// === DB ===
+
+func TestDB_ExcelExample_Period1(t *testing.T) {
+	// DB(1000000, 100000, 6, 1, 7) = 186083.33
+	v, err := fnDB(numArgs(1000000, 100000, 6, 1, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 1", v, 186083.33)
+}
+
+func TestDB_ExcelExample_Period2(t *testing.T) {
+	// DB(1000000, 100000, 6, 2, 7) = 259639.42
+	v, err := fnDB(numArgs(1000000, 100000, 6, 2, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 2", v, 259639.42)
+}
+
+func TestDB_ExcelExample_Period3(t *testing.T) {
+	// DB(1000000, 100000, 6, 3, 7) = 176814.44
+	v, err := fnDB(numArgs(1000000, 100000, 6, 3, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 3", v, 176814.44)
+}
+
+func TestDB_ExcelExample_Period4(t *testing.T) {
+	// DB(1000000, 100000, 6, 4, 7) = 120410.64
+	v, err := fnDB(numArgs(1000000, 100000, 6, 4, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 4", v, 120410.64)
+}
+
+func TestDB_ExcelExample_Period5(t *testing.T) {
+	// DB(1000000, 100000, 6, 5, 7) = 81999.64
+	v, err := fnDB(numArgs(1000000, 100000, 6, 5, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 5", v, 81999.64)
+}
+
+func TestDB_ExcelExample_Period6(t *testing.T) {
+	// DB(1000000, 100000, 6, 6, 7) = 55841.76
+	v, err := fnDB(numArgs(1000000, 100000, 6, 6, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 6", v, 55841.76)
+}
+
+func TestDB_ExcelExample_Period7_LastFractional(t *testing.T) {
+	// DB(1000000, 100000, 6, 7, 7) = 15845.10
+	v, err := fnDB(numArgs(1000000, 100000, 6, 7, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB period 7 (last fractional)", v, 15845.10)
+}
+
+func TestDB_FullYear_DefaultMonth(t *testing.T) {
+	// DB(1000000, 100000, 6, 1) — month defaults to 12
+	// rate = 1 - (100000/1000000)^(1/6) = 1 - 0.1^(1/6) ≈ 0.319
+	// period 1: 1000000 * 0.319 * 12/12 = 319000
+	v, err := fnDB(numArgs(1000000, 100000, 6, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB default month", v, 319000)
+}
+
+func TestDB_FullYear_Period2(t *testing.T) {
+	// DB(1000000, 100000, 6, 2) — month defaults to 12
+	// period 2: (1000000 - 319000) * 0.319 = 681000 * 0.319 = 217239
+	v, err := fnDB(numArgs(1000000, 100000, 6, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB default month period 2", v, 217239)
+}
+
+func TestDB_Life1(t *testing.T) {
+	// DB(10000, 1000, 1, 1) — life of 1 year, month=12
+	// rate = 1 - (1000/10000)^(1/1) = 1 - 0.1 = 0.9
+	// period 1: 10000 * 0.9 * 12/12 = 9000
+	v, err := fnDB(numArgs(10000, 1000, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB life=1", v, 9000)
+}
+
+func TestDB_Life1_Month6(t *testing.T) {
+	// DB(10000, 1000, 1, 1, 6) — life of 1, month=6
+	// rate = 0.9, period 1: 10000 * 0.9 * 6/12 = 4500
+	v, err := fnDB(numArgs(10000, 1000, 1, 1, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB life=1 month=6 period 1", v, 4500)
+}
+
+func TestDB_Life1_Month6_Period2(t *testing.T) {
+	// DB(10000, 1000, 1, 2, 6) — last fractional period
+	// rate = 0.9, period 1 dep = 4500, remaining = 5500
+	// period 2: 5500 * 0.9 * (12-6)/12 = 5500 * 0.9 * 0.5 = 2475
+	v, err := fnDB(numArgs(10000, 1000, 1, 2, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB life=1 month=6 period 2", v, 2475)
+}
+
+func TestDB_CostZero(t *testing.T) {
+	// DB(0, 0, 5, 1) — cost is 0, depreciation is 0
+	v, err := fnDB(numArgs(0, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB cost=0", v, 0)
+}
+
+func TestDB_SalvageEqualsCost(t *testing.T) {
+	// DB(10000, 10000, 5, 1) — no depreciation when salvage = cost
+	v, err := fnDB(numArgs(10000, 10000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB salvage=cost", v, 0)
+}
+
+func TestDB_SalvageZero(t *testing.T) {
+	// DB(10000, 0, 5, 1) — salvage = 0
+	// rate = 1 - (0/10000)^(1/5) = 1 - 0 = 1.0
+	// period 1: 10000 * 1.0 * 12/12 = 10000
+	v, err := fnDB(numArgs(10000, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB salvage=0", v, 10000)
+}
+
+func TestDB_SalvageZero_Period2(t *testing.T) {
+	// DB(10000, 0, 5, 2) — all depreciated in period 1
+	// period 2: (10000 - 10000) * 1.0 = 0
+	v, err := fnDB(numArgs(10000, 0, 5, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB salvage=0 period 2", v, 0)
+}
+
+func TestDB_LargeNumbers(t *testing.T) {
+	// DB(50000000, 5000000, 10, 1) — large asset
+	// rate = 1 - (5000000/50000000)^(1/10) = 1 - 0.1^0.1 ≈ 0.206
+	// period 1: 50000000 * 0.206 = 10300000
+	v, err := fnDB(numArgs(50000000, 5000000, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB large numbers", v, 10300000)
+}
+
+func TestDB_SmallAsset(t *testing.T) {
+	// DB(100, 10, 5, 1)
+	// rate = 1 - (10/100)^(1/5) = 1 - 0.631 = 0.369
+	// period 1: 100 * 0.369 = 36.9
+	v, err := fnDB(numArgs(100, 10, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB small asset", v, 36.90)
+}
+
+func TestDB_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 5))
+	assertError(t, "DB too few args", v)
+}
+
+func TestDB_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 5, 1, 12, 99))
+	assertError(t, "DB too many args", v)
+}
+
+func TestDB_ErrorNegativeCost(t *testing.T) {
+	v, _ := fnDB(numArgs(-1000, 100, 5, 1))
+	assertError(t, "DB negative cost", v)
+}
+
+func TestDB_ErrorNegativeSalvage(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, -100, 5, 1))
+	assertError(t, "DB negative salvage", v)
+}
+
+func TestDB_ErrorLifeZero(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 0, 1))
+	assertError(t, "DB life=0", v)
+}
+
+func TestDB_ErrorPeriodZero(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 5, 0))
+	assertError(t, "DB period=0", v)
+}
+
+func TestDB_ErrorPeriodExceedsLife(t *testing.T) {
+	// month=12 so max period = life
+	v, _ := fnDB(numArgs(1000, 100, 5, 6))
+	assertError(t, "DB period > life (month=12)", v)
+}
+
+func TestDB_ErrorPeriodExceedsLifePlus1(t *testing.T) {
+	// month=6 so max period = life+1 = 6, period 7 should error
+	v, _ := fnDB(numArgs(1000, 100, 5, 7, 6))
+	assertError(t, "DB period > life+1", v)
+}
+
+func TestDB_ErrorMonthZero(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 5, 1, 0))
+	assertError(t, "DB month=0", v)
+}
+
+func TestDB_ErrorMonthOver12(t *testing.T) {
+	v, _ := fnDB(numArgs(1000, 100, 5, 1, 13))
+	assertError(t, "DB month>12", v)
+}
+
+func TestDB_Month1(t *testing.T) {
+	// DB(1000000, 100000, 6, 1, 1)
+	// rate = 0.319
+	// period 1: 1000000 * 0.319 * 1/12 = 26583.33
+	v, err := fnDB(numArgs(1000000, 100000, 6, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DB month=1", v, 26583.33)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{

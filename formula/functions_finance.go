@@ -16,6 +16,7 @@ func init() {
 	Register("PPMT", NoCtx(fnPPMT))
 	Register("PV", NoCtx(fnPV))
 	Register("RATE", NoCtx(fnRATE))
+	Register("DB", NoCtx(fnDB))
 	Register("SLN", NoCtx(fnSLN))
 	Register("XIRR", NoCtx(fnXIRR))
 	Register("XNPV", NoCtx(fnXNPV))
@@ -541,6 +542,86 @@ func fnRATE(args []Value) (Value, error) {
 		rate = newRate
 	}
 	return ErrorVal(ErrValNUM), nil
+}
+
+// fnDB implements DB(cost, salvage, life, period, [month]).
+// Returns the depreciation of an asset for a given period using the
+// fixed-declining balance method.
+func fnDB(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	period, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	month := 12.0
+	if len(args) == 5 {
+		month, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// Validate inputs.
+	if cost < 0 || salvage < 0 || life <= 0 || period < 1 || month < 1 || month > 12 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// period must be <= life, or life+1 when month < 12.
+	maxPeriod := life
+	if month < 12 {
+		maxPeriod = life + 1
+	}
+	if period > maxPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: cost is 0, depreciation is always 0.
+	if cost == 0 {
+		return NumberVal(0), nil
+	}
+
+	// If salvage >= cost, no depreciation.
+	if salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// rate = 1 - ((salvage/cost)^(1/life)), rounded to 3 decimal places.
+	rate := 1 - math.Pow(salvage/cost, 1.0/life)
+	rate = math.Round(rate*1000) / 1000
+
+	// Compute depreciation for each period up to the requested one.
+	totalDepreciation := 0.0
+	var dep float64
+	for p := 1.0; p <= period; p++ {
+		if p == 1 {
+			// First period: cost * rate * month / 12
+			dep = cost * rate * month / 12
+		} else if p == life+1 {
+			// Last fractional period (only when month < 12):
+			// (cost - totalDepreciation) * rate * (12 - month) / 12
+			dep = (cost - totalDepreciation) * rate * (12 - month) / 12
+		} else {
+			// Intermediate periods:
+			// (cost - totalDepreciation) * rate
+			dep = (cost - totalDepreciation) * rate
+		}
+		totalDepreciation += dep
+	}
+
+	return NumberVal(dep), nil
 }
 
 // fnSLN implements SLN(cost, salvage, life).
