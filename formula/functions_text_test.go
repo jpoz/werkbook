@@ -487,6 +487,8 @@ func TestTEXTFraction(t *testing.T) {
 		// Zero-padded numerator and denominator
 		{name: "frac_zero_pad", formula: `TEXT(23.75, "|#\:? ?0#/000")`, want: "|2:3  03/004"},
 		{name: "frac_zero_pad_val1", formula: `TEXT(1, "|#\:? ?0#/000")`, want: "|:1  00/001"},
+		// Denominator left-justified (right-padded) with ?? placeholders
+		{name: "frac_denom_left_align", formula: `TEXT(1/3, "# ??/??")`, want: "  1/3 "},
 	}
 
 	for _, tt := range tests {
@@ -1390,6 +1392,8 @@ func TestTEXTNoFormatCodesReturnsVALUE(t *testing.T) {
 		{name: "pos_neg_zero_pos", formula: `TEXT(42,"pos;neg;zero")`},
 		{name: "pos_neg_zero_neg", formula: `TEXT(-42,"pos;neg;zero")`},
 		{name: "pos_neg_zero_zero", formula: `TEXT(0,"pos;neg;zero")`},
+		// Unquoted alphabetic text mixed with number format codes is invalid.
+		{name: "unquoted_text_with_digit", formula: `TEXT(42,"Value: 0")`},
 	}
 
 	for _, tt := range tests {
@@ -1493,4 +1497,84 @@ func TestT(t *testing.T) {
 			t.Errorf("T(NA()) = %v, want error", got)
 		}
 	})
+}
+
+func TestCODE_Windows1252(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// ASCII characters — same in Unicode and Windows-1252
+		{"ASCII A", `CODE("A")`, 65},
+		{"ASCII underscore", `CODE("_")`, 95},
+		{"ASCII space", `CODE(" ")`, 32},
+
+		// Windows-1252 range 0x80–0x9F — these Unicode code points
+		// must map back to their Windows-1252 byte values.
+		{"Euro sign U+20AC -> 0x80", `CODE("€")`, 0x80},
+		{"Left single quote U+2018 -> 0x91", "CODE(\"\u2018\")", 0x91},
+		{"Em dash U+2014 -> 0x97", `CODE("—")`, 0x97},
+		{"Trademark U+2122 -> 0x99", `CODE("™")`, 0x99},
+
+		// Latin-1 supplement (0xA0–0xFF) — same in Unicode and Windows-1252
+		{"Latin A-grave U+00C0 -> 0xC0", `CODE("À")`, 0xC0},
+		{"Section sign U+00A7 -> 0xA7", `CODE("§")`, 0xA7},
+
+		// Characters outside Windows-1252 → replacement '?' = 63
+		{"CJK char -> replacement", `CODE("日")`, 63},
+		{"Greek alpha -> replacement", `CODE("α")`, 63},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCHAR_Windows1252(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// ASCII range — same as before
+		{"CHAR(65)", `CHAR(65)`, "A"},
+		{"CHAR(95)", `CHAR(95)`, "_"},
+
+		// Windows-1252 range 0x80–0x9F — should produce the correct
+		// Unicode character, not the raw byte value.
+		{"CHAR(128) = Euro", `CHAR(128)`, "€"},
+		{"CHAR(151) = Em dash", `CHAR(151)`, "—"},
+		{"CHAR(153) = Trademark", `CHAR(153)`, "™"},
+
+		// Latin-1 supplement — same in both encodings
+		{"CHAR(192) = A-grave", `CHAR(192)`, "À"},
+		{"CHAR(167) = Section", `CHAR(167)`, "§"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
 }
