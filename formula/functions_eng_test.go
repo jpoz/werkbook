@@ -1088,6 +1088,466 @@ func TestOCT2DEC(t *testing.T) {
 	})
 }
 
+func TestHEX2BIN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{`HEX2BIN("0")`, "0"},
+			{`HEX2BIN("1")`, "1"},
+			{`HEX2BIN("2")`, "10"},
+			{`HEX2BIN("A")`, "1010"},
+			{`HEX2BIN("F")`, "1111"},
+			{`HEX2BIN("10")`, "10000"},
+			{`HEX2BIN("1F")`, "11111"},
+			{`HEX2BIN("FF")`, "11111111"},
+			{`HEX2BIN("1FF")`, "111111111"},
+
+			// Case insensitive
+			{`HEX2BIN("a")`, "1010"},
+			{`HEX2BIN("f")`, "1111"},
+			{`HEX2BIN("ff")`, "11111111"},
+
+			// With places
+			{`HEX2BIN("A",8)`, "00001010"},
+			{`HEX2BIN("1",4)`, "0001"},
+			{`HEX2BIN("0",4)`, "0000"},
+			{`HEX2BIN("F",8)`, "00001111"},
+			{`HEX2BIN("1FF",10)`, "0111111111"},
+
+			// Numeric input (coerced to string)
+			{"HEX2BIN(0)", "0"},
+			{"HEX2BIN(1)", "1"},
+			{"HEX2BIN(10)", "10000"},
+
+			// Negative numbers (two's complement hex → binary)
+			{`HEX2BIN("FFFFFFFFFF")`, "1111111111"},   // -1
+			{`HEX2BIN("FFFFFFFFFE")`, "1111111110"},   // -2
+			{`HEX2BIN("FFFFFFFE00")`, "1000000000"},   // -512
+
+			// Max positive
+			{`HEX2BIN("1FF")`, "111111111"}, // 511
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Out of range (512 > 511)
+			{`HEX2BIN("200")`, ErrValNUM},
+			// Out of range (large positive)
+			{`HEX2BIN("1000")`, ErrValNUM},
+			// Non-hex characters
+			{`HEX2BIN("G")`, ErrValNUM},
+			{`HEX2BIN("XYZ")`, ErrValNUM},
+			// Too many digits
+			{`HEX2BIN("10000000000")`, ErrValNUM},
+			// Empty string
+			{`HEX2BIN("")`, ErrValNUM},
+			// Boolean rejection
+			{"HEX2BIN(TRUE)", ErrValVALUE},
+			{"HEX2BIN(FALSE)", ErrValVALUE},
+			// Places too small
+			{`HEX2BIN("FF",4)`, ErrValNUM},
+			// Places = 0
+			{`HEX2BIN("1",0)`, ErrValNUM},
+			// Places > 10
+			{`HEX2BIN("1",11)`, ErrValNUM},
+			// Negative places
+			{`HEX2BIN("1",-1)`, ErrValNUM},
+			// Non-numeric places
+			{`HEX2BIN("1","abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"HEX2BIN()", `HEX2BIN("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
+func TestHEX2OCT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{`HEX2OCT("0")`, "0"},
+			{`HEX2OCT("1")`, "1"},
+			{`HEX2OCT("8")`, "10"},
+			{`HEX2OCT("A")`, "12"},
+			{`HEX2OCT("F")`, "17"},
+			{`HEX2OCT("10")`, "20"},
+			{`HEX2OCT("FF")`, "377"},
+			{`HEX2OCT("1FF")`, "777"},
+			{`HEX2OCT("64")`, "144"},
+			{`HEX2OCT("3E8")`, "1750"},
+
+			// Case insensitive
+			{`HEX2OCT("a")`, "12"},
+			{`HEX2OCT("ff")`, "377"},
+
+			// With places
+			{`HEX2OCT("A",4)`, "0012"},
+			{`HEX2OCT("1",4)`, "0001"},
+			{`HEX2OCT("0",4)`, "0000"},
+			{`HEX2OCT("FF",4)`, "0377"},
+
+			// Numeric input
+			{"HEX2OCT(0)", "0"},
+			{"HEX2OCT(1)", "1"},
+
+			// Negative numbers (two's complement)
+			{`HEX2OCT("FFFFFFFFFF")`, "7777777777"}, // -1
+			{`HEX2OCT("FFFFFFFFFE")`, "7777777776"}, // -2
+			{`HEX2OCT("FFE0000000")`, "4000000000"}, // -536870912
+
+			// Max positive
+			{`HEX2OCT("1FFFFFFF")`, "3777777777"}, // 536870911
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Out of range (too large positive for octal)
+			{`HEX2OCT("20000000")`, ErrValNUM},
+			// Out of range (too negative for octal)
+			{`HEX2OCT("8000000000")`, ErrValNUM},
+			// Non-hex characters
+			{`HEX2OCT("G")`, ErrValNUM},
+			{`HEX2OCT("XYZ")`, ErrValNUM},
+			// Too many digits
+			{`HEX2OCT("10000000000")`, ErrValNUM},
+			// Empty string
+			{`HEX2OCT("")`, ErrValNUM},
+			// Boolean rejection
+			{"HEX2OCT(TRUE)", ErrValVALUE},
+			{"HEX2OCT(FALSE)", ErrValVALUE},
+			// Places too small
+			{`HEX2OCT("FF",2)`, ErrValNUM},
+			// Places = 0
+			{`HEX2OCT("1",0)`, ErrValNUM},
+			// Places > 10
+			{`HEX2OCT("1",11)`, ErrValNUM},
+			// Non-numeric places
+			{`HEX2OCT("1","abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"HEX2OCT()", `HEX2OCT("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
+func TestOCT2BIN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{`OCT2BIN("0")`, "0"},
+			{`OCT2BIN("1")`, "1"},
+			{`OCT2BIN("7")`, "111"},
+			{`OCT2BIN("10")`, "1000"},
+			{`OCT2BIN("11")`, "1001"},
+			{`OCT2BIN("17")`, "1111"},
+			{`OCT2BIN("77")`, "111111"},
+			{`OCT2BIN("100")`, "1000000"},
+			{`OCT2BIN("777")`, "111111111"},
+
+			// With places
+			{`OCT2BIN("7",6)`, "000111"},
+			{`OCT2BIN("1",4)`, "0001"},
+			{`OCT2BIN("0",4)`, "0000"},
+			{`OCT2BIN("10",8)`, "00001000"},
+			{`OCT2BIN("777",10)`, "0111111111"},
+
+			// Numeric input
+			{"OCT2BIN(0)", "0"},
+			{"OCT2BIN(1)", "1"},
+			{"OCT2BIN(7)", "111"},
+			{"OCT2BIN(10)", "1000"},
+			{"OCT2BIN(77)", "111111"},
+
+			// Negative numbers (two's complement)
+			{`OCT2BIN("7777777777")`, "1111111111"}, // -1
+			{`OCT2BIN("7777777776")`, "1111111110"}, // -2
+			{`OCT2BIN("7777777000")`, "1000000000"}, // -512
+
+			// Max positive
+			{`OCT2BIN("777")`, "111111111"}, // 511
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Out of range (512 > 511)
+			{`OCT2BIN("1000")`, ErrValNUM},
+			// Out of range (large)
+			{`OCT2BIN("7777")`, ErrValNUM},
+			// Non-octal characters
+			{`OCT2BIN("8")`, ErrValNUM},
+			{`OCT2BIN("9")`, ErrValNUM},
+			{`OCT2BIN("abc")`, ErrValNUM},
+			// Too many digits
+			{`OCT2BIN("40000000000")`, ErrValNUM},
+			// Empty string
+			{`OCT2BIN("")`, ErrValNUM},
+			// Boolean rejection
+			{"OCT2BIN(TRUE)", ErrValVALUE},
+			{"OCT2BIN(FALSE)", ErrValVALUE},
+			// Places too small
+			{`OCT2BIN("77",4)`, ErrValNUM},
+			// Places = 0
+			{`OCT2BIN("1",0)`, ErrValNUM},
+			// Places > 10
+			{`OCT2BIN("1",11)`, ErrValNUM},
+			// Negative places
+			{`OCT2BIN("1",-1)`, ErrValNUM},
+			// Non-numeric places
+			{`OCT2BIN("1","abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"OCT2BIN()", `OCT2BIN("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
+func TestOCT2HEX(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic positive numbers
+			{`OCT2HEX("0")`, "0"},
+			{`OCT2HEX("1")`, "1"},
+			{`OCT2HEX("7")`, "7"},
+			{`OCT2HEX("10")`, "8"},
+			{`OCT2HEX("12")`, "A"},
+			{`OCT2HEX("17")`, "F"},
+			{`OCT2HEX("20")`, "10"},
+			{`OCT2HEX("144")`, "64"},
+			{`OCT2HEX("377")`, "FF"},
+			{`OCT2HEX("777")`, "1FF"},
+			{`OCT2HEX("1750")`, "3E8"},
+
+			// With places
+			{`OCT2HEX("377",4)`, "00FF"},
+			{`OCT2HEX("1",4)`, "0001"},
+			{`OCT2HEX("0",4)`, "0000"},
+			{`OCT2HEX("12",4)`, "000A"},
+
+			// Numeric input
+			{"OCT2HEX(0)", "0"},
+			{"OCT2HEX(1)", "1"},
+			{"OCT2HEX(10)", "8"},
+			{"OCT2HEX(377)", "FF"},
+
+			// Negative numbers (two's complement)
+			{`OCT2HEX("7777777777")`, "FFFFFFFFFF"}, // -1
+			{`OCT2HEX("7777777776")`, "FFFFFFFFFE"}, // -2
+			{`OCT2HEX("4000000000")`, "FFE0000000"}, // -536870912
+
+			// Max positive
+			{`OCT2HEX("3777777777")`, "1FFFFFFF"}, // 536870911
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Non-octal characters
+			{`OCT2HEX("8")`, ErrValNUM},
+			{`OCT2HEX("9")`, ErrValNUM},
+			{`OCT2HEX("abc")`, ErrValNUM},
+			// Too many digits
+			{`OCT2HEX("40000000000")`, ErrValNUM},
+			// Empty string
+			{`OCT2HEX("")`, ErrValNUM},
+			// Boolean rejection
+			{"OCT2HEX(TRUE)", ErrValVALUE},
+			{"OCT2HEX(FALSE)", ErrValVALUE},
+			// Places too small
+			{`OCT2HEX("377",1)`, ErrValNUM},
+			// Places = 0
+			{`OCT2HEX("1",0)`, ErrValNUM},
+			// Places > 10
+			{`OCT2HEX("1",11)`, ErrValNUM},
+			// Negative places
+			{`OCT2HEX("1",-1)`, ErrValNUM},
+			// Non-numeric places
+			{`OCT2HEX("1","abc")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"OCT2HEX()", `OCT2HEX("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestGESTEP(t *testing.T) {
 	resolver := &mockResolver{}
 
