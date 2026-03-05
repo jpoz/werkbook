@@ -8384,3 +8384,339 @@ func TestNORMINV_NORMDIST_roundtrip(t *testing.T) {
 		})
 	}
 }
+
+func TestMEDIAN(t *testing.T) {
+	// Helper to build a resolver with numeric values in column A.
+	numResolver := func(nums ...float64) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, n := range nums {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = NumberVal(n)
+		}
+		return m
+	}
+
+	// Helper for resolvers with arbitrary values in column A.
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	t.Run("odd count basic", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("even count basic", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	t.Run("single value", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(42)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("two values", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(10,20)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("five values unsorted", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(9,1,5,3,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("six values unsorted", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1,2,3,4,5,6)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	t.Run("negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-5,-3,-1)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -3 {
+			t.Errorf("got %v, want -3", got)
+		}
+	})
+
+	t.Run("mixed positive and negative", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-10,0,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("mixed positive and negative even count", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(-10,-1,1,10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("all zeros", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(0,0,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("all same values", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(7,7,7,7)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("decimals", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1.5,2.5,3.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	t.Run("very large numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1E15,2E15,3E15)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2e15 {
+			t.Errorf("got %v, want 2e15", got)
+		}
+	})
+
+	t.Run("very small numbers", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(1E-10,2E-10,3E-10)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2e-10 {
+			t.Errorf("got %v, want 2e-10", got)
+		}
+	})
+
+	t.Run("boolean TRUE as direct arg coerced to 1", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(TRUE,3,5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("boolean FALSE as direct arg coerced to 0", func(t *testing.T) {
+		cf := evalCompile(t, "MEDIAN(FALSE,2,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("numeric string as direct arg coerced", func(t *testing.T) {
+		cf := evalCompile(t, `MEDIAN("2",4,6)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("non-numeric string as direct arg returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `MEDIAN("abc",1,2)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	t.Run("range with numbers", func(t *testing.T) {
+		m := numResolver(1, 2, 3, 4, 5)
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range even count", func(t *testing.T) {
+		m := numResolver(1, 2, 3, 4, 5, 6)
+		cf := evalCompile(t, "MEDIAN(A1:A6)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	t.Run("range with empty cells ignored", func(t *testing.T) {
+		// A1=1, A2=empty, A3=3, A4=empty, A5=5
+		m := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(5),
+		}}
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range with strings ignored", func(t *testing.T) {
+		m := valResolver(NumberVal(1), StringVal("hello"), NumberVal(3), StringVal("world"), NumberVal(5))
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("range with booleans ignored", func(t *testing.T) {
+		m := valResolver(NumberVal(10), BoolVal(true), NumberVal(20), BoolVal(false), NumberVal(30))
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("range with error propagates", func(t *testing.T) {
+		m := valResolver(NumberVal(1), ErrorVal(ErrValNA), NumberVal(3))
+		cf := evalCompile(t, "MEDIAN(A1:A3)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	t.Run("all non-numeric in range returns NUM error", func(t *testing.T) {
+		m := valResolver(StringVal("a"), StringVal("b"), StringVal("c"))
+		cf := evalCompile(t, "MEDIAN(A1:A3)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("got %v, want #NUM! error", got)
+		}
+	})
+
+	t.Run("Excel example odd", func(t *testing.T) {
+		// From Excel docs: MEDIAN(1,2,3,4,5) = 3
+		m := numResolver(1, 2, 3, 4, 5)
+		cf := evalCompile(t, "MEDIAN(A1:A5)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("Excel example even", func(t *testing.T) {
+		// From Excel docs: MEDIAN(1,2,3,4,5,6) = 3.5
+		m := numResolver(1, 2, 3, 4, 5, 6)
+		cf := evalCompile(t, "MEDIAN(A1:A6)")
+		got, err := Eval(cf, m, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3.5 {
+			t.Errorf("got %v, want 3.5", got)
+		}
+	})
+
+	_ = numResolver // suppress unused if only direct-arg tests
+	_ = valResolver
+}
