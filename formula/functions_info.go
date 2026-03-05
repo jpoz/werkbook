@@ -59,6 +59,9 @@ func fnISEVEN(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueBool {
+		return ErrorVal(ErrValVALUE), nil
+	}
 	n, e := CoerceNum(args[0])
 	if e != nil {
 		return *e, nil
@@ -68,6 +71,9 @@ func fnISEVEN(args []Value) (Value, error) {
 
 func fnISODD(args []Value) (Value, error) {
 	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueBool {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	n, e := CoerceNum(args[0])
