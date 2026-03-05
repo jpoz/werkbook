@@ -94,6 +94,95 @@ func TestMathErrors(t *testing.T) {
 	}
 }
 
+func TestABS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Positive numbers → unchanged
+		{"pos_int", "ABS(5)", 5},
+		{"pos_decimal", "ABS(3.14)", 3.14},
+
+		// Negative numbers → positive
+		{"neg_int", "ABS(-5)", 5},
+		{"neg_decimal", "ABS(-3.14)", 3.14},
+
+		// Zero
+		{"zero", "ABS(0)", 0},
+
+		// Large values
+		{"large_pos", "ABS(999999999)", 999999999},
+		{"large_neg", "ABS(-999999999)", 999999999},
+
+		// Small decimals
+		{"small_pos", "ABS(0.000001)", 0.000001},
+		{"small_neg", "ABS(-0.000001)", 0.000001},
+
+		// String coercion
+		{"string_pos", "ABS(\"5\")", 5},
+		{"string_neg", "ABS(\"-3.5\")", 3.5},
+
+		// Boolean coercion
+		{"bool_true", "ABS(TRUE)", 1},
+		{"bool_false", "ABS(FALSE)", 0},
+
+		// Expression argument
+		{"expr_neg_result", "ABS(2-5)", 3},
+		{"expr_pos_result", "ABS(5-2)", 3},
+
+		// Excel doc examples
+		{"doc_ex1", "ABS(2)", 2},
+		{"doc_ex2", "ABS(-2)", 2},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.wantNum {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "ABS()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "ABS(1,2)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric", "ABS(\"abc\")", ErrValVALUE},
+		// Error propagation
+		{"err_div0", "ABS(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCEILING(t *testing.T) {
 	resolver := &mockResolver{}
 
