@@ -548,6 +548,215 @@ func TestDB_Month1(t *testing.T) {
 	assertClose(t, "DB month=1", v, 26583.33)
 }
 
+// === DDB ===
+
+func TestDDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
+	// DDB(2400, 300, 10*365, 1) = 1.32 (first day's depreciation)
+	v, err := fnDDB(numArgs(2400, 300, 10*365, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB first day", v, 1.32)
+}
+
+func TestDDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
+	// DDB(2400, 300, 10*12, 1, 2) = 40.00
+	v, err := fnDDB(numArgs(2400, 300, 10*12, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB first month", v, 40.00)
+}
+
+func TestDDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
+	// DDB(2400, 300, 10, 1, 2) = 480.00
+	v, err := fnDDB(numArgs(2400, 300, 10, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB first year", v, 480.00)
+}
+
+func TestDDB_ExcelExample_SecondYearFactor15(t *testing.T) {
+	// DDB(2400, 300, 10, 2, 1.5) = 306.00
+	v, err := fnDDB(numArgs(2400, 300, 10, 2, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB second year factor 1.5", v, 306.00)
+}
+
+func TestDDB_ExcelExample_TenthYear(t *testing.T) {
+	// DDB(2400, 300, 10, 10) = 22.12
+	v, err := fnDDB(numArgs(2400, 300, 10, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB tenth year", v, 22.12)
+}
+
+func TestDDB_Period2_DefaultFactor(t *testing.T) {
+	// DDB(2400, 300, 10, 2)
+	// period 1: 2400 * 2/10 = 480, book = 1920
+	// period 2: 1920 * 2/10 = 384
+	v, err := fnDDB(numArgs(2400, 300, 10, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB period 2", v, 384.00)
+}
+
+func TestDDB_Period3_DefaultFactor(t *testing.T) {
+	// period 3: (2400-480-384) * 0.2 = 1536 * 0.2 = 307.20
+	v, err := fnDDB(numArgs(2400, 300, 10, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB period 3", v, 307.20)
+}
+
+func TestDDB_CostZero(t *testing.T) {
+	v, err := fnDDB(numArgs(0, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB cost=0", v, 0)
+}
+
+func TestDDB_SalvageEqualsCost(t *testing.T) {
+	v, err := fnDDB(numArgs(10000, 10000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB salvage=cost", v, 0)
+}
+
+func TestDDB_SalvageZero(t *testing.T) {
+	// DDB(10000, 0, 5, 1) = 10000 * 2/5 = 4000
+	v, err := fnDDB(numArgs(10000, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB salvage=0", v, 4000)
+}
+
+func TestDDB_SalvageZero_Period2(t *testing.T) {
+	// DDB(10000, 0, 5, 2) = (10000-4000) * 2/5 = 2400
+	v, err := fnDDB(numArgs(10000, 0, 5, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB salvage=0 period 2", v, 2400)
+}
+
+func TestDDB_LargeAsset(t *testing.T) {
+	// DDB(1000000, 100000, 10, 1) = 1000000 * 2/10 = 200000
+	v, err := fnDDB(numArgs(1000000, 100000, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB large asset", v, 200000)
+}
+
+func TestDDB_Factor1(t *testing.T) {
+	// DDB(2400, 300, 10, 1, 1) = 2400 * 1/10 = 240
+	v, err := fnDDB(numArgs(2400, 300, 10, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB factor=1", v, 240)
+}
+
+func TestDDB_Factor3(t *testing.T) {
+	// DDB(2400, 300, 10, 1, 3) = 2400 * 3/10 = 720
+	v, err := fnDDB(numArgs(2400, 300, 10, 1, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB factor=3", v, 720)
+}
+
+func TestDDB_DepreciationCappedBySalvage(t *testing.T) {
+	// DDB(1000, 800, 5, 1) = min(1000 * 2/5, 1000 - 800) = min(400, 200) = 200
+	v, err := fnDDB(numArgs(1000, 800, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB capped by salvage", v, 200)
+}
+
+func TestDDB_DepreciationCappedBySalvage_Period2(t *testing.T) {
+	// After period 1 (dep=200), book = 800 = salvage, so period 2 dep = 0
+	v, err := fnDDB(numArgs(1000, 800, 5, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB capped period 2", v, 0)
+}
+
+func TestDDB_Life1(t *testing.T) {
+	// DDB(10000, 1000, 1, 1) = min(10000 * 2/1, 10000 - 1000) = min(20000, 9000) = 9000
+	v, err := fnDDB(numArgs(10000, 1000, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB life=1", v, 9000)
+}
+
+func TestDDB_SmallAsset(t *testing.T) {
+	// DDB(100, 10, 5, 1) = 100 * 2/5 = 40
+	v, err := fnDDB(numArgs(100, 10, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DDB small asset", v, 40)
+}
+
+func TestDDB_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5))
+	assertError(t, "DDB too few args", v)
+}
+
+func TestDDB_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5, 1, 2, 99))
+	assertError(t, "DDB too many args", v)
+}
+
+func TestDDB_ErrorNegativeCost(t *testing.T) {
+	v, _ := fnDDB(numArgs(-1000, 100, 5, 1))
+	assertError(t, "DDB negative cost", v)
+}
+
+func TestDDB_ErrorNegativeSalvage(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, -100, 5, 1))
+	assertError(t, "DDB negative salvage", v)
+}
+
+func TestDDB_ErrorLifeZero(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 0, 1))
+	assertError(t, "DDB life=0", v)
+}
+
+func TestDDB_ErrorPeriodZero(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5, 0))
+	assertError(t, "DDB period=0", v)
+}
+
+func TestDDB_ErrorPeriodExceedsLife(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5, 6))
+	assertError(t, "DDB period > life", v)
+}
+
+func TestDDB_ErrorNegativeFactor(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5, 1, -2))
+	assertError(t, "DDB negative factor", v)
+}
+
+func TestDDB_ErrorFactorZero(t *testing.T) {
+	v, _ := fnDDB(numArgs(1000, 100, 5, 1, 0))
+	assertError(t, "DDB factor=0", v)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{
