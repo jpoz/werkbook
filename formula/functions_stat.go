@@ -16,6 +16,9 @@ func init() {
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
 	Register("CORREL", NoCtx(fnCORREL))
+	Register("COVAR", NoCtx(fnCOVARIANCEP))
+	Register("COVARIANCE.P", NoCtx(fnCOVARIANCEP))
+	Register("COVARIANCE.S", NoCtx(fnCOVARIANCES))
 	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
@@ -52,16 +55,20 @@ func init() {
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
+	Register("STDEV.S", NoCtx(fnSTDEV))
 	Register("STDEVP", NoCtx(fnSTDEVP))
+	Register("STDEV.P", NoCtx(fnSTDEVP))
 	Register("SUM", NoCtx(fnSUM))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
 	Register("SUMSQ", NoCtx(fnSUMSQ))
 	Register("VAR", NoCtx(fnVAR))
+	Register("VAR.S", NoCtx(fnVAR))
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("SKEW", NoCtx(fnSKEW))
 	Register("VARP", NoCtx(fnVARP))
+	Register("VAR.P", NoCtx(fnVARP))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -1796,6 +1803,72 @@ func flattenValuesGeneric(arg Value) []Value {
 		return out
 	}
 	return []Value{arg}
+}
+
+// fnCOVARIANCEP implements COVARIANCE.P (and COVAR, which is identical).
+func fnCOVARIANCEP(args []Value) (Value, error) {
+	return covarianceImpl(args, false)
+}
+
+// fnCOVARIANCES implements COVARIANCE.S (sample covariance).
+func fnCOVARIANCES(args []Value) (Value, error) {
+	return covarianceImpl(args, true)
+}
+
+// covarianceImpl computes population or sample covariance for two arrays.
+func covarianceImpl(args []Value, sample bool) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var xs, ys []float64
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		if v1.Type != ValueNumber || v2.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, v1.Num)
+		ys = append(ys, v2.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	if sample && n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	cov := 0.0
+	for i := 0; i < n; i++ {
+		cov += (xs[i] - meanX) * (ys[i] - meanY)
+	}
+
+	if sample {
+		return NumberVal(cov / float64(n-1)), nil
+	}
+	return NumberVal(cov / float64(n)), nil
 }
 
 // linearRegression computes the slope and intercept of the least-squares
