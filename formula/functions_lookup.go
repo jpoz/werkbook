@@ -22,7 +22,10 @@ func init() {
 	Register("TOROW", NoCtx(fnTOROW))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
 	Register("UNIQUE", NoCtx(fnUNIQUE))
+	Register("WRAPCOLS", NoCtx(fnWRAPCOLS))
 	Register("WRAPROWS", NoCtx(fnWRAPROWS))
+	Register("HSTACK", NoCtx(fnHSTACK))
+	Register("VSTACK", NoCtx(fnVSTACK))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 }
 
@@ -1529,6 +1532,155 @@ func fnWRAPROWS(args []Value) (Value, error) {
 			}
 		}
 		result[i] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnWRAPCOLS implements WRAPCOLS(vector, wrap_count, [pad_with]).
+// Wraps a row or column vector into a 2D array with wrap_count rows per column.
+func fnWRAPCOLS(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten input to a 1D vector.
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	var flat []Value
+	for _, row := range grid {
+		flat = append(flat, row...)
+	}
+	if len(flat) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	wrapArg, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	wrapCount := int(wrapArg)
+	if wrapCount < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	padWith := ErrorVal(ErrValNA)
+	if len(args) == 3 {
+		padWith = args[2]
+	}
+
+	// Build 2D array filling column-first.
+	numCols := (len(flat) + wrapCount - 1) / wrapCount
+	result := make([][]Value, wrapCount)
+	for r := 0; r < wrapCount; r++ {
+		result[r] = make([]Value, numCols)
+		for c := 0; c < numCols; c++ {
+			idx := c*wrapCount + r
+			if idx < len(flat) {
+				result[r][c] = flat[idx]
+			} else {
+				result[r][c] = padWith
+			}
+		}
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnHSTACK implements HSTACK(array1, [array2], ...).
+// Horizontally stacks arrays side by side.
+func fnHSTACK(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Normalize all arguments to grids and find the max row count.
+	grids := make([][][]Value, len(args))
+	maxRows := 0
+	for i, arg := range args {
+		g, errVal := normalizeToGrid(arg)
+		if errVal != nil {
+			return *errVal, nil
+		}
+		grids[i] = g
+		if len(g) > maxRows {
+			maxRows = len(g)
+		}
+	}
+
+	// Build result by concatenating columns from each grid.
+	result := make([][]Value, maxRows)
+	for r := 0; r < maxRows; r++ {
+		var row []Value
+		for _, g := range grids {
+			_, cols := gridDims(g)
+			if r < len(g) {
+				for c := 0; c < cols; c++ {
+					if c < len(g[r]) {
+						row = append(row, g[r][c])
+					} else {
+						row = append(row, ErrorVal(ErrValNA))
+					}
+				}
+			} else {
+				for c := 0; c < cols; c++ {
+					row = append(row, ErrorVal(ErrValNA))
+				}
+			}
+		}
+		result[r] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnVSTACK implements VSTACK(array1, [array2], ...).
+// Vertically stacks arrays on top of each other.
+func fnVSTACK(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Normalize all arguments to grids and find the max column count.
+	grids := make([][][]Value, len(args))
+	maxCols := 0
+	for i, arg := range args {
+		g, errVal := normalizeToGrid(arg)
+		if errVal != nil {
+			return *errVal, nil
+		}
+		grids[i] = g
+		_, cols := gridDims(g)
+		if cols > maxCols {
+			maxCols = cols
+		}
+	}
+
+	// Build result by stacking rows from each grid vertically.
+	var result [][]Value
+	for _, g := range grids {
+		for _, srcRow := range g {
+			row := make([]Value, maxCols)
+			for c := 0; c < maxCols; c++ {
+				if c < len(srcRow) {
+					row[c] = srcRow[c]
+				} else {
+					row[c] = ErrorVal(ErrValNA)
+				}
+			}
+			result = append(result, row)
+		}
 	}
 
 	if len(result) == 1 && len(result[0]) == 1 {
