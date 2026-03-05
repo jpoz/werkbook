@@ -470,6 +470,54 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	return formulaValueToValue(result)
 }
 
+// evaluateFormulaRaw is like evaluateFormula but returns the raw formula.Value
+// without converting arrays to scalars. This is used by ANCHORARRAY to obtain
+// the full dynamic array result from a cell's formula.
+func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
+	f := s.file
+	if f.evaluating == nil {
+		f.evaluating = make(map[cellKey]bool)
+	}
+	key := cellKey{sheet: s.name, col: col, row: row}
+	if f.evaluating[key] {
+		return formula.ErrorVal(formula.ErrValREF)
+	}
+	f.evaluating[key] = true
+	defer delete(f.evaluating, key)
+
+	cf := c.compiled
+	if cf == nil {
+		src := f.expandFormula(c.formula, s.name, row)
+		node, err := formula.Parse(src)
+		if err != nil {
+			return formula.ErrorVal(formula.ErrValNAME)
+		}
+		compiled, err := formula.Compile(src, node)
+		if err != nil {
+			return formula.ErrorVal(formula.ErrValNAME)
+		}
+		c.compiled = compiled
+		cf = compiled
+		qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
+		f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
+	}
+
+	resolver := &fileResolver{file: f, currentSheet: s.name}
+	ctx := &formula.EvalContext{
+		CurrentCol:     col,
+		CurrentRow:     row,
+		CurrentSheet:   s.name,
+		IsArrayFormula: c.isArrayFormula,
+		Date1904:       f.date1904,
+		Resolver:       resolver,
+	}
+	result, err := formula.Eval(cf, resolver, ctx)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValVALUE)
+	}
+	return result
+}
+
 // formulaValueToValue converts a formula.Value to a werkbook Value.
 // Excel coerces empty formula results to 0 (a cell containing =EmptyRef
 // displays and caches 0, not blank), so ValueEmpty maps to TypeNumber 0.
@@ -638,6 +686,29 @@ func (fr *fileResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
 		}
 	}
 	return false
+}
+
+// EvalCellFormula evaluates the formula in the cell at (sheet, col, row) and
+// returns the full formula.Value result. For dynamic array formulas this
+// returns the complete ValueArray. If the cell has no formula, it returns the
+// cell's scalar value.
+func (fr *fileResolver) EvalCellFormula(sheet string, col, row int) formula.Value {
+	s := fr.resolveSheet(sheet)
+	if s == nil {
+		return formula.ErrorVal(formula.ErrValREF)
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return formula.EmptyVal()
+	}
+	c, ok := r.cells[col]
+	if !ok {
+		return formula.EmptyVal()
+	}
+	if c.formula == "" {
+		return valueToFormulaValue(c.value)
+	}
+	return s.evaluateFormulaRaw(c, col, row)
 }
 
 // HasFormula reports whether the cell at (sheet, col, row) contains a formula.

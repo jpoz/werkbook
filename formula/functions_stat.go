@@ -851,6 +851,14 @@ func fnSUMIFS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
+	// Check if any criteria argument is an array (e.g. from ANCHORARRAY).
+	// If so, produce an array result by evaluating once per criteria element.
+	for k := 2; k < len(args); k += 2 {
+		if args[k].Type == ValueArray {
+			return sumIFSArray(args)
+		}
+	}
+
 	sum := 0.0
 	for r, row := range sumRange.Array {
 		for c := range row {
@@ -875,6 +883,41 @@ func fnSUMIFS(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(sum), nil
+}
+
+// sumIFSArray handles SUMIFS when one or more criteria arguments are arrays
+// (dynamic array spill). It iterates over the criteria array elements and
+// produces an array of sums.
+func sumIFSArray(args []Value) (Value, error) {
+	// Find the first array criteria to determine the output shape.
+	var arrCrit Value
+	for k := 2; k < len(args); k += 2 {
+		if args[k].Type == ValueArray {
+			arrCrit = args[k]
+			break
+		}
+	}
+	rows := len(arrCrit.Array)
+	if rows == 0 {
+		return NumberVal(0), nil
+	}
+	cols := len(arrCrit.Array[0])
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			scalarArgs := make([]Value, len(args))
+			copy(scalarArgs, args)
+			for k := 2; k < len(args); k += 2 {
+				if args[k].Type == ValueArray {
+					scalarArgs[k] = ArrayElement(args[k], i, j)
+				}
+			}
+			v, _ := fnSUMIFS(scalarArgs)
+			result[i][j] = v
+		}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnCOUNTIF(args []Value) (Value, error) {
@@ -910,6 +953,14 @@ func fnCOUNTIFS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
+	// Check if any criteria argument is an array (e.g. from ANCHORARRAY).
+	// If so, produce an array result by evaluating once per criteria element.
+	for k := 1; k < len(args); k += 2 {
+		if args[k].Type == ValueArray {
+			return countIFSArray(args), nil
+		}
+	}
+
 	count := 0
 	for r, row := range firstRange.Array {
 		for c := range row {
@@ -932,6 +983,42 @@ func fnCOUNTIFS(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(float64(count)), nil
+}
+
+// countIFSArray handles COUNTIFS when one or more criteria arguments are arrays
+// (dynamic array spill). It iterates over the criteria array elements and
+// produces an array of counts.
+func countIFSArray(args []Value) Value {
+	// Find the first array criteria to determine the output shape.
+	var arrCrit Value
+	for k := 1; k < len(args); k += 2 {
+		if args[k].Type == ValueArray {
+			arrCrit = args[k]
+			break
+		}
+	}
+	rows := len(arrCrit.Array)
+	if rows == 0 {
+		return NumberVal(0)
+	}
+	cols := len(arrCrit.Array[0])
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			// Build scalar args for this element.
+			scalarArgs := make([]Value, len(args))
+			copy(scalarArgs, args)
+			for k := 1; k < len(args); k += 2 {
+				if args[k].Type == ValueArray {
+					scalarArgs[k] = ArrayElement(args[k], i, j)
+				}
+			}
+			v, _ := fnCOUNTIFS(scalarArgs)
+			result[i][j] = v
+		}
+	}
+	return Value{Type: ValueArray, Array: result}
 }
 
 func fnAVERAGEIF(args []Value) (Value, error) {

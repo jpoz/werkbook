@@ -6,6 +6,7 @@ import "strings"
 // These are Excel functions added after the original OOXML specification
 // that require a special prefix in the XML to be recognized by Excel.
 var xlfnPrefix = map[string]string{
+	"ANCHORARRAY":   "_xlfn.",
 	"ARABIC":         "_xlfn.",
 	"BASE":           "_xlfn.",
 	"CEILING.MATH":   "_xlfn.",
