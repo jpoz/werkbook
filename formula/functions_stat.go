@@ -42,6 +42,7 @@ func init() {
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("MODE.SNGL", NoCtx(fnMODE))
+	Register("PERMUTATIONA", NoCtx(fnPERMUTATIONA))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
@@ -2150,4 +2151,28 @@ func fnSTANDARDIZE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal((x - mean) / stddev), nil
+}
+
+// fnPERMUTATIONA returns the number of permutations with repetitions: number^number_chosen.
+func fnPERMUTATIONA(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	number, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	numberChosen, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	number = math.Trunc(number)
+	numberChosen = math.Trunc(numberChosen)
+	if number < 0 || numberChosen < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if number == 0 && numberChosen > 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Pow(number, numberChosen)), nil
 }

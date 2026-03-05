@@ -5851,6 +5851,65 @@ func TestRANKAVG(t *testing.T) {
 // STANDARDIZE
 // ---------------------------------------------------------------------------
 
+func TestPERMUTATIONA(t *testing.T) {
+	const tol = 1e-9
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		wantErr ErrorValue
+		isErr   bool
+	}{
+		// Basic cases
+		{"3_choose_2", "PERMUTATIONA(3,2)", 9, 0, false},
+		{"2_choose_3", "PERMUTATIONA(2,3)", 8, 0, false},
+		{"4_choose_3", "PERMUTATIONA(4,3)", 64, 0, false},
+		{"1_choose_5", "PERMUTATIONA(1,5)", 1, 0, false},
+		{"5_choose_1", "PERMUTATIONA(5,1)", 5, 0, false},
+		{"5_choose_0", "PERMUTATIONA(5,0)", 1, 0, false},
+		{"0_choose_0", "PERMUTATIONA(0,0)", 1, 0, false},
+		// Truncation
+		{"truncate_both", "PERMUTATIONA(3.9,2.1)", 9, 0, false},
+		// Error cases
+		{"0_choose_1", "PERMUTATIONA(0,1)", 0, ErrValNUM, true},
+		{"negative_number", "PERMUTATIONA(-1,2)", 0, ErrValNUM, true},
+		{"negative_chosen", "PERMUTATIONA(3,-1)", 0, ErrValNUM, true},
+		// Wrong arg count
+		{"too_few_args", "PERMUTATIONA(3)", 0, ErrValVALUE, true},
+		{"too_many_args", "PERMUTATIONA(3,2,1)", 0, ErrValVALUE, true},
+		// String coercion
+		{"string_coercion", fmt.Sprintf("PERMUTATIONA(%q,2)", "3"), 9, 0, false},
+		{"non_numeric_string", fmt.Sprintf("PERMUTATIONA(%q,2)", "abc"), 0, ErrValVALUE, true},
+		// Boolean coercion
+		{"bool_true", "PERMUTATIONA(TRUE,5)", 1, 0, false},
+		{"bool_false_zero", "PERMUTATIONA(FALSE,0)", 1, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %g, want %g (diff %g)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+}
+
 func TestSTANDARDIZE(t *testing.T) {
 	const tol = 1e-9
 	resolver := &mockResolver{}
