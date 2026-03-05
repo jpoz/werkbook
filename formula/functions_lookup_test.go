@@ -457,6 +457,30 @@ func TestMATCHDescending(t *testing.T) {
 	}
 }
 
+func TestMATCHDescendingUnsortedReturnsNA(t *testing.T) {
+	// When match_type=-1 is used on unsorted data, Excel's binary search
+	// typically returns #N/A. Our binary search should replicate that.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(30),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(25),
+			{Col: 1, Row: 5}: NumberVal(15),
+			{Col: 1, Row: 6}: NumberVal(20),
+		},
+	}
+
+	cf := evalCompile(t, "MATCH(12,A1:A6,-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("MATCH desc unsorted: got %v, want #N/A", got)
+	}
+}
+
 func TestMATCHAscendingSkipsEmpty(t *testing.T) {
 	// Simulate a whole-column ref where data is sparse: rows 1-3 have
 	// sorted ascending values, rows 4-8 are empty. MATCH(matchType=1)
