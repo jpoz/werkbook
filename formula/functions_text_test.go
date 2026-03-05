@@ -634,6 +634,103 @@ func TestFINDEdgeCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// LEFT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestLEFT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_2_chars", formula: `LEFT("hello",2)`, want: "he"},
+		{name: "basic_3_chars", formula: `LEFT("hello",3)`, want: "hel"},
+		{name: "basic_5_chars", formula: `LEFT("hello",5)`, want: "hello"},
+		{name: "basic_1_char", formula: `LEFT("hello",1)`, want: "h"},
+
+		// Default num_chars (1 when omitted)
+		{name: "default_num_chars", formula: `LEFT("hello")`, want: "h"},
+		{name: "default_single_char", formula: `LEFT("A")`, want: "A"},
+		{name: "default_space", formula: `LEFT(" hello")`, want: " "},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_chars", formula: `LEFT("hello",0)`, want: ""},
+		{name: "zero_chars_empty", formula: `LEFT("",0)`, want: ""},
+
+		// num_chars greater than string length returns full string
+		{name: "exceeds_length", formula: `LEFT("hi",10)`, want: "hi"},
+		{name: "exceeds_length_single", formula: `LEFT("A",100)`, want: "A"},
+
+		// Empty string input
+		{name: "empty_string", formula: `LEFT("")`, want: ""},
+		{name: "empty_string_with_n", formula: `LEFT("",5)`, want: ""},
+
+		// Numeric first argument coerced to string
+		{name: "numeric_input", formula: `LEFT(12345,3)`, want: "123"},
+		{name: "numeric_input_default", formula: `LEFT(12345)`, want: "1"},
+		{name: "numeric_float", formula: `LEFT(3.14,3)`, want: "3.1"},
+		{name: "numeric_zero", formula: `LEFT(0)`, want: "0"},
+
+		// Boolean first argument coerced to string
+		{name: "bool_true", formula: `LEFT(TRUE,2)`, want: "TR"},
+		{name: "bool_false", formula: `LEFT(FALSE,3)`, want: "FAL"},
+		{name: "bool_true_default", formula: `LEFT(TRUE)`, want: "T"},
+		{name: "bool_false_full", formula: `LEFT(FALSE,5)`, want: "FALSE"},
+
+		// Negative num_chars should error
+		{name: "negative_num_chars", formula: `LEFT("hello",-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `LEFT("hello",-100)`, isErr: true},
+
+		// Non-numeric num_chars should error
+		{name: "non_numeric_num_chars", formula: `LEFT("hello","abc")`, isErr: true},
+
+		// num_chars as float (truncated to int)
+		{name: "float_num_chars", formula: `LEFT("hello",2.9)`, want: "he"},
+		{name: "float_num_chars_1_5", formula: `LEFT("hello",1.5)`, want: "h"},
+
+		// Special characters and spaces
+		{name: "spaces", formula: `LEFT("  hello  ",4)`, want: "  he"},
+		{name: "leading_space", formula: `LEFT(" a",2)`, want: " a"},
+		{name: "backslash_t", formula: "LEFT(\"\\thello\",2)", want: "\\t"}, // formula parser treats \t as literal characters
+		{name: "punctuation", formula: `LEFT("!@#$%",3)`, want: "!@#"},
+		{name: "digits_in_string", formula: `LEFT("123abc",4)`, want: "123a"},
+		{name: "mixed_case", formula: `LEFT("AbCdEf",3)`, want: "AbC"},
+
+		// Unicode / multibyte characters
+		{name: "unicode_chars", formula: "LEFT(\"日本語\",2)", want: "日本"},
+		{name: "unicode_single", formula: "LEFT(\"日本語\",1)", want: "日"},
+		{name: "unicode_exceeds", formula: "LEFT(\"日本語\",10)", want: "日本語"},
+
+		// Wrong argument count
+		{name: "no_args", formula: `LEFT()`, isErr: true},
+		{name: "three_args", formula: `LEFT("hello",2,3)`, isErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q (type=%d), want %q", tt.formula, got.Str, got.Type, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LEFT/RIGHT/MID edge cases
 // ---------------------------------------------------------------------------
 
@@ -681,6 +778,246 @@ func TestLEFTRIGHTMIDEdgeCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MID comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestMIDComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic", formula: `MID("hello",2,3)`, want: "ell"},
+		{name: "basic_single_char", formula: `MID("hello",3,1)`, want: "l"},
+		{name: "basic_two_chars", formula: `MID("hello",4,2)`, want: "lo"},
+		{name: "basic_full_string", formula: `MID("hello",1,5)`, want: "hello"},
+
+		// start_num = 1 (beginning of string)
+		{name: "start_at_one", formula: `MID("abcdef",1,3)`, want: "abc"},
+		{name: "start_at_one_single", formula: `MID("abcdef",1,1)`, want: "a"},
+		{name: "start_at_one_all", formula: `MID("abcdef",1,6)`, want: "abcdef"},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_num_chars", formula: `MID("hello",1,0)`, want: ""},
+		{name: "zero_num_chars_mid", formula: `MID("hello",3,0)`, want: ""},
+		{name: "zero_num_chars_end", formula: `MID("hello",5,0)`, want: ""},
+
+		// num_chars exceeds remaining length returns rest of string
+		{name: "exceeds_remaining", formula: `MID("hello",3,100)`, want: "llo"},
+		{name: "exceeds_from_start", formula: `MID("hi",1,10)`, want: "hi"},
+		{name: "exceeds_from_last", formula: `MID("hello",5,50)`, want: "o"},
+		{name: "exceeds_by_one", formula: `MID("abc",2,3)`, want: "bc"},
+
+		// start_num exceeds string length returns empty string
+		{name: "start_beyond_length", formula: `MID("hi",10,1)`, want: ""},
+		{name: "start_just_beyond", formula: `MID("abc",4,1)`, want: ""},
+		{name: "start_way_beyond", formula: `MID("x",100,5)`, want: ""},
+
+		// Empty string input
+		{name: "empty_string", formula: `MID("",1,0)`, want: ""},
+		{name: "empty_string_with_chars", formula: `MID("",1,5)`, want: ""},
+
+		// Numeric input coerced to string
+		{name: "numeric_input", formula: `MID(12345,2,3)`, want: "234"},
+		{name: "numeric_single_digit", formula: `MID(12345,1,1)`, want: "1"},
+		{name: "numeric_zero", formula: `MID(0,1,1)`, want: "0"},
+		{name: "numeric_negative", formula: `MID(-123,1,2)`, want: "-1"},
+		{name: "numeric_decimal", formula: `MID(3.14,2,2)`, want: ".1"},
+
+		// Boolean input coerced to string
+		{name: "bool_true", formula: `MID(TRUE,1,2)`, want: "TR"},
+		{name: "bool_false", formula: `MID(FALSE,2,3)`, want: "ALS"},
+		{name: "bool_true_end", formula: `MID(TRUE,3,2)`, want: "UE"},
+		{name: "bool_false_full", formula: `MID(FALSE,1,5)`, want: "FALSE"},
+
+		// start_num <= 0 (should error)
+		{name: "start_zero", formula: `MID("hello",0,3)`, isErr: true},
+		{name: "start_negative", formula: `MID("hello",-1,3)`, isErr: true},
+		{name: "start_negative_large", formula: `MID("hello",-100,3)`, isErr: true},
+
+		// Negative num_chars (should error)
+		{name: "negative_num_chars", formula: `MID("hello",1,-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `MID("hello",1,-100)`, isErr: true},
+
+		// Non-numeric args (should error)
+		{name: "non_numeric_start", formula: `MID("hello","abc",3)`, isErr: true},
+		{name: "non_numeric_num_chars", formula: `MID("hello",1,"abc")`, isErr: true},
+
+		// Special characters and spaces
+		{name: "with_spaces", formula: `MID("hello world",6,1)`, want: " "},
+		{name: "extract_word", formula: `MID("hello world",7,5)`, want: "world"},
+		{name: "special_chars", formula: `MID("abc!@#def",4,3)`, want: "!@#"},
+		{name: "newline_char", formula: "MID(\"abc\ndef\",4,1)", want: "\n"},
+
+		// Float args truncated to int
+		{name: "float_start", formula: `MID("hello",2.9,3)`, want: "ell"},
+		{name: "float_num_chars", formula: `MID("hello",1,2.9)`, want: "he"},
+		{name: "float_both", formula: `MID("hello",1.7,3.8)`, want: "hel"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestMIDWrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, `MID("hello",2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("MID with 2 args: got %v, want error", got)
+	}
+
+	// Too many args
+	cf = evalCompile(t, `MID("hello",2,3,4)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("MID with 4 args: got %v, want error", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RIGHT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestRIGHTComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_two_chars", formula: `RIGHT("hello",2)`, want: "lo"},
+		{name: "basic_three_chars", formula: `RIGHT("hello",3)`, want: "llo"},
+		{name: "basic_one_char", formula: `RIGHT("hello",1)`, want: "o"},
+		{name: "basic_full_length", formula: `RIGHT("hello",5)`, want: "hello"},
+
+		// Default num_chars (1 when omitted)
+		{name: "default_num_chars", formula: `RIGHT("hello")`, want: "o"},
+		{name: "default_single_char_string", formula: `RIGHT("x")`, want: "x"},
+		{name: "default_longer_string", formula: `RIGHT("abcdef")`, want: "f"},
+
+		// num_chars = 0 returns empty string
+		{name: "zero_num_chars", formula: `RIGHT("hello",0)`, want: ""},
+		{name: "zero_num_chars_empty", formula: `RIGHT("",0)`, want: ""},
+
+		// num_chars greater than string length returns full string
+		{name: "exceeds_length", formula: `RIGHT("hi",10)`, want: "hi"},
+		{name: "exceeds_by_one", formula: `RIGHT("abc",4)`, want: "abc"},
+		{name: "exceeds_single_char", formula: `RIGHT("x",100)`, want: "x"},
+
+		// Empty string input
+		{name: "empty_string", formula: `RIGHT("")`, want: ""},
+		{name: "empty_string_with_n", formula: `RIGHT("",5)`, want: ""},
+		{name: "empty_string_zero", formula: `RIGHT("",0)`, want: ""},
+
+		// Numeric input coerced to string
+		{name: "numeric_input", formula: `RIGHT(12345,3)`, want: "345"},
+		{name: "numeric_input_default", formula: `RIGHT(12345)`, want: "5"},
+		{name: "numeric_zero", formula: `RIGHT(0)`, want: "0"},
+		{name: "numeric_negative", formula: `RIGHT(-123,2)`, want: "23"},
+		{name: "numeric_decimal", formula: `RIGHT(3.14,2)`, want: "14"},
+
+		// Boolean input coerced to string
+		{name: "bool_true", formula: `RIGHT(TRUE,2)`, want: "UE"},
+		{name: "bool_false", formula: `RIGHT(FALSE,3)`, want: "LSE"},
+		{name: "bool_true_default", formula: `RIGHT(TRUE)`, want: "E"},
+		{name: "bool_false_default", formula: `RIGHT(FALSE)`, want: "E"},
+
+		// Negative num_chars (should error)
+		{name: "negative_num_chars", formula: `RIGHT("hello",-1)`, isErr: true},
+		{name: "negative_num_chars_large", formula: `RIGHT("hello",-100)`, isErr: true},
+
+		// Non-numeric num_chars (should error)
+		{name: "non_numeric_num_chars", formula: `RIGHT("hello","abc")`, isErr: true},
+
+		// Special characters and spaces
+		{name: "with_spaces", formula: `RIGHT("hello world",5)`, want: "world"},
+		{name: "trailing_space", formula: `RIGHT("hello ",1)`, want: " "},
+		{name: "special_chars", formula: `RIGHT("abc!@#",3)`, want: "!@#"},
+		{name: "newline_char", formula: "RIGHT(\"abc\ndef\",3)", want: "def"},
+
+		// Float num_chars truncated to int
+		{name: "float_num_chars", formula: `RIGHT("hello",2.9)`, want: "lo"},
+		{name: "float_num_chars_one", formula: `RIGHT("hello",1.5)`, want: "o"},
+		{name: "float_num_chars_zero", formula: `RIGHT("hello",0.9)`, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRIGHTWrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// 0 args
+	cf := evalCompile(t, `RIGHT()`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(RIGHT()): %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("RIGHT() = %v, want error", got)
+	}
+
+	// 3 args
+	cf = evalCompile(t, `RIGHT("a","b","c")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(RIGHT(a,b,c)): %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("RIGHT(a,b,c) = %v, want error", got)
 	}
 }
 
@@ -810,8 +1147,88 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// LEN with Unicode
+// LEN comprehensive tests
 // ---------------------------------------------------------------------------
+
+func TestLEN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		// Basic usage
+		{name: "basic_hello", formula: `LEN("hello")`, wantNum: 5},
+		{name: "basic_word", formula: `LEN("world")`, wantNum: 5},
+		{name: "basic_sentence", formula: `LEN("hello world")`, wantNum: 11},
+
+		// Empty string
+		{name: "empty_string", formula: `LEN("")`, wantNum: 0},
+
+		// Single character
+		{name: "single_char", formula: `LEN("A")`, wantNum: 1},
+		{name: "single_space", formula: `LEN(" ")`, wantNum: 1},
+
+		// Strings with spaces
+		{name: "leading_trailing_spaces", formula: `LEN("  hello  ")`, wantNum: 9},
+		{name: "only_spaces", formula: `LEN("   ")`, wantNum: 3},
+		{name: "internal_spaces", formula: `LEN("a b c")`, wantNum: 5},
+
+		// Numeric input coerced to string
+		{name: "integer", formula: `LEN(123)`, wantNum: 3},
+		{name: "negative_integer", formula: `LEN(-42)`, wantNum: 3},
+		{name: "decimal", formula: `LEN(1.5)`, wantNum: 3},
+		{name: "zero", formula: `LEN(0)`, wantNum: 1},
+		{name: "large_number", formula: `LEN(123456789)`, wantNum: 9},
+
+		// Boolean input
+		{name: "bool_true", formula: `LEN(TRUE)`, wantNum: 4},
+		{name: "bool_false", formula: `LEN(FALSE)`, wantNum: 5},
+
+		// Special characters
+		{name: "tab_char", formula: "LEN(\"\t\")", wantNum: 1},
+		{name: "newline_in_string", formula: "LEN(\"a\nb\")", wantNum: 3},
+		{name: "punctuation", formula: `LEN("!@#$%")`, wantNum: 5},
+
+		// Unicode characters
+		{name: "unicode_accented", formula: `LEN("caf` + "\u00e9" + `")`, wantNum: 4},
+		{name: "unicode_emoji", formula: `LEN("` + "\U0001F600" + `")`, wantNum: 1},
+		{name: "unicode_chinese", formula: `LEN("` + "\u4F60\u597D" + `")`, wantNum: 2},
+		{name: "unicode_mixed", formula: `LEN("a` + "\u00e9\u4F60" + `b")`, wantNum: 4},
+
+		// Long string
+		{name: "long_string", formula: `LEN("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")`, wantNum: 52},
+
+		// Wrong argument count
+		{name: "no_args", formula: `LEN()`, isErr: true},
+		{name: "two_args", formula: `LEN("a","b")`, isErr: true},
+
+		// Nested formula
+		{name: "nested_concat", formula: `LEN(CONCATENATE("ab","cd"))`, wantNum: 4},
+		{name: "nested_upper", formula: `LEN(UPPER("hello"))`, wantNum: 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber || got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+}
 
 // ---------------------------------------------------------------------------
 // SEARCH with wildcards
@@ -868,20 +1285,6 @@ func TestSEARCHWildcards(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestLENUnicode(t *testing.T) {
-	resolver := &mockResolver{}
-
-	cf := evalCompile(t, `LEN("caf`+"\u00e9"+`")`)
-	got, err := Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
-	}
-	// "caf\u00e9" is 4 runes
-	if got.Type != ValueNumber || got.Num != 4 {
-		t.Errorf("LEN unicode: got %g, want 4", got.Num)
 	}
 }
 
