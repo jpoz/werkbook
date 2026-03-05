@@ -1096,6 +1096,181 @@ func TestPPMT_FirstPayment(t *testing.T) {
 	assertClose(t, "PPMT first", v, -240.31)
 }
 
+func TestPPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic cases ---
+		{
+			name: "principal of first payment 30yr mortgage",
+			// PPMT(0.05/12, 1, 360, 200000)
+			args: numArgs(0.05/12, 1, 360, 200000),
+			want: -240.31,
+		},
+		{
+			name: "principal of last payment 30yr mortgage",
+			// PPMT(0.05/12, 360, 360, 200000) — last payment is mostly principal
+			args: numArgs(0.05/12, 360, 360, 200000),
+			want: -1069.19,
+		},
+		{
+			name: "middle period 30yr mortgage",
+			// PPMT(0.05/12, 180, 360, 200000) — halfway through
+			args: numArgs(0.05/12, 180, 360, 200000),
+			want: -505.83,
+		},
+
+		// --- Zero rate: equal principal payments ---
+		{
+			name: "zero rate equal principal",
+			// PPMT(0, 5, 10, 10000) — each payment is pv/nper = -1000
+			args: numArgs(0, 5, 10, 10000),
+			want: -1000.00,
+		},
+		{
+			name: "zero rate first period",
+			// PPMT(0, 1, 10, 10000)
+			args: numArgs(0, 1, 10, 10000),
+			want: -1000.00,
+		},
+
+		// --- With future value ---
+		{
+			name: "with future value",
+			// PPMT(0.1/12, 1, 60, 50000, 10000)
+			args: numArgs(0.1/12, 1, 60, 50000, 10000),
+			want: -774.82,
+		},
+		{
+			name: "with future value last period",
+			// PPMT(0.1/12, 60, 60, 50000, 10000)
+			args: numArgs(0.1/12, 60, 60, 50000, 10000),
+			want: -1264.29,
+		},
+
+		// --- Type=0 vs type=1 ---
+		{
+			name: "type 0 explicit",
+			// PPMT(0.1/12, 1, 12, 10000, 0, 0)
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 0),
+			want: -795.83,
+		},
+		{
+			name: "type 1 period 1 equals full PMT",
+			// PPMT(0.1/12, 1, 12, 10000, 0, 1) — at beginning, first period PPMT = PMT
+			args: numArgs(0.1/12, 1, 12, 10000, 0, 1),
+			want: -871.89,
+		},
+		{
+			name: "type 1 period 2",
+			// PPMT(0.1/12, 2, 12, 10000, 0, 1)
+			args: numArgs(0.1/12, 2, 12, 10000, 0, 1),
+			want: -795.83,
+		},
+
+		// --- Excel documentation examples ---
+		{
+			name: "Excel doc example 1: 10% 2yr loan month 1",
+			// PPMT(0.10/12, 1, 2*12, 2000) = -75.62
+			args: numArgs(0.10/12, 1, 24, 2000),
+			want: -75.62,
+		},
+		{
+			name: "Excel doc example 2: 8% 10yr loan year 10",
+			// PPMT(0.08, 10, 10, 200000) = -27598.05
+			args: numArgs(0.08, 10, 10, 200000),
+			want: -27598.05,
+		},
+
+		// --- Monthly vs annual ---
+		{
+			name: "annual rate 5yr loan first year",
+			// PPMT(0.08, 1, 5, 25000)
+			args: numArgs(0.08, 1, 5, 25000),
+			want: -4261.41,
+		},
+		{
+			name: "monthly equivalent first month",
+			// PPMT(0.08/12, 1, 60, 25000)
+			args: numArgs(0.08/12, 1, 60, 25000),
+			want: -340.24,
+		},
+
+		// --- Large loan ---
+		{
+			name: "large loan first payment",
+			// PPMT(0.04/12, 1, 360, 1000000)
+			args: numArgs(0.04/12, 1, 360, 1000000),
+			want: -1440.82,
+		},
+		{
+			name: "large loan last payment",
+			// PPMT(0.04/12, 360, 360, 1000000)
+			args: numArgs(0.04/12, 360, 360, 1000000),
+			want: -4758.29,
+		},
+
+		// --- Error cases ---
+		{
+			name:    "per=0 returns NUM error",
+			args:    numArgs(0.05/12, 0, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "per > nper returns NUM error",
+			args:    numArgs(0.05/12, 361, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "negative per returns NUM error",
+			args:    numArgs(0.05/12, -1, 360, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "nper=0 returns NUM error",
+			args:    numArgs(0.05/12, 1, 0, 200000),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(0.05, 1, 12),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(0.05, 1, 12, 10000, 0, 0, 99),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric rate",
+			args:    []Value{StringVal("abc"), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric per",
+			args:    []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPPMT(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+				return
+			}
+			assertClose(t, tc.name, v, tc.want)
+		})
+	}
+}
+
 func TestIPMT_Plus_PPMT_Equals_PMT(t *testing.T) {
 	rate := 0.05 / 12
 	nper := 360.0
@@ -1107,6 +1282,26 @@ func TestIPMT_Plus_PPMT_Equals_PMT(t *testing.T) {
 		sum := ipmt.Num + ppmt.Num
 		if math.Abs(sum-pmt.Num) > 0.01 {
 			t.Errorf("per=%v: IPMT(%f) + PPMT(%f) = %f, PMT = %f", per, ipmt.Num, ppmt.Num, sum, pmt.Num)
+		}
+	}
+}
+
+func TestIPMT_Plus_PPMT_Equals_PMT_WithFV(t *testing.T) {
+	// Verify PPMT + IPMT = PMT with future value and type=1
+	rate := 0.06 / 12
+	nper := 120.0
+	pv := 100000.0
+	fv := 20000.0
+	for _, payType := range []float64{0, 1} {
+		for _, per := range []float64{1, 30, 60, 90, 120} {
+			ipmt, _ := fnIPMT(numArgs(rate, per, nper, pv, fv, payType))
+			ppmt, _ := fnPPMT(numArgs(rate, per, nper, pv, fv, payType))
+			pmt, _ := fnPMT(numArgs(rate, nper, pv, fv, payType))
+			sum := ipmt.Num + ppmt.Num
+			if math.Abs(sum-pmt.Num) > 0.01 {
+				t.Errorf("type=%v per=%v: IPMT(%f) + PPMT(%f) = %f, PMT = %f",
+					payType, per, ipmt.Num, ppmt.Num, sum, pmt.Num)
+			}
 		}
 	}
 }

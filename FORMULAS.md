@@ -128,7 +128,7 @@ Werkbook supports **303** Excel formula functions.
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
 | INTERCEPT | Statistical | 16 |
-| IPMT | Financial | 3 |
+| IPMT | Financial | 4 |
 | IRR | Financial | 19 |
 | ISBLANK | Information | - |
 | ISERR | Information | - |
@@ -204,7 +204,7 @@ Werkbook supports **303** Excel formula functions.
 | PI | Math & Trig | - |
 | PMT | Financial | 5 |
 | POWER | Math & Trig | 48 |
-| PPMT | Financial | 1 |
+| PPMT | Financial | 2 |
 | PRODUCT | Math & Trig | - |
 | PROPER | Text | - |
 | PV | Financial | 3 |
