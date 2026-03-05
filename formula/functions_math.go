@@ -73,6 +73,7 @@ func init() {
 	Register("SEC", NoCtx(fnSEC))
 	Register("SECH", NoCtx(fnSECH))
 	Register("SEQUENCE", NoCtx(fnSEQUENCE))
+	Register("SERIESSUM", NoCtx(fnSERIESSUM))
 	Register("SIGN", NoCtx(fnSIGN))
 	Register("SIN", NoCtx(fnSIN))
 	Register("SINH", NoCtx(fnSINH))
@@ -1081,6 +1082,45 @@ func fnBITLSHIFT(args []Value) (Value, error) {
 	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(float64(result)), nil
 }
+
+func fnSERIESSUM(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	m, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Flatten coefficients from arg[3].
+	var coeffs []Value
+	if args[3].Type == ValueArray {
+		for _, row := range args[3].Array {
+			coeffs = append(coeffs, row...)
+		}
+	} else {
+		coeffs = []Value{args[3]}
+	}
+
+	var sum float64
+	for i, cv := range coeffs {
+		c, ce := CoerceNum(cv)
+		if ce != nil {
+			return *ce, nil
+		}
+		sum += c * math.Pow(x, n+float64(i)*m)
+	}
+	return NumberVal(sum), nil
+}
+
 func fnBITRSHIFT(args []Value) (Value, error) {
 	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
 	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
