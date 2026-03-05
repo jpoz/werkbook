@@ -483,6 +483,10 @@ func formulaValueToValue(fv formula.Value) Value {
 		return Value{Type: TypeBool, Bool: fv.Bool}
 	case formula.ValueError:
 		return Value{Type: TypeError, String: fv.Err.String()}
+	case formula.ValueArray:
+		// A single cell cannot hold an array result in a non-array context;
+		// Excel displays #VALUE! in this case.
+		return Value{Type: TypeError, String: formula.ErrValVALUE.String()}
 	default:
 		// Excel treats empty formula results as numeric 0.
 		return Value{Type: TypeNumber, Number: 0}

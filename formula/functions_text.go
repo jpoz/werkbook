@@ -320,6 +320,19 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
+	// Excel rejects number format strings that contain unquoted alphabetic
+	// characters (outside of date/time codes, scientific E+/E-, color codes,
+	// etc.).  For example "Value: 0" is invalid because "Value" is not quoted.
+	if !strings.EqualFold(format, "General") {
+		for _, sec := range sections {
+			stripped := stripColorCodes(sec)
+			if !isDateTimeFormat(stripped) && !isElapsedTimeFormat(stripped) &&
+				sectionHasNumberCodes(stripped) && sectionHasUnquotedLetters(stripped) {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		}
+	}
+
 	// "@" format with a numeric value: convert number to string using
 	// the text section (@ is the text placeholder).
 	if sectionContainsAt(format) && !strings.ContainsAny(format, "0#?") {
@@ -373,6 +386,26 @@ func fnUPPER(args []Value) (Value, error) {
 	return StringVal(strings.ToUpper(ValueToString(args[0]))), nil
 }
 
+// win1252ToUnicode maps Windows-1252 byte values 0x80–0x9F to their Unicode
+// code points. Bytes outside this range map 1:1 with Unicode.
+var win1252ToUnicode = [32]rune{
+	0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, // 80-87
+	0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F, // 88-8F
+	0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, // 90-97
+	0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178, // 98-9F
+}
+
+// unicodeToWin1252 is the reverse mapping from Unicode code points back to
+// Windows-1252 byte values for the 0x80–0x9F range.
+var unicodeToWin1252 map[rune]byte
+
+func init() {
+	unicodeToWin1252 = make(map[rune]byte, 32)
+	for i, r := range win1252ToUnicode {
+		unicodeToWin1252[r] = byte(0x80 + i)
+	}
+}
+
 func fnCHAR(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -384,6 +417,11 @@ func fnCHAR(args []Value) (Value, error) {
 	code := int(n)
 	if code < 1 || code > 255 {
 		return ErrorVal(ErrValVALUE), nil
+	}
+	// Excel CHAR uses Windows-1252 encoding. Bytes 0x80–0x9F map to
+	// different Unicode code points than their byte value.
+	if code >= 0x80 && code <= 0x9F {
+		return StringVal(string(win1252ToUnicode[code-0x80])), nil
 	}
 	return StringVal(string(rune(code))), nil
 }
@@ -411,6 +449,19 @@ func fnCODE(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	r, _ := utf8.DecodeRuneInString(s)
+	// Excel CODE uses Windows-1252 encoding.
+	// Characters in the Windows-1252 0x80–0x9F range have different
+	// Unicode code points, so we need to map them back.
+	if b, ok := unicodeToWin1252[r]; ok {
+		return NumberVal(float64(b)), nil
+	}
+	// Characters 0x00–0x7F and 0xA0–0xFF are identical in Windows-1252
+	// and Unicode (Latin-1). Characters outside the Windows-1252 range
+	// (e.g. CJK) get mapped to '?' (63), matching Excel's behavior
+	// with WideCharToMultiByte default character substitution.
+	if r > 0xFF {
+		return NumberVal(63), nil // '?'
+	}
 	return NumberVal(float64(r)), nil
 }
 
@@ -673,6 +724,9 @@ func excelPatternToRegexp(pattern string) (*regexp.Regexp, error) {
 func fnT(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
 	}
 	if args[0].Type == ValueString {
 		return args[0], nil

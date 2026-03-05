@@ -214,6 +214,8 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 		{name: "d-mmm-yy", formula: `TEXT(44197, "d-mmm-yy")`, want: "1-Jan-21"},
 		{name: "dd-mmm-yyyy", formula: `TEXT(44197, "dd-mmm-yyyy")`, want: "01-Jan-2021"},
 		{name: "mmmm_d_yyyy", formula: `TEXT(44197, "mmmm d, yyyy")`, want: "January 1, 2021"},
+		{name: "mmmmm_first_letter", formula: `TEXT(45720, "MMMMM")`, want: "M"},
+		{name: "mmmmm_jan", formula: `TEXT(44197, "MMMMM")`, want: "J"},
 
 		// Time formatting
 		{name: "h:mm:ss", formula: `TEXT(0.5, "h:mm:ss")`, want: "12:00:00"},
@@ -485,6 +487,8 @@ func TestTEXTFraction(t *testing.T) {
 		// Zero-padded numerator and denominator
 		{name: "frac_zero_pad", formula: `TEXT(23.75, "|#\:? ?0#/000")`, want: "|2:3  03/004"},
 		{name: "frac_zero_pad_val1", formula: `TEXT(1, "|#\:? ?0#/000")`, want: "|:1  00/001"},
+		// Denominator left-justified (right-padded) with ?? placeholders
+		{name: "frac_denom_left_align", formula: `TEXT(1/3, "# ??/??")`, want: "  1/3 "},
 	}
 
 	for _, tt := range tests {
@@ -1388,6 +1392,8 @@ func TestTEXTNoFormatCodesReturnsVALUE(t *testing.T) {
 		{name: "pos_neg_zero_pos", formula: `TEXT(42,"pos;neg;zero")`},
 		{name: "pos_neg_zero_neg", formula: `TEXT(-42,"pos;neg;zero")`},
 		{name: "pos_neg_zero_zero", formula: `TEXT(0,"pos;neg;zero")`},
+		// Unquoted alphabetic text mixed with number format codes is invalid.
+		{name: "unquoted_text_with_digit", formula: `TEXT(42,"Value: 0")`},
 	}
 
 	for _, tt := range tests {
@@ -1414,6 +1420,149 @@ func TestTEXTDigitPlaceholders(t *testing.T) {
 	}{
 		{name: "phone_format", formula: `TEXT(5551234567,"(###) ###-####")`, want: "(555) 123-4567"},
 		{name: "ssn_format", formula: `TEXT(123456789,"000-00-0000")`, want: "123-45-6789"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// T comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("string_returns_string", func(t *testing.T) {
+		cf := evalCompile(t, `T("hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello" {
+			t.Errorf("T(\"hello\") = %v, want string(hello)", got)
+		}
+	})
+
+	t.Run("number_returns_empty", func(t *testing.T) {
+		cf := evalCompile(t, `T(123)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf("T(123) = %v, want empty string", got)
+		}
+	})
+
+	t.Run("bool_returns_empty", func(t *testing.T) {
+		cf := evalCompile(t, `T(TRUE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Errorf("T(TRUE) = %v, want empty string", got)
+		}
+	})
+
+	t.Run("error_propagates_div0", func(t *testing.T) {
+		cf := evalCompile(t, `T(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("T(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagates_na", func(t *testing.T) {
+		cf := evalCompile(t, `T(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("T(NA()) = %v, want error", got)
+		}
+	})
+}
+
+func TestCODE_Windows1252(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// ASCII characters — same in Unicode and Windows-1252
+		{"ASCII A", `CODE("A")`, 65},
+		{"ASCII underscore", `CODE("_")`, 95},
+		{"ASCII space", `CODE(" ")`, 32},
+
+		// Windows-1252 range 0x80–0x9F — these Unicode code points
+		// must map back to their Windows-1252 byte values.
+		{"Euro sign U+20AC -> 0x80", `CODE("€")`, 0x80},
+		{"Left single quote U+2018 -> 0x91", "CODE(\"\u2018\")", 0x91},
+		{"Em dash U+2014 -> 0x97", `CODE("—")`, 0x97},
+		{"Trademark U+2122 -> 0x99", `CODE("™")`, 0x99},
+
+		// Latin-1 supplement (0xA0–0xFF) — same in Unicode and Windows-1252
+		{"Latin A-grave U+00C0 -> 0xC0", `CODE("À")`, 0xC0},
+		{"Section sign U+00A7 -> 0xA7", `CODE("§")`, 0xA7},
+
+		// Characters outside Windows-1252 → replacement '?' = 63
+		{"CJK char -> replacement", `CODE("日")`, 63},
+		{"Greek alpha -> replacement", `CODE("α")`, 63},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("Eval(%q) = %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCHAR_Windows1252(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// ASCII range — same as before
+		{"CHAR(65)", `CHAR(65)`, "A"},
+		{"CHAR(95)", `CHAR(95)`, "_"},
+
+		// Windows-1252 range 0x80–0x9F — should produce the correct
+		// Unicode character, not the raw byte value.
+		{"CHAR(128) = Euro", `CHAR(128)`, "€"},
+		{"CHAR(151) = Em dash", `CHAR(151)`, "—"},
+		{"CHAR(153) = Trademark", `CHAR(153)`, "™"},
+
+		// Latin-1 supplement — same in both encodings
+		{"CHAR(192) = A-grave", `CHAR(192)`, "À"},
+		{"CHAR(167) = Section", `CHAR(167)`, "§"},
 	}
 
 	for _, tt := range tests {

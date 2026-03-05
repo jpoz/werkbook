@@ -25,6 +25,8 @@ func init() {
 	Register("ATANH", NoCtx(fnATANH))
 	Register("BASE", NoCtx(fnBASE))
 	Register("CEILING", NoCtx(fnCEILING))
+	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
+	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
 	Register("COMBIN", NoCtx(fnCOMBIN))
 	Register("COMBINA", NoCtx(fnCOMBINA))
 	Register("COS", NoCtx(fnCOS))
@@ -40,6 +42,8 @@ func init() {
 	Register("FACT", NoCtx(fnFACT))
 	Register("FACTDOUBLE", NoCtx(fnFACTDOUBLE))
 	Register("FLOOR", NoCtx(fnFLOOR))
+	Register("FLOOR.MATH", NoCtx(fnFLOORMATH))
+	Register("FLOOR.PRECISE", NoCtx(fnFLOORPRECISE))
 	Register("GCD", NoCtx(fnGCD))
 	Register("INT", NoCtx(fnINT))
 	Register("LCM", NoCtx(fnLCM))
@@ -109,10 +113,108 @@ func fnCEILING(args []Value) (Value, error) {
 	if sig == 0 {
 		return NumberVal(0), nil
 	}
-	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+	// Excel: positive number with negative significance is an error.
+	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
+	// Excel: negative number with positive significance rounds toward zero.
+	if n < 0 && sig > 0 {
+		return NumberVal(-math.Floor(math.Abs(n)/sig) * sig), nil
+	}
 	return NumberVal(math.Ceil(n/sig) * sig), nil
+}
+
+func fnCEILINGMATH(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// Default significance: +1 for positive numbers, -1 for negative.
+	sig := 1.0
+	if n < 0 {
+		sig = -1.0
+	}
+	if len(args) >= 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	mode := 0.0
+	if len(args) == 3 {
+		mode, e = CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Use absolute significance for the computation — the sign of significance
+	// does not affect the result in CEILING.MATH (unlike CEILING).
+	absSig := math.Abs(sig)
+	if n >= 0 {
+		// Positive numbers: round up (toward +infinity).
+		return NumberVal(math.Ceil(n/absSig) * absSig), nil
+	}
+	// Negative numbers:
+	if mode == 0 {
+		// mode=0: round toward +infinity (toward zero).
+		return NumberVal(-math.Floor(math.Abs(n)/absSig) * absSig), nil
+	}
+	// mode≠0: round away from zero (toward -infinity).
+	return NumberVal(-math.Ceil(math.Abs(n)/absSig) * absSig), nil
+}
+
+func fnCEILINGPRECISE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sig := 1.0
+	if len(args) == 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Always use absolute value of significance.
+	absSig := math.Abs(sig)
+	// Always round toward +infinity.
+	return NumberVal(math.Ceil(n/absSig) * absSig), nil
+}
+
+func fnFLOORPRECISE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sig := 1.0
+	if len(args) == 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Always use absolute value of significance.
+	absSig := math.Abs(sig)
+	// Always round toward -infinity.
+	return NumberVal(math.Floor(n/absSig) * absSig), nil
 }
 
 func fnFLOOR(args []Value) (Value, error) {
@@ -127,13 +229,67 @@ func fnFLOOR(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
+	// Special case: when number is 0, result is always 0 regardless of significance.
+	if n == 0 {
+		return NumberVal(0), nil
+	}
 	if sig == 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
-	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+	// Excel: positive number with negative significance is an error.
+	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
+	// Excel: negative number with positive significance rounds away from zero.
+	if n < 0 && sig > 0 {
+		return NumberVal(-math.Ceil(math.Abs(n)/sig) * sig), nil
+	}
 	return NumberVal(math.Floor(n/sig) * sig), nil
+}
+
+func fnFLOORMATH(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// Default significance: +1 for positive numbers, -1 for negative.
+	sig := 1.0
+	if n < 0 {
+		sig = -1.0
+	}
+	if len(args) >= 2 {
+		sig, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	mode := 0.0
+	if len(args) == 3 {
+		mode, e = CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if sig == 0 {
+		return NumberVal(0), nil
+	}
+	// Use absolute significance for the computation — the sign of significance
+	// does not affect the result in FLOOR.MATH (unlike FLOOR).
+	absSig := math.Abs(sig)
+	if n >= 0 {
+		// Positive numbers: round down (toward zero / toward -infinity).
+		return NumberVal(math.Floor(n/absSig) * absSig), nil
+	}
+	// Negative numbers:
+	if mode == 0 {
+		// mode=0: round toward -infinity (away from zero).
+		return NumberVal(-math.Ceil(math.Abs(n)/absSig) * absSig), nil
+	}
+	// mode≠0: round toward zero.
+	return NumberVal(-math.Floor(math.Abs(n)/absSig) * absSig), nil
 }
 
 func fnINT(args []Value) (Value, error) {
@@ -186,6 +342,28 @@ func fnPOWER(args []Value) (Value, error) {
 	exp, e := CoerceNum(args[1])
 	if e != nil {
 		return *e, nil
+	}
+	// Excel: POWER(0,0) returns #NUM!
+	if base == 0 && exp == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Excel: POWER(0, negative) returns #DIV/0!
+	if base == 0 && exp < 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	// Handle negative base with fractional exponent: detect unit fractions 1/n
+	// where n is an odd integer, which allows computing real-valued roots.
+	if base < 0 && exp != math.Floor(exp) {
+		recip := 1.0 / exp
+		rounded := math.Round(recip)
+		if math.Abs(recip-rounded) < 1e-9 && int(rounded)%2 != 0 {
+			// Odd root of negative number: -|base|^(1/n) * sign
+			root := math.Pow(math.Abs(base), exp)
+			if math.IsNaN(root) || math.IsInf(root, 0) {
+				return ErrorVal(ErrValNUM), nil
+			}
+			return NumberVal(-root), nil
+		}
 	}
 	result := math.Pow(base, exp)
 	if math.IsNaN(result) || math.IsInf(result, 0) {
@@ -551,7 +729,8 @@ func fnLOG(args []Value) (Value, error) {
 	base := 10.0
 	if len(args) == 2 {
 		base, e = CoerceNum(args[1]); if e != nil { return *e, nil }
-		if base <= 0 || base == 1 { return ErrorVal(ErrValNUM), nil }
+		if base <= 0 { return ErrorVal(ErrValNUM), nil }
+		if base == 1 { return ErrorVal(ErrValDIV0), nil }
 	}
 	return NumberVal(math.Log(n) / math.Log(base)), nil
 }

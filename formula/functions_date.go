@@ -23,6 +23,7 @@ func init() {
 	Register("NOW", NoCtx(fnNOW))
 	Register("SECOND", NoCtx(fnSECOND))
 	Register("TIME", NoCtx(fnTIME))
+	Register("TIMEVALUE", NoCtx(fnTIMEVALUE))
 	Register("TODAY", NoCtx(fnTODAY))
 	Register("WEEKDAY", NoCtx(fnWEEKDAY))
 	Register("WEEKNUM", NoCtx(fnWEEKNUM))
@@ -43,12 +44,35 @@ var Excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 const MaxExcelSerial = 2958465
 
 func TimeToExcelSerial(t time.Time) float64 {
-	duration := t.Sub(ExcelEpoch)
-	days := duration.Hours() / 24
+	// Calculate the number of days between the Excel epoch and the given time.
+	// We cannot use t.Sub(ExcelEpoch) because time.Duration is an int64 of
+	// nanoseconds, which overflows for dates more than ~292 years from the epoch.
+	// Instead, compute whole days via calendar difference and fractional day
+	// from the time-of-day components.
+	y1, m1, d1 := ExcelEpoch.Date()
+	y2, m2, d2 := t.Date()
+	epochDays := julianDayNumber(y1, int(m1), d1)
+	tDays := julianDayNumber(y2, int(m2), d2)
+	days := float64(tDays - epochDays)
+
+	// Add fractional day from time-of-day.
+	h, min, sec := t.Clock()
+	days += (float64(h)*3600 + float64(min)*60 + float64(sec)) / 86400.0
+
 	if days >= 60 {
 		days++
 	}
 	return days
+}
+
+// julianDayNumber returns a Julian Day Number for the given date, useful for
+// computing the difference in days between two dates without overflow.
+func julianDayNumber(year, month, day int) int {
+	// Algorithm from Meeus, "Astronomical Algorithms".
+	a := (14 - month) / 12
+	y := year + 4800 - a
+	m := month + 12*a - 3
+	return day + (153*m+2)/5 + 365*y + y/4 - y/100 + y/400 - 32045
 }
 
 func ExcelSerialToTime(serial float64) time.Time {
@@ -66,6 +90,10 @@ func ExcelSerialToTime(serial float64) time.Time {
 // correctly handling serial 60 (Excel's fictional Feb 29, 1900).
 func excelSerialDateParts(serial float64) (int, time.Month, int) {
 	s := int(serial)
+	if s == 0 {
+		// Serial 0 is Excel's "January 0, 1900" sentinel value.
+		return 1900, time.January, 0
+	}
 	if s == 60 {
 		return 1900, time.February, 29
 	}
@@ -265,12 +293,31 @@ func fnDATEDIF(args []Value) (Value, error) {
 		}
 		return NumberVal(float64(m)), nil
 	case "YD":
-		totalDays := int(endSerial - startSerial)
-		years := end.Year() - start.Year()
-		if end.Month() < start.Month() || (end.Month() == start.Month() && end.Day() < start.Day()) {
-			years--
+		// Excel's YD algorithm: move end's month/day into start's year,
+		// then compute the day difference from start to the adjusted date.
+		endMonth := end.Month()
+		endDay := end.Day()
+
+		// Handle Feb 29: if end is Feb 29 and start's year is not a leap year,
+		// treat as Feb 28.
+		adjYear := start.Year()
+		if endMonth == 2 && endDay == 29 && !isLeapYear(adjYear) {
+			endDay = 28
 		}
-		days := totalDays - years*365
+
+		adjusted := time.Date(adjYear, endMonth, endDay, 0, 0, 0, 0, time.UTC)
+		if adjusted.Before(start) {
+			// Move to next year
+			adjYear++
+			// Re-check Feb 29 for the new year
+			if end.Month() == 2 && end.Day() == 29 && !isLeapYear(adjYear) {
+				adjusted = time.Date(adjYear, 2, 28, 0, 0, 0, 0, time.UTC)
+			} else {
+				adjusted = time.Date(adjYear, end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+			}
+		}
+
+		days := int(adjusted.Sub(start).Hours() / 24)
 		return NumberVal(float64(days)), nil
 	default:
 		return ErrorVal(ErrValNUM), nil
@@ -417,7 +464,23 @@ func fnTIME(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	result := (hour*3600 + minute*60 + second) / 86400
+	// Excel truncates arguments to integers.
+	hour = math.Trunc(hour)
+	minute = math.Trunc(minute)
+	second = math.Trunc(second)
+
+	// Excel returns #NUM! if any argument exceeds 32767.
+	if hour > 32767 || minute > 32767 || second > 32767 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	totalSeconds := hour*3600 + minute*60 + second
+	// Excel returns #NUM! if the total time is negative.
+	if totalSeconds < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	result := totalSeconds / 86400
 	// TIME returns only the fractional part (time of day).
 	// Values >= 1.0 wrap; e.g. TIME(25,0,0) = 0.04167 (just the 1-hour fraction).
 	result = result - math.Floor(result)
@@ -492,6 +555,16 @@ func fnDATEVALUE(args []Value) (Value, error) {
 	}
 	text := strings.TrimSpace(ValueToString(args[0]))
 
+	// Strip time portion from date-time strings like "2025-03-04 12:00".
+	// Only strip if the part after the space looks like a time (contains a colon).
+	dateOnly := text
+	if idx := strings.Index(text, " "); idx > 0 {
+		rest := strings.TrimSpace(text[idx+1:])
+		if strings.Contains(rest, ":") {
+			dateOnly = text[:idx]
+		}
+	}
+
 	layouts := []string{
 		"1/2/2006",
 		"01/02/2006",
@@ -503,12 +576,166 @@ func fnDATEVALUE(args []Value) (Value, error) {
 	}
 
 	for _, layout := range layouts {
-		t, err := time.Parse(layout, text)
+		t, err := time.Parse(layout, dateOnly)
 		if err == nil {
 			return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
 		}
 	}
+
+	// Try 2-digit year formats: MM/DD/YY
+	twoDigitLayouts := []string{
+		"1/2/06",
+		"01/02/06",
+	}
+	for _, layout := range twoDigitLayouts {
+		t, err := time.Parse(layout, dateOnly)
+		if err == nil {
+			return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
+		}
+	}
+
+	// Try "Month Day" without year — use current year.
+	if m, d, ok := parseMonthDay(dateOnly); ok {
+		now := time.Now()
+		t := time.Date(now.Year(), m, d, 0, 0, 0, 0, time.UTC)
+		return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
+	}
+
 	return ErrorVal(ErrValVALUE), nil
+}
+
+func fnTIMEVALUE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := strings.TrimSpace(ValueToString(args[0]))
+
+	t, ok := parseTimeString(text)
+	if !ok {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	return NumberVal(t), nil
+}
+
+// parseTimeString parses a time string and returns the fractional day value.
+// Supported formats: "H:MM", "H:MM:SS", "H:MM AM/PM", "H:MM:SS AM/PM"
+func parseTimeString(text string) (float64, bool) {
+	upper := strings.ToUpper(strings.TrimSpace(text))
+
+	// Check for AM/PM suffix.
+	isPM := false
+	hasAMPM := false
+	if strings.HasSuffix(upper, " AM") {
+		hasAMPM = true
+		upper = strings.TrimSpace(upper[:len(upper)-3])
+	} else if strings.HasSuffix(upper, " PM") {
+		hasAMPM = true
+		isPM = true
+		upper = strings.TrimSpace(upper[:len(upper)-3])
+	}
+
+	// Split on ":"
+	parts := strings.Split(upper, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, false
+	}
+
+	var hour, minute, second int
+	var err error
+
+	// Use fmt.Sscanf-like parsing with strconv
+	hour, err = parseInt(parts[0])
+	if err != nil {
+		return 0, false
+	}
+	minute, err = parseInt(parts[1])
+	if err != nil {
+		return 0, false
+	}
+	if len(parts) == 3 {
+		second, err = parseInt(parts[2])
+		if err != nil {
+			return 0, false
+		}
+	}
+
+	if hasAMPM {
+		if hour < 1 || hour > 12 {
+			return 0, false
+		}
+		if hour == 12 {
+			hour = 0
+		}
+		if isPM {
+			hour += 12
+		}
+	}
+
+	if minute < 0 || minute > 59 || second < 0 || second > 59 {
+		return 0, false
+	}
+
+	totalSeconds := float64(hour)*3600 + float64(minute)*60 + float64(second)
+	return totalSeconds / 86400.0, true
+}
+
+// parseInt parses a string as a non-negative integer, trimming whitespace.
+func parseInt(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	n := 0
+	if len(s) == 0 {
+		return 0, errParseInt
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, errParseInt
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
+}
+
+var errParseInt = errorString("invalid integer")
+
+type errorString string
+
+func (e errorString) Error() string { return string(e) }
+
+// monthNames maps lowercased full and abbreviated month names to their month number.
+var monthNames = map[string]time.Month{
+	"january": time.January, "jan": time.January,
+	"february": time.February, "feb": time.February,
+	"march": time.March, "mar": time.March,
+	"april": time.April, "apr": time.April,
+	"may": time.May,
+	"june": time.June, "jun": time.June,
+	"july": time.July, "jul": time.July,
+	"august": time.August, "aug": time.August,
+	"september": time.September, "sep": time.September,
+	"october": time.October, "oct": time.October,
+	"november": time.November, "nov": time.November,
+	"december": time.December, "dec": time.December,
+}
+
+// parseMonthDay parses strings like "March 4" or "Jan 15" and returns month and day.
+func parseMonthDay(s string) (time.Month, int, bool) {
+	parts := strings.Fields(s)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	m, ok := monthNames[strings.ToLower(parts[0])]
+	if !ok {
+		return 0, 0, false
+	}
+	d, err := parseInt(parts[1])
+	if err != nil || d < 1 || d > 31 {
+		return 0, 0, false
+	}
+	return m, d, true
 }
 
 func fnEDATE(args []Value) (Value, error) {

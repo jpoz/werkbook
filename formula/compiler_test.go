@@ -371,6 +371,21 @@ func TestCompileUnknownFunction(t *testing.T) {
 	}
 }
 
+func TestCompileXludfPrefix(t *testing.T) {
+	// _xludf. prefix means "user-defined function" — must not resolve.
+	node, err := Parse("_xludf.CEILING.MATH(2.5)")
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	_, err = Compile("_xludf.CEILING.MATH(2.5)", node)
+	if err == nil {
+		t.Fatal("expected compile error for _xludf. prefixed function")
+	}
+	if !strings.Contains(err.Error(), "unknown function") {
+		t.Errorf("error = %q, want it to contain 'unknown function'", err.Error())
+	}
+}
+
 func TestCompileSourcePreservation(t *testing.T) {
 	input := "SUM(A1:A10)"
 	cf := compileFormula(t, input)
