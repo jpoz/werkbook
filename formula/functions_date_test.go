@@ -948,6 +948,111 @@ func TestWORKDAY_INTL(t *testing.T) {
 	}
 }
 
+func TestNETWORKDAYS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Key dates (2025) — serial numbers per ExcelSerialToTime:
+	// Jan 1  = 45658 (Wed), Jan 3  = 45660 (Fri), Jan 4  = 45661 (Sat)
+	// Jan 5  = 45662 (Sun), Jan 6  = 45663 (Mon), Jan 7  = 45664 (Tue)
+	// Jan 8  = 45665 (Wed), Jan 10 = 45667 (Fri), Jan 11 = 45668 (Sat)
+	// Jan 12 = 45669 (Sun), Jan 13 = 45670 (Mon), Jan 31 = 45688 (Fri)
+	//
+	// Excel doc example dates (serial numbers):
+	// 2012-10-01 (Mon) = 41183  (project start)
+	// 2013-03-01 (Fri) = 41334  (project end)
+	// 2012-11-22 (Thu) = 41235  (holiday 1)
+	// 2012-12-04 (Tue) = 41247  (holiday 2)
+	// 2013-01-21 (Mon) = 41295  (holiday 3)
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic: same week Monday–Friday
+		{"mon_to_fri_same_week", "NETWORKDAYS(45663,45667)", 5, false, 0},
+
+		// Cross-weekend: Friday to Monday
+		{"fri_to_mon", "NETWORKDAYS(45660,45663)", 2, false, 0},
+
+		// Cross-weekend: Monday to next Monday
+		{"mon_to_next_mon", "NETWORKDAYS(45663,45670)", 6, false, 0},
+
+		// Same day (weekday) → 1
+		{"same_day_weekday_wed", "NETWORKDAYS(45658,45658)", 1, false, 0},
+		{"same_day_weekday_mon", "NETWORKDAYS(45663,45663)", 1, false, 0},
+		{"same_day_weekday_fri", "NETWORKDAYS(45667,45667)", 1, false, 0},
+
+		// Same day (weekend) → 0
+		{"same_day_saturday", "NETWORKDAYS(45661,45661)", 0, false, 0},
+		{"same_day_sunday", "NETWORKDAYS(45662,45662)", 0, false, 0},
+
+		// Start and end on weekend → count only weekdays between
+		{"sat_to_sun_same_weekend", "NETWORKDAYS(45661,45662)", 0, false, 0},
+		{"sat_to_next_sat", "NETWORKDAYS(45661,45668)", 5, false, 0},
+		{"sun_to_next_sun", "NETWORKDAYS(45662,45669)", 5, false, 0},
+
+		// One full week (Mon–Fri) → 5
+		{"one_full_week", "NETWORKDAYS(45663,45667)", 5, false, 0},
+
+		// One month: Jan 1 (Wed) to Jan 31 (Fri)
+		{"one_month_jan", "NETWORKDAYS(45658,45688)", 23, false, 0},
+
+		// With holidays: one holiday on a weekday
+		{"one_holiday", "NETWORKDAYS(45663,45667,45665)", 4, false, 0},
+
+		// Holiday on weekend (doesn't reduce count)
+		{"holiday_on_saturday", "NETWORKDAYS(45663,45667,45661)", 5, false, 0},
+		{"holiday_on_sunday", "NETWORKDAYS(45663,45667,45662)", 5, false, 0},
+
+		// Multiple holidays
+		{"two_holidays", "NETWORKDAYS(45663,45667,{45664,45665})", 3, false, 0},
+
+		// Negative result (end before start)
+		{"negative_range", "NETWORKDAYS(45667,45663)", -5, false, 0},
+		{"negative_cross_weekend", "NETWORKDAYS(45670,45660)", -7, false, 0},
+
+		// Excel doc examples:
+		// NETWORKDAYS(10/1/2012, 3/1/2013) = 110
+		{"excel_doc_no_holidays", "NETWORKDAYS(41183,41334)", 110, false, 0},
+		// NETWORKDAYS(10/1/2012, 3/1/2013, 11/22/2012) = 109
+		{"excel_doc_one_holiday", "NETWORKDAYS(41183,41334,41235)", 109, false, 0},
+		// NETWORKDAYS(10/1/2012, 3/1/2013, {11/22/2012,12/4/2012,1/21/2013}) = 107
+		{"excel_doc_three_holidays", "NETWORKDAYS(41183,41334,{41235,41247,41295})", 107, false, 0},
+
+		// Too few args → error
+		{"too_few_args_zero", "NETWORKDAYS()", 0, true, ErrValVALUE},
+		{"too_few_args_one", "NETWORKDAYS(45663)", 0, true, ErrValVALUE},
+
+		// Too many args → error
+		{"too_many_args", "NETWORKDAYS(45663,45667,45665,1)", 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestNETWORKDAYS_INTL(t *testing.T) {
 	resolver := &mockResolver{}
 

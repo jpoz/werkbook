@@ -175,7 +175,7 @@ Werkbook supports **303** Excel formula functions.
 | MUNIT | Math & Trig | 38 |
 | N | Information | - |
 | NA | Information | - |
-| NETWORKDAYS | Date & Time | 1 |
+| NETWORKDAYS | Date & Time | 26 |
 | NETWORKDAYS.INTL | Date & Time | 43 |
 | NOMINAL | Financial | 17 |
 | NORM.DIST | Statistical | 29 |
