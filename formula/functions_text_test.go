@@ -1765,3 +1765,186 @@ func TestROMAN(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VALUETOTEXT tests
+// ---------------------------------------------------------------------------
+
+func TestVALUETOTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Numbers
+		{"integer", `VALUETOTEXT(123)`, "123"},
+		{"float", `VALUETOTEXT(1.5)`, "1.5"},
+		{"negative", `VALUETOTEXT(-42)`, "-42"},
+		{"zero", `VALUETOTEXT(0)`, "0"},
+		{"large_number", `VALUETOTEXT(1000000)`, "1000000"},
+		{"small_float", `VALUETOTEXT(0.001)`, "0.001"},
+
+		// Strings concise (format 0)
+		{"string_concise", `VALUETOTEXT("hello")`, "hello"},
+		{"string_concise_explicit", `VALUETOTEXT("hello",0)`, "hello"},
+		{"empty_string", `VALUETOTEXT("")`, ""},
+		{"string_with_spaces", `VALUETOTEXT("hello world")`, "hello world"},
+
+		// Strings strict (format 1)
+		{"string_strict", `VALUETOTEXT("hello",1)`, `"hello"`},
+		{"empty_string_strict", `VALUETOTEXT("",1)`, `""`},
+		{"string_strict_spaces", `VALUETOTEXT("hello world",1)`, `"hello world"`},
+
+		// Booleans
+		{"bool_true", `VALUETOTEXT(TRUE)`, "TRUE"},
+		{"bool_false", `VALUETOTEXT(FALSE)`, "FALSE"},
+		{"bool_true_strict", `VALUETOTEXT(TRUE,1)`, "TRUE"},
+		{"bool_false_strict", `VALUETOTEXT(FALSE,1)`, "FALSE"},
+
+		// Numbers with format
+		{"number_concise", `VALUETOTEXT(123,0)`, "123"},
+		{"number_strict", `VALUETOTEXT(123,1)`, "123"},
+		{"float_strict", `VALUETOTEXT(1.5,1)`, "1.5"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{"no_args", `VALUETOTEXT()`},
+		{"too_many_args", `VALUETOTEXT(1,2,3)`},
+		{"invalid_format_2", `VALUETOTEXT(1,2)`},
+		{"invalid_format_neg", `VALUETOTEXT(1,-1)`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+
+	// Error propagation
+	t.Run("error_propagation_div0", func(t *testing.T) {
+		cf := evalCompile(t, `VALUETOTEXT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("VALUETOTEXT(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagation_na", func(t *testing.T) {
+		cf := evalCompile(t, `VALUETOTEXT(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("VALUETOTEXT(NA()) = %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ARRAYTOTEXT tests
+// ---------------------------------------------------------------------------
+
+func TestARRAYTOTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Concise format (default)
+		{"numbers_concise", `ARRAYTOTEXT({1,2,3})`, "1, 2, 3"},
+		{"numbers_concise_explicit", `ARRAYTOTEXT({1,2,3},0)`, "1, 2, 3"},
+		{"mixed_concise", `ARRAYTOTEXT({1,"hello",TRUE})`, "1, hello, TRUE"},
+		{"single_value", `ARRAYTOTEXT({42})`, "42"},
+		{"single_string", `ARRAYTOTEXT({"test"})`, "test"},
+		{"floats_concise", `ARRAYTOTEXT({1.5,2.5,3.5})`, "1.5, 2.5, 3.5"},
+		{"bools_concise", `ARRAYTOTEXT({TRUE,FALSE})`, "TRUE, FALSE"},
+
+		// Strict format
+		{"numbers_strict", `ARRAYTOTEXT({1,2,3},1)`, "{1,2,3}"},
+		{"mixed_strict", `ARRAYTOTEXT({1,"hello",TRUE},1)`, `{1,"hello",TRUE}`},
+		{"single_value_strict", `ARRAYTOTEXT({42},1)`, "{42}"},
+		{"single_string_strict", `ARRAYTOTEXT({"test"},1)`, `{"test"}`},
+		{"floats_strict", `ARRAYTOTEXT({1.5,2.5},1)`, "{1.5,2.5}"},
+		{"bools_strict", `ARRAYTOTEXT({TRUE,FALSE},1)`, "{TRUE,FALSE}"},
+
+		// Multi-row arrays (semicolon separator)
+		{"multirow_concise", `ARRAYTOTEXT({1,2;3,4})`, "1, 2, 3, 4"},
+		{"multirow_strict", `ARRAYTOTEXT({1,2;3,4},1)`, "{1,2;3,4}"},
+
+		// Scalar (non-array) input
+		{"scalar_number", `ARRAYTOTEXT(42)`, "42"},
+		{"scalar_string", `ARRAYTOTEXT("hello")`, "hello"},
+		{"scalar_string_strict", `ARRAYTOTEXT("hello",1)`, `{"hello"}`},
+		{"scalar_bool", `ARRAYTOTEXT(TRUE)`, "TRUE"},
+		{"scalar_number_strict", `ARRAYTOTEXT(42,1)`, "{42}"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{"no_args", `ARRAYTOTEXT()`},
+		{"too_many_args", `ARRAYTOTEXT({1},2,3)`},
+		{"invalid_format_2", `ARRAYTOTEXT({1},2)`},
+		{"invalid_format_neg", `ARRAYTOTEXT({1},-1)`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}

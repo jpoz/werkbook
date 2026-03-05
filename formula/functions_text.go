@@ -35,10 +35,14 @@ func init() {
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
 	Register("T", NoCtx(fnT))
 	Register("TEXT", fnTEXTCtx)
+	Register("TEXTAFTER", NoCtx(fnTextAfter))
+	Register("TEXTBEFORE", NoCtx(fnTextBefore))
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
+	Register("VALUETOTEXT", NoCtx(fnValueToText))
+	Register("ARRAYTOTEXT", NoCtx(fnArrayToText))
 }
 
 func fnCHOOSE(args []Value) (Value, error) {
@@ -940,4 +944,381 @@ func fnROMAN(args []Value) (Value, error) {
 		}
 	}
 	return StringVal(b.String()), nil
+}
+
+// valueToTextFormat formats a single value for VALUETOTEXT / ARRAYTOTEXT.
+// When strict is true, strings are wrapped in escaped double-quotes.
+func valueToTextFormat(v Value, strict bool) string {
+	switch v.Type {
+	case ValueNumber:
+		return excelNumberToString(v.Num)
+	case ValueString:
+		if strict {
+			return "\"" + v.Str + "\""
+		}
+		return v.Str
+	case ValueBool:
+		if v.Bool {
+			return "TRUE"
+		}
+		return "FALSE"
+	case ValueEmpty:
+		return ""
+	default:
+		return ""
+	}
+}
+
+func fnValueToText(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	v := args[0]
+	if v.Type == ValueError {
+		return v, nil
+	}
+
+	format := 0
+	if len(args) == 2 {
+		f, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		format = int(f)
+		if format != 0 && format != 1 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	return StringVal(valueToTextFormat(v, format == 1)), nil
+}
+
+func fnArrayToText(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	format := 0
+	if len(args) == 2 {
+		f, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		format = int(f)
+		if format != 0 && format != 1 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	strict := format == 1
+
+	arg := args[0]
+	if arg.Type == ValueError {
+		return arg, nil
+	}
+
+	if strict {
+		// Strict: {v1,v2;v3,v4} with rows separated by ";" and columns by ","
+		var rows []string
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				var cols []string
+				for _, cell := range row {
+					cols = append(cols, valueToTextFormat(cell, true))
+				}
+				rows = append(rows, strings.Join(cols, ","))
+			}
+		} else {
+			rows = append(rows, valueToTextFormat(arg, true))
+		}
+		return StringVal("{" + strings.Join(rows, ";") + "}"), nil
+	}
+
+	// Concise: join all values with ", "
+	var vals []Value
+	if arg.Type == ValueArray {
+		for _, row := range arg.Array {
+			vals = append(vals, row...)
+		}
+	} else {
+		vals = append(vals, arg)
+	}
+	var parts []string
+	for _, v := range vals {
+		parts = append(parts, valueToTextFormat(v, false))
+	}
+	return StringVal(strings.Join(parts, ", ")), nil
+}
+
+// textFindAllOccurrences finds all starting byte positions of delimiter in text.
+// If caseInsensitive is true, matching is case-insensitive.
+func textFindAllOccurrences(text, delimiter string, caseInsensitive bool) []int {
+	if delimiter == "" {
+		return nil
+	}
+	searchText := text
+	searchDelim := delimiter
+	if caseInsensitive {
+		searchText = strings.ToLower(text)
+		searchDelim = strings.ToLower(delimiter)
+	}
+	var positions []int
+	start := 0
+	for {
+		idx := strings.Index(searchText[start:], searchDelim)
+		if idx < 0 {
+			break
+		}
+		positions = append(positions, start+idx)
+		start += idx + len(searchDelim)
+	}
+	return positions
+}
+
+func fnTextBefore(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors from text arg.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// Propagate errors from delimiter arg.
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	delimiter := ValueToString(args[1])
+
+	instanceNum := 1
+	if len(args) >= 3 {
+		n, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		instanceNum = int(n)
+	}
+	if instanceNum == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	matchMode := 0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(m)
+	}
+
+	matchEnd := 0
+	if len(args) >= 5 {
+		me, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		matchEnd = int(me)
+	}
+
+	var ifNotFound *Value
+	if len(args) >= 6 {
+		v := args[5]
+		ifNotFound = &v
+	}
+
+	caseInsensitive := matchMode == 1
+
+	// Empty delimiter: TEXTBEFORE returns "" for instance 1, and handles
+	// negative instances as counting empty positions from the end.
+	if delimiter == "" {
+		if instanceNum == 1 || instanceNum == -1 {
+			return StringVal(""), nil
+		}
+		runes := []rune(text)
+		if instanceNum > 0 {
+			// instance 2 means after 1st empty boundary = position 1, etc.
+			pos := instanceNum - 1
+			if pos > len(runes) {
+				if ifNotFound != nil {
+					return *ifNotFound, nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+			return StringVal(string(runes[:pos])), nil
+		}
+		// Negative: count from end. -2 means 2nd from end.
+		pos := len(runes) + instanceNum + 1
+		if pos < 0 || pos > len(runes) {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		return StringVal(string(runes[:pos])), nil
+	}
+
+	positions := textFindAllOccurrences(text, delimiter, caseInsensitive)
+
+	if len(positions) == 0 {
+		// Not found.
+		if matchEnd == 1 {
+			return StringVal(text), nil
+		}
+		if ifNotFound != nil {
+			return *ifNotFound, nil
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var pos int
+	if instanceNum > 0 {
+		if instanceNum > len(positions) {
+			if matchEnd == 1 && instanceNum == len(positions)+1 {
+				return StringVal(text), nil
+			}
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[instanceNum-1]
+	} else {
+		// Negative: count from end. -1 = last occurrence.
+		idx := len(positions) + instanceNum
+		if idx < 0 {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[idx]
+	}
+
+	return StringVal(text[:pos]), nil
+}
+
+func fnTextAfter(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors from text arg.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// Propagate errors from delimiter arg.
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	delimiter := ValueToString(args[1])
+
+	instanceNum := 1
+	if len(args) >= 3 {
+		n, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		instanceNum = int(n)
+	}
+	if instanceNum == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	matchMode := 0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(m)
+	}
+
+	matchEnd := 0
+	if len(args) >= 5 {
+		me, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		matchEnd = int(me)
+	}
+
+	var ifNotFound *Value
+	if len(args) >= 6 {
+		v := args[5]
+		ifNotFound = &v
+	}
+
+	caseInsensitive := matchMode == 1
+
+	// Empty delimiter: TEXTAFTER returns full text for instance 1,
+	// and handles other instances similarly to TEXTBEFORE.
+	if delimiter == "" {
+		if instanceNum == 1 || instanceNum == -1 {
+			return StringVal(text), nil
+		}
+		runes := []rune(text)
+		if instanceNum > 0 {
+			pos := instanceNum - 1
+			if pos > len(runes) {
+				if ifNotFound != nil {
+					return *ifNotFound, nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+			return StringVal(string(runes[pos:])), nil
+		}
+		// Negative
+		pos := len(runes) + instanceNum + 1
+		if pos < 0 || pos > len(runes) {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		return StringVal(string(runes[pos:])), nil
+	}
+
+	positions := textFindAllOccurrences(text, delimiter, caseInsensitive)
+
+	if len(positions) == 0 {
+		// Not found.
+		if matchEnd == 1 {
+			return StringVal(""), nil
+		}
+		if ifNotFound != nil {
+			return *ifNotFound, nil
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var pos int
+	if instanceNum > 0 {
+		if instanceNum > len(positions) {
+			if matchEnd == 1 && instanceNum == len(positions)+1 {
+				return StringVal(""), nil
+			}
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[instanceNum-1]
+	} else {
+		// Negative: count from end. -1 = last occurrence.
+		idx := len(positions) + instanceNum
+		if idx < 0 {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[idx]
+	}
+
+	return StringVal(text[pos+len(delimiter):]), nil
 }
