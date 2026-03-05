@@ -302,7 +302,7 @@ Werkbook supports **303** Excel formula functions.
 | WRAPCOLS | Lookup & Reference | 20 |
 | WRAPROWS | Lookup & Reference | 19 |
 | XIRR | Financial | 3 |
-| XLOOKUP | Lookup & Reference | 7 |
+| XLOOKUP | Lookup & Reference | 21 |
 | XNPV | Financial | 1 |
 | XOR | Logical | 6 |
 | YEAR | Date & Time | 3 |
