@@ -123,7 +123,7 @@ Werkbook supports **303** Excel formula functions.
 | IF | Logical | 21 |
 | IFERROR | Logical | 8 |
 | IFNA | Information | 5 |
-| IFS | Logical | 1 |
+| IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 12 |
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 2 |
