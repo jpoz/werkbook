@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Regenerate FORMULAS.md and include it in the current commit.
+go run scripts/count_formula_tests.go
+
+if ! git diff --quiet FORMULAS.md; then
+  git add FORMULAS.md
+fi
