@@ -183,6 +183,124 @@ func TestABS(t *testing.T) {
 	}
 }
 
+func TestFLOOR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic: round down to nearest integer (significance=1)
+		{"pos_int_floor", "FLOOR(4.9,1)", 4},
+		{"pos_half_floor", "FLOOR(2.5,1)", 2},
+		{"pos_exact", "FLOOR(7,1)", 7},
+		{"pos_small_frac", "FLOOR(0.1,1)", 0},
+
+		// Various significance (0.5, 0.1, 10, 100)
+		{"sig_0.5", "FLOOR(4.7,0.5)", 4.5},
+		{"sig_0.1", "FLOOR(4.29,0.1)", 4.2},
+		{"sig_10", "FLOOR(42,10)", 40},
+		{"sig_100", "FLOOR(450,100)", 400},
+
+		// Negative number with negative significance (rounds toward zero)
+		{"neg_neg_sig", "FLOOR(-2.5,-1)", -2},
+		{"neg_neg_sig_2", "FLOOR(-2.5,-2)", -2},
+		{"neg_neg_sig_5", "FLOOR(-7,-5)", -5},
+
+		// Zero number → 0 (regardless of significance, even sig=0)
+		{"zero_pos_sig", "FLOOR(0,1)", 0},
+		{"zero_neg_sig", "FLOOR(0,5)", 0},
+		{"zero_zero", "FLOOR(0,0)", 0},
+
+		// At boundary → unchanged
+		{"exact_boundary", "FLOOR(6,3)", 6},
+		{"exact_boundary_neg", "FLOOR(-6,-3)", -6},
+		{"exact_boundary_2", "FLOOR(10,5)", 10},
+
+		// Negative number with positive significance (rounds away from zero)
+		{"neg_pos_sig", "FLOOR(-2.5,1)", -3},
+		{"neg_pos_sig_2", "FLOOR(-4.1,2)", -6},
+
+		// Large numbers
+		{"large_num", "FLOOR(1234567,1000)", 1234000},
+		{"large_exact", "FLOOR(1000000,1000)", 1000000},
+
+		// Decimal significance
+		{"dec_sig_0.01", "FLOOR(0.234,0.01)", 0.23},
+		{"dec_sig_0.05", "FLOOR(4.42,0.05)", 4.4},
+
+		// Excel doc examples
+		{"doc_ex1", "FLOOR(3.7,2)", 2},
+		{"doc_ex2", "FLOOR(-2.5,-2)", -2},
+		{"doc_ex3", "FLOOR(1.58,0.1)", 1.5},
+		{"doc_ex4", "FLOOR(0.234,0.01)", 0.23},
+
+		// String coercion of numeric strings
+		{"string_num", "FLOOR(\"4.9\",1)", 4},
+		{"string_sig", "FLOOR(4.9,\"1\")", 4},
+		{"string_both", "FLOOR(\"4.9\",\"1\")", 4},
+
+		// Boolean coercion
+		{"bool_true_num", "FLOOR(TRUE,1)", 1},
+		{"bool_false_num", "FLOOR(FALSE,1)", 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Too few args
+		{"no_args", "FLOOR()", ErrValVALUE},
+		{"one_arg", "FLOOR(1)", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "FLOOR(1,2,3)", ErrValVALUE},
+		// Non-numeric
+		{"non_numeric_num", "FLOOR(\"abc\",1)", ErrValVALUE},
+		{"non_numeric_sig", "FLOOR(1,\"abc\")", ErrValVALUE},
+		// Positive number with negative significance → #NUM!
+		{"pos_neg_sig", "FLOOR(2.5,-1)", ErrValNUM},
+		{"pos_neg_sig_2", "FLOOR(2.5,-2)", ErrValNUM},
+		{"pos_neg_sig_3", "FLOOR(10,-5)", ErrValNUM},
+		// Significance = 0 with non-zero number → #DIV/0!
+		{"sig_zero_pos", "FLOOR(2.5,0)", ErrValDIV0},
+		{"sig_zero_neg", "FLOOR(-2.5,0)", ErrValDIV0},
+		// Error propagation
+		{"err_prop_num", "FLOOR(1/0,1)", ErrValDIV0},
+		{"err_prop_sig", "FLOOR(1,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCEILING(t *testing.T) {
 	resolver := &mockResolver{}
 

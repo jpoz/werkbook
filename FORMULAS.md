@@ -100,7 +100,7 @@ Werkbook supports **303** Excel formula functions.
 | FISHER | Statistical | 15 |
 | FISHERINV | Statistical | 15 |
 | FIXED | Text | - |
-| FLOOR | Math & Trig | 6 |
+| FLOOR | Math & Trig | 50 |
 | FLOOR.MATH | Math & Trig | 37 |
 | FLOOR.PRECISE | Math & Trig | 36 |
 | FORECAST | Statistical | 20 |
