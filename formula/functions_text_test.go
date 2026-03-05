@@ -1578,3 +1578,94 @@ func TestCHAR_Windows1252(t *testing.T) {
 		})
 	}
 }
+
+func TestROMAN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic values
+		{`ROMAN(1)`, "I"},
+		{`ROMAN(2)`, "II"},
+		{`ROMAN(3)`, "III"},
+		{`ROMAN(4)`, "IV"},
+		{`ROMAN(5)`, "V"},
+		{`ROMAN(9)`, "IX"},
+		{`ROMAN(10)`, "X"},
+		{`ROMAN(14)`, "XIV"},
+		{`ROMAN(40)`, "XL"},
+		{`ROMAN(44)`, "XLIV"},
+		{`ROMAN(49)`, "XLIX"},
+		{`ROMAN(50)`, "L"},
+		{`ROMAN(90)`, "XC"},
+		{`ROMAN(99)`, "XCIX"},
+		{`ROMAN(100)`, "C"},
+		{`ROMAN(400)`, "CD"},
+		{`ROMAN(499)`, "CDXCIX"},
+		{`ROMAN(500)`, "D"},
+		{`ROMAN(900)`, "CM"},
+		{`ROMAN(1000)`, "M"},
+		{`ROMAN(1999)`, "MCMXCIX"},
+		{`ROMAN(2000)`, "MM"},
+		{`ROMAN(3999)`, "MMMCMXCIX"},
+		// Zero returns empty string
+		{`ROMAN(0)`, ""},
+		// String coercion
+		{`ROMAN("14")`, "XIV"},
+		// Default form (classic)
+		{`ROMAN(499, 0)`, "CDXCIX"},
+		// Boolean form: TRUE = 0 (Classic)
+		{`ROMAN(499, TRUE)`, "CDXCIX"},
+		// Form 4 (simplified)
+		{`ROMAN(499, 4)`, "ID"},
+		// Boolean form: FALSE = 4 (Simplified)
+		{`ROMAN(499, FALSE)`, "ID"},
+		// Form 1
+		{`ROMAN(999, 1)`, "LMVLIV"},
+		// Form 2
+		{`ROMAN(999, 2)`, "XMIX"},
+		// Form 3
+		{`ROMAN(999, 3)`, "VMIV"},
+		// Form 4
+		{`ROMAN(999, 4)`, "IM"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		formula string
+	}{
+		{`ROMAN(-1)`},
+		{`ROMAN(4000)`},
+		{`ROMAN()`},
+		{`ROMAN(1,2,3)`},
+		{`ROMAN("abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
