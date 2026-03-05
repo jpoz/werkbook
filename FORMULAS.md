@@ -223,7 +223,7 @@ Werkbook supports **303** Excel formula functions.
 | RIGHT | Text | 41 |
 | ROMAN | Text | 38 |
 | ROUND | Math & Trig | 39 |
-| ROUNDDOWN | Math & Trig | 2 |
+| ROUNDDOWN | Math & Trig | 36 |
 | ROUNDUP | Math & Trig | 2 |
 | ROW | Information | 1 |
 | ROWS | Information | - |
