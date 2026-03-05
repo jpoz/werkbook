@@ -185,6 +185,86 @@ func TestYEAR(t *testing.T) {
 	}
 }
 
+func TestYEARComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Basic: YEAR(DATE(2023,6,15)) → 2023
+		{"basic_date_2023", "YEAR(DATE(2023,6,15))", 2023, false, 0},
+		// Serial number 1 → 1900 (Jan 1, 1900)
+		{"serial_1", "YEAR(1)", 1900, false, 0},
+		// Serial number 367 → 1901 (Jan 2, 1901)
+		{"serial_367", "YEAR(367)", 1901, false, 0},
+		// Year 2000 (Y2K): Jan 1, 2000 = serial 36526
+		{"year_2000", "YEAR(36526)", 2000, false, 0},
+		// Modern date 2024: serial 45306 = Jan 15, 2024
+		{"year_2024", "YEAR(45306)", 2024, false, 0},
+		// Dec 31 of a year: DATE(2023,12,31)
+		{"dec_31", "YEAR(DATE(2023,12,31))", 2023, false, 0},
+		// Jan 1 of a year: DATE(2025,1,1)
+		{"jan_1", "YEAR(DATE(2025,1,1))", 2025, false, 0},
+		// Leap year date: Feb 29, 2024
+		{"leap_year_2024", "YEAR(DATE(2024,2,29))", 2024, false, 0},
+		// Serial 0 → 1900 (Excel's "January 0, 1900" sentinel)
+		{"serial_0", "YEAR(0)", 1900, false, 0},
+		// Serial 60 → 1900 (Excel's fictional Feb 29, 1900)
+		{"serial_60", "YEAR(60)", 1900, false, 0},
+		// String date input via DATEVALUE: YEAR(DATEVALUE("1/1/2023"))
+		{"string_date_via_datevalue", `YEAR(DATEVALUE("1/1/2023"))`, 2023, false, 0},
+		// String date input directly: CoerceNum cannot parse date strings → #VALUE!
+		{"string_date_direct", `YEAR("1/1/2023")`, 0, true, ErrValVALUE},
+		// Negative serial → #NUM!
+		{"negative_serial", "YEAR(-1)", 0, true, ErrValNUM},
+		// Too few args → error
+		{"no_args", "YEAR()", 0, true, ErrValVALUE},
+		// Too many args → error
+		{"too_many_args", "YEAR(1,2)", 0, true, ErrValVALUE},
+		// Error propagation: YEAR(#VALUE!) → #VALUE!
+		{"error_propagation", `YEAR("abc")`, 0, true, ErrValVALUE},
+		// Large serial number (far future): serial 2958465 = Dec 31, 9999
+		{"max_serial", "YEAR(2958465)", 9999, false, 0},
+		// Beyond max serial → #NUM!
+		{"beyond_max_serial", "YEAR(2958466)", 0, true, ErrValNUM},
+		// Excel doc examples via DATEVALUE
+		{"excel_doc_2023", `YEAR(DATEVALUE("7/5/2023"))`, 2023, false, 0},
+		{"excel_doc_2025", `YEAR(DATEVALUE("7/5/2025"))`, 2025, false, 0},
+		// Fractional serial (should use integer part): 45306.75 → 2024
+		{"fractional_serial", "YEAR(45306.75)", 2024, false, 0},
+		// Last day of 1900: serial 366 = Dec 31, 1900
+		{"last_day_1900", "YEAR(366)", 1900, false, 0},
+		// Boolean TRUE coerced to 1 → 1900
+		{"bool_true", "YEAR(TRUE)", 1900, false, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
 func TestMONTH(t *testing.T) {
 	resolver := &mockResolver{}
 

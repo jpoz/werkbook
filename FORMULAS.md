@@ -305,7 +305,7 @@ Werkbook supports **303** Excel formula functions.
 | XLOOKUP | Lookup & Reference | 21 |
 | XNPV | Financial | 1 |
 | XOR | Logical | 32 |
-| YEAR | Date & Time | 3 |
+| YEAR | Date & Time | 26 |
 | YEARFRAC | Date & Time | - |
 
 # Unsupported Formulas
