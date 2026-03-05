@@ -2780,6 +2780,249 @@ func TestSUMIFMixedSignValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SUMIF — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSUMIF_AllComparisonOperators(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: NumberVal(40),
+			{Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"greater than", `SUMIF(A1:A5,">30")`, 90},      // 40+50
+		{"less than", `SUMIF(A1:A5,"<30")`, 30},          // 10+20
+		{"greater or equal", `SUMIF(A1:A5,">=30")`, 120}, // 30+40+50
+		{"less or equal", `SUMIF(A1:A5,"<=30")`, 60},     // 10+20+30
+		{"equal", `SUMIF(A1:A5,"=30")`, 30},              // 30
+		{"not equal", `SUMIF(A1:A5,"<>30")`, 120},        // 10+20+40+50
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSUMIF_WildcardAsterisk(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("Apricot"),
+			{Col: 1, Row: 3}: StringVal("Banana"),
+			{Col: 1, Row: 4}: StringVal("Avocado"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A4,"A*",B1:B4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 70 {
+		t.Errorf("SUMIF wildcard *: got %v, want 70", got)
+	}
+}
+
+func TestSUMIF_WildcardQuestionMark(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("car"),
+			{Col: 1, Row: 3}: StringVal("cart"),
+			{Col: 1, Row: 4}: StringVal("cab"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+		},
+	}
+
+	// "ca?" matches 3-char strings starting with "ca": cat, car, cab
+	cf := evalCompile(t, `SUMIF(A1:A4,"ca?",B1:B4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 70 {
+		t.Errorf("SUMIF wildcard ?: got %v, want 70", got)
+	}
+}
+
+func TestSUMIF_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("APPLE"),
+			{Col: 1, Row: 2}: StringVal("apple"),
+			{Col: 1, Row: 3}: StringVal("Apple"),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A3,"apple",B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 600 {
+		t.Errorf("SUMIF case insensitive: got %v, want 600", got)
+	}
+}
+
+func TestSUMIF_NumericCriteria(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 2, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(300),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A3,5,B1:B3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 400 {
+		t.Errorf("SUMIF numeric criteria: got %v, want 400", got)
+	}
+}
+
+func TestSUMIF_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	cf := evalCompile(t, "SUMIF(A1:A3)")
+	got, _ := Eval(cf, resolver, nil)
+	if got.Type != ValueError {
+		t.Errorf("SUMIF too few args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIF_TooManyArgs(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{}}
+
+	cf := evalCompile(t, "SUMIF(A1:A3,1,B1:B3,C1:C3)")
+	got, _ := Eval(cf, resolver, nil)
+	if got.Type != ValueError {
+		t.Errorf("SUMIF too many args: got %v, want #VALUE!", got)
+	}
+}
+
+func TestSUMIF_ExcelDocExample(t *testing.T) {
+	// From Excel docs Example 1: property values and commissions
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100000),
+			{Col: 1, Row: 2}: NumberVal(200000),
+			{Col: 1, Row: 3}: NumberVal(300000),
+			{Col: 1, Row: 4}: NumberVal(400000),
+			{Col: 2, Row: 1}: NumberVal(7000),
+			{Col: 2, Row: 2}: NumberVal(14000),
+			{Col: 2, Row: 3}: NumberVal(21000),
+			{Col: 2, Row: 4}: NumberVal(28000),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"commissions over 160k", `SUMIF(A1:A4,">160000",B1:B4)`, 63000},
+		{"values over 160k", `SUMIF(A1:A4,">160000")`, 900000},
+		{"commissions for 300k", `SUMIF(A1:A4,300000,B1:B4)`, 21000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSUMIF_ExcelDocExample2(t *testing.T) {
+	// From Excel docs Example 2: categories and food sales
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("Vegetables"),
+			{Col: 1, Row: 2}: StringVal("Vegetables"),
+			{Col: 1, Row: 3}: StringVal("Fruits"),
+			// Row 4: A4 is empty (Butter row with no category)
+			{Col: 1, Row: 5}: StringVal("Vegetables"),
+			{Col: 1, Row: 6}: StringVal("Fruits"),
+			{Col: 2, Row: 1}: StringVal("Tomatoes"),
+			{Col: 2, Row: 2}: StringVal("Celery"),
+			{Col: 2, Row: 3}: StringVal("Oranges"),
+			{Col: 2, Row: 4}: StringVal("Butter"),
+			{Col: 2, Row: 5}: StringVal("Carrots"),
+			{Col: 2, Row: 6}: StringVal("Apples"),
+			{Col: 3, Row: 1}: NumberVal(2300),
+			{Col: 3, Row: 2}: NumberVal(5500),
+			{Col: 3, Row: 3}: NumberVal(800),
+			{Col: 3, Row: 4}: NumberVal(400),
+			{Col: 3, Row: 5}: NumberVal(4200),
+			{Col: 3, Row: 6}: NumberVal(1200),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"fruits", `SUMIF(A1:A6,"Fruits",C1:C6)`, 2000},
+		{"vegetables", `SUMIF(A1:A6,"Vegetables",C1:C6)`, 12000},
+		{"ends with es", `SUMIF(B1:B6,"*es",C1:C6)`, 4300}, // Tomatoes+Oranges+Apples
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tc.want {
+				t.Errorf("%s: got %v, want %g", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // AVERAGE / SUM / MIN / MAX with edge cases
 // ---------------------------------------------------------------------------
 
