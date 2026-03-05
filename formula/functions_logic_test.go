@@ -7,28 +7,178 @@ import (
 func TestAND(t *testing.T) {
 	resolver := &mockResolver{}
 
-	tests := []struct {
-		formula string
-		want    bool
-	}{
-		{"AND(TRUE,TRUE)", true},
-		{"AND(TRUE,FALSE)", false},
-		{"AND(FALSE,FALSE)", false},
-		{"AND(TRUE,TRUE,TRUE)", true},
-		{"AND(TRUE,TRUE,FALSE)", false},
-	}
+	t.Run("boolean results", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    bool
+		}{
+			// Original tests
+			{"AND(TRUE,TRUE)", true},
+			{"AND(TRUE,FALSE)", false},
+			{"AND(FALSE,FALSE)", false},
+			{"AND(TRUE,TRUE,TRUE)", true},
+			{"AND(TRUE,TRUE,FALSE)", false},
 
-	for _, tt := range tests {
-		cf := evalCompile(t, tt.formula)
+			// Single argument
+			{"AND(TRUE)", true},
+			{"AND(FALSE)", false},
+
+			// One FALSE among many TRUE
+			{"AND(TRUE,TRUE,TRUE,TRUE,FALSE)", false},
+
+			// All TRUE with many args
+			{"AND(TRUE,TRUE,TRUE,TRUE,TRUE)", true},
+
+			// Numbers: non-zero is TRUE, zero is FALSE
+			{"AND(1)", true},
+			{"AND(0)", false},
+			{"AND(1,2,3)", true},
+			{"AND(1,0,3)", false},
+			{"AND(-1)", true},
+			{"AND(0.5)", true},
+
+			// Mixed booleans and numbers
+			{"AND(TRUE,1)", true},
+			{"AND(TRUE,0)", false},
+			{"AND(FALSE,1)", false},
+			{"AND(1,TRUE,2,TRUE)", true},
+
+			// Excel doc example: AND(A2>1,A2<100) style comparisons
+			{"AND(50>1,50<100)", true},
+			{"AND(150>1,150<100)", false},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueBool || got.Bool != tt.want {
+					t.Errorf("Eval(%q) = %v, want bool %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("no args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, "AND()")
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
-			t.Errorf("Eval(%q): %v", tt.formula, err)
-			continue
+			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueBool || got.Bool != tt.want {
-			t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want)
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("AND() = %v, want #VALUE! error", got)
 		}
-	}
+	})
+
+	t.Run("direct string arg returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, `AND("hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`AND("hello") = %v, want #VALUE! error`, got)
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, "AND(TRUE,1/0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("AND(TRUE,1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("range with all TRUE values", func(t *testing.T) {
+		// Build an array of all TRUE values
+		arr := Value{
+			Type: ValueArray,
+			Array: [][]Value{
+				{BoolVal(true), BoolVal(true)},
+				{BoolVal(true), BoolVal(true)},
+			},
+		}
+		got, err := fnAND([]Value{arr})
+		if err != nil {
+			t.Fatalf("fnAND: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("AND(all-true-range) = %v, want true", got)
+		}
+	})
+
+	t.Run("range with one FALSE", func(t *testing.T) {
+		arr := Value{
+			Type: ValueArray,
+			Array: [][]Value{
+				{BoolVal(true), BoolVal(true)},
+				{BoolVal(true), BoolVal(false)},
+			},
+		}
+		got, err := fnAND([]Value{arr})
+		if err != nil {
+			t.Fatalf("fnAND: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("AND(range-with-false) = %v, want false", got)
+		}
+	})
+
+	t.Run("strings in range are ignored", func(t *testing.T) {
+		arr := Value{
+			Type: ValueArray,
+			Array: [][]Value{
+				{BoolVal(true), StringVal("hello")},
+				{BoolVal(true), BoolVal(true)},
+			},
+		}
+		got, err := fnAND([]Value{arr})
+		if err != nil {
+			t.Fatalf("fnAND: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("AND(range-with-string) = %v, want true (strings ignored)", got)
+		}
+	})
+
+	t.Run("error in range propagates", func(t *testing.T) {
+		arr := Value{
+			Type: ValueArray,
+			Array: [][]Value{
+				{BoolVal(true), ErrorVal(ErrValDIV0)},
+			},
+		}
+		got, err := fnAND([]Value{arr})
+		if err != nil {
+			t.Fatalf("fnAND: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("AND(range-with-error) = %v, want #DIV/0! error", got)
+		}
+	})
+
+	t.Run("range with numbers", func(t *testing.T) {
+		arr := Value{
+			Type: ValueArray,
+			Array: [][]Value{
+				{NumberVal(1), NumberVal(5)},
+				{NumberVal(3), NumberVal(0)},
+			},
+		}
+		got, err := fnAND([]Value{arr})
+		if err != nil {
+			t.Fatalf("fnAND: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("AND(range-with-zero) = %v, want false", got)
+		}
+	})
 }
 
 func TestOR(t *testing.T) {
