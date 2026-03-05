@@ -360,6 +360,118 @@ func TestANDStringArgs(t *testing.T) {
 	})
 }
 
+func TestXOR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("basic boolean results", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    bool
+		}{
+			// Single args
+			{"XOR(TRUE)", true},
+			{"XOR(FALSE)", false},
+			// Two booleans
+			{"XOR(TRUE,TRUE)", false},   // even TRUE count
+			{"XOR(TRUE,FALSE)", true},   // odd TRUE count
+			{"XOR(FALSE,FALSE)", false}, // zero TRUE count
+			// Three booleans
+			{"XOR(TRUE,TRUE,TRUE)", true},    // 3 TRUE = odd
+			{"XOR(TRUE,TRUE,FALSE)", false},  // 2 TRUE = even
+			{"XOR(TRUE,FALSE,FALSE)", true},  // 1 TRUE = odd
+			{"XOR(FALSE,FALSE,FALSE)", false}, // 0 TRUE
+			// Four TRUE (even count) → FALSE
+			{"XOR(TRUE,TRUE,TRUE,TRUE)", false},
+			// Numbers: non-zero = TRUE, zero = FALSE
+			{"XOR(1)", true},
+			{"XOR(0)", false},
+			{"XOR(1,0)", true},    // 1 TRUE
+			{"XOR(1,1)", false},   // 2 TRUE = even
+			{"XOR(5,0,0)", true},  // 1 TRUE
+			{"XOR(5,3,0)", false}, // 2 TRUE = even
+			// Mixed booleans and numbers
+			{"XOR(TRUE,1)", false},  // 2 TRUE = even
+			{"XOR(TRUE,0)", true},   // 1 TRUE
+			{"XOR(FALSE,1)", true},  // 1 TRUE
+			{"XOR(FALSE,0)", false}, // 0 TRUE
+			// Excel doc examples: =XOR(3>0,2<9) → FALSE (both TRUE, even)
+			{"XOR(3>0,2<9)", false},
+			// =XOR(3>12,4>6) → FALSE (both FALSE)
+			{"XOR(3>12,4>6)", false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueBool || got.Bool != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("no args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, "XOR()")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("XOR() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, "XOR(1/0,TRUE)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("XOR(1/0,TRUE) = %v, want error", got)
+		}
+	})
+
+	t.Run("range with mixed values", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: NumberVal(1),
+			},
+		}
+		// TRUE + FALSE + 1(TRUE) = 2 TRUE = even → FALSE
+		cf := evalCompile(t, "XOR(A1:A3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("XOR(A1:A3) = %v, want false", got)
+		}
+	})
+
+	t.Run("error in range propagates", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: ErrorVal(ErrValDIV0),
+			},
+		}
+		cf := evalCompile(t, "XOR(A1:A2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("XOR(A1:A2) = %v, want #DIV/0!", got)
+		}
+	})
+}
+
 func TestXORStringArgs(t *testing.T) {
 	resolver := &mockResolver{}
 
