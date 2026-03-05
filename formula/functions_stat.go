@@ -16,12 +16,16 @@ func init() {
 	Register("COUNT", NoCtx(fnCOUNT))
 	Register("COUNTA", NoCtx(fnCOUNTA))
 	Register("CORREL", NoCtx(fnCORREL))
+	Register("COVAR", NoCtx(fnCOVARIANCEP))
+	Register("COVARIANCE.P", NoCtx(fnCOVARIANCEP))
+	Register("COVARIANCE.S", NoCtx(fnCOVARIANCES))
 	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
 	Register("COUNTIF", NoCtx(fnCOUNTIF))
 	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
 	Register("DEVSQ", NoCtx(fnDEVSQ))
 	Register("FISHER", NoCtx(fnFISHER))
+	Register("FREQUENCY", NoCtx(fnFREQUENCY))
 	Register("FISHERINV", NoCtx(fnFISHERINV))
 	Register("FORECAST", NoCtx(fnFORECAST))
 	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
@@ -39,6 +43,8 @@ func init() {
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
 	Register("MODE.SNGL", NoCtx(fnMODE))
+	Register("PERMUTATIONA", NoCtx(fnPERMUTATIONA))
+	Register("PEARSON", NoCtx(fnCORREL))
 	Register("PERCENTILE", NoCtx(fnPERCENTILE))
 	Register("PERCENTILE.EXC", NoCtx(fnPERCENTILEEXC))
 	Register("QUARTILE", NoCtx(fnQUARTILE))
@@ -46,22 +52,36 @@ func init() {
 	Register("PERCENTRANK", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.INC", NoCtx(fnPERCENTRANK))
 	Register("PERCENTRANK.EXC", NoCtx(fnPERCENTRANKEXC))
+	Register("RSQ", NoCtx(fnRSQ))
 	Register("RANK", NoCtx(fnRANK))
 	Register("RANK.EQ", NoCtx(fnRANK))
 	Register("RANK.AVG", NoCtx(fnRANKAVG))
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
 	Register("STDEV", NoCtx(fnSTDEV))
+	Register("STDEV.S", NoCtx(fnSTDEV))
 	Register("STDEVP", NoCtx(fnSTDEVP))
+	Register("STDEV.P", NoCtx(fnSTDEVP))
+	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
+	Register("STEYX", NoCtx(fnSTEYX))
 	Register("SUM", NoCtx(fnSUM))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
 	Register("SUMSQ", NoCtx(fnSUMSQ))
 	Register("VAR", NoCtx(fnVAR))
+	Register("VAR.S", NoCtx(fnVAR))
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("SKEW", NoCtx(fnSKEW))
+	Register("KURT", NoCtx(fnKURT))
+	Register("VARA", NoCtx(fnVARA))
 	Register("VARP", NoCtx(fnVARP))
+	Register("VAR.P", NoCtx(fnVARP))
+	Register("VARPA", NoCtx(fnVARPA))
+	Register("NORM.DIST", NoCtx(fnNormDist))
+	Register("NORM.INV", NoCtx(fnNormInv))
+	Register("NORM.S.DIST", NoCtx(fnNormSDist))
+	Register("NORM.S.INV", NoCtx(fnNormSInv))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -1685,6 +1705,117 @@ func fnVARP(args []Value) (Value, error) {
 	return NumberVal(ssq / float64(n)), nil
 }
 
+// collectNumericA collects numeric values using the "A" variant rules:
+// In arrays/ranges: numbers kept, TRUE→1, FALSE→0, text→0, empty ignored, errors propagated.
+// Direct args: numbers kept, TRUE→1, FALSE→0, text coerced to number (error if not numeric), empty ignored.
+func collectNumericA(args []Value) ([]float64, *Value) {
+	cap := 0
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				cap += len(row)
+			}
+		} else {
+			cap++
+		}
+	}
+	nums := make([]float64, 0, cap)
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				for _, cell := range row {
+					switch cell.Type {
+					case ValueError:
+						return nil, &cell
+					case ValueNumber:
+						nums = append(nums, cell.Num)
+					case ValueBool:
+						if cell.Bool {
+							nums = append(nums, 1)
+						} else {
+							nums = append(nums, 0)
+						}
+					case ValueString:
+						nums = append(nums, 0)
+					case ValueEmpty:
+						// ignored
+					}
+				}
+			}
+		} else {
+			switch arg.Type {
+			case ValueError:
+				return nil, &arg
+			case ValueEmpty:
+				// ignored
+			case ValueString:
+				n, e := CoerceNum(arg)
+				if e != nil {
+					return nil, e
+				}
+				nums = append(nums, n)
+			default:
+				n, e := CoerceNum(arg)
+				if e != nil {
+					return nil, e
+				}
+				nums = append(nums, n)
+			}
+		}
+	}
+	return nums, nil
+}
+
+func fnVARA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, ev := collectNumericA(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n-1)), nil
+}
+
+func fnVARPA(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, ev := collectNumericA(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n < 1 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	return NumberVal(ssq / float64(n)), nil
+}
+
 func fnTRIMMEAN(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -1782,6 +1913,17 @@ func fnCORREL(args []Value) (Value, error) {
 	return NumberVal(cov / denom), nil
 }
 
+func fnRSQ(args []Value) (Value, error) {
+	r, err := fnCORREL(args)
+	if err != nil {
+		return r, err
+	}
+	if r.Type != ValueNumber {
+		return r, nil
+	}
+	return NumberVal(r.Num * r.Num), nil
+}
+
 // flattenValuesGeneric flattens a Value (possibly an array) into a 1D slice of Value.
 func flattenValuesGeneric(arg Value) []Value {
 	if arg.Type == ValueArray {
@@ -1796,6 +1938,72 @@ func flattenValuesGeneric(arg Value) []Value {
 		return out
 	}
 	return []Value{arg}
+}
+
+// fnCOVARIANCEP implements COVARIANCE.P (and COVAR, which is identical).
+func fnCOVARIANCEP(args []Value) (Value, error) {
+	return covarianceImpl(args, false)
+}
+
+// fnCOVARIANCES implements COVARIANCE.S (sample covariance).
+func fnCOVARIANCES(args []Value) (Value, error) {
+	return covarianceImpl(args, true)
+}
+
+// covarianceImpl computes population or sample covariance for two arrays.
+func covarianceImpl(args []Value, sample bool) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var xs, ys []float64
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		if v1.Type != ValueNumber || v2.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, v1.Num)
+		ys = append(ys, v2.Num)
+	}
+
+	n := len(xs)
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	if sample && n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	cov := 0.0
+	for i := 0; i < n; i++ {
+		cov += (xs[i] - meanX) * (ys[i] - meanY)
+	}
+
+	if sample {
+		return NumberVal(cov / float64(n-1)), nil
+	}
+	return NumberVal(cov / float64(n)), nil
 }
 
 // linearRegression computes the slope and intercept of the least-squares
@@ -1894,6 +2102,69 @@ func fnFORECAST(args []Value) (Value, error) {
 	return NumberVal(intercept + slope*x), nil
 }
 
+// fnSTEYX returns the standard error of the predicted y-value for each x in
+// a linear regression.  STEYX(known_y's, known_x's).
+func fnSTEYX(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flatY := flattenValuesGeneric(args[0])
+	flatX := flattenValuesGeneric(args[1])
+
+	if len(flatY) != len(flatX) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Walk paired positions; keep only pairs where BOTH values are numeric.
+	var xs, ys []float64
+	for i := range flatY {
+		vy, vx := flatY[i], flatX[i]
+		if vy.Type == ValueError {
+			return vy, nil
+		}
+		if vx.Type == ValueError {
+			return vx, nil
+		}
+		if vy.Type != ValueNumber || vx.Type != ValueNumber {
+			continue
+		}
+		xs = append(xs, vx.Num)
+		ys = append(ys, vy.Num)
+	}
+
+	n := len(xs)
+	if n < 3 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute means.
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+
+	// Compute SSx, SSy, SSxy.
+	ssX, ssY, ssXY := 0.0, 0.0, 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		ssX += dx * dx
+		ssY += dy * dy
+		ssXY += dx * dy
+	}
+
+	if ssX == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	result := math.Sqrt((1 / float64(n-2)) * (ssY - ssXY*ssXY/ssX))
+	return NumberVal(result), nil
+}
+
 func fnGEOMEAN(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -1980,6 +2251,50 @@ func fnSKEW(args []Value) (Value, error) {
 	return NumberVal(skew), nil
 }
 
+func fnKURT(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 4 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute mean.
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+
+	// Compute sample standard deviation (n-1 denominator).
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	s := math.Sqrt(ssq / float64(n-1))
+	if s == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute kurtosis:
+	// [n(n+1)/((n-1)(n-2)(n-3)) * sum((xi-mean)/s)^4] - 3(n-1)^2/((n-2)(n-3))
+	sumFourth := 0.0
+	for _, v := range nums {
+		z := (v - mean) / s
+		z2 := z * z
+		sumFourth += z2 * z2
+	}
+	nf := float64(n)
+	kurt := (nf*(nf+1))/((nf-1)*(nf-2)*(nf-3))*sumFourth - 3*(nf-1)*(nf-1)/((nf-2)*(nf-3))
+	return NumberVal(kurt), nil
+}
+
 func fnFISHER(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -2054,4 +2369,308 @@ func fnFISHERINV(args []Value) (Value, error) {
 	}
 	e2y := math.Exp(2 * y)
 	return NumberVal((e2y - 1) / (e2y + 1)), nil
+}
+
+func fnSTANDARDIZE(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stddev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if stddev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal((x - mean) / stddev), nil
+}
+
+// fnPERMUTATIONA returns the number of permutations with repetitions: number^number_chosen.
+func fnPERMUTATIONA(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	number, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	numberChosen, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	number = math.Trunc(number)
+	numberChosen = math.Trunc(numberChosen)
+	if number < 0 || numberChosen < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if number == 0 && numberChosen > 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(math.Pow(number, numberChosen)), nil
+}
+
+// fnFREQUENCY implements the Excel FREQUENCY(data_array, bins_array) function.
+// It counts how many values in data_array fall into each interval defined by
+// bins_array. The result is a vertical array with len(bins)+1 rows.
+func fnFREQUENCY(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// collectNums flattens an argument into a slice of float64 values,
+	// ignoring text, booleans, and empty cells (matching Excel behaviour
+	// for array arguments). Propagates errors.
+	collectNums := func(v Value) ([]float64, *Value) {
+		var nums []float64
+		if v.Type == ValueArray {
+			for _, row := range v.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return nil, &cell
+					}
+					if cell.Type == ValueNumber {
+						nums = append(nums, cell.Num)
+					}
+					// text, bool, empty → skip
+				}
+			}
+		} else {
+			if v.Type == ValueError {
+				return nil, &v
+			}
+			if v.Type == ValueNumber {
+				nums = append(nums, v.Num)
+			}
+		}
+		return nums, nil
+	}
+
+	data, errVal := collectNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	bins, errVal := collectNums(args[1])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	// If bins_array is empty, return single-element array with count of data.
+	if len(bins) == 0 {
+		result := [][]Value{{NumberVal(float64(len(data)))}}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
+
+	// Sort bins in ascending order.
+	sort.Float64s(bins)
+
+	// Build frequency counts: len(bins)+1 buckets.
+	counts := make([]float64, len(bins)+1)
+	for _, v := range data {
+		placed := false
+		for i, b := range bins {
+			if v <= b {
+				counts[i]++
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			counts[len(bins)]++
+		}
+	}
+
+	// Return as vertical array (n+1 rows, 1 column).
+	result := make([][]Value, len(counts))
+	for i, c := range counts {
+		result[i] = []Value{NumberVal(c)}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// ---------------------------------------------------------------------------
+// normSDistCDF / normSDistPDF — internal helpers for standard normal
+// ---------------------------------------------------------------------------
+
+// normSDistCDF returns the CDF of the standard normal distribution: Φ(z).
+func normSDistCDF(z float64) float64 {
+	return 0.5 * (1 + math.Erf(z/math.Sqrt(2)))
+}
+
+// normSDistPDF returns the PDF of the standard normal distribution: φ(z).
+func normSDistPDF(z float64) float64 {
+	return (1.0 / math.Sqrt(2*math.Pi)) * math.Exp(-z*z/2)
+}
+
+// ---------------------------------------------------------------------------
+// NORM.DIST — Normal distribution (PDF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnNormDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	if cum != 0 {
+		// CDF: standardize then use Φ
+		z := (x - mean) / stdev
+		return NumberVal(normSDistCDF(z)), nil
+	}
+	// PDF: (1/(stdev*√(2π))) * exp(-((x-mean)/stdev)²/2)
+	z := (x - mean) / stdev
+	return NumberVal(normSDistPDF(z) / stdev), nil
+}
+
+// ---------------------------------------------------------------------------
+// NORM.INV — Inverse of the normal CDF
+// ---------------------------------------------------------------------------
+
+func fnNormInv(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if p <= 0 || p >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(mean + stdev*normSInv(p)), nil
+}
+
+// ---------------------------------------------------------------------------
+// NORM.S.DIST — Standard normal distribution (PDF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnNormSDist(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	z, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if cum != 0 {
+		return NumberVal(normSDistCDF(z)), nil
+	}
+	return NumberVal(normSDistPDF(z)), nil
+}
+
+// ---------------------------------------------------------------------------
+// NORM.S.INV — Inverse of the standard normal CDF
+// ---------------------------------------------------------------------------
+
+func fnNormSInv(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if p <= 0 || p >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(normSInv(p)), nil
+}
+
+// normSInv computes the inverse of the standard normal CDF using
+// Peter Acklam's rational approximation algorithm.
+func normSInv(p float64) float64 {
+	const (
+		pLow  = 0.02425
+		pHigh = 1 - pLow
+	)
+
+	// Coefficients for the rational approximation.
+	var (
+		a = [6]float64{
+			-3.969683028665376e+01,
+			2.209460984245205e+02,
+			-2.759285104469687e+02,
+			1.383577518672690e+02,
+			-3.066479806614716e+01,
+			2.506628277459239e+00,
+		}
+		b = [5]float64{
+			-5.447609879822406e+01,
+			1.615858368580409e+02,
+			-1.556989798598866e+02,
+			6.680131188771972e+01,
+			-1.328068155288572e+01,
+		}
+		c = [6]float64{
+			-7.784894002430293e-03,
+			-3.223964580411365e-01,
+			-2.400758277161838e+00,
+			-2.549732539343734e+00,
+			4.374664141464968e+00,
+			2.938163982698783e+00,
+		}
+		d = [4]float64{
+			7.784695709041462e-03,
+			3.224671290700398e-01,
+			2.445134137142996e+00,
+			3.754408661907416e+00,
+		}
+	)
+
+	if p < pLow {
+		// Lower region.
+		q := math.Sqrt(-2 * math.Log(p))
+		return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
+			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
+	}
+	if p <= pHigh {
+		// Central region.
+		q := p - 0.5
+		r := q * q
+		return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r + a[5]) * q /
+			(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r + 1)
+	}
+	// Upper region.
+	q := math.Sqrt(-2 * math.Log(1-p))
+	return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q + c[5]) /
+		((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 }

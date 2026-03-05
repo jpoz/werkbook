@@ -1352,6 +1352,285 @@ func TestEFFECT_NOMINAL_RoundTrip(t *testing.T) {
 	assertClose(t, "NOMINAL->EFFECT round-trip", eff2, 0.10)
 }
 
+// === CUMIPMT ===
+
+func TestCUMIPMT_ExcelDocExample_SecondYear(t *testing.T) {
+	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0) = -11135.23
+	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT excel doc second year", v, -11135.23)
+}
+
+func TestCUMIPMT_ExcelDocExample_FirstMonth(t *testing.T) {
+	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0) = -937.50
+	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT excel doc first month", v, -937.50)
+}
+
+func TestCUMIPMT_TotalInterest30YrMortgage(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 360, 0) — total interest on 30yr mortgage at 10%
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT total 30yr", v, -215925.77)
+}
+
+func TestCUMIPMT_FirstYear(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 12, 0) — first year interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT first year", v, -9974.98)
+}
+
+func TestCUMIPMT_SinglePeriod(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 1, 0) — first month only
+	// Excel: -833.33
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT single period", v, -833.33)
+}
+
+func TestCUMIPMT_MiddlePeriods(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 13, 24, 0) — second year
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT second year", v, -9916.77)
+}
+
+func TestCUMIPMT_Type1_FirstYear(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 12, 1) — type=1, first year
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 12, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT type1 first year", v, -9066.10)
+}
+
+func TestCUMIPMT_Type1_SingleFirst(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 1, 1) — type=1, first period only
+	// Interest for period 1 with type=1 is 0
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT type1 period 1", v, 0)
+}
+
+func TestCUMIPMT_SimpleLoan(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 1, 3, 0) — simple 3-period loan at 5%
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 1, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PMT = -367.21, total paid = 1101.63, interest = 1101.63 - 1000 = -101.63
+	assertClose(t, "CUMIPMT simple loan", v, -101.63)
+}
+
+func TestCUMIPMT_SimpleLoan_Period1(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 1, 1, 0)
+	// First period interest = 1000 * 0.05 = -50
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMIPMT simple period 1", v, -50.00)
+}
+
+func TestCUMIPMT_SimpleLoan_Period2(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 2, 2, 0)
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 2, 2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After period 1: balance = 1000*1.05 + pmt = 1050 - 367.21 = 682.79
+	// Interest period 2: 682.79 * 0.05 = -34.14
+	assertClose(t, "CUMIPMT simple period 2", v, -34.14)
+}
+
+func TestCUMIPMT_SimpleLoan_Period3(t *testing.T) {
+	// CUMIPMT(0.05, 3, 1000, 3, 3, 0)
+	v, err := fnCumipmt(numArgs(0.05, 3, 1000, 3, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Interest period 3: remaining balance * 0.05
+	assertClose(t, "CUMIPMT simple period 3", v, -17.49)
+}
+
+func TestCUMIPMT_HighRate(t *testing.T) {
+	// CUMIPMT(0.5, 10, 10000, 1, 10, 0)
+	v, err := fnCumipmt(numArgs(0.5, 10, 10000, 1, 10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT high rate: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_LastPeriodOnly(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 360, 360, 0) — last period interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 360, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last period interest should be small
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT last period: expected negative number, got %v", v)
+	}
+	assertClose(t, "CUMIPMT last period", v, -7.25)
+}
+
+func TestCUMIPMT_Type1_Total(t *testing.T) {
+	// CUMIPMT(0.1/12, 360, 100000, 1, 360, 1) — type=1 total interest
+	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 360, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT type1 total: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_LargerLoan(t *testing.T) {
+	// CUMIPMT(0.06/12, 180, 500000, 1, 180, 0)
+	v, err := fnCumipmt(numArgs(0.06/12, 180, 500000, 1, 180, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("CUMIPMT larger loan: expected negative number, got %v", v)
+	}
+}
+
+func TestCUMIPMT_SumPartsEqualsTotal(t *testing.T) {
+	// Sum of first half + second half should equal total
+	rate := 0.1 / 12
+	nper := 360.0
+	pvVal := 100000.0
+	total, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 360, 0))
+	first, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 180, 0))
+	second, _ := fnCumipmt(numArgs(rate, nper, pvVal, 181, 360, 0))
+	sum := first.Num + second.Num
+	if math.Abs(sum-total.Num) > 0.01 {
+		t.Errorf("CUMIPMT parts: first(%f) + second(%f) = %f, total = %f", first.Num, second.Num, sum, total.Num)
+	}
+}
+
+func TestCUMIPMT_MatchesIPMTSum(t *testing.T) {
+	// CUMIPMT should equal sum of individual IPMT calls
+	rate := 0.05 / 12
+	nper := 60.0
+	pvVal := 20000.0
+	cum, _ := fnCumipmt(numArgs(rate, nper, pvVal, 1, 60, 0))
+	ipmtSum := 0.0
+	for i := 1; i <= 60; i++ {
+		ipmt, _ := fnIPMT(numArgs(rate, float64(i), nper, pvVal))
+		ipmtSum += ipmt.Num
+	}
+	if math.Abs(cum.Num-ipmtSum) > 0.01 {
+		t.Errorf("CUMIPMT vs IPMT sum: CUMIPMT=%f, sum(IPMT)=%f", cum.Num, ipmtSum)
+	}
+}
+
+// --- Validation errors ---
+
+func TestCUMIPMT_ErrorRateZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0, 360, 100000, 1, 360, 0))
+	assertError(t, "CUMIPMT rate=0", v)
+}
+
+func TestCUMIPMT_ErrorRateNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(-0.01, 360, 100000, 1, 360, 0))
+	assertError(t, "CUMIPMT rate<0", v)
+}
+
+func TestCUMIPMT_ErrorNperZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 0, 100000, 1, 1, 0))
+	assertError(t, "CUMIPMT nper=0", v)
+}
+
+func TestCUMIPMT_ErrorNperNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, -12, 100000, 1, 1, 0))
+	assertError(t, "CUMIPMT nper<0", v)
+}
+
+func TestCUMIPMT_ErrorPvZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 0, 1, 360, 0))
+	assertError(t, "CUMIPMT pv=0", v)
+}
+
+func TestCUMIPMT_ErrorPvNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, -100000, 1, 360, 0))
+	assertError(t, "CUMIPMT pv<0", v)
+}
+
+func TestCUMIPMT_ErrorStartZero(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 0, 360, 0))
+	assertError(t, "CUMIPMT start=0", v)
+}
+
+func TestCUMIPMT_ErrorStartNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, -1, 360, 0))
+	assertError(t, "CUMIPMT start<0", v)
+}
+
+func TestCUMIPMT_ErrorEndLessThanStart(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 10, 5, 0))
+	assertError(t, "CUMIPMT end<start", v)
+}
+
+func TestCUMIPMT_ErrorEndExceedsNper(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 361, 0))
+	assertError(t, "CUMIPMT end>nper", v)
+}
+
+func TestCUMIPMT_ErrorTypeInvalid(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, 2))
+	assertError(t, "CUMIPMT type=2", v)
+}
+
+func TestCUMIPMT_ErrorTypeNegative(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, -1))
+	assertError(t, "CUMIPMT type=-1", v)
+}
+
+func TestCUMIPMT_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360))
+	assertError(t, "CUMIPMT too few args", v)
+}
+
+func TestCUMIPMT_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnCumipmt(numArgs(0.01, 360, 100000, 1, 360, 0, 1))
+	assertError(t, "CUMIPMT too many args", v)
+}
+
+func TestCUMIPMT_ErrorPropagation(t *testing.T) {
+	// Pass an error value as an argument
+	args := []Value{
+		ErrorVal(ErrValNUM),
+		NumberVal(360),
+		NumberVal(100000),
+		NumberVal(1),
+		NumberVal(360),
+		NumberVal(0),
+	}
+	v, _ := fnCumipmt(args)
+	assertError(t, "CUMIPMT error propagation", v)
+}
+
 func TestXIRR_NegativeRate(t *testing.T) {
 	// XIRR with guess parameter and negative expected rate.
 	vals := Value{
@@ -1376,4 +1655,1306 @@ func TestXIRR_NegativeRate(t *testing.T) {
 	if v.Num >= 0 {
 		t.Errorf("XIRR negative rate: expected negative rate, got %f", v.Num)
 	}
+}
+
+// === CUMPRINC ===
+
+func TestCUMPRINC_FullLife30YrMortgage(t *testing.T) {
+	// Total principal over full life of a 30-year mortgage should equal -PV.
+	// CUMPRINC(0.1/12, 360, 100000, 1, 360, 0) = -100000
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC full life", v, -100000)
+}
+
+func TestCUMPRINC_FirstYear(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 12, 0)
+	// Excel: -555.88 (approx)
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC first year", v, -555.88)
+}
+
+func TestCUMPRINC_SinglePeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 1, 0)
+	// First principal payment = PMT - interest on full balance
+	// PMT = -877.57, interest = -100000*0.1/12 = -833.33, principal = -877.57 - (-833.33) = -44.24
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC single period", v, -44.24)
+}
+
+func TestCUMPRINC_Type1(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 12, 1) — beginning of period payments
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With type=1, first period has 0 interest, so more principal is paid.
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC type=1: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Errorf("CUMPRINC type=1: expected negative, got %f", v.Num)
+	}
+}
+
+func TestCUMPRINC_SimpleLoan(t *testing.T) {
+	// CUMPRINC(0.05, 3, 1000, 1, 3, 0) — full life of simple 3-period loan
+	// Total principal should equal -1000
+	v, err := fnCumprinc(numArgs(0.05, 3, 1000, 1, 3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC simple loan", v, -1000)
+}
+
+func TestCUMPRINC_MiddlePeriods(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 13, 24, 0) — second year
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 13, 24, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC middle periods: expected number, got type %v", v.Type)
+	}
+	// Second year principal should be more than first year (in absolute value)
+	firstYear, _ := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 0))
+	if v.Num >= firstYear.Num {
+		t.Errorf("CUMPRINC: second year principal (%f) should be more negative than first year (%f)", v.Num, firstYear.Num)
+	}
+}
+
+func TestCUMPRINC_LastPeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 360, 360, 0) — last payment
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 360, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("CUMPRINC last period: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Errorf("CUMPRINC last period: expected negative, got %f", v.Num)
+	}
+}
+
+func TestCUMPRINC_Type1_FullLife(t *testing.T) {
+	// CUMPRINC(0.05, 3, 1000, 1, 3, 1) — full life with type=1
+	// Total principal should still equal -PV = -1000
+	v, err := fnCumprinc(numArgs(0.05, 3, 1000, 1, 3, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC type=1 full life", v, -1000)
+}
+
+func TestCUMPRINC_Type1_SingleFirstPeriod(t *testing.T) {
+	// CUMPRINC(0.1/12, 360, 100000, 1, 1, 1) — type=1, first period
+	// With beginning-of-period payment, interest for period 1 is 0,
+	// so principal = PMT
+	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pmt := pmtCore(0.1/12, 360, 100000, 0, 1)
+	assertClose(t, "CUMPRINC type=1 first period", v, pmt)
+}
+
+func TestCUMPRINC_HighRate(t *testing.T) {
+	// CUMPRINC(0.5, 10, 10000, 1, 10, 0) — 50% rate
+	v, err := fnCumprinc(numArgs(0.5, 10, 10000, 1, 10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC high rate", v, -10000)
+}
+
+func TestCUMPRINC_LowRate(t *testing.T) {
+	// CUMPRINC(0.001, 12, 5000, 1, 12, 0) — low rate, full life
+	v, err := fnCumprinc(numArgs(0.001, 12, 5000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC low rate", v, -5000)
+}
+
+func TestCUMPRINC_RelationshipWithCUMIPMT(t *testing.T) {
+	// CUMIPMT + CUMPRINC over full life should equal total payments (PMT * nper)
+	rate := 0.1 / 12
+	nper := 360.0
+	pv := 100000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 1, nper, 0))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 1, nper, 0))
+	pmt := pmtCore(rate, nper, pv, 0, 0)
+	totalPayments := pmt * nper
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("CUMIPMT(%f) + CUMPRINC(%f) = %f, total payments = %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_RelationshipWithCUMIPMT_Type1(t *testing.T) {
+	// Same relationship with type=1
+	rate := 0.08 / 12
+	nper := 120.0
+	pv := 50000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 1, nper, 1))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 1, nper, 1))
+	pmt := pmtCore(rate, nper, pv, 0, 1)
+	totalPayments := pmt * nper
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("Type1: CUMIPMT(%f) + CUMPRINC(%f) = %f, total payments = %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_RelationshipPartialRange(t *testing.T) {
+	// CUMIPMT + CUMPRINC for a partial range should equal PMT * number of periods
+	rate := 0.06 / 12
+	nper := 240.0
+	pv := 200000.0
+	cumI, _ := fnCumipmt(numArgs(rate, nper, pv, 13, 24, 0))
+	cumP, _ := fnCumprinc(numArgs(rate, nper, pv, 13, 24, 0))
+	pmt := pmtCore(rate, nper, pv, 0, 0)
+	totalPayments := pmt * 12
+	sum := cumI.Num + cumP.Num
+	if math.Abs(sum-totalPayments) > 0.01 {
+		t.Errorf("Partial: CUMIPMT(%f) + CUMPRINC(%f) = %f, expected %f", cumI.Num, cumP.Num, sum, totalPayments)
+	}
+}
+
+func TestCUMPRINC_SinglePeriodMatchesPPMT(t *testing.T) {
+	// CUMPRINC for a single period should equal PPMT for that period
+	rate := 0.05 / 12
+	nper := 360.0
+	pv := 200000.0
+	for _, per := range []float64{1, 12, 60, 180, 360} {
+		cumP, _ := fnCumprinc(numArgs(rate, nper, pv, per, per, 0))
+		ppmt, _ := fnPPMT(numArgs(rate, per, nper, pv))
+		if math.Abs(cumP.Num-ppmt.Num) > 0.01 {
+			t.Errorf("per=%v: CUMPRINC(%f) != PPMT(%f)", per, cumP.Num, ppmt.Num)
+		}
+	}
+}
+
+func TestCUMPRINC_LargeLoan(t *testing.T) {
+	// CUMPRINC(0.04/12, 360, 1000000, 1, 360, 0) = -1000000
+	v, err := fnCumprinc(numArgs(0.04/12, 360, 1000000, 1, 360, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC large loan", v, -1000000)
+}
+
+func TestCUMPRINC_ShortLoan(t *testing.T) {
+	// CUMPRINC(0.06/12, 12, 10000, 1, 12, 0) = -10000
+	v, err := fnCumprinc(numArgs(0.06/12, 12, 10000, 1, 12, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "CUMPRINC short loan", v, -10000)
+}
+
+func TestCUMPRINC_SumPartsEqualsTotal(t *testing.T) {
+	// Sum of first half + second half should equal total
+	rate := 0.1 / 12
+	nper := 360.0
+	pvVal := 100000.0
+	total, _ := fnCumprinc(numArgs(rate, nper, pvVal, 1, 360, 0))
+	first, _ := fnCumprinc(numArgs(rate, nper, pvVal, 1, 180, 0))
+	second, _ := fnCumprinc(numArgs(rate, nper, pvVal, 181, 360, 0))
+	sum := first.Num + second.Num
+	if math.Abs(sum-total.Num) > 0.01 {
+		t.Errorf("CUMPRINC parts: first(%f) + second(%f) = %f, total = %f", first.Num, second.Num, sum, total.Num)
+	}
+}
+
+func TestCUMPRINC_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12))
+	assertError(t, "CUMPRINC too few args", v)
+}
+
+func TestCUMPRINC_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, 0, 1))
+	assertError(t, "CUMPRINC too many args", v)
+}
+
+func TestCUMPRINC_ErrorRateZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0, 12, 1000, 1, 12, 0))
+	assertError(t, "CUMPRINC rate=0", v)
+}
+
+func TestCUMPRINC_ErrorRateNegative(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(-0.1, 12, 1000, 1, 12, 0))
+	assertError(t, "CUMPRINC rate<0", v)
+}
+
+func TestCUMPRINC_ErrorNperZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 0, 1000, 1, 1, 0))
+	assertError(t, "CUMPRINC nper=0", v)
+}
+
+func TestCUMPRINC_ErrorPvZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 0, 1, 12, 0))
+	assertError(t, "CUMPRINC pv=0", v)
+}
+
+func TestCUMPRINC_ErrorStartPeriodZero(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 0, 12, 0))
+	assertError(t, "CUMPRINC start=0", v)
+}
+
+func TestCUMPRINC_ErrorEndBeforeStart(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 6, 3, 0))
+	assertError(t, "CUMPRINC end<start", v)
+}
+
+func TestCUMPRINC_ErrorEndExceedsNper(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 13, 0))
+	assertError(t, "CUMPRINC end>nper", v)
+}
+
+func TestCUMPRINC_ErrorInvalidType(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, 2))
+	assertError(t, "CUMPRINC type=2", v)
+}
+
+func TestCUMPRINC_ErrorNegativeType(t *testing.T) {
+	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, -1))
+	assertError(t, "CUMPRINC type=-1", v)
+}
+
+// === MIRR ===
+
+func mirrArray(vals ...float64) Value {
+	row := make([]Value, len(vals))
+	for i, v := range vals {
+		row[i] = NumberVal(v)
+	}
+	return Value{Type: ValueArray, Array: [][]Value{row}}
+}
+
+func TestMIRR_ExcelExample(t *testing.T) {
+	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.12) ≈ 0.126094
+	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.12)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR Excel example: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.126094) > 0.0001 {
+		t.Errorf("MIRR Excel example: got %f, want ~0.126094", v.Num)
+	}
+}
+
+func TestMIRR_AllNegative(t *testing.T) {
+	// Excel returns -1 when all cash flows are negative (FV of positives is 0).
+	v, _ := fnMirr([]Value{mirrArray(-1, -2, -3), NumberVal(0.1), NumberVal(0.1)})
+	assertClose(t, "MIRR all negative", v, -1.0)
+}
+
+func TestMIRR_AllPositive(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(1, 2, 3), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR all positive", v)
+}
+
+func TestMIRR_TwoValues(t *testing.T) {
+	// MIRR({-100,110}, 0.1, 0.1) = 0.10
+	v, err := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "MIRR two values", v, 0.10)
+}
+
+func TestMIRR_ZeroFinanceRate(t *testing.T) {
+	// MIRR({-100,50,60}, 0, 0.1)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR zero finance rate: expected number, got %v", v.Type)
+	}
+	// With finance_rate=0, PV of negatives = -100
+	// FV of positives at 0.1: 50*1.1 + 60 = 55 + 60 = 115
+	// MIRR = (115/100)^(1/2) - 1 ≈ 0.07238
+	if math.Abs(v.Num-0.07238) > 0.001 {
+		t.Errorf("MIRR zero finance rate: got %f, want ~0.07238", v.Num)
+	}
+}
+
+func TestMIRR_ZeroReinvestRate(t *testing.T) {
+	// MIRR({-100,50,60}, 0.1, 0)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0.1), NumberVal(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR zero reinvest rate: expected number, got %v", v.Type)
+	}
+	// With reinvest_rate=0, FV of positives = 50 + 60 = 110
+	// PV of negatives at 0.1: -100 / 1.0 = -100
+	// MIRR = (110/100)^(1/2) - 1 ≈ 0.04881
+	if math.Abs(v.Num-0.04881) > 0.001 {
+		t.Errorf("MIRR zero reinvest rate: got %f, want ~0.04881", v.Num)
+	}
+}
+
+func TestMIRR_LargeValues(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-1000000, 300000, 400000, 500000), NumberVal(0.05), NumberVal(0.08)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR large values: expected number, got %v", v.Type)
+	}
+	// Verify it returns a reasonable rate
+	if v.Num < -1 || v.Num > 1 {
+		t.Errorf("MIRR large values: got unreasonable rate %f", v.Num)
+	}
+}
+
+func TestMIRR_WrongArgCount_TooFew(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1)})
+	assertError(t, "MIRR too few args", v)
+}
+
+func TestMIRR_WrongArgCount_TooMany(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR too many args", v)
+}
+
+func TestMIRR_ErrorPropagation_FinanceRate(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), ErrorVal(ErrValVALUE), NumberVal(0.1)})
+	assertError(t, "MIRR error in finance_rate", v)
+}
+
+func TestMIRR_ErrorPropagation_ReinvestRate(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), ErrorVal(ErrValVALUE)})
+	assertError(t, "MIRR error in reinvest_rate", v)
+}
+
+func TestMIRR_ErrorInValues(t *testing.T) {
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(-100), ErrorVal(ErrValVALUE), NumberVal(50)}},
+	}
+	v, _ := fnMirr([]Value{arr, NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR error in values", v)
+}
+
+func TestMIRR_SingleValue(t *testing.T) {
+	// Only one cash flow — not enough
+	v, _ := fnMirr([]Value{mirrArray(-100), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR single value", v)
+}
+
+func TestMIRR_EqualRates(t *testing.T) {
+	// MIRR({-100,50,60}, 0.1, 0.1)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR equal rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_NegativeRates(t *testing.T) {
+	// Negative rates are valid inputs
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(-0.05), NumberVal(-0.05)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR negative rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ZeroCashFlowsIncluded(t *testing.T) {
+	// Zero values are neither positive nor negative; should still work if there are both pos and neg
+	v, err := fnMirr([]Value{mirrArray(-100, 0, 0, 110), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR with zeros: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_AllZeros(t *testing.T) {
+	// All zeros — no positive or negative
+	v, _ := fnMirr([]Value{mirrArray(0, 0, 0), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR all zeros", v)
+}
+
+func TestMIRR_HighRates(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-100, 200, 300), NumberVal(0.5), NumberVal(0.5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR high rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ManyPeriods(t *testing.T) {
+	// 10 periods
+	v, err := fnMirr([]Value{mirrArray(-500, 50, 60, 70, 80, 90, 100, 110, 120, 130), NumberVal(0.08), NumberVal(0.10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR many periods: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_MultipleNegativeCashFlows(t *testing.T) {
+	// Multiple negative cash flows
+	v, err := fnMirr([]Value{mirrArray(-100, 50, -20, 80, 60), NumberVal(0.10), NumberVal(0.12)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR multiple negatives: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_SmallValues(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-0.01, 0.005, 0.006), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR small values: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ExcelExample2(t *testing.T) {
+	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.14) ≈ 0.134759
+	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.14)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR Excel example 2: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.134759) > 0.0001 {
+		t.Errorf("MIRR Excel example 2: got %f, want ~0.134759", v.Num)
+	}
+}
+
+func TestMIRR_BothRatesZero(t *testing.T) {
+	// MIRR({-100,50,60}, 0, 0)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0), NumberVal(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR both rates zero: expected number, got %v", v.Type)
+	}
+	// FV of positives at 0: 50 + 60 = 110
+	// PV of negatives at 0: -100
+	// MIRR = (110/100)^(1/2) - 1 ≈ 0.04881
+	if math.Abs(v.Num-0.04881) > 0.001 {
+		t.Errorf("MIRR both rates zero: got %f, want ~0.04881", v.Num)
+	}
+}
+
+func TestMIRR_EmptyValuesSkipped(t *testing.T) {
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{{NumberVal(-100), {Type: ValueEmpty}, NumberVal(110)}},
+	}
+	v, err := fnMirr([]Value{arr, NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR empty skipped: expected number, got %v", v.Type)
+	}
+	assertClose(t, "MIRR empty skipped", v, 0.10)
+}
+
+// === PDURATION ===
+
+func TestPDURATION_Basic(t *testing.T) {
+	// PDURATION(0.025, 2000, 2200) ≈ 3.859
+	v, err := fnPduration(numArgs(0.025, 2000, 2200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION basic", v, 3.86)
+}
+
+func TestPDURATION_DoublingAt10Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.1, 1000, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION doubling 10%", v, 7.27)
+}
+
+func TestPDURATION_DoublingAt1Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.01, 100, 200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION doubling 1%", v, 69.66)
+}
+
+func TestPDURATION_TripleAt5Percent(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 3000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION triple 5%", v, 22.52)
+}
+
+func TestPDURATION_SmallRate(t *testing.T) {
+	v, err := fnPduration(numArgs(0.001, 500, 600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION small rate", v, 182.41)
+}
+
+func TestPDURATION_LargeRate(t *testing.T) {
+	v, err := fnPduration(numArgs(1.0, 100, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION large rate", v, 3.32)
+}
+
+func TestPDURATION_SmallGrowth(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 1001))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION small growth", v, 0.02)
+}
+
+func TestPDURATION_LargeValues(t *testing.T) {
+	v, err := fnPduration(numArgs(0.08, 1000000, 2000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION large values", v, 9.01)
+}
+
+func TestPDURATION_FractionalRate(t *testing.T) {
+	v, err := fnPduration(numArgs(0.0375, 5000, 7500))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION fractional rate", v, 11.01)
+}
+
+func TestPDURATION_PVEqualsFV(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 1000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "PDURATION pv=fv", v, 0.0)
+}
+
+func TestPDURATION_FVLessThanPV(t *testing.T) {
+	v, err := fnPduration(numArgs(0.05, 2000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("PDURATION fv<pv: expected negative number, got %v", v)
+	}
+}
+
+func TestPDURATION_ErrorRateZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0, 1000, 2000))
+	assertError(t, "PDURATION rate=0", v)
+}
+
+func TestPDURATION_ErrorRateNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(-0.05, 1000, 2000))
+	assertError(t, "PDURATION rate<0", v)
+}
+
+func TestPDURATION_ErrorPVZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 0, 2000))
+	assertError(t, "PDURATION pv=0", v)
+}
+
+func TestPDURATION_ErrorPVNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, -1000, 2000))
+	assertError(t, "PDURATION pv<0", v)
+}
+
+func TestPDURATION_ErrorFVZero(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, 0))
+	assertError(t, "PDURATION fv=0", v)
+}
+
+func TestPDURATION_ErrorFVNegative(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, -2000))
+	assertError(t, "PDURATION fv<0", v)
+}
+
+func TestPDURATION_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000))
+	assertError(t, "PDURATION too few args", v)
+}
+
+func TestPDURATION_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnPduration(numArgs(0.05, 1000, 2000, 1))
+	assertError(t, "PDURATION too many args", v)
+}
+
+func TestPDURATION_ErrorStringArg(t *testing.T) {
+	v, _ := fnPduration([]Value{StringVal("abc"), NumberVal(1000), NumberVal(2000)})
+	assertError(t, "PDURATION string arg", v)
+}
+
+func TestPDURATION_ErrorNoArgs(t *testing.T) {
+	v, _ := fnPduration([]Value{})
+	assertError(t, "PDURATION no args", v)
+}
+
+// === RRI ===
+
+func TestRRI_Basic(t *testing.T) {
+	v, err := fnRri(numArgs(96, 10000, 11000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI basic: expected number, got %v", v)
+	}
+	if math.Abs(v.Num-0.000988) > 0.001 {
+		t.Errorf("RRI basic: got %f, want ~0.000988", v.Num)
+	}
+}
+
+func TestRRI_SinglePeriod(t *testing.T) {
+	v, err := fnRri(numArgs(1, 100, 110))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI single period", v, 0.10)
+}
+
+func TestRRI_AnnualDoublingRate(t *testing.T) {
+	v, err := fnRri(numArgs(12, 1000, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI annual doubling", v, 0.06)
+}
+
+func TestRRI_NegativeGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 500))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber || v.Num >= 0 {
+		t.Errorf("RRI negative growth: expected negative number, got %v", v)
+	}
+}
+
+func TestRRI_NoGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI no growth", v, 0.0)
+}
+
+func TestRRI_LargeNper(t *testing.T) {
+	v, err := fnRri(numArgs(360, 100000, 200000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI large nper: expected number, got %v", v)
+	}
+	if math.Abs(v.Num-0.001928) > 0.001 {
+		t.Errorf("RRI large nper: got %f, want ~0.001928", v.Num)
+	}
+}
+
+func TestRRI_SmallValues(t *testing.T) {
+	v, err := fnRri(numArgs(5, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI small values", v, 0.15)
+}
+
+func TestRRI_LargeGrowth(t *testing.T) {
+	v, err := fnRri(numArgs(10, 100, 10000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI large growth", v, 0.58)
+}
+
+func TestRRI_FVZero(t *testing.T) {
+	v, err := fnRri(numArgs(10, 1000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI fv=0", v, -1.0)
+}
+
+func TestRRI_NegativePV(t *testing.T) {
+	v, err := fnRri(numArgs(10, -1000, -2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI negative pv: expected number, got %v", v)
+	}
+}
+
+func TestRRI_NegativeFV(t *testing.T) {
+	v, err := fnRri(numArgs(1, 100, -50))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI negative fv single period", v, -1.5)
+}
+
+func TestRRI_ErrorNperZero(t *testing.T) {
+	v, _ := fnRri(numArgs(0, 1000, 2000))
+	assertError(t, "RRI nper=0", v)
+}
+
+func TestRRI_ErrorNperNegative(t *testing.T) {
+	v, _ := fnRri(numArgs(-5, 1000, 2000))
+	assertError(t, "RRI nper<0", v)
+}
+
+func TestRRI_ErrorPVZero(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 0, 2000))
+	assertError(t, "RRI pv=0", v)
+}
+
+func TestRRI_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 1000))
+	assertError(t, "RRI too few args", v)
+}
+
+func TestRRI_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnRri(numArgs(10, 1000, 2000, 1))
+	assertError(t, "RRI too many args", v)
+}
+
+func TestRRI_ErrorStringArg(t *testing.T) {
+	v, _ := fnRri([]Value{StringVal("abc"), NumberVal(1000), NumberVal(2000)})
+	assertError(t, "RRI string arg", v)
+}
+
+func TestRRI_ErrorNoArgs(t *testing.T) {
+	v, _ := fnRri([]Value{})
+	assertError(t, "RRI no args", v)
+}
+
+func TestRRI_FractionalNper(t *testing.T) {
+	v, err := fnRri(numArgs(0.5, 1000, 1100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "RRI fractional nper", v, 0.21)
+}
+
+func TestRRI_VerySmallNper(t *testing.T) {
+	v, err := fnRri(numArgs(0.01, 1000, 1010))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("RRI very small nper: expected number, got %v", v)
+	}
+}
+
+// === VDB ===
+
+func boolArg(b bool) Value {
+	return Value{Type: ValueBool, Bool: b}
+}
+
+func TestVDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10*365, 0, 1) = 1.32
+	v, err := fnVdb(numArgs(2400, 300, 10*365, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first day", v, 1.32)
+}
+
+func TestVDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10*12, 0, 1) = 40.00
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first month", v, 40.00)
+}
+
+func TestVDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
+	// VDB(2400, 300, 10, 0, 1) = 480.00
+	v, err := fnVdb(numArgs(2400, 300, 10, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first year", v, 480.00)
+}
+
+func TestVDB_ExcelExample_Month6To18(t *testing.T) {
+	// VDB(2400, 300, 10*12, 6, 18) = 396.31
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB month 6-18", v, 396.31)
+}
+
+func TestVDB_ExcelExample_Month6To18_Factor15(t *testing.T) {
+	// VDB(2400, 300, 10*12, 6, 18, 1.5) = 311.81
+	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB month 6-18 factor 1.5", v, 311.81)
+}
+
+func TestVDB_ExcelExample_FractionalPeriod(t *testing.T) {
+	// VDB(2400, 300, 10, 0, 0.875, 1.5) = 315.00
+	v, err := fnVdb(numArgs(2400, 300, 10, 0, 0.875, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional period", v, 315.00)
+}
+
+func TestVDB_FirstYear_10000(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1) — first year DDB
+	// DDB rate = 2/5 = 0.4, dep = 10000 * 0.4 = 4000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB first year 10000", v, 4000.00)
+}
+
+func TestVDB_SecondYear_10000(t *testing.T) {
+	// VDB(10000, 1000, 5, 1, 2)
+	// After year 1: book = 6000, dep = 6000 * 0.4 = 2400
+	v, err := fnVdb(numArgs(10000, 1000, 5, 1, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB second year 10000", v, 2400.00)
+}
+
+func TestVDB_FullLife_EqualsCostMinusSalvage(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 5) = 9000 (cost - salvage)
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB full life", v, 9000.00)
+}
+
+func TestVDB_Factor15(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 1.5)
+	// dep = 10000 * 1.5/5 = 3000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB factor 1.5", v, 3000.00)
+}
+
+func TestVDB_NoSwitch_True(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 2, TRUE)
+	// Same as DDB for first period: 10000 * 2/5 = 4000
+	args := append(numArgs(10000, 1000, 5, 0, 1, 2), boolArg(true))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB no_switch=TRUE first year", v, 4000.00)
+}
+
+func TestVDB_NoSwitch_False(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1, 2, FALSE)
+	// Same as default (no_switch=FALSE)
+	args := append(numArgs(10000, 1000, 5, 0, 1, 2), boolArg(false))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB no_switch=FALSE first year", v, 4000.00)
+}
+
+func TestVDB_FractionalStart(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 0.5) — half of first year
+	// First year full dep = 4000, half = 2000
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 0.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional half year", v, 2000.00)
+}
+
+func TestVDB_FractionalEnd(t *testing.T) {
+	// VDB(10000, 1000, 5, 0, 1.5)
+	// Year 1: 4000, half of year 2 (2400*0.5=1200) = 5200
+	v, err := fnVdb(numArgs(10000, 1000, 5, 0, 1.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB fractional end", v, 5200.00)
+}
+
+func TestVDB_MiddlePeriod(t *testing.T) {
+	// VDB(10000, 1000, 5, 2, 3)
+	// After y1: book=6000, after y2: book=3600, y3: SL=(3600-1000)/2=1300 vs DDB=3600*0.4=1440 => 1440
+	v, err := fnVdb(numArgs(10000, 1000, 5, 2, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB middle period", v, 1440.00)
+}
+
+func TestVDB_SwitchToSL(t *testing.T) {
+	// VDB(10000, 1000, 5, 3, 4)
+	// y0: book=10000, DDB=4000, SL=1800 -> 4000, book=6000
+	// y1: book=6000, DDB=2400, SL=1250 -> 2400, book=3600
+	// y2: book=3600, DDB=1440, SL=866.67 -> 1440, book=2160
+	// y3: book=2160, DDB=864, SL=580 -> 864
+	v, err := fnVdb(numArgs(10000, 1000, 5, 3, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB period 3", v, 864.00)
+}
+
+func TestVDB_SwitchToSL_Period4(t *testing.T) {
+	// VDB(10000, 1000, 5, 4, 5)
+	// y4: book=1296, DDB=518.40, SL=296 -> capped to 296
+	v, err := fnVdb(numArgs(10000, 1000, 5, 4, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB period 4 capped", v, 296.00)
+}
+
+func TestVDB_SwitchToSL_WithSwitch(t *testing.T) {
+	// VDB(10000, 1000, 10, 0, 10) with default factor=2 should equal 9000
+	// With 10 periods, switch from DDB to SL will occur
+	v, err := fnVdb(numArgs(10000, 1000, 10, 0, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB 10yr full life", v, 9000.00)
+}
+
+func TestVDB_NoSwitch_FullLife_LessThanCostMinusSalvage(t *testing.T) {
+	// With no_switch=TRUE, total depreciation over full life may be less than cost-salvage
+	// because DDB alone doesn't fully depreciate.
+	args := append(numArgs(10000, 1000, 5, 0, 5, 2), boolArg(true))
+	v, err := fnVdb(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// DDB only: y1=4000, y2=2400, y3=1440, y4=864, y5=518.4 (capped to 296 since 1296-1000=296)
+	// Total = 4000+2400+1440+864+296 = 9000... wait, let me recalc.
+	// y1: 10000*0.4=4000, book=6000
+	// y2: 6000*0.4=2400, book=3600
+	// y3: 3600*0.4=1440, book=2160
+	// y4: 2160*0.4=864, book=1296
+	// y5: 1296*0.4=518.4, but book-salvage=296, so capped to 296
+	// Total: 4000+2400+1440+864+296 = 9000
+	// Actually with no_switch the salvage cap still applies, so it happens to equal 9000.
+	assertClose(t, "VDB no_switch full life", v, 9000.00)
+}
+
+func TestVDB_CostZero(t *testing.T) {
+	v, err := fnVdb(numArgs(0, 0, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB cost=0", v, 0)
+}
+
+func TestVDB_SalvageEqualsCost(t *testing.T) {
+	v, err := fnVdb(numArgs(10000, 10000, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB salvage=cost", v, 0)
+}
+
+func TestVDB_SalvageZero(t *testing.T) {
+	// VDB(10000, 0, 5, 0, 1) = 10000 * 2/5 = 4000
+	v, err := fnVdb(numArgs(10000, 0, 5, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB salvage=0", v, 4000)
+}
+
+func TestVDB_StartEqualsEnd(t *testing.T) {
+	// VDB(10000, 1000, 5, 1, 1) = 0 (no period range)
+	v, err := fnVdb(numArgs(10000, 1000, 5, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB start=end", v, 0)
+}
+
+func TestVDB_LargeAsset(t *testing.T) {
+	// VDB(1000000, 100000, 10, 0, 1) = 1000000 * 2/10 = 200000
+	v, err := fnVdb(numArgs(1000000, 100000, 10, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "VDB large asset", v, 200000)
+}
+
+func TestVDB_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0))
+	assertError(t, "VDB too few args", v)
+}
+
+func TestVDB_ErrorTooManyArgs(t *testing.T) {
+	args := append(numArgs(1000, 100, 5, 0, 1, 2), boolArg(false), NumberVal(99))
+	v, _ := fnVdb(args)
+	assertError(t, "VDB too many args", v)
+}
+
+func TestVDB_ErrorLifeZero(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 0, 0, 1))
+	assertError(t, "VDB life=0", v)
+}
+
+func TestVDB_ErrorStartNegative(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, -1, 1))
+	assertError(t, "VDB start<0", v)
+}
+
+func TestVDB_ErrorEndLessThanStart(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 3, 2))
+	assertError(t, "VDB end<start", v)
+}
+
+func TestVDB_ErrorEndExceedsLife(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0, 6))
+	assertError(t, "VDB end>life", v)
+}
+
+func TestVDB_ErrorNegativeCost(t *testing.T) {
+	v, _ := fnVdb(numArgs(-1000, 100, 5, 0, 1))
+	assertError(t, "VDB negative cost", v)
+}
+
+func TestVDB_ErrorNegativeSalvage(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, -100, 5, 0, 1))
+	assertError(t, "VDB negative salvage", v)
+}
+
+func TestVDB_ErrorFactorZero(t *testing.T) {
+	v, _ := fnVdb(numArgs(1000, 100, 5, 0, 1, 0))
+	assertError(t, "VDB factor=0", v)
+}
+
+// === SYD ===
+
+func TestSYD_ExcelExample_Period1(t *testing.T) {
+	// SYD(30000, 7500, 10, 1) = 4090.909090...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 1", v, 4090.91)
+}
+
+func TestSYD_ExcelExample_Period10(t *testing.T) {
+	// SYD(30000, 7500, 10, 10) = 409.090909...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 10", v, 409.09)
+}
+
+func TestSYD_Period5(t *testing.T) {
+	// SYD(30000, 7500, 10, 5) = (22500) * 6 / 55 = 2454.545454...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 5", v, 2454.55)
+}
+
+func TestSYD_Period2(t *testing.T) {
+	// SYD(30000, 7500, 10, 2) = 22500 * 9 / 55 = 3681.818181...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 2", v, 3681.82)
+}
+
+func TestSYD_Period3(t *testing.T) {
+	// SYD(30000, 7500, 10, 3) = 22500 * 8 / 55 = 3272.727272...
+	v, err := fnSYD(numArgs(30000, 7500, 10, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD period 3", v, 3272.73)
+}
+
+func TestSYD_ZeroSalvage(t *testing.T) {
+	// SYD(10000, 0, 5, 1) = 10000 * 5 / 15 = 3333.33
+	v, err := fnSYD(numArgs(10000, 0, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD zero salvage", v, 3333.33)
+}
+
+func TestSYD_ZeroSalvage_Period5(t *testing.T) {
+	// SYD(10000, 0, 5, 5) = 10000 * 1 / 15 = 666.67
+	v, err := fnSYD(numArgs(10000, 0, 5, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD zero salvage period 5", v, 666.67)
+}
+
+func TestSYD_SalvageEqualsCost(t *testing.T) {
+	// SYD(10000, 10000, 5, 1) = 0
+	v, err := fnSYD(numArgs(10000, 10000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD salvage=cost", v, 0)
+}
+
+func TestSYD_Life1(t *testing.T) {
+	// SYD(10000, 1000, 1, 1) = 9000 * 1 / 1 = 9000
+	v, err := fnSYD(numArgs(10000, 1000, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD life=1", v, 9000)
+}
+
+func TestSYD_PerEqualsLife(t *testing.T) {
+	// SYD(10000, 2000, 4, 4) = 8000 * 1 / 10 = 800
+	v, err := fnSYD(numArgs(10000, 2000, 4, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD per=life", v, 800)
+}
+
+func TestSYD_LargeValues(t *testing.T) {
+	// SYD(50000000, 5000000, 10, 1) = 45000000 * 10 / 55 = 8181818.18
+	v, err := fnSYD(numArgs(50000000, 5000000, 10, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD large values", v, 8181818.18)
+}
+
+func TestSYD_SmallAsset(t *testing.T) {
+	// SYD(100, 10, 5, 1) = 90 * 5 / 15 = 30
+	v, err := fnSYD(numArgs(100, 10, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD small asset", v, 30)
+}
+
+func TestSYD_FractionalLifeTruncated(t *testing.T) {
+	// SYD(10000, 1000, 5.9, 1) — life truncated to 5
+	// = 9000 * 5 / 15 = 3000
+	v, err := fnSYD(numArgs(10000, 1000, 5.9, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD fractional life", v, 3000)
+}
+
+func TestSYD_FractionalPerTruncated(t *testing.T) {
+	// SYD(10000, 1000, 5, 2.7) — per truncated to 2
+	// = 9000 * 4 / 15 = 2400
+	v, err := fnSYD(numArgs(10000, 1000, 5, 2.7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD fractional per", v, 2400)
+}
+
+func TestSYD_NegativeDepreciableAmount(t *testing.T) {
+	// SYD(1000, 5000, 5, 1) — salvage > cost, negative depreciation
+	// = (1000-5000) * 5 / 15 = -1333.33
+	v, err := fnSYD(numArgs(1000, 5000, 5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD negative depreciable", v, -1333.33)
+}
+
+func TestSYD_ErrorTooFewArgs(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10))
+	assertError(t, "SYD too few args", v)
+}
+
+func TestSYD_ErrorTooManyArgs(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 1, 99))
+	assertError(t, "SYD too many args", v)
+}
+
+func TestSYD_ErrorNonNumeric(t *testing.T) {
+	args := []Value{StringVal("abc"), NumberVal(7500), NumberVal(10), NumberVal(1)}
+	v, _ := fnSYD(args)
+	assertError(t, "SYD non-numeric cost", v)
+}
+
+func TestSYD_ErrorLifeZero(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 0, 1))
+	assertError(t, "SYD life=0", v)
+}
+
+func TestSYD_ErrorLifeNegative(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, -5, 1))
+	assertError(t, "SYD life negative", v)
+}
+
+func TestSYD_ErrorPerZero(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 0))
+	assertError(t, "SYD per=0", v)
+}
+
+func TestSYD_ErrorPerNegative(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, -1))
+	assertError(t, "SYD per negative", v)
+}
+
+func TestSYD_ErrorPerGreaterThanLife(t *testing.T) {
+	v, _ := fnSYD(numArgs(30000, 7500, 10, 11))
+	assertError(t, "SYD per > life", v)
 }

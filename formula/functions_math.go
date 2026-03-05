@@ -17,6 +17,8 @@ func init() {
 	Register("ABS", NoCtx(fnABS))
 	Register("ACOS", NoCtx(fnACOS))
 	Register("ACOSH", NoCtx(fnACOSH))
+	Register("ACOT", NoCtx(fnACOT))
+	Register("ACOTH", NoCtx(fnACOTH))
 	Register("ARABIC", NoCtx(fnARABIC))
 	Register("ASIN", NoCtx(fnASIN))
 	Register("ASINH", NoCtx(fnASINH))
@@ -24,6 +26,11 @@ func init() {
 	Register("ATAN2", NoCtx(fnATAN2))
 	Register("ATANH", NoCtx(fnATANH))
 	Register("BASE", NoCtx(fnBASE))
+	Register("BITAND", NoCtx(fnBITAND))
+	Register("BITLSHIFT", NoCtx(fnBITLSHIFT))
+	Register("BITOR", NoCtx(fnBITOR))
+	Register("BITRSHIFT", NoCtx(fnBITRSHIFT))
+	Register("BITXOR", NoCtx(fnBITXOR))
 	Register("CEILING", NoCtx(fnCEILING))
 	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
 	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
@@ -37,6 +44,10 @@ func init() {
 	Register("CSCH", NoCtx(fnCSCH))
 	Register("DECIMAL", NoCtx(fnDECIMAL))
 	Register("DEGREES", NoCtx(fnDEGREES))
+	Register("ERF", NoCtx(fnERF))
+	Register("ERF.PRECISE", NoCtx(fnERFPRECISE))
+	Register("ERFC", NoCtx(fnERFC))
+	Register("ERFC.PRECISE", NoCtx(fnERFCPRECISE))
 	Register("EVEN", NoCtx(fnEVEN))
 	Register("EXP", NoCtx(fnEXP))
 	Register("FACT", NoCtx(fnFACT))
@@ -51,7 +62,11 @@ func init() {
 	Register("LOG", NoCtx(fnLOG))
 	Register("LOG10", NoCtx(fnLOG10))
 	Register("MOD", NoCtx(fnMOD))
+	Register("MDETERM", NoCtx(fnMDETERM))
+	Register("MINVERSE", NoCtx(fnMINVERSE))
+	Register("MMULT", NoCtx(fnMMULT))
 	Register("MROUND", NoCtx(fnMROUND))
+	Register("MUNIT", NoCtx(fnMUNIT))
 	Register("MULTINOMIAL", NoCtx(fnMULTINOMIAL))
 	Register("ODD", NoCtx(fnODD))
 	Register("PERMUT", NoCtx(fnPERMUT))
@@ -67,12 +82,17 @@ func init() {
 	Register("ROUNDUP", NoCtx(fnROUNDUP))
 	Register("SEC", NoCtx(fnSEC))
 	Register("SECH", NoCtx(fnSECH))
+	Register("SEQUENCE", NoCtx(fnSEQUENCE))
+	Register("SERIESSUM", NoCtx(fnSERIESSUM))
 	Register("SIGN", NoCtx(fnSIGN))
 	Register("SIN", NoCtx(fnSIN))
 	Register("SINH", NoCtx(fnSINH))
 	Register("SQRT", NoCtx(fnSQRT))
 	Register("SQRTPI", NoCtx(fnSQRTPI))
 	Register("SUBTOTAL", fnSUBTOTALCtx)
+	Register("SUMX2MY2", NoCtx(fnSumx2my2))
+	Register("SUMX2PY2", NoCtx(fnSumx2py2))
+	Register("SUMXMY2", NoCtx(fnSumxmy2))
 	Register("TAN", NoCtx(fnTAN))
 	Register("TANH", NoCtx(fnTANH))
 	Register("TRUNC", NoCtx(fnTRUNC))
@@ -479,6 +499,17 @@ func fnACOSH(args []Value) (Value, error) {
 	if n < 1 { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(math.Acosh(n)), nil
 }
+func fnACOT(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Pi/2 - math.Atan(n)), nil
+}
+func fnACOTH(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if n >= -1 && n <= 1 { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(0.5 * math.Log((n+1)/(n-1))), nil
+}
 func fnARABIC(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	var text string
@@ -644,6 +675,30 @@ func fnSECH(args []Value) (Value, error) {
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
 	return NumberVal(1 / math.Cosh(n)), nil
 }
+func fnERF(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 { return ErrorVal(ErrValVALUE), nil }
+	lower, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) == 1 {
+		return NumberVal(math.Erf(lower)), nil
+	}
+	upper, e := CoerceNum(args[1]); if e != nil { return *e, nil }
+	return NumberVal(math.Erf(upper) - math.Erf(lower)), nil
+}
+func fnERFPRECISE(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erf(n)), nil
+}
+func fnERFC(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erfc(n)), nil
+}
+func fnERFCPRECISE(args []Value) (Value, error) {
+	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	return NumberVal(math.Erfc(n)), nil
+}
 func fnEVEN(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
@@ -740,6 +795,108 @@ func fnLOG10(args []Value) (Value, error) {
 	if n <= 0 { return ErrorVal(ErrValNUM), nil }
 	return NumberVal(math.Log10(n)), nil
 }
+func fnMMULT(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Coerce both arguments to 2D arrays.
+	a1 := args[0]
+	a2 := args[1]
+
+	// Convert scalar/non-array values to 1x1 arrays.
+	if a1.Type != ValueArray {
+		if a1.Type == ValueError {
+			return a1, nil
+		}
+		a1 = Value{Type: ValueArray, Array: [][]Value{{a1}}}
+	}
+	if a2.Type != ValueArray {
+		if a2.Type == ValueError {
+			return a2, nil
+		}
+		a2 = Value{Type: ValueArray, Array: [][]Value{{a2}}}
+	}
+
+	m := len(a1.Array) // rows of array1
+	if m == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n := len(a1.Array[0]) // cols of array1
+	if n == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n2 := len(a2.Array) // rows of array2
+	if n2 == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p := len(a2.Array[0]) // cols of array2
+	if p == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Columns of array1 must equal rows of array2.
+	if n != n2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate all values are numeric and extract into float64 slices.
+	mat1 := make([][]float64, m)
+	for r := 0; r < m; r++ {
+		if len(a1.Array[r]) != n {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat1[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a1.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat1[r][c] = num
+		}
+	}
+
+	mat2 := make([][]float64, n2)
+	for r := 0; r < n2; r++ {
+		if len(a2.Array[r]) != p {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat2[r] = make([]float64, p)
+		for c := 0; c < p; c++ {
+			v := a2.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat2[r][c] = num
+		}
+	}
+
+	// Compute matrix product: result[i][j] = sum(mat1[i][k] * mat2[k][j]).
+	result := make([][]Value, m)
+	for i := 0; i < m; i++ {
+		row := make([]Value, p)
+		for j := 0; j < p; j++ {
+			var sum float64
+			for k := 0; k < n; k++ {
+				sum += mat1[i][k] * mat2[k][j]
+			}
+			row[j] = NumberVal(sum)
+		}
+		result[i] = row
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
 func fnMROUND(args []Value) (Value, error) {
 	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
@@ -967,6 +1124,59 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 	return out
 }
 
+func fnSEQUENCE(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rowsF, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	rows := int(math.Trunc(rowsF))
+	cols := 1
+	if len(args) >= 2 {
+		colsF, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		cols = int(math.Trunc(colsF))
+	}
+	start := 1.0
+	if len(args) >= 3 {
+		s, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		start = s
+	}
+	step := 1.0
+	if len(args) >= 4 {
+		s, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		step = s
+	}
+	if rows <= 0 || cols <= 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+	// Single cell: return scalar number.
+	if rows == 1 && cols == 1 {
+		return NumberVal(start), nil
+	}
+	cur := start
+	result := make([][]Value, rows)
+	for r := 0; r < rows; r++ {
+		row := make([]Value, cols)
+		for c := 0; c < cols; c++ {
+			row[c] = NumberVal(cur)
+			cur += step
+		}
+		result[r] = row
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
 func fnTAN(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
@@ -976,4 +1186,426 @@ func fnTANH(args []Value) (Value, error) {
 	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
 	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
 	return NumberVal(math.Tanh(n)), nil
+}
+
+const bitMaxVal = (1 << 48) - 1 // 2^48 - 1
+
+func validateBitArg(v Value) (int64, *Value) {
+	n, e := CoerceNum(v)
+	if e != nil { return 0, e }
+	if n < 0 || math.Floor(n) != n || n > bitMaxVal {
+		ev := ErrorVal(ErrValNUM); return 0, &ev
+	}
+	return int64(n), nil
+}
+
+func fnBITAND(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 & n2)), nil
+}
+func fnBITOR(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 | n2)), nil
+}
+func fnBITXOR(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	return NumberVal(float64(n1 ^ n2)), nil
+}
+func fnBITLSHIFT(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
+	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	shift := int(sf)
+	var result int64
+	if shift >= 0 {
+		result = n << uint(shift)
+	} else {
+		result = n >> uint(-shift)
+	}
+	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(float64(result)), nil
+}
+
+func fnSERIESSUM(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	m, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Flatten coefficients from arg[3].
+	var coeffs []Value
+	if args[3].Type == ValueArray {
+		for _, row := range args[3].Array {
+			coeffs = append(coeffs, row...)
+		}
+	} else {
+		coeffs = []Value{args[3]}
+	}
+
+	var sum float64
+	for i, cv := range coeffs {
+		c, ce := CoerceNum(cv)
+		if ce != nil {
+			return *ce, nil
+		}
+		exp := n + float64(i)*m
+		// Excel returns #NUM! for 0^0 and 0^negative.
+		if x == 0 && exp <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		sum += c * math.Pow(x, exp)
+	}
+	return NumberVal(sum), nil
+}
+
+func fnMDETERM(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	a := args[0]
+
+	// Propagate errors.
+	if a.Type == ValueError {
+		return a, nil
+	}
+
+	// Coerce scalar to 1x1 array.
+	if a.Type != ValueArray {
+		n, e := CoerceNum(a)
+		if e != nil {
+			return *e, nil
+		}
+		return NumberVal(n), nil
+	}
+
+	rows := len(a.Array)
+	if rows == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cols := len(a.Array[0])
+	if cols == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Must be square.
+	if rows != cols {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n := rows
+
+	// Extract numeric matrix, rejecting empty/string values.
+	mat := make([][]float64, n)
+	for r := 0; r < n; r++ {
+		if len(a.Array[r]) != cols {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat[r][c] = num
+		}
+	}
+
+	// Compute determinant via LU decomposition with partial pivoting.
+	det := luDet(mat, n)
+	return NumberVal(det), nil
+}
+
+// luDet computes the determinant of an n×n matrix using LU decomposition
+// with partial pivoting.
+func luDet(mat [][]float64, n int) float64 {
+	if n == 1 {
+		return mat[0][0]
+	}
+	if n == 2 {
+		return mat[0][0]*mat[1][1] - mat[0][1]*mat[1][0]
+	}
+
+	// Work on a copy so we don't mutate the input.
+	a := make([][]float64, n)
+	for i := range a {
+		a[i] = make([]float64, n)
+		copy(a[i], mat[i])
+	}
+
+	sign := 1.0
+	for col := 0; col < n; col++ {
+		// Partial pivoting: find the row with the largest absolute value.
+		maxVal := math.Abs(a[col][col])
+		maxRow := col
+		for row := col + 1; row < n; row++ {
+			if v := math.Abs(a[row][col]); v > maxVal {
+				maxVal = v
+				maxRow = row
+			}
+		}
+		if maxVal == 0 {
+			return 0 // Singular matrix.
+		}
+		if maxRow != col {
+			a[col], a[maxRow] = a[maxRow], a[col]
+			sign = -sign
+		}
+		pivot := a[col][col]
+		for row := col + 1; row < n; row++ {
+			factor := a[row][col] / pivot
+			for j := col + 1; j < n; j++ {
+				a[row][j] -= factor * a[col][j]
+			}
+			a[row][col] = 0
+		}
+	}
+
+	det := sign
+	for i := 0; i < n; i++ {
+		det *= a[i][i]
+	}
+	return det
+}
+
+func fnMINVERSE(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	a := args[0]
+
+	// Propagate errors.
+	if a.Type == ValueError {
+		return a, nil
+	}
+
+	// Coerce scalar to 1x1 array.
+	if a.Type != ValueArray {
+		n, e := CoerceNum(a)
+		if e != nil {
+			return *e, nil
+		}
+		if n == 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		return NumberVal(1 / n), nil
+	}
+
+	rows := len(a.Array)
+	if rows == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cols := len(a.Array[0])
+	if cols == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Must be square.
+	if rows != cols {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n := rows
+
+	// Extract numeric matrix, rejecting empty/string values.
+	mat := make([][]float64, n)
+	for r := 0; r < n; r++ {
+		if len(a.Array[r]) != cols {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		mat[r] = make([]float64, n)
+		for c := 0; c < n; c++ {
+			v := a.Array[r][c]
+			if v.Type == ValueEmpty || v.Type == ValueString {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			num, e := CoerceNum(v)
+			if e != nil {
+				return *e, nil
+			}
+			mat[r][c] = num
+		}
+	}
+
+	// Compute inverse using Gauss-Jordan elimination with partial pivoting.
+	// Augment with identity matrix.
+	aug := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		aug[i] = make([]float64, 2*n)
+		copy(aug[i], mat[i])
+		aug[i][n+i] = 1
+	}
+
+	for col := 0; col < n; col++ {
+		// Partial pivoting: find the row with the largest absolute value.
+		maxVal := math.Abs(aug[col][col])
+		maxRow := col
+		for row := col + 1; row < n; row++ {
+			if v := math.Abs(aug[row][col]); v > maxVal {
+				maxVal = v
+				maxRow = row
+			}
+		}
+		if maxVal < 1e-15 {
+			return ErrorVal(ErrValNUM), nil // Singular matrix.
+		}
+		if maxRow != col {
+			aug[col], aug[maxRow] = aug[maxRow], aug[col]
+		}
+
+		// Scale pivot row.
+		pivot := aug[col][col]
+		for j := 0; j < 2*n; j++ {
+			aug[col][j] /= pivot
+		}
+
+		// Eliminate column in all other rows.
+		for row := 0; row < n; row++ {
+			if row == col {
+				continue
+			}
+			factor := aug[row][col]
+			for j := 0; j < 2*n; j++ {
+				aug[row][j] -= factor * aug[col][j]
+			}
+		}
+	}
+
+	// Extract inverse from augmented matrix.
+	result := make([][]Value, n)
+	for i := 0; i < n; i++ {
+		row := make([]Value, n)
+		for j := 0; j < n; j++ {
+			row[j] = NumberVal(aug[i][n+j])
+		}
+		result[i] = row
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+func fnMUNIT(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	dim := int(n) // truncate toward zero
+	if dim <= 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := make([][]Value, dim)
+	for i := 0; i < dim; i++ {
+		row := make([]Value, dim)
+		for j := 0; j < dim; j++ {
+			if i == j {
+				row[j] = NumberVal(1)
+			} else {
+				row[j] = NumberVal(0)
+			}
+		}
+		result[i] = row
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+func fnBITRSHIFT(args []Value) (Value, error) {
+	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
+	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
+	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	shift := int(sf)
+	var result int64
+	if shift >= 0 {
+		result = n >> uint(shift)
+	} else {
+		result = n << uint(-shift)
+	}
+	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	return NumberVal(float64(result)), nil
+}
+
+// sumPairedArrays is a helper for SUMX2MY2, SUMX2PY2, and SUMXMY2.
+// It flattens two arrays, checks they have equal length, coerces each
+// element to a number (empty cells become 0, non-numeric text causes #VALUE!),
+// and accumulates the result using the provided combine function.
+func sumPairedArrays(args []Value, combine func(x, y float64) float64) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	flat1 := flattenValuesGeneric(args[0])
+	flat2 := flattenValuesGeneric(args[1])
+
+	if len(flat1) != len(flat2) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	sum := 0.0
+	for i := range flat1 {
+		v1, v2 := flat1[i], flat2[i]
+		if v1.Type == ValueError {
+			return v1, nil
+		}
+		if v2.Type == ValueError {
+			return v2, nil
+		}
+		x, e := CoerceNum(v1)
+		if e != nil {
+			return *e, nil
+		}
+		y, e := CoerceNum(v2)
+		if e != nil {
+			return *e, nil
+		}
+		sum += combine(x, y)
+	}
+	return NumberVal(sum), nil
+}
+
+// fnSumx2my2 implements SUMX2MY2: Σ(xi² - yi²)
+func fnSumx2my2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		return x*x - y*y
+	})
+}
+
+// fnSumx2py2 implements SUMX2PY2: Σ(xi² + yi²)
+func fnSumx2py2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		return x*x + y*y
+	})
+}
+
+// fnSumxmy2 implements SUMXMY2: Σ(xi - yi)²
+func fnSumxmy2(args []Value) (Value, error) {
+	return sumPairedArrays(args, func(x, y float64) float64 {
+		d := x - y
+		return d * d
+	})
 }

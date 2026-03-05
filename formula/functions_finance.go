@@ -26,6 +26,13 @@ func init() {
 	Register("DOLLARFR", NoCtx(fnDOLLARFR))
 	Register("EFFECT", NoCtx(fnEFFECT))
 	Register("NOMINAL", NoCtx(fnNOMINAL))
+	Register("CUMIPMT", NoCtx(fnCumipmt))
+	Register("CUMPRINC", NoCtx(fnCumprinc))
+	Register("MIRR", NoCtx(fnMirr))
+	Register("PDURATION", NoCtx(fnPduration))
+	Register("RRI", NoCtx(fnRri))
+	Register("SYD", NoCtx(fnSYD))
+	Register("VDB", NoCtx(fnVdb))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -950,6 +957,223 @@ func fnNOMINAL(args []Value) (Value, error) {
 	return NumberVal(npery * (math.Pow(1+effectRate, 1/npery) - 1)), nil
 }
 
+// fnCumipmt implements CUMIPMT(rate, nper, pv, start_period, end_period, type).
+// Returns the cumulative interest paid on a loan between start_period and end_period.
+func fnCumipmt(args []Value) (Value, error) {
+	if len(args) != 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nper, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	payTypeVal, e := CoerceNum(args[5])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate periods to integers.
+	startPeriod = math.Floor(startPeriod)
+	endPeriod = math.Floor(endPeriod)
+
+	// Validate inputs.
+	if rate <= 0 || nper <= 0 || pv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if startPeriod < 1 || endPeriod < startPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > nper {
+		return ErrorVal(ErrValNUM), nil
+	}
+	payType := 0
+	if payTypeVal == 1 {
+		payType = 1
+	} else if payTypeVal != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	pmt := pmtCore(rate, nper, pv, 0, payType)
+	cumInterest := 0.0
+
+	for i := int(startPeriod); i <= int(endPeriod); i++ {
+		var ipmt float64
+		if payType == 1 {
+			if i == 1 {
+				ipmt = 0
+			} else {
+				ipmt = (fvCore(rate, float64(i-2), pmt, pv, 1) - pmt) * rate
+			}
+		} else {
+			ipmt = fvCore(rate, float64(i-1), pmt, pv, 0) * rate
+		}
+		cumInterest += ipmt
+	}
+
+	return NumberVal(cumInterest), nil
+}
+
+// fnCumprinc implements CUMPRINC(rate, nper, pv, start_period, end_period, type).
+// Returns the cumulative principal paid on a loan between start_period and end_period.
+func fnCumprinc(args []Value) (Value, error) {
+	if len(args) != 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	nper, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	payTypeVal, e := CoerceNum(args[5])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate periods to integers.
+	startPeriod = math.Floor(startPeriod)
+	endPeriod = math.Floor(endPeriod)
+
+	// Validate inputs.
+	if rate <= 0 || nper <= 0 || pv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if startPeriod < 1 || endPeriod < startPeriod {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > nper {
+		return ErrorVal(ErrValNUM), nil
+	}
+	payType := 0
+	if payTypeVal == 1 {
+		payType = 1
+	} else if payTypeVal != 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	pmt := pmtCore(rate, nper, pv, 0, payType)
+	cumPrincipal := 0.0
+
+	for i := int(startPeriod); i <= int(endPeriod); i++ {
+		var ipmt float64
+		if payType == 1 {
+			if i == 1 {
+				ipmt = 0
+			} else {
+				ipmt = (fvCore(rate, float64(i-2), pmt, pv, 1) - pmt) * rate
+			}
+		} else {
+			ipmt = fvCore(rate, float64(i-1), pmt, pv, 0) * rate
+		}
+		cumPrincipal += pmt - ipmt
+	}
+
+	return NumberVal(cumPrincipal), nil
+}
+
+// fnMirr implements MIRR(values, finance_rate, reinvest_rate).
+// Returns the modified internal rate of return for a series of periodic cash flows.
+func fnMirr(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	values := flattenValues(args[0])
+	financeRate, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	reinvestRate, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	var cashFlows []float64
+	for _, v := range values {
+		if v.Type == ValueEmpty {
+			continue
+		}
+		n, ev := CoerceNum(v)
+		if ev != nil {
+			return *ev, nil
+		}
+		cashFlows = append(cashFlows, n)
+	}
+
+	n := len(cashFlows)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Must have at least one negative value (otherwise PV of negatives is 0 → division by zero).
+	// All-negative is valid in Excel (returns -1 because FV of positives is 0).
+	hasNeg := false
+	for _, cf := range cashFlows {
+		if cf < 0 {
+			hasNeg = true
+			break
+		}
+	}
+	if !hasNeg {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// FV of positive cash flows at reinvest_rate.
+	fvPositive := 0.0
+	for i, cf := range cashFlows {
+		if cf > 0 {
+			fvPositive += cf * math.Pow(1+reinvestRate, float64(n-i-1))
+		}
+	}
+
+	// PV of negative cash flows at finance_rate.
+	pvNegative := 0.0
+	for i, cf := range cashFlows {
+		if cf < 0 {
+			pvNegative += cf / math.Pow(1+financeRate, float64(i))
+		}
+	}
+
+	// MIRR = (FV_positive / (-PV_negative))^(1/(n-1)) - 1
+	ratio := fvPositive / (-pvNegative)
+	mirr := math.Pow(ratio, 1.0/float64(n-1)) - 1
+
+	if math.IsNaN(mirr) || math.IsInf(mirr, 0) {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	return NumberVal(mirr), nil
+}
+
 // fnXIRR implements XIRR(values, dates, [guess]).
 // Uses Newton's method to find the rate where XNPV = 0.
 func fnXIRR(args []Value) (Value, error) {
@@ -1036,4 +1260,238 @@ func fnXIRR(args []Value) (Value, error) {
 		rate = newRate
 	}
 	return ErrorVal(ErrValNUM), nil
+}
+
+// fnPduration implements PDURATION(rate, pv, fv).
+// Returns the number of periods required for an investment to reach a specified value.
+func fnPduration(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	fv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if rate <= 0 || pv <= 0 || fv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal((math.Log(fv) - math.Log(pv)) / math.Log(1+rate)), nil
+}
+
+// fnRri implements RRI(nper, pv, fv).
+// Returns an equivalent interest rate for the growth of an investment.
+func fnRri(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nper, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	fv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if nper <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if pv == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	ratio := fv / pv
+	result := math.Pow(ratio, 1.0/nper)
+	if math.IsNaN(result) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal(result - 1), nil
+}
+
+// fnSYD implements SYD(cost, salvage, life, per).
+// Returns the sum-of-years-digits depreciation of an asset for a given period.
+func fnSYD(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	per, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Excel truncates life and per to integers.
+	life = math.Trunc(life)
+	per = math.Trunc(per)
+
+	if life <= 0 || per < 1 || per > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// SYD = (cost - salvage) * (life - per + 1) / (life * (life + 1) / 2)
+	return NumberVal((cost - salvage) * (life - per + 1) / (life * (life + 1) / 2)), nil
+}
+
+// vdbCalcOneperiod calculates the depreciation for a single period using
+// DDB with optional switch to straight-line.
+func vdbCalcOnePeriod(cost, salvage, life, period, factor float64, noSwitch bool) float64 {
+	// Compute book value at the start of this period by accumulating
+	// depreciation for all prior periods.
+	bookValue := cost
+	for i := 0.0; i < period; i++ {
+		ddb := bookValue * (factor / life)
+		if !noSwitch {
+			sl := 0.0
+			remaining := life - i
+			if remaining > 0 {
+				sl = (bookValue - salvage) / remaining
+			}
+			if sl > ddb {
+				ddb = sl
+			}
+		}
+		if bookValue-ddb < salvage {
+			ddb = bookValue - salvage
+		}
+		if ddb < 0 {
+			ddb = 0
+		}
+		bookValue -= ddb
+	}
+
+	// Now compute depreciation for the requested period.
+	ddb := bookValue * (factor / life)
+	if !noSwitch {
+		sl := 0.0
+		remaining := life - period
+		if remaining > 0 {
+			sl = (bookValue - salvage) / remaining
+		}
+		if sl > ddb {
+			ddb = sl
+		}
+	}
+	if bookValue-ddb < salvage {
+		ddb = bookValue - salvage
+	}
+	if ddb < 0 {
+		ddb = 0
+	}
+	return ddb
+}
+
+// fnVdb implements VDB(cost, salvage, life, start_period, end_period, [factor], [no_switch]).
+// Returns the depreciation of an asset for any specified period using the
+// variable declining balance method.
+func fnVdb(args []Value) (Value, error) {
+	if len(args) < 5 || len(args) > 7 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	life, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	startPeriod, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	endPeriod, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	factor := 2.0
+	if len(args) >= 6 {
+		factor, e = CoerceNum(args[5])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	noSwitch := false
+	if len(args) == 7 {
+		ns, e := CoerceNum(args[6])
+		if e != nil {
+			// Try bool coercion.
+			if args[6].Type == ValueBool {
+				noSwitch = args[6].Bool
+			} else {
+				return *e, nil
+			}
+		} else {
+			noSwitch = ns != 0
+		}
+	}
+
+	// Validate inputs.
+	if cost < 0 || salvage < 0 || life <= 0 || startPeriod < 0 || endPeriod < startPeriod || factor <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if endPeriod > life {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special cases.
+	if cost == 0 || salvage >= cost {
+		return NumberVal(0), nil
+	}
+
+	// Accumulate depreciation across the period range [startPeriod, endPeriod].
+	// VDB uses 0-based period intervals: period i covers interval [i, i+1).
+	// VDB(cost,salvage,life,0,1) = depreciation for period 0.
+	// VDB(cost,salvage,life,0,5) = total depreciation for periods 0-4.
+	// Fractional start/end are prorated.
+	totalDep := 0.0
+
+	// Walk through each integer period that overlaps [startPeriod, endPeriod].
+	firstPeriod := int(math.Floor(startPeriod))
+	lastPeriod := int(math.Ceil(endPeriod)) - 1
+	if endPeriod == math.Floor(endPeriod) {
+		lastPeriod = int(endPeriod) - 1
+	}
+
+	for p := firstPeriod; p <= lastPeriod; p++ {
+		dep := vdbCalcOnePeriod(cost, salvage, life, float64(p), factor, noSwitch)
+
+		// Determine the fraction of this period that falls within [startPeriod, endPeriod].
+		pStart := float64(p)
+		pEnd := float64(p + 1)
+		if startPeriod > pStart {
+			pStart = startPeriod
+		}
+		if endPeriod < pEnd {
+			pEnd = endPeriod
+		}
+		frac := pEnd - pStart
+		totalDep += dep * frac
+	}
+
+	return NumberVal(totalDep), nil
 }

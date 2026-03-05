@@ -634,6 +634,42 @@ func (fr *fileResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
 	return false
 }
 
+// HasFormula reports whether the cell at (sheet, col, row) contains a formula.
+func (fr *fileResolver) HasFormula(sheet string, col, row int) bool {
+	s := fr.resolveSheet(sheet)
+	if s == nil {
+		return false
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return false
+	}
+	c, ok := r.cells[col]
+	if !ok {
+		return false
+	}
+	return c.formula != ""
+}
+
+// GetFormulaText returns the formula text for the cell at (sheet, col, row),
+// or "" if the cell has no formula. The returned text does not include the
+// leading '=' sign.
+func (fr *fileResolver) GetFormulaText(sheet string, col, row int) string {
+	s := fr.resolveSheet(sheet)
+	if s == nil {
+		return ""
+	}
+	r, ok := s.rows[row]
+	if !ok {
+		return ""
+	}
+	c, ok := r.cells[col]
+	if !ok {
+		return ""
+	}
+	return c.formula
+}
+
 // isSubtotalFormula returns true if the formula string starts with "SUBTOTAL("
 // (case-insensitive), with optional leading whitespace. This matches both
 // "SUBTOTAL(...)" and "_xlfn.SUBTOTAL(...)".

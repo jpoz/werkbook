@@ -1151,6 +1151,102 @@ func TestCONCATENATETypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DOLLAR comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestDOLLAR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic positive numbers
+		{name: "basic", formula: `DOLLAR(1234.567, 2)`, want: "$1,234.57"},
+		{name: "default_decimals", formula: `DOLLAR(99)`, want: "$99.00"},
+		{name: "zero_decimals", formula: `DOLLAR(1234.567, 0)`, want: "$1,235"},
+		{name: "negative_decimals", formula: `DOLLAR(1234.567, -2)`, want: "$1,200"},
+
+		// Negative numbers
+		{name: "negative", formula: `DOLLAR(-1234.567, 2)`, want: "($1,234.57)"},
+		{name: "negative_zero_dec", formula: `DOLLAR(-1234.567, 0)`, want: "($1,235)"},
+		{name: "negative_neg_dec", formula: `DOLLAR(-1234.567, -2)`, want: "($1,200)"},
+
+		// Zero
+		{name: "zero", formula: `DOLLAR(0, 2)`, want: "$0.00"},
+		{name: "zero_default", formula: `DOLLAR(0)`, want: "$0.00"},
+
+		// Small values
+		{name: "small_positive", formula: `DOLLAR(0.5, 2)`, want: "$0.50"},
+		{name: "small_negative", formula: `DOLLAR(-0.5, 2)`, want: "($0.50)"},
+
+		// String coercion
+		{name: "string_number", formula: `DOLLAR("1234", 2)`, want: "$1,234.00"},
+
+		// Boolean coercion
+		{name: "bool_true", formula: `DOLLAR(TRUE, 2)`, want: "$1.00"},
+		{name: "bool_false", formula: `DOLLAR(FALSE, 2)`, want: "$0.00"},
+
+		// Large numbers
+		{name: "large_number", formula: `DOLLAR(1234567.89, 2)`, want: "$1,234,567.89"},
+		{name: "millions", formula: `DOLLAR(1000000, 0)`, want: "$1,000,000"},
+
+		// Many decimal places
+		{name: "many_decimals", formula: `DOLLAR(1.5, 5)`, want: "$1.50000"},
+
+		// Negative zero edge case: -0.001 with 2 decimals rounds to 0.00
+		{name: "neg_zero_round", formula: `DOLLAR(-0.001, 2)`, want: "$0.00"},
+
+		// No decimal part
+		{name: "integer_input", formula: `DOLLAR(42, 0)`, want: "$42"},
+
+		// Small number no comma
+		{name: "small_no_comma", formula: `DOLLAR(5, 2)`, want: "$5.00"},
+
+		// Negative decimals rounding
+		{name: "neg_dec_round_up", formula: `DOLLAR(1250, -2)`, want: "$1,300"},
+		{name: "neg_dec_thousands", formula: `DOLLAR(12345, -3)`, want: "$12,000"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "no_args", formula: `DOLLAR()`},
+		{name: "too_many_args", formula: `DOLLAR(1,2,3)`},
+		{name: "non_numeric_string", formula: `DOLLAR("abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LEN comprehensive tests
 // ---------------------------------------------------------------------------
 
@@ -1576,5 +1672,934 @@ func TestCHAR_Windows1252(t *testing.T) {
 				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
 			}
 		})
+	}
+}
+
+func TestROMAN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic values
+		{`ROMAN(1)`, "I"},
+		{`ROMAN(2)`, "II"},
+		{`ROMAN(3)`, "III"},
+		{`ROMAN(4)`, "IV"},
+		{`ROMAN(5)`, "V"},
+		{`ROMAN(9)`, "IX"},
+		{`ROMAN(10)`, "X"},
+		{`ROMAN(14)`, "XIV"},
+		{`ROMAN(40)`, "XL"},
+		{`ROMAN(44)`, "XLIV"},
+		{`ROMAN(49)`, "XLIX"},
+		{`ROMAN(50)`, "L"},
+		{`ROMAN(90)`, "XC"},
+		{`ROMAN(99)`, "XCIX"},
+		{`ROMAN(100)`, "C"},
+		{`ROMAN(400)`, "CD"},
+		{`ROMAN(499)`, "CDXCIX"},
+		{`ROMAN(500)`, "D"},
+		{`ROMAN(900)`, "CM"},
+		{`ROMAN(1000)`, "M"},
+		{`ROMAN(1999)`, "MCMXCIX"},
+		{`ROMAN(2000)`, "MM"},
+		{`ROMAN(3999)`, "MMMCMXCIX"},
+		// Zero returns empty string
+		{`ROMAN(0)`, ""},
+		// String coercion
+		{`ROMAN("14")`, "XIV"},
+		// Default form (classic)
+		{`ROMAN(499, 0)`, "CDXCIX"},
+		// Boolean form: TRUE = 0 (Classic)
+		{`ROMAN(499, TRUE)`, "CDXCIX"},
+		// Form 4 (simplified)
+		{`ROMAN(499, 4)`, "ID"},
+		// Boolean form: FALSE = 4 (Simplified)
+		{`ROMAN(499, FALSE)`, "ID"},
+		// Form 1
+		{`ROMAN(999, 1)`, "LMVLIV"},
+		// Form 2
+		{`ROMAN(999, 2)`, "XMIX"},
+		// Form 3
+		{`ROMAN(999, 3)`, "VMIV"},
+		// Form 4
+		{`ROMAN(999, 4)`, "IM"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		formula string
+	}{
+		{`ROMAN(-1)`},
+		{`ROMAN(4000)`},
+		{`ROMAN()`},
+		{`ROMAN(1,2,3)`},
+		{`ROMAN("abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VALUETOTEXT tests
+// ---------------------------------------------------------------------------
+
+func TestVALUETOTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Numbers
+		{"integer", `VALUETOTEXT(123)`, "123"},
+		{"float", `VALUETOTEXT(1.5)`, "1.5"},
+		{"negative", `VALUETOTEXT(-42)`, "-42"},
+		{"zero", `VALUETOTEXT(0)`, "0"},
+		{"large_number", `VALUETOTEXT(1000000)`, "1000000"},
+		{"small_float", `VALUETOTEXT(0.001)`, "0.001"},
+
+		// Strings concise (format 0)
+		{"string_concise", `VALUETOTEXT("hello")`, "hello"},
+		{"string_concise_explicit", `VALUETOTEXT("hello",0)`, "hello"},
+		{"empty_string", `VALUETOTEXT("")`, ""},
+		{"string_with_spaces", `VALUETOTEXT("hello world")`, "hello world"},
+
+		// Strings strict (format 1)
+		{"string_strict", `VALUETOTEXT("hello",1)`, `"hello"`},
+		{"empty_string_strict", `VALUETOTEXT("",1)`, `""`},
+		{"string_strict_spaces", `VALUETOTEXT("hello world",1)`, `"hello world"`},
+
+		// Booleans
+		{"bool_true", `VALUETOTEXT(TRUE)`, "TRUE"},
+		{"bool_false", `VALUETOTEXT(FALSE)`, "FALSE"},
+		{"bool_true_strict", `VALUETOTEXT(TRUE,1)`, "TRUE"},
+		{"bool_false_strict", `VALUETOTEXT(FALSE,1)`, "FALSE"},
+
+		// Numbers with format
+		{"number_concise", `VALUETOTEXT(123,0)`, "123"},
+		{"number_strict", `VALUETOTEXT(123,1)`, "123"},
+		{"float_strict", `VALUETOTEXT(1.5,1)`, "1.5"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{"no_args", `VALUETOTEXT()`},
+		{"too_many_args", `VALUETOTEXT(1,2,3)`},
+		{"invalid_format_2", `VALUETOTEXT(1,2)`},
+		{"invalid_format_neg", `VALUETOTEXT(1,-1)`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+
+	// Error propagation
+	t.Run("error_propagation_div0", func(t *testing.T) {
+		cf := evalCompile(t, `VALUETOTEXT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("VALUETOTEXT(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagation_na", func(t *testing.T) {
+		cf := evalCompile(t, `VALUETOTEXT(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("VALUETOTEXT(NA()) = %v, want error", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ARRAYTOTEXT tests
+// ---------------------------------------------------------------------------
+
+func TestARRAYTOTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Concise format (default)
+		{"numbers_concise", `ARRAYTOTEXT({1,2,3})`, "1, 2, 3"},
+		{"numbers_concise_explicit", `ARRAYTOTEXT({1,2,3},0)`, "1, 2, 3"},
+		{"mixed_concise", `ARRAYTOTEXT({1,"hello",TRUE})`, "1, hello, TRUE"},
+		{"single_value", `ARRAYTOTEXT({42})`, "42"},
+		{"single_string", `ARRAYTOTEXT({"test"})`, "test"},
+		{"floats_concise", `ARRAYTOTEXT({1.5,2.5,3.5})`, "1.5, 2.5, 3.5"},
+		{"bools_concise", `ARRAYTOTEXT({TRUE,FALSE})`, "TRUE, FALSE"},
+
+		// Strict format
+		{"numbers_strict", `ARRAYTOTEXT({1,2,3},1)`, "{1,2,3}"},
+		{"mixed_strict", `ARRAYTOTEXT({1,"hello",TRUE},1)`, `{1,"hello",TRUE}`},
+		{"single_value_strict", `ARRAYTOTEXT({42},1)`, "{42}"},
+		{"single_string_strict", `ARRAYTOTEXT({"test"},1)`, `{"test"}`},
+		{"floats_strict", `ARRAYTOTEXT({1.5,2.5},1)`, "{1.5,2.5}"},
+		{"bools_strict", `ARRAYTOTEXT({TRUE,FALSE},1)`, "{TRUE,FALSE}"},
+
+		// Multi-row arrays (semicolon separator)
+		{"multirow_concise", `ARRAYTOTEXT({1,2;3,4})`, "1, 2, 3, 4"},
+		{"multirow_strict", `ARRAYTOTEXT({1,2;3,4},1)`, "{1,2;3,4}"},
+
+		// Scalar (non-array) input
+		{"scalar_number", `ARRAYTOTEXT(42)`, "42"},
+		{"scalar_string", `ARRAYTOTEXT("hello")`, "hello"},
+		{"scalar_string_strict", `ARRAYTOTEXT("hello",1)`, `{"hello"}`},
+		{"scalar_bool", `ARRAYTOTEXT(TRUE)`, "TRUE"},
+		{"scalar_number_strict", `ARRAYTOTEXT(42,1)`, "{42}"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{"no_args", `ARRAYTOTEXT()`},
+		{"too_many_args", `ARRAYTOTEXT({1},2,3)`},
+		{"invalid_format_2", `ARRAYTOTEXT({1},2)`},
+		{"invalid_format_neg", `ARRAYTOTEXT({1},-1)`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+func TestTEXTBEFORE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic cases
+		{`TEXTBEFORE("Hello World"," ")`, "Hello"},
+		{`TEXTBEFORE("Hello-World-Test","-")`, "Hello"},
+		{`TEXTBEFORE("Hello-World-Test","-",2)`, "Hello-World"},
+		{`TEXTBEFORE("Hello-World-Test","-",1)`, "Hello"},
+		// Negative instance_num (count from end)
+		{`TEXTBEFORE("Hello-World-Test","-",-1)`, "Hello-World"},
+		{`TEXTBEFORE("Hello-World-Test","-",-2)`, "Hello"},
+		// Case insensitive
+		{`TEXTBEFORE("Hello WORLD","world",1,1)`, "Hello "},
+		{`TEXTBEFORE("Hello WORLD","WORLD",1,0)`, "Hello "},
+		{`TEXTBEFORE("abcABCabc","abc",2,1)`, "abc"},
+		{`TEXTBEFORE("abcABCabc","abc",3,1)`, "abcABC"},
+		// if_not_found
+		{`TEXTBEFORE("Hello","x",1,0,0,"missing")`, "missing"},
+		{`TEXTBEFORE("Hello","x",1,0,0,"")`, ""},
+		// match_end=1: when delimiter not found, return full text
+		{`TEXTBEFORE("Hello","x",1,0,1)`, "Hello"},
+		// Empty delimiter returns ""
+		{`TEXTBEFORE("Hello","")`, ""},
+		{`TEXTBEFORE("Hello","",1)`, ""},
+		// Empty delimiter with instance > 1
+		{`TEXTBEFORE("Hello","",2)`, "H"},
+		{`TEXTBEFORE("Hello","",3)`, "He"},
+		// Delimiter at start of string
+		{`TEXTBEFORE("-Hello","-")`, ""},
+		// Delimiter at end of string
+		{`TEXTBEFORE("Hello-","-")`, "Hello"},
+		// Multi-char delimiter
+		{`TEXTBEFORE("Hello::World","::")`, "Hello"},
+		{`TEXTBEFORE("a::b::c","::",2)`, "a::b"},
+		// Text with no occurrence, using match_end
+		{`TEXTBEFORE("Hello","xyz",1,0,1)`, "Hello"},
+		// Repeated delimiter
+		{`TEXTBEFORE("aaa","a",1)`, ""},
+		{`TEXTBEFORE("aaa","a",2)`, "a"},
+		{`TEXTBEFORE("aaa","a",3)`, "aa"},
+		// Negative instance with empty delimiter
+		{`TEXTBEFORE("Hello","",-1)`, ""},
+		// match_end=1 with instance beyond count
+		{`TEXTBEFORE("a-b","-",2,0,1)`, "a-b"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error / #N/A cases
+	errTests := []struct {
+		formula string
+		wantErr ErrorValue
+	}{
+		// Not found returns #N/A
+		{`TEXTBEFORE("Hello","x")`, ErrValNA},
+		{`TEXTBEFORE("Hello","xyz")`, ErrValNA},
+		// instance_num=0 returns #VALUE!
+		{`TEXTBEFORE("Hello","-",0)`, ErrValVALUE},
+		// Too few args
+		{`TEXTBEFORE("Hello")`, ErrValVALUE},
+		// Instance beyond count without match_end
+		{`TEXTBEFORE("a-b","-",3)`, ErrValNA},
+		// Negative instance beyond count
+		{`TEXTBEFORE("a-b","-",-3)`, ErrValNA},
+		// Case sensitive mismatch
+		{`TEXTBEFORE("Hello","hello",1,0)`, ErrValNA},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTEXTAFTER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		formula string
+		want    string
+	}{
+		// Basic cases
+		{`TEXTAFTER("Hello World"," ")`, "World"},
+		{`TEXTAFTER("Hello-World-Test","-")`, "World-Test"},
+		{`TEXTAFTER("Hello-World-Test","-",2)`, "Test"},
+		{`TEXTAFTER("Hello-World-Test","-",1)`, "World-Test"},
+		// Negative instance_num (count from end)
+		{`TEXTAFTER("Hello-World-Test","-",-1)`, "Test"},
+		{`TEXTAFTER("Hello-World-Test","-",-2)`, "World-Test"},
+		// Case insensitive
+		{`TEXTAFTER("Hello WORLD","world",1,1)`, ""},
+		{`TEXTAFTER("Hello WORLD test","world",1,1)`, " test"},
+		{`TEXTAFTER("abcABCabc","abc",2,1)`, "abc"},
+		{`TEXTAFTER("abcABCabc","abc",3,1)`, ""},
+		// if_not_found
+		{`TEXTAFTER("Hello","x",1,0,0,"missing")`, "missing"},
+		{`TEXTAFTER("Hello","x",1,0,0,"")`, ""},
+		// match_end=1: when delimiter not found, return ""
+		{`TEXTAFTER("Hello","x",1,0,1)`, ""},
+		// Empty delimiter returns full text
+		{`TEXTAFTER("Hello","")`, "Hello"},
+		{`TEXTAFTER("Hello","",1)`, "Hello"},
+		// Empty delimiter with instance > 1
+		{`TEXTAFTER("Hello","",2)`, "ello"},
+		{`TEXTAFTER("Hello","",3)`, "llo"},
+		// Delimiter at start of string
+		{`TEXTAFTER("-Hello","-")`, "Hello"},
+		// Delimiter at end of string
+		{`TEXTAFTER("Hello-","-")`, ""},
+		// Multi-char delimiter
+		{`TEXTAFTER("Hello::World","::")`, "World"},
+		{`TEXTAFTER("a::b::c","::",2)`, "c"},
+		// Text with no occurrence, using match_end
+		{`TEXTAFTER("Hello","xyz",1,0,1)`, ""},
+		// Repeated delimiter
+		{`TEXTAFTER("aaa","a",1)`, "aa"},
+		{`TEXTAFTER("aaa","a",2)`, "a"},
+		{`TEXTAFTER("aaa","a",3)`, ""},
+		// Negative instance with empty delimiter
+		{`TEXTAFTER("Hello","",-1)`, "Hello"},
+		// match_end=1 with instance beyond count
+		{`TEXTAFTER("a-b","-",2,0,1)`, ""},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error / #N/A cases
+	errTests := []struct {
+		formula string
+		wantErr ErrorValue
+	}{
+		// Not found returns #N/A
+		{`TEXTAFTER("Hello","x")`, ErrValNA},
+		{`TEXTAFTER("Hello","xyz")`, ErrValNA},
+		// instance_num=0 returns #VALUE!
+		{`TEXTAFTER("Hello","-",0)`, ErrValVALUE},
+		// Too few args
+		{`TEXTAFTER("Hello")`, ErrValVALUE},
+		// Instance beyond count without match_end
+		{`TEXTAFTER("a-b","-",3)`, ErrValNA},
+		// Negative instance beyond count
+		{`TEXTAFTER("a-b","-",-3)`, ErrValNA},
+		// Case sensitive mismatch
+		{`TEXTAFTER("Hello","hello",1,0)`, ErrValNA},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEXTSPLIT
+// ---------------------------------------------------------------------------
+
+func TestTEXTSPLIT_BasicColSplit(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,C", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_2D(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C,D", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	expected := [][]string{{"A", "B"}, {"C", "D"}}
+	for r, row := range expected {
+		for c, w := range row {
+			if got.Array[r][c].Str != w {
+				t.Errorf("[%d][%d]: got %q, want %q", r, c, got.Array[r][c].Str, w)
+			}
+		}
+	}
+}
+
+func TestTEXTSPLIT_EmptySegments(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmpty(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,B", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 1x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_MultiCharDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A::B::C", "::")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_CaseInsensitive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("AxBxC", "X",,, 1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_CaseSensitiveNoMatch(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("axbxc", "X")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "axbxc" {
+		t.Errorf("expected original text, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_Padding(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 || len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2x2, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("row 0: got %v %v, want A B", got.Array[0][0], got.Array[0][1])
+	}
+	if got.Array[1][0].Str != "C" {
+		t.Errorf("row 1 col 0: got %v, want C", got.Array[1][0])
+	}
+	if got.Array[1][1].Type != ValueError || got.Array[1][1].Err != ErrValNA {
+		t.Errorf("row 1 col 1: got %v, want #N/A", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_CustomPadWith(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";",,,0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if got.Array[1][1].Type != ValueNumber || got.Array[1][1].Num != 0 {
+		t.Errorf("row 1 col 1: got %v, want 0", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_NoMatch(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "hello" {
+		t.Errorf("expected 'hello', got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_EmptyText(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "" {
+		t.Errorf("expected empty string, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_TooFewArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_SingleChar(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "A" {
+		t.Errorf("expected 'A', got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_DelimiterAtEnd(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][2].Str != "" {
+		t.Errorf("col 2: got %q, want empty", got.Array[0][2].Str)
+	}
+}
+
+func TestTEXTSPLIT_DelimiterAtStart(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",A,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "" {
+		t.Errorf("col 0: got %q, want empty", got.Array[0][0].Str)
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyRows(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A;B;;C", ",", ";",TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"A", "B", "C"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_ConsecutiveColDelimiters(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 4 {
+		t.Fatalf("expected 4 cols, got %d", len(got.Array[0]))
+	}
+	want := []string{"A", "", "", "B"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyConsecutive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,,B", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("got %v, want [A, B]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_CaseInsensitive2D(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("AXBxC", "x", , , 1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"A", "B", "C"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_PadWithString(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";",,,"N/A")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if got.Array[1][1].Type != ValueString || got.Array[1][1].Str != "N/A" {
+		t.Errorf("pad: got %v, want 'N/A'", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_OnlyRowDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A;B;C", "", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"A", "B", "C"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_UnevenRows3x(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,C;D;E,F", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	if len(got.Array[0]) != 3 || len(got.Array[1]) != 3 || len(got.Array[2]) != 3 {
+		t.Fatalf("expected 3 cols each, got %d, %d, %d",
+			len(got.Array[0]), len(got.Array[1]), len(got.Array[2]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" || got.Array[0][2].Str != "C" {
+		t.Errorf("row 0: got %v", got.Array[0])
+	}
+	if got.Array[1][0].Str != "D" {
+		t.Errorf("row 1 col 0: got %v, want D", got.Array[1][0])
+	}
+	if got.Array[1][1].Type != ValueError || got.Array[1][1].Err != ErrValNA {
+		t.Errorf("row 1 col 1: got %v, want #N/A", got.Array[1][1])
+	}
+	if got.Array[2][0].Str != "E" || got.Array[2][1].Str != "F" {
+		t.Errorf("row 2: got %v", got.Array[2])
+	}
+	if got.Array[2][2].Type != ValueError || got.Array[2][2].Err != ErrValNA {
+		t.Errorf("row 2 col 2: got %v, want #N/A", got.Array[2][2])
+	}
+}
+
+func TestTEXTSPLIT_TwoElements(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("got %v, want [A, B]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_SpaceDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello world foo", " ")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"hello", "world", "foo"}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_MatchModeZeroCaseSensitive(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("aXbXc", "x",,, 0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "aXbXc" {
+		t.Errorf("expected original text, got %v", got)
 	}
 }

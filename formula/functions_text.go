@@ -17,6 +17,7 @@ func init() {
 	Register("CODE", NoCtx(fnCODE))
 	Register("CONCAT", NoCtx(fnCONCAT))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
+	Register("DOLLAR", NoCtx(fnDOLLAR))
 	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
 	Register("FIXED", NoCtx(fnFIXED))
@@ -29,14 +30,20 @@ func init() {
 	Register("REPLACE", NoCtx(fnREPLACE))
 	Register("REPT", NoCtx(fnREPT))
 	Register("RIGHT", NoCtx(fnRIGHT))
+	Register("ROMAN", NoCtx(fnROMAN))
 	Register("SEARCH", NoCtx(fnSEARCH))
 	Register("SUBSTITUTE", NoCtx(fnSUBSTITUTE))
 	Register("T", NoCtx(fnT))
 	Register("TEXT", fnTEXTCtx)
+	Register("TEXTAFTER", NoCtx(fnTextAfter))
+	Register("TEXTBEFORE", NoCtx(fnTextBefore))
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
+	Register("TEXTSPLIT", NoCtx(fnTextSplit))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
+	Register("VALUETOTEXT", NoCtx(fnValueToText))
+	Register("ARRAYTOTEXT", NoCtx(fnArrayToText))
 }
 
 func fnCHOOSE(args []Value) (Value, error) {
@@ -85,6 +92,49 @@ func fnCONCATENATE(args []Value) (Value, error) {
 		b.WriteString(ValueToString(arg))
 	}
 	return StringVal(b.String()), nil
+}
+
+func fnDOLLAR(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	decimals := 2
+	if len(args) == 2 {
+		d, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		decimals = int(d)
+	}
+
+	// For negative decimals, round to the left of the decimal point.
+	if decimals < 0 {
+		factor := math.Pow(10, float64(-decimals))
+		n = math.Round(n/factor) * factor
+		decimals = 0
+	} else {
+		factor := math.Pow(10, float64(decimals))
+		n = math.Round(n*factor) / factor
+	}
+
+	// Handle negative zero: after rounding, n may be -0.
+	negative := n < 0
+	if negative {
+		n = -n
+	}
+	// Ensure -0.0 becomes +0.0.
+	n = n + 0
+
+	formatted := FormatWithCommas(n, decimals)
+	if negative {
+		return StringVal("($" + formatted + ")"), nil
+	}
+	return StringVal("$" + formatted), nil
 }
 
 func fnFIND(args []Value) (Value, error) {
@@ -793,4 +843,677 @@ func fnVALUEFn(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return NumberVal(num), nil
+}
+
+// romanPair maps an integer value to its Roman numeral representation.
+type romanPair struct {
+	val int
+	sym string
+}
+
+// romanTables contains the value-to-symbol tables for each ROMAN form level (0-4).
+// Form 0 is classic Roman numerals; higher forms allow increasingly non-standard
+// subtractive pairs for more compact output.
+var romanTables = [5][]romanPair{
+	// Form 0: Classic
+	{
+		{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+		{100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 1
+	{
+		{1000, "M"}, {950, "LM"}, {900, "CM"}, {500, "D"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {95, "VC"}, {90, "XC"}, {50, "L"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 2
+	{
+		{1000, "M"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 3
+	{
+		{1000, "M"}, {995, "VM"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {495, "VD"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+	// Form 4: Simplified (most concise)
+	{
+		{1000, "M"}, {999, "IM"}, {995, "VM"}, {990, "XM"}, {950, "LM"}, {900, "CM"},
+		{500, "D"}, {499, "ID"}, {495, "VD"}, {490, "XD"}, {450, "LD"}, {400, "CD"},
+		{100, "C"}, {99, "IC"}, {95, "VC"}, {90, "XC"},
+		{50, "L"}, {49, "IL"}, {45, "VL"}, {40, "XL"},
+		{10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	},
+}
+
+func fnROMAN(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	number := int(n)
+
+	if number < 0 || number > 3999 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if number == 0 {
+		return StringVal(""), nil
+	}
+
+	form := 0
+	if len(args) == 2 {
+		// TRUE -> 0 (Classic), FALSE -> 4 (Simplified)
+		if args[1].Type == ValueBool {
+			if args[1].Bool {
+				form = 0
+			} else {
+				form = 4
+			}
+		} else {
+			f, e := CoerceNum(args[1])
+			if e != nil {
+				return *e, nil
+			}
+			form = int(f)
+		}
+	}
+	if form < 0 {
+		form = 0
+	}
+	if form > 4 {
+		form = 4
+	}
+
+	table := romanTables[form]
+	var b strings.Builder
+	rem := number
+	for _, p := range table {
+		for rem >= p.val {
+			b.WriteString(p.sym)
+			rem -= p.val
+		}
+	}
+	return StringVal(b.String()), nil
+}
+
+// valueToTextFormat formats a single value for VALUETOTEXT / ARRAYTOTEXT.
+// When strict is true, strings are wrapped in escaped double-quotes.
+func valueToTextFormat(v Value, strict bool) string {
+	switch v.Type {
+	case ValueNumber:
+		return excelNumberToString(v.Num)
+	case ValueString:
+		if strict {
+			return "\"" + v.Str + "\""
+		}
+		return v.Str
+	case ValueBool:
+		if v.Bool {
+			return "TRUE"
+		}
+		return "FALSE"
+	case ValueEmpty:
+		return ""
+	default:
+		return ""
+	}
+}
+
+func fnValueToText(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	v := args[0]
+	if v.Type == ValueError {
+		return v, nil
+	}
+
+	format := 0
+	if len(args) == 2 {
+		f, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		format = int(f)
+		if format != 0 && format != 1 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	return StringVal(valueToTextFormat(v, format == 1)), nil
+}
+
+func fnArrayToText(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	format := 0
+	if len(args) == 2 {
+		f, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		format = int(f)
+		if format != 0 && format != 1 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	strict := format == 1
+
+	arg := args[0]
+	if arg.Type == ValueError {
+		return arg, nil
+	}
+
+	if strict {
+		// Strict: {v1,v2;v3,v4} with rows separated by ";" and columns by ","
+		var rows []string
+		if arg.Type == ValueArray {
+			for _, row := range arg.Array {
+				var cols []string
+				for _, cell := range row {
+					cols = append(cols, valueToTextFormat(cell, true))
+				}
+				rows = append(rows, strings.Join(cols, ","))
+			}
+		} else {
+			rows = append(rows, valueToTextFormat(arg, true))
+		}
+		return StringVal("{" + strings.Join(rows, ";") + "}"), nil
+	}
+
+	// Concise: join all values with ", "
+	var vals []Value
+	if arg.Type == ValueArray {
+		for _, row := range arg.Array {
+			vals = append(vals, row...)
+		}
+	} else {
+		vals = append(vals, arg)
+	}
+	var parts []string
+	for _, v := range vals {
+		parts = append(parts, valueToTextFormat(v, false))
+	}
+	return StringVal(strings.Join(parts, ", ")), nil
+}
+
+// textFindAllOccurrences finds all starting byte positions of delimiter in text.
+// If caseInsensitive is true, matching is case-insensitive.
+func textFindAllOccurrences(text, delimiter string, caseInsensitive bool) []int {
+	if delimiter == "" {
+		return nil
+	}
+	searchText := text
+	searchDelim := delimiter
+	if caseInsensitive {
+		searchText = strings.ToLower(text)
+		searchDelim = strings.ToLower(delimiter)
+	}
+	var positions []int
+	start := 0
+	for {
+		idx := strings.Index(searchText[start:], searchDelim)
+		if idx < 0 {
+			break
+		}
+		positions = append(positions, start+idx)
+		start += idx + len(searchDelim)
+	}
+	return positions
+}
+
+func fnTextBefore(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors from text arg.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// Propagate errors from delimiter arg.
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	delimiter := ValueToString(args[1])
+
+	instanceNum := 1
+	if len(args) >= 3 {
+		n, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		instanceNum = int(n)
+	}
+	if instanceNum == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	matchMode := 0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(m)
+	}
+
+	matchEnd := 0
+	if len(args) >= 5 {
+		me, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		matchEnd = int(me)
+	}
+
+	var ifNotFound *Value
+	if len(args) >= 6 {
+		v := args[5]
+		ifNotFound = &v
+	}
+
+	caseInsensitive := matchMode == 1
+
+	// Empty delimiter: TEXTBEFORE returns "" for instance 1, and handles
+	// negative instances as counting empty positions from the end.
+	if delimiter == "" {
+		if instanceNum == 1 || instanceNum == -1 {
+			return StringVal(""), nil
+		}
+		runes := []rune(text)
+		if instanceNum > 0 {
+			// instance 2 means after 1st empty boundary = position 1, etc.
+			pos := instanceNum - 1
+			if pos > len(runes) {
+				if ifNotFound != nil {
+					return *ifNotFound, nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+			return StringVal(string(runes[:pos])), nil
+		}
+		// Negative: count from end. -2 means 2nd from end.
+		pos := len(runes) + instanceNum + 1
+		if pos < 0 || pos > len(runes) {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		return StringVal(string(runes[:pos])), nil
+	}
+
+	positions := textFindAllOccurrences(text, delimiter, caseInsensitive)
+
+	if len(positions) == 0 {
+		// Not found.
+		if matchEnd == 1 {
+			return StringVal(text), nil
+		}
+		if ifNotFound != nil {
+			return *ifNotFound, nil
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var pos int
+	if instanceNum > 0 {
+		if instanceNum > len(positions) {
+			if matchEnd == 1 && instanceNum == len(positions)+1 {
+				return StringVal(text), nil
+			}
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[instanceNum-1]
+	} else {
+		// Negative: count from end. -1 = last occurrence.
+		idx := len(positions) + instanceNum
+		if idx < 0 {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[idx]
+	}
+
+	return StringVal(text[:pos]), nil
+}
+
+func fnTextAfter(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors from text arg.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// Propagate errors from delimiter arg.
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	delimiter := ValueToString(args[1])
+
+	instanceNum := 1
+	if len(args) >= 3 {
+		n, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		instanceNum = int(n)
+	}
+	if instanceNum == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	matchMode := 0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(m)
+	}
+
+	matchEnd := 0
+	if len(args) >= 5 {
+		me, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		matchEnd = int(me)
+	}
+
+	var ifNotFound *Value
+	if len(args) >= 6 {
+		v := args[5]
+		ifNotFound = &v
+	}
+
+	caseInsensitive := matchMode == 1
+
+	// Empty delimiter: TEXTAFTER returns full text for instance 1,
+	// and handles other instances similarly to TEXTBEFORE.
+	if delimiter == "" {
+		if instanceNum == 1 || instanceNum == -1 {
+			return StringVal(text), nil
+		}
+		runes := []rune(text)
+		if instanceNum > 0 {
+			pos := instanceNum - 1
+			if pos > len(runes) {
+				if ifNotFound != nil {
+					return *ifNotFound, nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+			return StringVal(string(runes[pos:])), nil
+		}
+		// Negative
+		pos := len(runes) + instanceNum + 1
+		if pos < 0 || pos > len(runes) {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		return StringVal(string(runes[pos:])), nil
+	}
+
+	positions := textFindAllOccurrences(text, delimiter, caseInsensitive)
+
+	if len(positions) == 0 {
+		// Not found.
+		if matchEnd == 1 {
+			return StringVal(""), nil
+		}
+		if ifNotFound != nil {
+			return *ifNotFound, nil
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	var pos int
+	if instanceNum > 0 {
+		if instanceNum > len(positions) {
+			if matchEnd == 1 && instanceNum == len(positions)+1 {
+				return StringVal(""), nil
+			}
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[instanceNum-1]
+	} else {
+		// Negative: count from end. -1 = last occurrence.
+		idx := len(positions) + instanceNum
+		if idx < 0 {
+			if ifNotFound != nil {
+				return *ifNotFound, nil
+			}
+			return ErrorVal(ErrValNA), nil
+		}
+		pos = positions[idx]
+	}
+
+	return StringVal(text[pos+len(delimiter):]), nil
+}
+
+// collectDelimiters extracts a list of delimiter strings from a Value.
+// If the value is an array, all non-empty string elements are collected.
+// Otherwise the single string value is returned.
+func collectDelimiters(v Value) []string {
+	if v.Type == ValueArray {
+		var delims []string
+		for _, row := range v.Array {
+			for _, cell := range row {
+				delims = append(delims, ValueToString(cell))
+			}
+		}
+		return delims
+	}
+	return []string{ValueToString(v)}
+}
+
+// textSplitByDelimiters splits text by any of the given delimiters.
+// When caseInsensitive is true, matching is case-insensitive but the
+// original text segments are preserved. Returns the split parts.
+func textSplitByDelimiters(text string, delimiters []string, caseInsensitive bool) []string {
+	if len(delimiters) == 0 {
+		return []string{text}
+	}
+
+	searchText := text
+	searchDelims := delimiters
+	if caseInsensitive {
+		searchText = strings.ToLower(text)
+		searchDelims = make([]string, len(delimiters))
+		for i, d := range delimiters {
+			searchDelims[i] = strings.ToLower(d)
+		}
+	}
+
+	var parts []string
+	start := 0
+	for start <= len(text) {
+		// Find the earliest match among all delimiters.
+		bestIdx := -1
+		bestLen := 0
+		for i, d := range searchDelims {
+			if d == "" {
+				continue
+			}
+			idx := strings.Index(searchText[start:], d)
+			if idx >= 0 && (bestIdx == -1 || idx < bestIdx || (idx == bestIdx && len(delimiters[i]) > bestLen)) {
+				bestIdx = idx
+				bestLen = len(delimiters[i])
+			}
+		}
+		if bestIdx < 0 {
+			// No more delimiters found; take the rest.
+			parts = append(parts, text[start:])
+			break
+		}
+		parts = append(parts, text[start:start+bestIdx])
+		start += bestIdx + bestLen
+		// If delimiter is at the very end, append a trailing empty part.
+		if start == len(text) {
+			parts = append(parts, "")
+			break
+		}
+	}
+	return parts
+}
+
+func fnTextSplit(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// arg 0: text
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	text := ValueToString(args[0])
+
+	// arg 1: col_delimiter
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+	colDelims := collectDelimiters(args[1])
+
+	// arg 2: row_delimiter (optional)
+	var rowDelims []string
+	hasRowDelim := false
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
+		if args[2].Type == ValueError {
+			return args[2], nil
+		}
+		rowDelims = collectDelimiters(args[2])
+		hasRowDelim = true
+	}
+
+	// arg 3: ignore_empty (optional, default FALSE)
+	ignoreEmpty := false
+	if len(args) >= 4 && args[3].Type != ValueEmpty {
+		if args[3].Type == ValueError {
+			return args[3], nil
+		}
+		ignoreEmpty = IsTruthy(args[3])
+	}
+
+	// arg 4: match_mode (optional, default 0 = case-sensitive)
+	caseInsensitive := false
+	if len(args) >= 5 && args[4].Type != ValueEmpty {
+		if args[4].Type == ValueError {
+			return args[4], nil
+		}
+		m, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		caseInsensitive = int(m) == 1
+	}
+
+	// arg 5: pad_with (optional, default #N/A)
+	padWith := ErrorVal(ErrValNA)
+	if len(args) >= 6 && args[5].Type != ValueEmpty {
+		padWith = args[5]
+	}
+
+	// Split into rows first, then columns.
+	var rowTexts []string
+	if hasRowDelim {
+		rowTexts = textSplitByDelimiters(text, rowDelims, caseInsensitive)
+	} else {
+		rowTexts = []string{text}
+	}
+
+	// Filter empty row texts if ignore_empty.
+	if ignoreEmpty {
+		filtered := rowTexts[:0]
+		for _, rt := range rowTexts {
+			if rt != "" {
+				filtered = append(filtered, rt)
+			}
+		}
+		rowTexts = filtered
+	}
+
+	// Split each row by col_delimiter.
+	var rows [][]string
+	for _, rt := range rowTexts {
+		cols := textSplitByDelimiters(rt, colDelims, caseInsensitive)
+		if ignoreEmpty {
+			filtered := cols[:0]
+			for _, c := range cols {
+				if c != "" {
+					filtered = append(filtered, c)
+				}
+			}
+			cols = filtered
+		}
+		rows = append(rows, cols)
+	}
+
+	// If everything was filtered out, return empty string.
+	if len(rows) == 0 {
+		return StringVal(""), nil
+	}
+
+	// Find the maximum column count for padding.
+	maxCols := 0
+	for _, r := range rows {
+		if len(r) > maxCols {
+			maxCols = len(r)
+		}
+	}
+	if maxCols == 0 {
+		return StringVal(""), nil
+	}
+
+	// Build the result array.
+	result := make([][]Value, len(rows))
+	for i, r := range rows {
+		result[i] = make([]Value, maxCols)
+		for j := 0; j < maxCols; j++ {
+			if j < len(r) {
+				result[i][j] = StringVal(r[j])
+			} else {
+				result[i][j] = padWith
+			}
+		}
+	}
+
+	// If the result is 1x1, return the scalar.
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
 }

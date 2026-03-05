@@ -22,6 +22,8 @@ func init() {
 	Register("ROW", fnROW)
 	Register("ROWS", NoCtx(fnROWS))
 	Register("TYPE", NoCtx(fnTYPE))
+	Register("ISFORMULA", fnISFORMULA)
+	Register("FORMULATEXT", fnFORMULATEXT)
 }
 
 func fnIFNA(args []Value) (Value, error) {
@@ -256,4 +258,55 @@ func fnTYPE(args []Value) (Value, error) {
 	default:
 		return NumberVal(1), nil
 	}
+}
+
+// fnISFORMULA implements ISFORMULA(reference). It returns TRUE if the
+// referenced cell contains a formula, FALSE otherwise. The argument must
+// be a cell reference (ValueRef); non-reference arguments return #VALUE!.
+func fnISFORMULA(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type != ValueRef {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if ctx == nil || ctx.Resolver == nil {
+		return BoolVal(false), nil
+	}
+	fi, ok := ctx.Resolver.(FormulaIntrospector)
+	if !ok {
+		// Resolver does not support formula introspection; fall back to FALSE.
+		return BoolVal(false), nil
+	}
+	row := int(args[0].Num) / 100_000
+	col := int(args[0].Num) % 100_000
+	return BoolVal(fi.HasFormula(ctx.CurrentSheet, col, row)), nil
+}
+
+// fnFORMULATEXT implements FORMULATEXT(reference). It returns the formula
+// text (with leading '=') if the referenced cell contains a formula, or
+// #N/A if it does not. The argument must be a cell reference (ValueRef);
+// non-reference arguments return #VALUE!.
+func fnFORMULATEXT(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type != ValueRef {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if ctx == nil || ctx.Resolver == nil {
+		return ErrorVal(ErrValNA), nil
+	}
+	fi, ok := ctx.Resolver.(FormulaIntrospector)
+	if !ok {
+		// Resolver does not support formula introspection; return #N/A.
+		return ErrorVal(ErrValNA), nil
+	}
+	row := int(args[0].Num) / 100_000
+	col := int(args[0].Num) % 100_000
+	text := fi.GetFormulaText(ctx.CurrentSheet, col, row)
+	if text == "" {
+		return ErrorVal(ErrValNA), nil
+	}
+	return StringVal("=" + text), nil
 }
