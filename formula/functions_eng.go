@@ -16,8 +16,12 @@ func init() {
 	Register("DEC2HEX", NoCtx(fnDec2Hex))
 	Register("DEC2OCT", NoCtx(fnDec2Oct))
 	Register("GESTEP", NoCtx(fnGESTEP))
+	Register("HEX2BIN", NoCtx(fnHex2Bin))
 	Register("HEX2DEC", NoCtx(fnHex2Dec))
+	Register("HEX2OCT", NoCtx(fnHex2Oct))
+	Register("OCT2BIN", NoCtx(fnOct2Bin))
 	Register("OCT2DEC", NoCtx(fnOct2Dec))
+	Register("OCT2HEX", NoCtx(fnOct2Hex))
 }
 
 // fnBin2Dec implements the Excel BIN2DEC function.
@@ -544,6 +548,303 @@ func fnOct2Dec(args []Value) (Value, error) {
 	}
 
 	return NumberVal(result), nil
+}
+
+// parseHexToInt64 parses a hex string (max 10 digits, 0-9/A-F/a-f only) to int64,
+// handling two's complement for 10-digit numbers starting with 8-F.
+// Returns the parsed value and an error Value if validation fails.
+func parseHexToInt64(args []Value) (int64, *Value) {
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return 0, &args[0]
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Validate length: max 10 hex digits, not empty.
+	if len(s) == 0 || len(s) > 10 {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Validate characters: only hex chars allowed.
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+			v := ErrorVal(ErrValNUM)
+			return 0, &v
+		}
+	}
+
+	// Parse as unsigned hex.
+	u, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Two's complement: 10-digit number with first digit >= 8 is negative.
+	if len(s) == 10 && s[0] >= '8' {
+		return int64(u) - 1099511627776, nil // subtract 2^40
+	}
+	return int64(u), nil
+}
+
+// parseOctToInt64 parses an octal string (max 10 digits, 0-7 only) to int64,
+// handling two's complement for 10-digit numbers starting with 4-7.
+// Returns the parsed value and an error Value if validation fails.
+func parseOctToInt64(args []Value) (int64, *Value) {
+	// Engineering functions reject bare booleans with #VALUE!.
+	if args[0].Type == ValueBool {
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return 0, &args[0]
+	}
+
+	// Coerce input to string.
+	var s string
+	switch args[0].Type {
+	case ValueNumber:
+		s = strconv.FormatInt(int64(math.Trunc(args[0].Num)), 10)
+	case ValueString:
+		s = strings.TrimSpace(args[0].Str)
+	default:
+		v := ErrorVal(ErrValVALUE)
+		return 0, &v
+	}
+
+	// Validate length: max 10 octal digits, not empty.
+	if len(s) == 0 || len(s) > 10 {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Validate characters: only 0-7 allowed.
+	for _, c := range s {
+		if c < '0' || c > '7' {
+			v := ErrorVal(ErrValNUM)
+			return 0, &v
+		}
+	}
+
+	// Parse as unsigned octal.
+	u, err := strconv.ParseUint(s, 8, 64)
+	if err != nil {
+		v := ErrorVal(ErrValNUM)
+		return 0, &v
+	}
+
+	// Two's complement: 10-digit number with first digit >= 4 is negative.
+	if len(s) == 10 && s[0] >= '4' {
+		return int64(u) - 1073741824, nil // subtract 2^30
+	}
+	return int64(u), nil
+}
+
+// fnHex2Bin implements the Excel HEX2BIN function.
+// HEX2BIN(number, [places]) — converts a hexadecimal number string to binary.
+// Input must contain only hex chars (0-9, A-F, a-f), max 10 digits.
+// Output must be in range -512 to 511 (10-bit binary).
+func fnHex2Bin(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseHexToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	// Output range check: must fit in 10-bit binary (-512 to 511).
+	if n < -512 || n > 511 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 1024 to get 10-bit binary representation.
+		result = fmt.Sprintf("%b", n+1024)
+	} else {
+		result = fmt.Sprintf("%b", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnHex2Oct implements the Excel HEX2OCT function.
+// HEX2OCT(number, [places]) — converts a hexadecimal number string to octal.
+// Input must contain only hex chars (0-9, A-F, a-f), max 10 digits.
+// Output must be in range -536870912 to 536870911 (30-bit octal).
+func fnHex2Oct(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseHexToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	// Output range check: must fit in 30-bit octal (-536870912 to 536870911).
+	if n < -536870912 || n > 536870911 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^30 to get 10-digit octal representation.
+		result = fmt.Sprintf("%o", n+1073741824)
+	} else {
+		result = fmt.Sprintf("%o", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnOct2Bin implements the Excel OCT2BIN function.
+// OCT2BIN(number, [places]) — converts an octal number string to binary.
+// Input must contain only octal chars (0-7), max 10 digits.
+// Output must be in range -512 to 511 (10-bit binary).
+func fnOct2Bin(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseOctToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	// Output range check: must fit in 10-bit binary (-512 to 511).
+	if n < -512 || n > 511 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 1024 to get 10-bit binary representation.
+		result = fmt.Sprintf("%b", n+1024)
+	} else {
+		result = fmt.Sprintf("%b", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// fnOct2Hex implements the Excel OCT2HEX function.
+// OCT2HEX(number, [places]) — converts an octal number string to hexadecimal.
+// Input must contain only octal chars (0-7), max 10 digits.
+// Output is uppercase hex. Negative numbers use 40-bit two's complement.
+func fnOct2Hex(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	n, errVal := parseOctToInt64(args)
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	var result string
+	if n < 0 {
+		// Two's complement: add 2^40 to get 10-digit hex representation.
+		result = fmt.Sprintf("%X", n+1099511627776)
+	} else {
+		result = fmt.Sprintf("%X", n)
+	}
+
+	if len(args) == 2 {
+		places, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		places = math.Trunc(places)
+		if places <= 0 || places > 10 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		p := int(places)
+		if len(result) > p {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n >= 0 {
+			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
 }
 
 // fnGESTEP implements the Excel GESTEP function.
