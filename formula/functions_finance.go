@@ -28,6 +28,9 @@ func init() {
 	Register("NOMINAL", NoCtx(fnNOMINAL))
 	Register("CUMIPMT", NoCtx(fnCumipmt))
 	Register("CUMPRINC", NoCtx(fnCumprinc))
+	Register("MIRR", NoCtx(fnMirr))
+	Register("PDURATION", NoCtx(fnPduration))
+	Register("RRI", NoCtx(fnRri))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1096,6 +1099,80 @@ func fnCumprinc(args []Value) (Value, error) {
 	return NumberVal(cumPrincipal), nil
 }
 
+// fnMirr implements MIRR(values, finance_rate, reinvest_rate).
+// Returns the modified internal rate of return for a series of periodic cash flows.
+func fnMirr(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	values := flattenValues(args[0])
+	financeRate, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	reinvestRate, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	var cashFlows []float64
+	for _, v := range values {
+		if v.Type == ValueEmpty {
+			continue
+		}
+		n, ev := CoerceNum(v)
+		if ev != nil {
+			return *ev, nil
+		}
+		cashFlows = append(cashFlows, n)
+	}
+
+	n := len(cashFlows)
+	if n < 2 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Must have at least one positive and one negative value.
+	hasPos, hasNeg := false, false
+	for _, cf := range cashFlows {
+		if cf > 0 {
+			hasPos = true
+		}
+		if cf < 0 {
+			hasNeg = true
+		}
+	}
+	if !hasPos || !hasNeg {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// FV of positive cash flows at reinvest_rate.
+	fvPositive := 0.0
+	for i, cf := range cashFlows {
+		if cf > 0 {
+			fvPositive += cf * math.Pow(1+reinvestRate, float64(n-i-1))
+		}
+	}
+
+	// PV of negative cash flows at finance_rate.
+	pvNegative := 0.0
+	for i, cf := range cashFlows {
+		if cf < 0 {
+			pvNegative += cf / math.Pow(1+financeRate, float64(i))
+		}
+	}
+
+	// MIRR = (FV_positive / (-PV_negative))^(1/(n-1)) - 1
+	ratio := fvPositive / (-pvNegative)
+	mirr := math.Pow(ratio, 1.0/float64(n-1)) - 1
+
+	if math.IsNaN(mirr) || math.IsInf(mirr, 0) {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	return NumberVal(mirr), nil
+}
+
 // fnXIRR implements XIRR(values, dates, [guess]).
 // Uses Newton's method to find the rate where XNPV = 0.
 func fnXIRR(args []Value) (Value, error) {
@@ -1182,4 +1259,55 @@ func fnXIRR(args []Value) (Value, error) {
 		rate = newRate
 	}
 	return ErrorVal(ErrValNUM), nil
+}
+
+// fnPduration implements PDURATION(rate, pv, fv).
+// Returns the number of periods required for an investment to reach a specified value.
+func fnPduration(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	fv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if rate <= 0 || pv <= 0 || fv <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	return NumberVal((math.Log(fv) - math.Log(pv)) / math.Log(1+rate)), nil
+}
+
+// fnRri implements RRI(nper, pv, fv).
+// Returns an equivalent interest rate for the growth of an investment.
+func fnRri(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nper, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	fv, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if nper <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if pv == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(math.Pow(fv/pv, 1.0/nper) - 1), nil
 }

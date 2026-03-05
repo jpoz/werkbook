@@ -1930,3 +1930,256 @@ func TestCUMPRINC_ErrorNegativeType(t *testing.T) {
 	v, _ := fnCumprinc(numArgs(0.1, 12, 1000, 1, 12, -1))
 	assertError(t, "CUMPRINC type=-1", v)
 }
+
+// === MIRR ===
+
+func mirrArray(vals ...float64) Value {
+	row := make([]Value, len(vals))
+	for i, v := range vals {
+		row[i] = NumberVal(v)
+	}
+	return Value{Type: ValueArray, Array: [][]Value{row}}
+}
+
+func TestMIRR_ExcelExample(t *testing.T) {
+	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.12) ≈ 0.126094
+	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.12)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR Excel example: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.126094) > 0.0001 {
+		t.Errorf("MIRR Excel example: got %f, want ~0.126094", v.Num)
+	}
+}
+
+func TestMIRR_AllNegative(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-1, -2, -3), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR all negative", v)
+}
+
+func TestMIRR_AllPositive(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(1, 2, 3), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR all positive", v)
+}
+
+func TestMIRR_TwoValues(t *testing.T) {
+	// MIRR({-100,110}, 0.1, 0.1) = 0.10
+	v, err := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "MIRR two values", v, 0.10)
+}
+
+func TestMIRR_ZeroFinanceRate(t *testing.T) {
+	// MIRR({-100,50,60}, 0, 0.1)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR zero finance rate: expected number, got %v", v.Type)
+	}
+	// With finance_rate=0, PV of negatives = -100
+	// FV of positives at 0.1: 50*1.1 + 60 = 55 + 60 = 115
+	// MIRR = (115/100)^(1/2) - 1 ≈ 0.07238
+	if math.Abs(v.Num-0.07238) > 0.001 {
+		t.Errorf("MIRR zero finance rate: got %f, want ~0.07238", v.Num)
+	}
+}
+
+func TestMIRR_ZeroReinvestRate(t *testing.T) {
+	// MIRR({-100,50,60}, 0.1, 0)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0.1), NumberVal(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR zero reinvest rate: expected number, got %v", v.Type)
+	}
+	// With reinvest_rate=0, FV of positives = 50 + 60 = 110
+	// PV of negatives at 0.1: -100 / 1.0 = -100
+	// MIRR = (110/100)^(1/2) - 1 ≈ 0.04881
+	if math.Abs(v.Num-0.04881) > 0.001 {
+		t.Errorf("MIRR zero reinvest rate: got %f, want ~0.04881", v.Num)
+	}
+}
+
+func TestMIRR_LargeValues(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-1000000, 300000, 400000, 500000), NumberVal(0.05), NumberVal(0.08)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR large values: expected number, got %v", v.Type)
+	}
+	// Verify it returns a reasonable rate
+	if v.Num < -1 || v.Num > 1 {
+		t.Errorf("MIRR large values: got unreasonable rate %f", v.Num)
+	}
+}
+
+func TestMIRR_WrongArgCount_TooFew(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1)})
+	assertError(t, "MIRR too few args", v)
+}
+
+func TestMIRR_WrongArgCount_TooMany(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR too many args", v)
+}
+
+func TestMIRR_ErrorPropagation_FinanceRate(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), ErrorVal(ErrValVALUE), NumberVal(0.1)})
+	assertError(t, "MIRR error in finance_rate", v)
+}
+
+func TestMIRR_ErrorPropagation_ReinvestRate(t *testing.T) {
+	v, _ := fnMirr([]Value{mirrArray(-100, 110), NumberVal(0.1), ErrorVal(ErrValVALUE)})
+	assertError(t, "MIRR error in reinvest_rate", v)
+}
+
+func TestMIRR_ErrorInValues(t *testing.T) {
+	arr := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(-100), ErrorVal(ErrValVALUE), NumberVal(50)}},
+	}
+	v, _ := fnMirr([]Value{arr, NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR error in values", v)
+}
+
+func TestMIRR_SingleValue(t *testing.T) {
+	// Only one cash flow — not enough
+	v, _ := fnMirr([]Value{mirrArray(-100), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR single value", v)
+}
+
+func TestMIRR_EqualRates(t *testing.T) {
+	// MIRR({-100,50,60}, 0.1, 0.1)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR equal rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_NegativeRates(t *testing.T) {
+	// Negative rates are valid inputs
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(-0.05), NumberVal(-0.05)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR negative rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ZeroCashFlowsIncluded(t *testing.T) {
+	// Zero values are neither positive nor negative; should still work if there are both pos and neg
+	v, err := fnMirr([]Value{mirrArray(-100, 0, 0, 110), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR with zeros: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_AllZeros(t *testing.T) {
+	// All zeros — no positive or negative
+	v, _ := fnMirr([]Value{mirrArray(0, 0, 0), NumberVal(0.1), NumberVal(0.1)})
+	assertError(t, "MIRR all zeros", v)
+}
+
+func TestMIRR_HighRates(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-100, 200, 300), NumberVal(0.5), NumberVal(0.5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR high rates: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ManyPeriods(t *testing.T) {
+	// 10 periods
+	v, err := fnMirr([]Value{mirrArray(-500, 50, 60, 70, 80, 90, 100, 110, 120, 130), NumberVal(0.08), NumberVal(0.10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR many periods: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_MultipleNegativeCashFlows(t *testing.T) {
+	// Multiple negative cash flows
+	v, err := fnMirr([]Value{mirrArray(-100, 50, -20, 80, 60), NumberVal(0.10), NumberVal(0.12)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR multiple negatives: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_SmallValues(t *testing.T) {
+	v, err := fnMirr([]Value{mirrArray(-0.01, 0.005, 0.006), NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR small values: expected number, got %v", v.Type)
+	}
+}
+
+func TestMIRR_ExcelExample2(t *testing.T) {
+	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.14) ≈ 0.134759
+	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.14)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR Excel example 2: expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.134759) > 0.0001 {
+		t.Errorf("MIRR Excel example 2: got %f, want ~0.134759", v.Num)
+	}
+}
+
+func TestMIRR_BothRatesZero(t *testing.T) {
+	// MIRR({-100,50,60}, 0, 0)
+	v, err := fnMirr([]Value{mirrArray(-100, 50, 60), NumberVal(0), NumberVal(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR both rates zero: expected number, got %v", v.Type)
+	}
+	// FV of positives at 0: 50 + 60 = 110
+	// PV of negatives at 0: -100
+	// MIRR = (110/100)^(1/2) - 1 ≈ 0.04881
+	if math.Abs(v.Num-0.04881) > 0.001 {
+		t.Errorf("MIRR both rates zero: got %f, want ~0.04881", v.Num)
+	}
+}
+
+func TestMIRR_EmptyValuesSkipped(t *testing.T) {
+	arr := Value{
+		Type: ValueArray,
+		Array: [][]Value{{NumberVal(-100), {Type: ValueEmpty}, NumberVal(110)}},
+	}
+	v, err := fnMirr([]Value{arr, NumberVal(0.1), NumberVal(0.1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("MIRR empty skipped: expected number, got %v", v.Type)
+	}
+	assertClose(t, "MIRR empty skipped", v, 0.10)
+}
