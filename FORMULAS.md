@@ -207,7 +207,7 @@ Werkbook supports **303** Excel formula functions.
 | PPMT | Financial | 1 |
 | PRODUCT | Math & Trig | - |
 | PROPER | Text | - |
-| PV | Financial | 1 |
+| PV | Financial | 3 |
 | QUARTILE | Statistical | 35 |
 | QUARTILE.EXC | Statistical | 27 |
 | QUOTIENT | Math & Trig | - |

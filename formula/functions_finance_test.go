@@ -310,6 +310,210 @@ func TestPV_Annuity(t *testing.T) {
 	assertClose(t, "PV annuity", v, 59777.15)
 }
 
+func TestPV_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Basic: present value of annuity ---
+		{
+			name: "basic annuity monthly payments",
+			args: numArgs(0.08/12, 240, -500),
+			want: 59777.15,
+		},
+		// --- Zero interest rate ---
+		{
+			name: "zero rate pmt only",
+			args: numArgs(0, 24, -500),
+			want: 12000,
+		},
+		{
+			name: "zero rate with fv",
+			args: numArgs(0, 12, -100, -500),
+			want: 1700,
+		},
+		// --- Zero payment with fv ---
+		{
+			name: "zero pmt with fv only",
+			args: numArgs(0.05/12, 120, 0, -10000),
+			want: 6071.61,
+		},
+		// --- With future value (fv argument) ---
+		{
+			name: "pmt and fv combined",
+			args: numArgs(0.08/12, 60, -300, -5000),
+			want: 18151.58,
+		},
+		// --- Type=0 (end of period) vs Type=1 (beginning of period) ---
+		{
+			name: "type 0 end of period",
+			args: numArgs(0.06/12, 12, -100, 0, 0),
+			want: 1161.89,
+		},
+		{
+			name: "type 1 beginning of period",
+			args: numArgs(0.06/12, 12, -100, 0, 1),
+			want: 1167.70,
+		},
+		// --- Negative pmt (paying out = positive PV) ---
+		{
+			name: "negative pmt deposits yield positive PV",
+			args: numArgs(0.10/12, 36, -500),
+			want: 15495.62,
+		},
+		{
+			name: "positive pmt withdrawals yield negative PV",
+			args: numArgs(0.06/12, 24, 200),
+			want: -4512.57,
+		},
+		// --- Large nper (many periods) ---
+		{
+			name: "large nper 480 months",
+			args: numArgs(0.04/12, 480, -100),
+			want: 23926.97,
+		},
+		// --- All zeros ---
+		{
+			name: "all zeros",
+			args: numArgs(0, 0, 0),
+			want: 0,
+		},
+		{
+			name: "all zeros with fv and type",
+			args: numArgs(0, 0, 0, 0, 0),
+			want: 0,
+		},
+		// --- Only fv, no pmt ---
+		{
+			name: "only fv no pmt",
+			args: numArgs(0.10, 5, 0, -1000),
+			want: 620.92,
+		},
+		// --- Only pmt, no fv ---
+		{
+			name: "only pmt no fv",
+			args: numArgs(0.08/12, 120, -200),
+			want: 16484.30,
+		},
+		// --- Excel doc example: PV(0.08/12, 12*20, 500, , 0) = -59777.15 ---
+		// (sign convention: positive pmt = receiving money, so PV is negative)
+		{
+			name: "Excel doc example annuity payout",
+			args: numArgs(0.08/12, 12*20, 500, 0, 0),
+			want: -59777.15,
+		},
+		// --- Monthly vs annual rates ---
+		{
+			name: "annual rate 10% over 3 years",
+			args: numArgs(0.10, 3, -1000),
+			want: 2486.85,
+		},
+		{
+			name: "monthly rate equivalent",
+			args: numArgs(0.10/12, 36, -1000),
+			want: 30991.24,
+		},
+		// --- Mortgage present value ---
+		{
+			name: "mortgage 30yr 5%",
+			args: numArgs(0.05/12, 360, -1073.64),
+			want: 199999.40,
+		},
+		// --- String coercion for args ---
+		{
+			name: "string coercion rate",
+			args: []Value{StringVal("0.06"), NumberVal(12), NumberVal(-100)},
+			want: 838.38,
+		},
+		{
+			name: "string coercion nper",
+			args: []Value{NumberVal(0.05), StringVal("3"), NumberVal(-1000)},
+			want: 2723.25,
+		},
+		{
+			name: "string coercion pmt",
+			args: []Value{NumberVal(0.05), NumberVal(3), StringVal("-1000")},
+			want: 2723.25,
+		},
+		{
+			name: "string coercion fv",
+			args: []Value{NumberVal(0.05), NumberVal(3), NumberVal(0), StringVal("-1000")},
+			want: 863.84,
+		},
+		{
+			name: "string coercion type",
+			args: []Value{NumberVal(0.06/12), NumberVal(12), NumberVal(-100), NumberVal(0), StringVal("1")},
+			want: 1167.70,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestPV_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "too few args",
+			args: numArgs(0.05, 10),
+		},
+		{
+			name: "too many args",
+			args: numArgs(0.05, 10, -100, 0, 0, 99),
+		},
+		{
+			name: "non-numeric rate",
+			args: []Value{StringVal("abc"), NumberVal(10), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric nper",
+			args: []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(-100)},
+		},
+		{
+			name: "non-numeric pmt",
+			args: []Value{NumberVal(0.05), NumberVal(10), StringVal("bad")},
+		},
+		{
+			name: "non-numeric fv",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), StringVal("bad")},
+		},
+		{
+			name: "non-numeric type",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(-100), NumberVal(0), StringVal("bad")},
+		},
+		{
+			name: "nper zero with nonzero rate",
+			args: numArgs(0.05, 0, -100),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
 // === NPER ===
 
 func TestNPER_Loan(t *testing.T) {
