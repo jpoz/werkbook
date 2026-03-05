@@ -113,8 +113,13 @@ func fnCEILING(args []Value) (Value, error) {
 	if sig == 0 {
 		return NumberVal(0), nil
 	}
-	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+	// Excel: positive number with negative significance is an error.
+	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
+	}
+	// Excel: negative number with positive significance rounds toward zero.
+	if n < 0 && sig > 0 {
+		return NumberVal(-math.Floor(math.Abs(n)/sig) * sig), nil
 	}
 	return NumberVal(math.Ceil(n/sig) * sig), nil
 }
@@ -224,11 +229,20 @@ func fnFLOOR(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
+	// Special case: when number is 0, result is always 0 regardless of significance.
+	if n == 0 {
+		return NumberVal(0), nil
+	}
 	if sig == 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
-	if (n > 0 && sig < 0) || (n < 0 && sig > 0) {
+	// Excel: positive number with negative significance is an error.
+	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
+	}
+	// Excel: negative number with positive significance rounds away from zero.
+	if n < 0 && sig > 0 {
+		return NumberVal(-math.Ceil(math.Abs(n)/sig) * sig), nil
 	}
 	return NumberVal(math.Floor(n/sig) * sig), nil
 }

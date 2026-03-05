@@ -31,8 +31,13 @@ func TestMathFunctions(t *testing.T) {
 		{"ROUNDUP(-3.2,0)", -4, 0},
 		{"CEILING(4.1,1)", 5, 0},
 		{"CEILING(4.5,2)", 6, 0},
+		{"CEILING(-2.5,1)", -2, 0},
+		{"CEILING(-2.5,-1)", -3, 0},
 		{"FLOOR(4.9,1)", 4, 0},
 		{"FLOOR(4.5,2)", 4, 0},
+		{"FLOOR(0,0)", 0, 0},
+		{"FLOOR(-2.5,1)", -3, 0},
+		{"FLOOR(-2.5,-1)", -2, 0},
 	}
 
 	for _, tt := range numTests {
