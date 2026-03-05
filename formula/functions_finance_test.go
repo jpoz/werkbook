@@ -1893,6 +1893,352 @@ func TestXNPV_Basic(t *testing.T) {
 	assertClose(t, "XNPV basic", v, 2086.65)
 }
 
+func TestXNPV_ExcelDocExample(t *testing.T) {
+	// From Excel documentation: XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, dates) = $2,086.65
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.09), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV excel doc", v, 2086.65)
+}
+
+func TestXNPV_ZeroRate(t *testing.T) {
+	// With rate=0, XNPV should equal the sum of all values
+	// sum = -10000 + 2750 + 4250 + 3250 + 2750 = 3000
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV zero rate", v, 3000.0)
+}
+
+func TestXNPV_HighRate(t *testing.T) {
+	// High discount rate reduces future cash flows significantly
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(5.0), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// At rate=5 (500%), future values are heavily discounted
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV high rate: expected number, got type %v", v.Type)
+	}
+	// Result should be negative since future cash flows are nearly worthless
+	if v.Num >= 0 {
+		t.Fatalf("XNPV high rate: expected negative result, got %f", v.Num)
+	}
+}
+
+func TestXNPV_MultipleCashFlows(t *testing.T) {
+	// 7 cash flows: investment + 6 returns over 2 years
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-50000), NumberVal(8000), NumberVal(9500), NumberVal(10000), NumberVal(11000), NumberVal(12000), NumberVal(13000)},
+		},
+	}
+	// Quarterly payments starting 2020-01-01 (serial 43831)
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(43831), NumberVal(43922), NumberVal(44013), NumberVal(44105), NumberVal(44197), NumberVal(44287), NumberVal(44378)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV multiple cash flows: expected number, got type %v", v.Type)
+	}
+}
+
+func TestXNPV_AllPositiveValues(t *testing.T) {
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV all positive: expected number, got type %v", v.Type)
+	}
+	if v.Num <= 0 {
+		t.Fatalf("XNPV all positive: expected positive, got %f", v.Num)
+	}
+}
+
+func TestXNPV_AllNegativeValues(t *testing.T) {
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(-2000), NumberVal(-3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813), NumberVal(40179)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV all negative: expected number, got type %v", v.Type)
+	}
+	if v.Num >= 0 {
+		t.Fatalf("XNPV all negative: expected negative, got %f", v.Num)
+	}
+}
+
+func TestXNPV_MixedCashFlows(t *testing.T) {
+	// Alternating positive and negative
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-5000), NumberVal(3000), NumberVal(-1000), NumberVal(4000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39630), NumberVal(39813), NumberVal(39995)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.08), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV mixed: expected number, got type %v", v.Type)
+	}
+}
+
+func TestXNPV_MonthlyCashFlows(t *testing.T) {
+	// Monthly payments for 6 months starting 2008-01-01
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-6000), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100), NumberVal(1100)},
+		},
+	}
+	// ~monthly intervals from serial 39448
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39479), NumberVal(39508), NumberVal(39539), NumberVal(39569), NumberVal(39600), NumberVal(39630)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV monthly: expected number, got type %v", v.Type)
+	}
+	// With 6 payments of 1100 = 6600 total vs 6000 investment, result should be positive
+	if v.Num <= 0 {
+		t.Fatalf("XNPV monthly: expected positive, got %f", v.Num)
+	}
+}
+
+func TestXNPV_SingleCashFlow(t *testing.T) {
+	// Single cash flow: XNPV = value / (1+rate)^0 = value
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(5000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.10), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "XNPV single cash flow", v, 5000.0)
+}
+
+func TestXNPV_RateNeg1(t *testing.T) {
+	// rate = -1 → #NUM! (division by zero in denominator)
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(-1), vals, dates})
+	assertError(t, "XNPV rate=-1", v)
+}
+
+func TestXNPV_RateBelowNeg1(t *testing.T) {
+	// rate < -1 → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(-2), vals, dates})
+	assertError(t, "XNPV rate<-1", v)
+}
+
+func TestXNPV_MismatchedArrays(t *testing.T) {
+	// Different number of values and dates → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-1000), NumberVal(2000), NumberVal(3000)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39813)},
+		},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	assertError(t, "XNPV mismatched arrays", v)
+}
+
+func TestXNPV_TooFewArgs(t *testing.T) {
+	v, _ := fnXNPV([]Value{NumberVal(0.05), NumberVal(100)})
+	assertError(t, "XNPV too few args", v)
+}
+
+func TestXNPV_TooManyArgs(t *testing.T) {
+	v, _ := fnXNPV([]Value{NumberVal(0.05), NumberVal(100), NumberVal(39448), NumberVal(99)})
+	assertError(t, "XNPV too many args", v)
+}
+
+func TestXNPV_DatesNotInOrder(t *testing.T) {
+	// Dates not in chronological order — should still work per Excel spec
+	// "All other dates must be later than this date, but they may occur in any order."
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(4250), NumberVal(2750), NumberVal(2750), NumberVal(3250)},
+		},
+	}
+	// Shuffled dates (but all after first date)
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39751), NumberVal(39508), NumberVal(39904), NumberVal(39859)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(0.09), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same cash flows as basic test, just reordered — result should match
+	assertClose(t, "XNPV dates not in order", v, 2086.65)
+}
+
+func TestXNPV_NegativeRate(t *testing.T) {
+	// Negative rate between -1 and 0: future values are worth MORE than present
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(-10000), NumberVal(2750), NumberVal(4250), NumberVal(3250), NumberVal(2750)},
+		},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(39448), NumberVal(39508), NumberVal(39751), NumberVal(39859), NumberVal(39904)},
+		},
+	}
+	v, err := fnXNPV([]Value{NumberVal(-0.05), vals, dates})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("XNPV negative rate: expected number, got type %v", v.Type)
+	}
+	// With negative rate, NPV should be higher than the zero-rate sum of 3000
+	if v.Num <= 3000 {
+		t.Fatalf("XNPV negative rate: expected > 3000, got %f", v.Num)
+	}
+}
+
+func TestXNPV_EmptyArrays(t *testing.T) {
+	// Empty arrays → #NUM!
+	vals := Value{
+		Type: ValueArray,
+		Array: [][]Value{{}},
+	}
+	dates := Value{
+		Type: ValueArray,
+		Array: [][]Value{{}},
+	}
+	v, _ := fnXNPV([]Value{NumberVal(0.05), vals, dates})
+	assertError(t, "XNPV empty arrays", v)
+}
+
 // === XIRR ===
 
 func TestXIRR_Basic(t *testing.T) {
