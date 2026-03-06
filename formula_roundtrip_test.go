@@ -156,6 +156,49 @@ func TestDynamicArrayFormulaPrefixesInXML(t *testing.T) {
 	}
 }
 
+func TestLETFormulaPrefixesInXML(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "LET(x,5,x+1)")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "let-prefixes.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
+	want := `<f>_xlfn.LET(_xlpm.x,5,_xlpm.x+1)</f>`
+	if !strings.Contains(sheetXML, want) {
+		t.Fatalf("LET formula XML missing expected OOXML prefixes\nwant: %s\nxml: %s", want, sheetXML)
+	}
+}
+
+func TestLETFormulaRoundTrip(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "LET(x,5,x+1)")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "let-roundtrip.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	f2, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	got, err := f2.Sheet("Sheet1").GetFormula("A1")
+	if err != nil {
+		t.Fatalf("GetFormula: %v", err)
+	}
+	if got != "LET(x,5,x+1)" {
+		t.Fatalf("GetFormula = %q, want %q", got, "LET(x,5,x+1)")
+	}
+}
+
 func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
 	f := werkbook.New(werkbook.FirstSheet("Out - Ledger Summary"))
 	s := f.Sheet("Out - Ledger Summary")

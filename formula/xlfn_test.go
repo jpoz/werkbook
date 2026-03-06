@@ -30,7 +30,7 @@ func TestAddXlfnPrefixes(t *testing.T) {
 		{name: "IFERROR unchanged", in: "IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
 		{name: "XOR", in: "XOR(A1,B1)", want: "_xlfn.XOR(A1,B1)"},
 		{name: "SWITCH", in: "SWITCH(A1,1,\"one\",2,\"two\")", want: "_xlfn.SWITCH(A1,1,\"one\",2,\"two\")"},
-		{name: "LET", in: "LET(x,5,x+1)", want: "_xlfn.LET(x,5,x+1)"},
+		{name: "LET", in: "LET(x,5,x+1)", want: "_xlfn.LET(_xlpm.x,5,_xlpm.x+1)"},
 	}
 
 	for _, tt := range tests {
@@ -60,6 +60,7 @@ func TestStripXlfnPrefixes(t *testing.T) {
 		{name: "strip mixed", in: "SUM(_xlfn.MAXIFS(A1:A5,B1:B5,1))", want: "SUM(MAXIFS(A1:A5,B1:B5,1))"},
 		{name: "legacy unchanged", in: "IF(A1>0,1,0)", want: "IF(A1>0,1,0)"},
 		{name: "IFERROR", in: "_xlfn.IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
+		{name: "LET", in: "_xlfn.LET(_xlpm.x,5,_xlpm.x+1)", want: "LET(x,5,x+1)"},
 	}
 
 	for _, tt := range tests {

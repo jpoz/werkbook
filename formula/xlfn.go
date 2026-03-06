@@ -2,6 +2,13 @@ package formula
 
 import "strings"
 
+const xlpmPrefix = "_xlpm."
+
+type formulaInsertion struct {
+	pos    int
+	prefix string
+}
+
 // xlfnPrefix maps function names to their required OOXML prefix.
 // These are Excel functions added after the original OOXML specification
 // that require a special prefix in the XML to be recognized by Excel.
@@ -121,6 +128,7 @@ func AddXlfnPrefixes(f string) string {
 	if f == "" {
 		return f
 	}
+	f = addLETParamPrefixes(f)
 	tokens, err := Tokenize(f)
 	if err != nil {
 		return f
@@ -128,11 +136,7 @@ func AddXlfnPrefixes(f string) string {
 
 	// Collect insertions (position + prefix string) from right to left
 	// so earlier positions are unaffected by later splicing.
-	type insertion struct {
-		pos    int
-		prefix string
-	}
-	var inserts []insertion
+	var inserts []formulaInsertion
 
 	for _, tok := range tokens {
 		if tok.Type != TokFunc {
@@ -148,7 +152,7 @@ func AddXlfnPrefixes(f string) string {
 		if !ok {
 			continue
 		}
-		inserts = append(inserts, insertion{pos: tok.Pos, prefix: prefix})
+		inserts = append(inserts, formulaInsertion{pos: tok.Pos, prefix: prefix})
 	}
 
 	if len(inserts) == 0 {
@@ -229,7 +233,7 @@ func StripXlfnPrefixes(f string) string {
 	}
 
 	if len(removals) == 0 {
-		return f
+		return stripXLPMPrefixes(f)
 	}
 
 	// Apply from right to left so byte offsets stay valid.
@@ -238,7 +242,7 @@ func StripXlfnPrefixes(f string) string {
 		r := removals[i]
 		buf = append(buf[:r.pos], buf[r.pos+r.len:]...)
 	}
-	return string(buf)
+	return stripXLPMPrefixes(string(buf))
 }
 
 func normalizeFuncName(name string) string {
@@ -246,4 +250,198 @@ func normalizeFuncName(name string) string {
 	upper = strings.TrimPrefix(upper, "_XLFN._XLWS.")
 	upper = strings.TrimPrefix(upper, "_XLFN.")
 	return upper
+}
+
+func addLETParamPrefixes(f string) string {
+	tokens, err := Tokenize(f)
+	if err != nil {
+		return f
+	}
+
+	var inserts []formulaInsertion
+
+	walkLETTokenRange(tokens, 0, len(tokens)-1, map[string]int{}, &inserts)
+	if len(inserts) == 0 {
+		return f
+	}
+
+	buf := []byte(f)
+	for i := len(inserts) - 1; i >= 0; i-- {
+		ins := inserts[i]
+		buf = append(buf[:ins.pos], append([]byte(ins.prefix), buf[ins.pos:]...)...)
+	}
+	return string(buf)
+}
+
+func walkLETTokenRange(tokens []Token, start, end int, scope map[string]int, inserts *[]formulaInsertion) {
+	for i := start; i < end; i++ {
+		tok := tokens[i]
+		switch tok.Type {
+		case TokFunc:
+			close := findFuncClose(tokens, i)
+			if close < 0 || close > end {
+				return
+			}
+			name := normalizeFuncName(strings.TrimSuffix(tok.Value, "("))
+			if name == "LET" {
+				processLETTokens(tokens, i+1, close, scope, inserts)
+			} else {
+				walkLETTokenRange(tokens, i+1, close, scope, inserts)
+			}
+			i = close
+		case TokCellRef:
+			if shouldPrefixLETName(tokens, i, scope) {
+				*inserts = append(*inserts, formulaInsertion{pos: tok.Pos, prefix: xlpmPrefix})
+			}
+		}
+	}
+}
+
+func processLETTokens(tokens []Token, start, end int, parent map[string]int, inserts *[]formulaInsertion) {
+	local := cloneLETNameScope(parent)
+	args := splitFuncArgRanges(tokens, start, end)
+	last := len(args) - 1
+
+	for i, arg := range args {
+		isLast := i == last
+		if !isLast && i%2 == 0 {
+			tok, ok := singleLETNameToken(tokens[arg.start:arg.end])
+			if !ok {
+				continue
+			}
+			if !hasXLPMPrefix(tok.Value) {
+				*inserts = append(*inserts, formulaInsertion{pos: tok.Pos, prefix: xlpmPrefix})
+			}
+			local[strings.ToUpper(stripXLPMNamePrefix(tok.Value))]++
+			continue
+		}
+		walkLETTokenRange(tokens, arg.start, arg.end, local, inserts)
+	}
+}
+
+func cloneLETNameScope(scope map[string]int) map[string]int {
+	out := make(map[string]int, len(scope))
+	for k, v := range scope {
+		out[k] = v
+	}
+	return out
+}
+
+type tokenRange struct {
+	start int
+	end   int
+}
+
+func splitFuncArgRanges(tokens []Token, start, end int) []tokenRange {
+	if start >= end {
+		return nil
+	}
+	var out []tokenRange
+	argStart := start
+	depth := 0
+	arrayDepth := 0
+
+	for i := start; i < end; i++ {
+		switch tokens[i].Type {
+		case TokFunc, TokLParen:
+			depth++
+		case TokRParen:
+			if depth > 0 {
+				depth--
+			}
+		case TokArrayOpen:
+			arrayDepth++
+		case TokArrayClose:
+			if arrayDepth > 0 {
+				arrayDepth--
+			}
+		case TokComma:
+			if depth == 0 && arrayDepth == 0 {
+				out = append(out, tokenRange{start: argStart, end: i})
+				argStart = i + 1
+			}
+		}
+	}
+
+	out = append(out, tokenRange{start: argStart, end: end})
+	return out
+}
+
+func findFuncClose(tokens []Token, funcIdx int) int {
+	depth := 0
+	for i := funcIdx + 1; i < len(tokens); i++ {
+		switch tokens[i].Type {
+		case TokFunc, TokLParen:
+			depth++
+		case TokRParen:
+			if depth == 0 {
+				return i
+			}
+			depth--
+		}
+	}
+	return -1
+}
+
+func singleLETNameToken(tokens []Token) (Token, bool) {
+	if len(tokens) != 1 || tokens[0].Type != TokCellRef {
+		return Token{}, false
+	}
+	name := stripXLPMNamePrefix(tokens[0].Value)
+	if !isValidLETName(name) {
+		return Token{}, false
+	}
+	return tokens[0], true
+}
+
+func shouldPrefixLETName(tokens []Token, idx int, scope map[string]int) bool {
+	tok := tokens[idx]
+	name := stripXLPMNamePrefix(tok.Value)
+	if !isBareNameToken(name) || hasXLPMPrefix(tok.Value) {
+		return false
+	}
+	if idx+1 < len(tokens) && tokens[idx+1].Type == TokColon {
+		return false
+	}
+	return scope[strings.ToUpper(name)] > 0
+}
+
+func stripXLPMPrefixes(f string) string {
+	tokens, err := Tokenize(f)
+	if err != nil {
+		return f
+	}
+
+	type removal struct {
+		pos int
+		len int
+	}
+	var removals []removal
+	for _, tok := range tokens {
+		if tok.Type != TokCellRef || !hasXLPMPrefix(tok.Value) {
+			continue
+		}
+		removals = append(removals, removal{pos: tok.Pos, len: len(xlpmPrefix)})
+	}
+	if len(removals) == 0 {
+		return f
+	}
+
+	buf := []byte(f)
+	for i := len(removals) - 1; i >= 0; i-- {
+		r := removals[i]
+		buf = append(buf[:r.pos], buf[r.pos+r.len:]...)
+	}
+	return string(buf)
+}
+
+func hasXLPMPrefix(name string) bool {
+	return strings.HasPrefix(strings.ToUpper(name), strings.ToUpper(xlpmPrefix))
+}
+
+func stripXLPMNamePrefix(name string) string {
+	if hasXLPMPrefix(name) {
+		return name[len(xlpmPrefix):]
+	}
+	return name
 }
