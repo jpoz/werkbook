@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jpoz/werkbook/formula"
@@ -784,7 +785,7 @@ func cellToData(ref string, v Value, f string) ooxml.CellData {
 			cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
 		}
 	case TypeNumber:
-		cd = ooxml.CellData{Ref: ref, Value: fmt.Sprintf("%g", v.Number)}
+		cd = ooxml.CellData{Ref: ref, Value: strconv.FormatFloat(v.Number, 'f', -1, 64)}
 	case TypeBool:
 		val := "0"
 		if v.Bool {
