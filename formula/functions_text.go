@@ -510,10 +510,11 @@ func fnCODE(args []Value) (Value, error) {
 	}
 	// Characters 0x00–0x7F and 0xA0–0xFF are identical in Windows-1252
 	// and Unicode (Latin-1). Characters outside the Windows-1252 range
-	// (e.g. CJK) get mapped to '?' (63), matching Excel's behavior
-	// with WideCharToMultiByte default character substitution.
+	// (e.g. CJK) get mapped to '_' (95), matching Excel's behavior
+	// which uses underscore as the default substitution character for
+	// unmappable characters.
 	if r > 0xFF {
-		return NumberVal(63), nil // '?'
+		return NumberVal(95), nil // '_'
 	}
 	return NumberVal(float64(r)), nil
 }

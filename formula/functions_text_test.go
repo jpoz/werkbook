@@ -2148,9 +2148,9 @@ func TestCODE_Windows1252(t *testing.T) {
 		{"Latin A-grave U+00C0 -> 0xC0", `CODE("À")`, 0xC0},
 		{"Section sign U+00A7 -> 0xA7", `CODE("§")`, 0xA7},
 
-		// Characters outside Windows-1252 → replacement '?' = 63
-		{"CJK char -> replacement", `CODE("日")`, 63},
-		{"Greek alpha -> replacement", `CODE("α")`, 63},
+		// Characters outside Windows-1252 → replacement '_' = 95
+		{"CJK char -> replacement", `CODE("日")`, 95},
+		{"Greek alpha -> replacement", `CODE("α")`, 95},
 	}
 
 	for _, tt := range tests {
