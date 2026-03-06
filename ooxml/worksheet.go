@@ -75,6 +75,7 @@ type xlsxC struct {
 	R  string  `xml:"r,attr"`
 	S  int     `xml:"s,attr,omitempty"`
 	T  string  `xml:"t,attr,omitempty"`
+	CM int     `xml:"cm,attr,omitempty"`
 	FE *xlsxF  `xml:"f,omitempty"` // formula element with attributes
 	V  string  `xml:"v,omitempty"`
 	IS *xlsxIS `xml:"is,omitempty"`
@@ -90,7 +91,12 @@ func (c xlsxC) F() string {
 
 // IsArrayFormula reports whether the cell's formula is a CSE array formula.
 func (c xlsxC) IsArrayFormula() bool {
-	return c.FE != nil && c.FE.T == "array"
+	return c.FE != nil && c.FE.T == "array" && c.CM == 0
+}
+
+// IsDynamicArrayFormula reports whether the cell uses Excel dynamic-array metadata.
+func (c xlsxC) IsDynamicArrayFormula() bool {
+	return c.FE != nil && c.FE.T == "array" && c.CM != 0
 }
 
 type xlsxF struct {

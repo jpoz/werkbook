@@ -8,6 +8,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/jpoz/werkbook/formula"
 )
 
 // ErrEncryptedFile is returned when the input file is encrypted (password-protected).
@@ -160,7 +162,19 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 }
 
 func parseCellData(xc xlsxC, sst []string) CellData {
-	cd := CellData{Ref: xc.R, Formula: xc.F(), IsArrayFormula: xc.IsArrayFormula(), StyleIdx: xc.S}
+	isDynamicArray := xc.IsDynamicArrayFormula()
+	if !isDynamicArray && xc.FE != nil && xc.FE.T == "array" && formula.IsDynamicArrayFormula(xc.F()) {
+		isDynamicArray = true
+	}
+	cd := CellData{
+		Ref:            xc.R,
+		Formula:        xc.F(),
+		FormulaType:    formulaType(xc.FE),
+		FormulaRef:     formulaRef(xc.FE),
+		IsArrayFormula: xc.IsArrayFormula(),
+		IsDynamicArray: isDynamicArray,
+		StyleIdx:       xc.S,
+	}
 
 	switch xc.T {
 	case "s":
@@ -177,6 +191,9 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		if xc.IS != nil {
 			cd.Value = xc.IS.T
 		}
+	case "str":
+		cd.Type = "str"
+		cd.Value = xc.V
 	case "b":
 		cd.Type = "b"
 		cd.Value = xc.V
@@ -188,6 +205,20 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		cd.Value = xc.V
 	}
 	return cd
+}
+
+func formulaType(fe *xlsxF) string {
+	if fe == nil {
+		return ""
+	}
+	return fe.T
+}
+
+func formulaRef(fe *xlsxF) string {
+	if fe == nil {
+		return ""
+	}
+	return fe.Ref
 }
 
 // readStyles parses xl/styles.xml and returns a []StyleData indexed by cellXfs position.

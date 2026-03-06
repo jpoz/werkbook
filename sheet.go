@@ -69,6 +69,8 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	}
 	c.value = val
 	c.formula = ""
+	c.isArrayFormula = false
+	c.formulaRef = ""
 	c.compiled = nil
 	c.cachedGen = 0
 	s.file.calcGen++
@@ -91,6 +93,8 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 		s.file.deps.Unregister(qc)
 	}
 	c.formula = f
+	c.isArrayFormula = false
+	c.formulaRef = ""
 	c.compiled = nil
 	c.value = Value{}
 	c.cachedGen = 0
@@ -458,7 +462,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
-			cd := cellToData(ref, c.value, c.formula)
+			cd := cellToData(ref, c.value, c.formula, c.isArrayFormula, c.formulaRef)
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
@@ -898,28 +902,62 @@ func valueToFormulaValue(v Value) formula.Value {
 	}
 }
 
-func cellToData(ref string, v Value, f string) ooxml.CellData {
-	var cd ooxml.CellData
+func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef string) ooxml.CellData {
+	dynamicArray := f != "" && formula.IsDynamicArrayFormula(f)
+	cd := ooxml.CellData{Ref: ref}
+	if dynamicArray {
+		cd.FormulaType = "array"
+		if formulaRef != "" {
+			cd.FormulaRef = formulaRef
+		} else {
+			cd.FormulaRef = ref
+		}
+		cd.IsDynamicArray = true
+	} else if isArrayFormula {
+		cd.FormulaType = "array"
+		if formulaRef != "" {
+			cd.FormulaRef = formulaRef
+		} else {
+			cd.FormulaRef = ref
+		}
+		cd.IsArrayFormula = true
+	}
+
 	switch v.Type {
 	case TypeString:
 		if f != "" {
-			cd = ooxml.CellData{Ref: ref, Type: "str", Value: v.String}
+			cd.Type = "str"
+			cd.Value = v.String
 		} else {
-			cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
+			cd.Type = "s"
+			cd.Value = v.String
 		}
 	case TypeNumber:
-		cd = ooxml.CellData{Ref: ref, Value: strconv.FormatFloat(v.Number, 'f', -1, 64)}
+		cd.Value = strconv.FormatFloat(v.Number, 'f', -1, 64)
 	case TypeBool:
 		val := "0"
 		if v.Bool {
 			val = "1"
 		}
-		cd = ooxml.CellData{Ref: ref, Type: "b", Value: val}
+		cd.Type = "b"
+		cd.Value = val
 	case TypeError:
-		cd = ooxml.CellData{Ref: ref, Type: "e", Value: v.String}
-	default:
-		cd = ooxml.CellData{Ref: ref}
+		if f != "" && (dynamicArray || isArrayFormula || !isLegacyFormulaError(v.String)) {
+			cd.Type = "str"
+		} else {
+			cd.Type = "e"
+		}
+		cd.Value = v.String
 	}
 	cd.Formula = formula.AddXlfnPrefixes(f)
 	return cd
+}
+
+func isLegacyFormulaError(err string) bool {
+	switch err {
+	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!":
+		return true
+	default:
+		return false
+	}
 }

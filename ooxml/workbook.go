@@ -174,9 +174,12 @@ type RowData struct {
 // CellData holds the data for a single cell.
 type CellData struct {
 	Ref            string // e.g. "A1"
-	Type           string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
+	Type           string // "s" (shared string), "b" (bool), "inlineStr", "str", "e", or "" (number)
 	Value          string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
 	Formula        string // formula text (empty = no formula)
+	FormulaType    string // OOXML formula type, e.g. "array"
+	FormulaRef     string // OOXML formula ref attribute for array/shared formulas
 	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
+	IsDynamicArray bool   // true if the formula uses Excel dynamic-array spill semantics
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

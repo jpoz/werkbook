@@ -289,6 +289,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				c.value = v
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
 				c.isArrayFormula = cd.IsArrayFormula
+				c.formulaRef = cd.FormulaRef
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
 					c.cachedGen = f.calcGen
@@ -347,6 +348,9 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
 		// Arithmetic operations will coerce via CoerceNum as needed.
 		return Value{Type: TypeString, String: cd.Value}
 	case "str", "inlineStr":
+		if cd.Formula != "" && (cd.IsDynamicArray || cd.IsArrayFormula || cd.FormulaType == "array") && isFormulaErrorString(cd.Value) {
+			return Value{Type: TypeError, String: cd.Value}
+		}
 		return Value{Type: TypeString, String: cd.Value}
 	case "b":
 		return Value{Type: TypeBool, Bool: cd.Value == "1"}
@@ -363,6 +367,15 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
 			return Value{Type: TypeString, String: cd.Value}
 		}
 		return Value{Type: TypeNumber, Number: n}
+	}
+}
+
+func isFormulaErrorString(v string) bool {
+	switch v {
+	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!", "#SPILL!", "#CALC!", "#GETTING_DATA":
+		return true
+	default:
+		return false
 	}
 }
 
