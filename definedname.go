@@ -31,11 +31,41 @@ func (f *File) DefinedNames() []DefinedName {
 // AddDefinedName adds a new defined name to the workbook. Use LocalSheetID -1
 // for workbook scope or a 0-based sheet index for sheet scope.
 func (f *File) AddDefinedName(dn DefinedName) {
+	if err := f.validateDefinedName(dn); err != nil {
+		return
+	}
 	f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
 		Name:         dn.Name,
 		Value:        dn.Value,
 		LocalSheetID: dn.LocalSheetID,
 	})
+	f.rebuildFormulaState()
+}
+
+// SetDefinedName inserts or replaces a defined name with the same name and scope.
+func (f *File) SetDefinedName(dn DefinedName) error {
+	if err := f.validateDefinedName(dn); err != nil {
+		return err
+	}
+	lower := strings.ToLower(dn.Name)
+	for i, existing := range f.definedNames {
+		if strings.ToLower(existing.Name) == lower && existing.LocalSheetID == dn.LocalSheetID {
+			f.definedNames[i] = formula.DefinedNameInfo{
+				Name:         dn.Name,
+				Value:        dn.Value,
+				LocalSheetID: dn.LocalSheetID,
+			}
+			f.rebuildFormulaState()
+			return nil
+		}
+	}
+	f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
+		Name:         dn.Name,
+		Value:        dn.Value,
+		LocalSheetID: dn.LocalSheetID,
+	})
+	f.rebuildFormulaState()
+	return nil
 }
 
 // DeleteDefinedName removes the first defined name matching name and scope.
@@ -45,10 +75,18 @@ func (f *File) DeleteDefinedName(name string, localSheetID int) error {
 	for i, dn := range f.definedNames {
 		if strings.ToLower(dn.Name) == lower && dn.LocalSheetID == localSheetID {
 			f.definedNames = append(f.definedNames[:i], f.definedNames[i+1:]...)
+			f.rebuildFormulaState()
 			return nil
 		}
 	}
 	return fmt.Errorf("defined name %q not found", name)
+}
+
+func (f *File) validateDefinedName(dn DefinedName) error {
+	if dn.LocalSheetID < -1 || dn.LocalSheetID >= len(f.sheets) {
+		return fmt.Errorf("defined name %q has invalid local sheet index %d", dn.Name, dn.LocalSheetID)
+	}
+	return nil
 }
 
 // ResolveDefinedName looks up a defined name by its name and returns the

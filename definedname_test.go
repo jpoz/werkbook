@@ -409,3 +409,48 @@ func TestResolveDefinedNameNotFound(t *testing.T) {
 		t.Fatal("expected error for missing defined name")
 	}
 }
+
+func TestSetDefinedNameRebuildsFormulaState(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	if err := s.SetValue("A1", 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetValue("A2", 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFormula("B1", "Target+1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "Target",
+		Value:        "Sheet1!$A$1",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := s.GetValue("B1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != werkbook.TypeNumber || v.Number != 6 {
+		t.Fatalf("B1 = %#v, want 6", v)
+	}
+
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "Target",
+		Value:        "Sheet1!$A$2",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err = s.GetValue("B1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != werkbook.TypeNumber || v.Number != 8 {
+		t.Fatalf("B1 after rename = %#v, want 8", v)
+	}
+}

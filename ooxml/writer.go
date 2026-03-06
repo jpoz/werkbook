@@ -20,10 +20,14 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 
 	// Build shared string table from all string cells.
 	sst := NewSharedStringTable()
+	hasDynamicArrays := false
 	for i := range data.Sheets {
 		for j := range data.Sheets[i].Rows {
 			for k := range data.Sheets[i].Rows[j].Cells {
 				c := &data.Sheets[i].Rows[j].Cells[k]
+				if c.IsDynamicArray {
+					hasDynamicArrays = true
+				}
 				if c.Type == "s" && c.Formula == "" {
 					idx := sst.Add(c.Value)
 					c.Value = fmt.Sprintf("%d", idx)
@@ -46,7 +50,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, sst.Len() > 0); err != nil {
+	if err := writeContentTypes(zw, sheetCount, sst.Len() > 0, hasDynamicArrays); err != nil {
 		return err
 	}
 
@@ -61,7 +65,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/_rels/workbook.xml.rels
-	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0); err != nil {
+	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0, hasDynamicArrays); err != nil {
 		return err
 	}
 
@@ -84,10 +88,16 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		}
 	}
 
+	if hasDynamicArrays {
+		if err := writeDynamicArrayMetadata(zw); err != nil {
+			return err
+		}
+	}
+
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST bool) error {
+func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays bool) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -109,6 +119,12 @@ func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST bool) error {
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
 			PartName:    "/xl/sharedStrings.xml",
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
+		})
+	}
+	if hasDynamicArrays {
+		ct.Overrides = append(ct.Overrides, xlsxOverride{
+			PartName:    "/xl/metadata.xml",
+			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml",
 		})
 	}
 	return writeXML(zw, "[Content_Types].xml", ct)
@@ -133,11 +149,15 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
 	}
 	for i, sd := range data.Sheets {
-		wb.Sheets.Sheet = append(wb.Sheets.Sheet, xlsxSheet{
+		sheet := xlsxSheet{
 			Name:    sd.Name,
 			SheetID: i + 1,
 			RID:     fmt.Sprintf("rId%d", i+1),
-		})
+		}
+		if sd.State != "" {
+			sheet.State = sd.State
+		}
+		wb.Sheets.Sheet = append(wb.Sheets.Sheet, sheet)
 	}
 	if len(data.DefinedNames) > 0 {
 		wb.DefinedNames = &xlsxDefinedNames{}
@@ -156,7 +176,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
 
-func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
+func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
 	}
@@ -181,6 +201,14 @@ func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
 			Target: "sharedStrings.xml",
 		})
 	}
+	if hasDynamicArrays {
+		nextID++
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     fmt.Sprintf("rId%d", nextID),
+			Type:   RelTypeSheetMetadata,
+			Target: "metadata.xml",
+		})
+	}
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
 }
 
@@ -201,6 +229,16 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 			})
 		}
 	}
+	if len(sd.MergeCells) > 0 {
+		ws.MergeCells = &xlsxMergeCells{Count: len(sd.MergeCells)}
+		for _, mc := range sd.MergeCells {
+			ref := mc.StartAxis
+			if mc.EndAxis != "" && mc.EndAxis != mc.StartAxis {
+				ref += ":" + mc.EndAxis
+			}
+			ws.MergeCells.MergeCell = append(ws.MergeCells.MergeCell, xlsxMergeCell{Ref: ref})
+		}
+	}
 
 	for _, rd := range sd.Rows {
 		var hidden ooxmlBool
@@ -219,7 +257,14 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 				V: cd.Value,
 			}
 			if cd.Formula != "" {
-				c.FE = &xlsxF{Text: cd.Formula}
+				c.FE = &xlsxF{
+					T:    cd.FormulaType,
+					Ref:  cd.FormulaRef,
+					Text: cd.Formula,
+				}
+			}
+			if cd.IsDynamicArray {
+				c.CM = 1
 			}
 			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
 				c.S = styleIndexMap[cd.StyleIdx]
@@ -249,4 +294,3 @@ func writeXML(zw *zip.Writer, name string, v any) error {
 	}
 	return enc.Close()
 }
-

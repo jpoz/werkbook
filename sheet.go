@@ -16,22 +16,36 @@ import (
 type Sheet struct {
 	file      *File
 	name      string
+	visible   bool
 	rows      map[int]*Row
 	colWidths map[int]float64
+	merges    []MergeRange
 }
 
 func newSheet(name string, file *File) *Sheet {
 	return &Sheet{
 		file:      file,
 		name:      name,
+		visible:   true,
 		rows:      make(map[int]*Row),
 		colWidths: make(map[int]float64),
 	}
 }
 
+// MergeRange represents a merged cell range.
+type MergeRange struct {
+	Start string
+	End   string
+}
+
 // Name returns the sheet name.
 func (s *Sheet) Name() string {
 	return s.name
+}
+
+// Visible reports whether the sheet is visible.
+func (s *Sheet) Visible() bool {
+	return s.visible
 }
 
 // SetValue sets the value of a cell by reference (e.g. "A1").
@@ -55,6 +69,8 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	}
 	c.value = val
 	c.formula = ""
+	c.isArrayFormula = false
+	c.formulaRef = ""
 	c.compiled = nil
 	c.cachedGen = 0
 	s.file.calcGen++
@@ -77,6 +93,8 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 		s.file.deps.Unregister(qc)
 	}
 	c.formula = f
+	c.isArrayFormula = false
+	c.formulaRef = ""
 	c.compiled = nil
 	c.value = Value{}
 	c.cachedGen = 0
@@ -167,6 +185,30 @@ func (s *Sheet) GetRowHeight(row int) (float64, error) {
 	return r.height, nil
 }
 
+// RemoveRow removes a row and shifts all following rows up by one.
+func (s *Sheet) RemoveRow(row int) error {
+	if row < 1 || row > MaxRows {
+		return fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, row, MaxRows)
+	}
+
+	newRows := make(map[int]*Row, len(s.rows))
+	for rn, r := range s.rows {
+		switch {
+		case rn < row:
+			newRows[rn] = r
+		case rn == row:
+			continue
+		default:
+			r.num = rn - 1
+			newRows[rn-1] = r
+		}
+	}
+	s.rows = newRows
+	s.adjustMergedRows(row)
+	s.file.rebuildFormulaState()
+	return nil
+}
+
 // SetRangeStyle applies the given style to every cell in the range (e.g. "A1:C5").
 // Cells that do not yet exist are created.
 func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
@@ -182,6 +224,36 @@ func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
 		}
 	}
 	return nil
+}
+
+// MergeCell merges the rectangular range bounded by start and end.
+func (s *Sheet) MergeCell(start, end string) error {
+	col1, row1, col2, row2, err := RangeToCoordinates(start + ":" + end)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
+	}
+	startRef, err := CoordinatesToCellName(col1, row1)
+	if err != nil {
+		return err
+	}
+	endRef, err := CoordinatesToCellName(col2, row2)
+	if err != nil {
+		return err
+	}
+	for _, mr := range s.merges {
+		if mr.Start == startRef && mr.End == endRef {
+			return nil
+		}
+	}
+	s.merges = append(s.merges, MergeRange{Start: startRef, End: endRef})
+	return nil
+}
+
+// MergeCells returns the merged ranges on the sheet.
+func (s *Sheet) MergeCells() []MergeRange {
+	out := make([]MergeRange, len(s.merges))
+	copy(out, s.merges)
+	return out
 }
 
 // GetFormula returns the formula for a cell, or "" if none.
@@ -343,6 +415,9 @@ func (s *Sheet) PrintTo(w io.Writer) {
 // styles collects all unique StyleData values; both are mutated in place.
 func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) ooxml.SheetData {
 	sd := ooxml.SheetData{Name: s.name}
+	if !s.visible {
+		sd.State = "hidden"
+	}
 
 	// Convert column widths map to ColWidthData slice.
 	if len(s.colWidths) > 0 {
@@ -387,7 +462,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
-			cd := cellToData(ref, c.value, c.formula)
+			cd := cellToData(ref, c.value, c.formula, c.isArrayFormula, c.formulaRef)
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
@@ -407,7 +482,59 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 			sd.Rows = append(sd.Rows, rd)
 		}
 	}
+	if len(s.merges) > 0 {
+		sd.MergeCells = make([]ooxml.MergeCellData, len(s.merges))
+		for i, mr := range s.merges {
+			sd.MergeCells[i] = ooxml.MergeCellData{
+				StartAxis: mr.Start,
+				EndAxis:   mr.End,
+			}
+		}
+	}
 	return sd
+}
+
+func (s *Sheet) adjustMergedRows(deletedRow int) {
+	if len(s.merges) == 0 {
+		return
+	}
+
+	adjusted := s.merges[:0]
+	for _, mr := range s.merges {
+		col1, row1, col2, row2, err := RangeToCoordinates(mr.Start + ":" + mr.End)
+		if err != nil {
+			continue
+		}
+
+		switch {
+		case deletedRow < row1:
+			row1--
+			row2--
+		case deletedRow > row2:
+			// unchanged
+		case row1 == row2:
+			continue
+		default:
+			row2--
+			if deletedRow < row1 {
+				row1--
+			}
+		}
+
+		startRef, err := CoordinatesToCellName(col1, row1)
+		if err != nil {
+			continue
+		}
+		endRef, err := CoordinatesToCellName(col2, row2)
+		if err != nil {
+			continue
+		}
+		if startRef == endRef {
+			continue
+		}
+		adjusted = append(adjusted, MergeRange{Start: startRef, End: endRef})
+	}
+	s.merges = adjusted
 }
 
 // resolveCell evaluates the cell's formula if it is dirty or stale.
@@ -781,28 +908,62 @@ func valueToFormulaValue(v Value) formula.Value {
 	}
 }
 
-func cellToData(ref string, v Value, f string) ooxml.CellData {
-	var cd ooxml.CellData
+func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef string) ooxml.CellData {
+	dynamicArray := f != "" && formula.IsDynamicArrayFormula(f)
+	cd := ooxml.CellData{Ref: ref}
+	if dynamicArray {
+		cd.FormulaType = "array"
+		if formulaRef != "" {
+			cd.FormulaRef = formulaRef
+		} else {
+			cd.FormulaRef = ref
+		}
+		cd.IsDynamicArray = true
+	} else if isArrayFormula {
+		cd.FormulaType = "array"
+		if formulaRef != "" {
+			cd.FormulaRef = formulaRef
+		} else {
+			cd.FormulaRef = ref
+		}
+		cd.IsArrayFormula = true
+	}
+
 	switch v.Type {
 	case TypeString:
 		if f != "" {
-			cd = ooxml.CellData{Ref: ref, Type: "str", Value: v.String}
+			cd.Type = "str"
+			cd.Value = v.String
 		} else {
-			cd = ooxml.CellData{Ref: ref, Type: "s", Value: v.String}
+			cd.Type = "s"
+			cd.Value = v.String
 		}
 	case TypeNumber:
-		cd = ooxml.CellData{Ref: ref, Value: strconv.FormatFloat(v.Number, 'f', -1, 64)}
+		cd.Value = strconv.FormatFloat(v.Number, 'f', -1, 64)
 	case TypeBool:
 		val := "0"
 		if v.Bool {
 			val = "1"
 		}
-		cd = ooxml.CellData{Ref: ref, Type: "b", Value: val}
+		cd.Type = "b"
+		cd.Value = val
 	case TypeError:
-		cd = ooxml.CellData{Ref: ref, Type: "e", Value: v.String}
-	default:
-		cd = ooxml.CellData{Ref: ref}
+		if f != "" && (dynamicArray || isArrayFormula || !isLegacyFormulaError(v.String)) {
+			cd.Type = "str"
+		} else {
+			cd.Type = "e"
+		}
+		cd.Value = v.String
 	}
 	cd.Formula = formula.AddXlfnPrefixes(f)
 	return cd
+}
+
+func isLegacyFormulaError(err string) bool {
+	switch err {
+	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!":
+		return true
+	default:
+		return false
+	}
 }

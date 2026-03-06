@@ -11,12 +11,12 @@ type xlsxWorkbookPr struct {
 }
 
 type xlsxWorkbook struct {
-	XMLName      xml.Name             `xml:"workbook"`
-	Xmlns        string               `xml:"xmlns,attr"`
-	XmlnsR       string               `xml:"xmlns:r,attr"`
-	WorkbookPr   *xlsxWorkbookPr      `xml:"workbookPr,omitempty"`
-	Sheets       xlsxSheets           `xml:"sheets"`
-	DefinedNames *xlsxDefinedNames    `xml:"definedNames,omitempty"`
+	XMLName      xml.Name          `xml:"workbook"`
+	Xmlns        string            `xml:"xmlns,attr"`
+	XmlnsR       string            `xml:"xmlns:r,attr"`
+	WorkbookPr   *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
+	Sheets       xlsxSheets        `xml:"sheets"`
+	DefinedNames *xlsxDefinedNames `xml:"definedNames,omitempty"`
 }
 
 type xlsxDefinedNames struct {
@@ -37,6 +37,7 @@ type xlsxSheet struct {
 	Name    string
 	SheetID int
 	RID     string
+	State   string
 }
 
 // UnmarshalXML handles both transitional and strict OOXML namespaces for the r:id attribute.
@@ -55,6 +56,8 @@ func (s *xlsxSheet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			if attr.Name.Space == NSOfficeDocument || attr.Name.Space == NSOfficeDocumentStrict {
 				s.RID = attr.Value
 			}
+		case "state":
+			s.State = attr.Value
 		}
 	}
 	return d.Skip()
@@ -72,6 +75,9 @@ func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		{Name: xml.Name{Local: "sheetId"}, Value: fmt.Sprintf("%d", s.SheetID)},
 		{Name: xml.Name{Local: "r:id"}, Value: s.RID},
 	}
+	if s.State != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "state"}, Value: s.State})
+	}
 	if err := e.EncodeToken(start); err != nil {
 		return err
 	}
@@ -87,22 +93,28 @@ type DefinedName struct {
 
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Date1904     bool          // true if the workbook uses the 1904 date system (Mac Excel)
+	Date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
 	Sheets       []SheetData
 	Styles       []StyleData   // index 0 = default (empty)
 	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
 	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
 }
 
+// MergeCellData holds one merged range.
+type MergeCellData struct {
+	StartAxis string
+	EndAxis   string
+}
+
 // StyleData is the intermediate representation of a cell style,
 // passed between the public API and the ooxml layer.
 type StyleData struct {
-	FontName  string
-	FontColor string // 8-char ARGB
-	FontSize  float64
-	FontBold  bool
+	FontName   string
+	FontColor  string // 8-char ARGB
+	FontSize   float64
+	FontBold   bool
 	FontItalic bool
-	FontUL    bool
+	FontUL     bool
 
 	FillColor string // 8-char ARGB
 
@@ -144,9 +156,11 @@ type ColWidthData struct {
 
 // SheetData holds the data for a single worksheet.
 type SheetData struct {
-	Name      string
-	Rows      []RowData
-	ColWidths []ColWidthData
+	Name       string
+	State      string // "", "hidden", or "veryHidden"
+	Rows       []RowData
+	ColWidths  []ColWidthData
+	MergeCells []MergeCellData
 }
 
 // RowData holds the data for a single row.
@@ -160,9 +174,12 @@ type RowData struct {
 // CellData holds the data for a single cell.
 type CellData struct {
 	Ref            string // e.g. "A1"
-	Type           string // "s" (shared string), "b" (bool), "inlineStr", or "" (number)
+	Type           string // "s" (shared string), "b" (bool), "inlineStr", "str", "e", or "" (number)
 	Value          string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
 	Formula        string // formula text (empty = no formula)
+	FormulaType    string // OOXML formula type, e.g. "array"
+	FormulaRef     string // OOXML formula ref attribute for array/shared formulas
 	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
+	IsDynamicArray bool   // true if the formula uses Excel dynamic-array spill semantics
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

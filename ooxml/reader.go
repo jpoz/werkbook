@@ -8,6 +8,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/jpoz/werkbook/formula"
 )
 
 // ErrEncryptedFile is returned when the input file is encrypted (password-protected).
@@ -110,7 +112,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 			return nil, fmt.Errorf("read sheet %q: %w", s.Name, err)
 		}
 
-		sd := SheetData{Name: s.Name}
+		sd := SheetData{Name: s.Name, State: s.State}
 
 		// Extract column widths.
 		if ws.Cols != nil {
@@ -134,6 +136,20 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 				sd.Rows = append(sd.Rows, rd)
 			}
 		}
+		if ws.MergeCells != nil {
+			for _, mc := range ws.MergeCells.MergeCell {
+				parts := strings.SplitN(mc.Ref, ":", 2)
+				start := parts[0]
+				end := start
+				if len(parts) == 2 {
+					end = parts[1]
+				}
+				sd.MergeCells = append(sd.MergeCells, MergeCellData{
+					StartAxis: start,
+					EndAxis:   end,
+				})
+			}
+		}
 
 		// Read table definitions associated with this sheet.
 		sheetIdx := len(data.Sheets)
@@ -146,7 +162,19 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 }
 
 func parseCellData(xc xlsxC, sst []string) CellData {
-	cd := CellData{Ref: xc.R, Formula: xc.F(), IsArrayFormula: xc.IsArrayFormula(), StyleIdx: xc.S}
+	isDynamicArray := xc.IsDynamicArrayFormula()
+	if !isDynamicArray && xc.FE != nil && xc.FE.T == "array" && formula.IsDynamicArrayFormula(xc.F()) {
+		isDynamicArray = true
+	}
+	cd := CellData{
+		Ref:            xc.R,
+		Formula:        xc.F(),
+		FormulaType:    formulaType(xc.FE),
+		FormulaRef:     formulaRef(xc.FE),
+		IsArrayFormula: xc.IsArrayFormula(),
+		IsDynamicArray: isDynamicArray,
+		StyleIdx:       xc.S,
+	}
 
 	switch xc.T {
 	case "s":
@@ -163,6 +191,9 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		if xc.IS != nil {
 			cd.Value = xc.IS.T
 		}
+	case "str":
+		cd.Type = "str"
+		cd.Value = xc.V
 	case "b":
 		cd.Type = "b"
 		cd.Value = xc.V
@@ -174,6 +205,20 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		cd.Value = xc.V
 	}
 	return cd
+}
+
+func formulaType(fe *xlsxF) string {
+	if fe == nil {
+		return ""
+	}
+	return fe.T
+}
+
+func formulaRef(fe *xlsxF) string {
+	if fe == nil {
+		return ""
+	}
+	return fe.Ref
 }
 
 // readStyles parses xl/styles.xml and returns a []StyleData indexed by cellXfs position.
@@ -320,19 +365,19 @@ func decodeOOXMLEscapes(s string) string {
 
 // xlsxTable represents the <table> root element in xl/tables/table*.xml.
 type xlsxTable struct {
-	XMLName        xml.Name           `xml:"table"`
-	Name           string             `xml:"name,attr"`
-	DisplayName    string             `xml:"displayName,attr"`
-	Ref            string             `xml:"ref,attr"`
-	HeaderRowCount *int               `xml:"headerRowCount,attr"`
-	TotalsRowCount int                `xml:"totalsRowCount,attr"`
-	AutoFilter     *xlsxAutoFilter    `xml:"autoFilter"`
-	TableColumns   xlsxTableColumns   `xml:"tableColumns"`
+	XMLName        xml.Name         `xml:"table"`
+	Name           string           `xml:"name,attr"`
+	DisplayName    string           `xml:"displayName,attr"`
+	Ref            string           `xml:"ref,attr"`
+	HeaderRowCount *int             `xml:"headerRowCount,attr"`
+	TotalsRowCount int              `xml:"totalsRowCount,attr"`
+	AutoFilter     *xlsxAutoFilter  `xml:"autoFilter"`
+	TableColumns   xlsxTableColumns `xml:"tableColumns"`
 }
 
 type xlsxAutoFilter struct {
-	Ref           string               `xml:"ref,attr"`
-	FilterColumns []xlsxFilterColumn   `xml:"filterColumn"`
+	Ref           string             `xml:"ref,attr"`
+	FilterColumns []xlsxFilterColumn `xml:"filterColumn"`
 }
 
 type xlsxFilterColumn struct {
