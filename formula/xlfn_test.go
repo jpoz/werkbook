@@ -30,6 +30,7 @@ func TestAddXlfnPrefixes(t *testing.T) {
 		{name: "IFERROR unchanged", in: "IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
 		{name: "XOR", in: "XOR(A1,B1)", want: "_xlfn.XOR(A1,B1)"},
 		{name: "SWITCH", in: "SWITCH(A1,1,\"one\",2,\"two\")", want: "_xlfn.SWITCH(A1,1,\"one\",2,\"two\")"},
+		{name: "LET", in: "LET(x,5,x+1)", want: "_xlfn.LET(x,5,x+1)"},
 	}
 
 	for _, tt := range tests {

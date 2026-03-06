@@ -16,16 +16,18 @@ func Compile(source string, node Node) (*CompiledFormula, error) {
 		strIdx: make(map[string]uint32),
 		refIdx: make(map[CellAddr]uint32),
 		rngIdx: make(map[RangeAddr]uint32),
+		localNames: make(map[string]uint32),
 	}
 	if err := c.compileNode(node); err != nil {
 		return nil, err
 	}
 	return &CompiledFormula{
-		Source: source,
-		Code:   c.code,
-		Consts: c.consts,
-		Refs:   c.refs,
-		Ranges: c.ranges,
+		Source:     source,
+		Code:       c.code,
+		Consts:     c.consts,
+		Refs:       c.refs,
+		Ranges:     c.ranges,
+		LocalCount: c.localCount,
 	}, nil
 }
 
@@ -39,6 +41,9 @@ type compiler struct {
 	strIdx map[string]uint32
 	refIdx map[CellAddr]uint32
 	rngIdx map[RangeAddr]uint32
+
+	localNames map[string]uint32
+	localCount uint32
 }
 
 func (c *compiler) emit(op OpCode, operand uint32) {
@@ -130,6 +135,14 @@ func (c *compiler) compileNode(node Node) error {
 			c.emit(OpLoadCell, idx)
 		}
 
+	case *NameRef:
+		slot, ok := c.localNames[strings.ToUpper(n.Name)]
+		if !ok {
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
+		c.emit(OpLoadLocal, slot)
+
 	case *RangeRef:
 		if n.From.DotNotation || n.To.DotNotation {
 			// Dot-notation range (Sheet1.A1:Sheet1.A5) is a LibreOffice extension; Excel returns #NAME?
@@ -204,6 +217,9 @@ func (c *compiler) compileNode(node Node) error {
 		// removed earlier.
 		name = strings.TrimPrefix(name, "_XLFN._XLWS.")
 		name = strings.TrimPrefix(name, "_XLFN.")
+		if name == "LET" {
+			return c.compileLET(n)
+		}
 		funcID := LookupFunc(name)
 		if funcID < 0 {
 			return fmt.Errorf("unknown function %q", n.Name)
@@ -261,6 +277,47 @@ func (c *compiler) compileNode(node Node) error {
 		return fmt.Errorf("unsupported AST node type %T", node)
 	}
 	return nil
+}
+
+func (c *compiler) compileLET(n *FuncCall) error {
+	if len(n.Args) < 3 || len(n.Args)%2 == 0 {
+		c.emit(OpPushError, uint32(ErrValVALUE))
+		return nil
+	}
+
+	saved := make(map[string]uint32, len(c.localNames))
+	for k, v := range c.localNames {
+		saved[k] = v
+	}
+	defer func() {
+		c.localNames = saved
+	}()
+
+	last := len(n.Args) - 1
+	for i := 0; i < last; i += 2 {
+		nameLit, ok := n.Args[i].(*StringLit)
+		if !ok || !isValidLETName(nameLit.Value) {
+			if errLit, ok := n.Args[i].(*ErrorLit); ok {
+				c.emit(OpPushError, uint32(errorCodeFromAST(errLit.Code)))
+			} else {
+				c.emit(OpPushError, uint32(ErrValNAME))
+			}
+			return nil
+		}
+		if err := c.compileNode(n.Args[i+1]); err != nil {
+			return err
+		}
+		slot := c.localCount
+		c.localCount++
+		c.emit(OpStoreLocal, slot)
+		c.localNames[strings.ToUpper(nameLit.Value)] = slot
+	}
+
+	if _, ok := n.Args[last].(*EmptyArg); ok {
+		c.emit(OpPushError, uint32(ErrValVALUE))
+		return nil
+	}
+	return c.compileNode(n.Args[last])
 }
 
 func binaryOpCode(op string) (OpCode, error) {

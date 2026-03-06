@@ -249,6 +249,65 @@ func TestCompileFuncCall(t *testing.T) {
 	}
 }
 
+func TestCompileLET(t *testing.T) {
+	cf := compileFormula(t, "LET(x,1,x+2)")
+	if cf.LocalCount != 1 {
+		t.Fatalf("LocalCount = %d, want 1", cf.LocalCount)
+	}
+	if len(cf.Code) != 5 {
+		t.Fatalf("expected 5 instructions, got %d", len(cf.Code))
+	}
+	if cf.Code[0].Op != OpPushNum {
+		t.Fatalf("code[0] = %s, want PushNum", cf.Code[0].Op)
+	}
+	if cf.Code[1].Op != OpStoreLocal || cf.Code[1].Operand != 0 {
+		t.Fatalf("code[1] = %v, want StoreLocal 0", cf.Code[1])
+	}
+	if cf.Code[2].Op != OpLoadLocal || cf.Code[2].Operand != 0 {
+		t.Fatalf("code[2] = %v, want LoadLocal 0", cf.Code[2])
+	}
+	if cf.Code[3].Op != OpPushNum {
+		t.Fatalf("code[3] = %s, want PushNum", cf.Code[3].Op)
+	}
+	if cf.Code[4].Op != OpAdd {
+		t.Fatalf("code[4] = %s, want Add", cf.Code[4].Op)
+	}
+}
+
+func TestCompileLETNestedScope(t *testing.T) {
+	cf := compileFormula(t, "LET(x,1,LET(y,x+1,y+x))")
+	if cf.LocalCount != 2 {
+		t.Fatalf("LocalCount = %d, want 2", cf.LocalCount)
+	}
+
+	var sawOuterLoad bool
+	var sawInnerLoad bool
+	for _, inst := range cf.Code {
+		if inst.Op != OpLoadLocal {
+			continue
+		}
+		if inst.Operand == 0 {
+			sawOuterLoad = true
+		}
+		if inst.Operand == 1 {
+			sawInnerLoad = true
+		}
+	}
+	if !sawOuterLoad || !sawInnerLoad {
+		t.Fatalf("expected loads of local slots 0 and 1, got %v", cf.Code)
+	}
+}
+
+func TestCompileLETInvalidNameEmitsNameError(t *testing.T) {
+	cf := compileFormula(t, "LET(X1,5,X1)")
+	if len(cf.Code) != 1 {
+		t.Fatalf("expected 1 instruction, got %d", len(cf.Code))
+	}
+	if cf.Code[0].Op != OpPushError || ErrorValue(cf.Code[0].Operand) != ErrValNAME {
+		t.Fatalf("code[0] = %v, want #NAME? push", cf.Code[0])
+	}
+}
+
 func TestCompileZeroArgFunc(t *testing.T) {
 	cf := compileFormula(t, "NOW()")
 	if len(cf.Code) != 1 {

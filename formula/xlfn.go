@@ -36,6 +36,7 @@ var xlfnPrefix = map[string]string{
 	"IFNA":            "_xlfn.",
 	"IFS":             "_xlfn.",
 	"ISOWEEKNUM":      "_xlfn.",
+	"LET":             "_xlfn.",
 	"LAMBDA":          "_xlfn.",
 	"MAKEARRAY":       "_xlfn.",
 	"MAP":             "_xlfn.",

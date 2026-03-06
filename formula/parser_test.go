@@ -518,6 +518,29 @@ func TestParseWhitespace(t *testing.T) {
 	}
 }
 
+func TestParseLET(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{`LET(x,1,x+2)`, `(LET "x" 1 (+ x 2))`},
+		{`LET(x,1,y,x+1,y)`, `(LET "x" 1 "y" (+ x 1) y)`},
+		{`LET(x,1,LET(y,x+1,y))`, `(LET "x" 1 (LET "y" (+ x 1) y))`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			node, err := Parse(tt.input)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.input, err)
+			}
+			if got := node.String(); got != tt.want {
+				t.Errorf("Parse(%q)\n  got:  %s\n  want: %s", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseASTTypes(t *testing.T) {
 	// Verify specific AST node types are produced.
 	t.Run("NumberLit", func(t *testing.T) {

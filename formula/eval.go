@@ -79,6 +79,7 @@ type FormulaArrayEvaluator interface {
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
 	stack := make([]Value, 0, 16)
 	arrayCtxDepth := 0 // >0 means we're inside an array-forcing function's arguments
+	locals := make([]Value, int(cf.LocalCount))
 
 	push := func(v Value) { stack = append(stack, v) }
 	pop := func() (Value, error) {
@@ -451,6 +452,24 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			if arrayCtxDepth > 0 {
 				arrayCtxDepth--
 			}
+
+		case OpLoadLocal:
+			slot := int(inst.Operand)
+			if slot < 0 || slot >= len(locals) {
+				return Value{}, fmt.Errorf("local slot out of range: %d", slot)
+			}
+			push(locals[slot])
+
+		case OpStoreLocal:
+			slot := int(inst.Operand)
+			if slot < 0 || slot >= len(locals) {
+				return Value{}, fmt.Errorf("local slot out of range: %d", slot)
+			}
+			v, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			locals[slot] = v
 
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)

@@ -1061,6 +1061,61 @@ func TestIFERROR(t *testing.T) {
 	})
 }
 
+func TestLET(t *testing.T) {
+	baseResolver := &mockResolver{}
+	rangeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		want     Value
+	}{
+		{"returns_bound_value", `LET(x,5,x)`, baseResolver, NumberVal(5)},
+		{"basic_arithmetic", `LET(x,5,x+1)`, baseResolver, NumberVal(6)},
+		{"multiple_bindings", `LET(x,5,y,2,x+y)`, baseResolver, NumberVal(7)},
+		{"later_binding_uses_earlier", `LET(x,5,y,x*2,y)`, baseResolver, NumberVal(10)},
+		{"string_binding", `LET(text,"hi",text&"!")`, baseResolver, StringVal("hi!")},
+		{"boolean_binding", `LET(flag,TRUE,IF(flag,1,0))`, baseResolver, NumberVal(1)},
+		{"logical_expression", `LET(a,TRUE,b,FALSE,AND(a,NOT(b)))`, baseResolver, BoolVal(true)},
+		{"nested_let_uses_outer", `LET(x,1,LET(y,x+1,y))`, baseResolver, NumberVal(2)},
+		{"inner_shadow_does_not_replace_outer", `LET(x,1,LET(x,2,x)+x)`, baseResolver, NumberVal(3)},
+		{"case_insensitive_names", `LET(total,5,TOTAL+1)`, baseResolver, NumberVal(6)},
+		{"works_inside_other_functions", `LET(x,5,SUM(x,1,x))`, baseResolver, NumberVal(11)},
+		{"body_can_be_single_name", `LET(answer,42,answer)`, baseResolver, NumberVal(42)},
+		{"later_binding_shadows_earlier", `LET(x,1,x,x+1,x)`, baseResolver, NumberVal(2)},
+		{"shadowed_value_can_be_reused", `LET(x,1,y,x+1,x,10,y+x)`, baseResolver, NumberVal(12)},
+		{"range_binding_sum", `LET(vals,A1:A3,SUM(vals))`, rangeResolver, NumberVal(6)},
+		{"range_binding_in_if", `LET(vals,A1:A3,IF(SUM(vals)>3,"big","small"))`, rangeResolver, StringVal("big")},
+		{"self_reference_is_name_error", `LET(x,x+1,x)`, baseResolver, ErrorVal(ErrValNAME)},
+		{"unknown_name_in_calculation", `LET(x,1,y)`, baseResolver, ErrorVal(ErrValNAME)},
+		{"iferror_catches_name_error", `IFERROR(LET(x,1,y),9)`, baseResolver, NumberVal(9)},
+		{"invalid_name_that_looks_like_ref", `LET(X1,5,X1)`, baseResolver, ErrorVal(ErrValNAME)},
+		{"invalid_name_r1c1_conflict", `LET(c,1,c)`, baseResolver, ErrorVal(ErrValNAME)},
+		{"too_few_args", `LET(x,1)`, baseResolver, ErrorVal(ErrValVALUE)},
+		{"even_arg_count", `LET(x,1,y,2)`, baseResolver, ErrorVal(ErrValVALUE)},
+		{"no_args", `LET()`, baseResolver, ErrorVal(ErrValVALUE)},
+		{"prefixed_function_name", `_xlfn.LET(x,5,x+1)`, baseResolver, NumberVal(6)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLogicValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 func TestIFS(t *testing.T) {
 	resolver := &mockResolver{}
 

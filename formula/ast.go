@@ -115,6 +115,16 @@ func (n *CellRef) String() string {
 	return b.String()
 }
 
+// NameRef represents a LET-bound local name reference.
+type NameRef struct {
+	Name string
+}
+
+func (n *NameRef) nodeMarker() {}
+func (n *NameRef) String() string {
+	return n.Name
+}
+
 // RangeRef represents a range reference like A1:B5.
 type RangeRef struct {
 	From *CellRef

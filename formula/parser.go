@@ -8,8 +8,9 @@ import (
 
 // Parser is a Pratt parser that transforms a token stream into an AST.
 type Parser struct {
-	tokens []Token
-	pos    int
+	tokens         []Token
+	pos            int
+	allowBareNames bool
 }
 
 // Parse tokenizes and parses a formula string into an AST.
@@ -35,6 +36,14 @@ func (p *Parser) peek() Token {
 		return Token{Type: TokEOF}
 	}
 	return p.tokens[p.pos]
+}
+
+func (p *Parser) peekAhead(offset int) Token {
+	idx := p.pos + offset
+	if idx >= len(p.tokens) {
+		return Token{Type: TokEOF}
+	}
+	return p.tokens[idx]
 }
 
 func (p *Parser) advance() Token {
@@ -232,6 +241,10 @@ func (p *Parser) parseNud() (Node, error) {
 		return &ErrorLit{Code: ErrorCode(strings.ToUpper(tok.Value))}, nil
 
 	case TokCellRef:
+		if p.allowBareNames && isBareNameToken(tok.Value) && p.peekAhead(1).Type != TokColon {
+			p.advance()
+			return &NameRef{Name: tok.Value}, nil
+		}
 		p.advance()
 		ref, err := parseCellRefToken(tok.Value)
 		if err != nil {
@@ -279,6 +292,9 @@ func (p *Parser) parseNud() (Node, error) {
 func (p *Parser) parseFunc() (Node, error) {
 	tok := p.advance()
 	name := strings.TrimSuffix(tok.Value, "(")
+	if normalizeFuncName(name) == "LET" {
+		return p.parseLET(name, tok.Pos)
+	}
 
 	// Zero-arg function: immediately followed by ).
 	if p.peek().Type == TokRParen {
@@ -318,6 +334,158 @@ func (p *Parser) parseFunc() (Node, error) {
 	}
 
 	return &FuncCall{Name: name, Args: args}, nil
+}
+
+func (p *Parser) parseLET(name string, pos int) (Node, error) {
+	argGroups, err := p.collectFuncArgTokenGroups(name, pos)
+	if err != nil {
+		return nil, err
+	}
+	if len(argGroups) == 0 {
+		return &FuncCall{Name: name}, nil
+	}
+
+	args := make([]Node, 0, len(argGroups))
+	for i, group := range argGroups {
+		isLast := i == len(argGroups)-1
+		if !isLast && i%2 == 0 {
+			args = append(args, parseLETNameArg(group))
+			continue
+		}
+		arg, err := parseTokenGroup(group, true)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	return &FuncCall{Name: name, Args: args}, nil
+}
+
+func (p *Parser) collectFuncArgTokenGroups(name string, pos int) ([][]Token, error) {
+	if p.peek().Type == TokRParen {
+		p.advance()
+		return nil, nil
+	}
+
+	var groups [][]Token
+	start := p.pos
+	depth := 0
+	arrayDepth := 0
+
+	for {
+		tok := p.peek()
+		switch tok.Type {
+		case TokEOF:
+			return nil, fmt.Errorf("expected ')' to close function %s at position %d", name, pos)
+		case TokFunc, TokLParen:
+			depth++
+		case TokRParen:
+			if depth == 0 && arrayDepth == 0 {
+				groups = append(groups, cloneTokens(p.tokens[start:p.pos]))
+				p.advance()
+				return groups, nil
+			}
+			depth--
+		case TokArrayOpen:
+			arrayDepth++
+		case TokArrayClose:
+			arrayDepth--
+		case TokComma:
+			if depth == 0 && arrayDepth == 0 {
+				groups = append(groups, cloneTokens(p.tokens[start:p.pos]))
+				p.advance()
+				start = p.pos
+				continue
+			}
+		}
+		p.advance()
+	}
+}
+
+func parseTokenGroup(tokens []Token, allowBareNames bool) (Node, error) {
+	if len(tokens) == 0 {
+		return &EmptyArg{}, nil
+	}
+
+	group := cloneTokens(tokens)
+	group = append(group, Token{Type: TokEOF, Pos: tokens[len(tokens)-1].Pos})
+	sub := &Parser{tokens: group, allowBareNames: allowBareNames}
+
+	node, err := sub.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+	if sub.peek().Type != TokEOF {
+		return nil, fmt.Errorf("unexpected token %s at position %d", sub.peek(), sub.peek().Pos)
+	}
+	return node, nil
+}
+
+func parseLETNameArg(tokens []Token) Node {
+	if len(tokens) != 1 {
+		return &ErrorLit{Code: ErrNAME}
+	}
+	tok := tokens[0]
+	if tok.Type != TokCellRef || !isValidLETName(tok.Value) {
+		return &ErrorLit{Code: ErrNAME}
+	}
+	return &StringLit{Value: tok.Value}
+}
+
+func cloneTokens(tokens []Token) []Token {
+	out := make([]Token, len(tokens))
+	copy(out, tokens)
+	return out
+}
+
+func isBareNameToken(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	if strings.ContainsAny(raw, "$!'") {
+		return false
+	}
+	return !looksLikeCellRef(raw)
+}
+
+func isValidLETName(name string) bool {
+	if name == "" || !isAlpha(name[0]) {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		ch := name[i]
+		if !isAlphaNum(ch) && ch != '_' && ch != '.' {
+			return false
+		}
+	}
+	if looksLikeCellRef(name) || looksLikeR1C1Ref(name) {
+		return false
+	}
+	return true
+}
+
+func looksLikeR1C1Ref(name string) bool {
+	upper := strings.ToUpper(name)
+	if upper == "R" || upper == "C" {
+		return true
+	}
+	if !strings.HasPrefix(upper, "R") {
+		return false
+	}
+	i := 1
+	for i < len(upper) && upper[i] >= '0' && upper[i] <= '9' {
+		i++
+	}
+	if i == 1 || i >= len(upper) || upper[i] != 'C' {
+		return false
+	}
+	i++
+	start := i
+	for i < len(upper) && upper[i] >= '0' && upper[i] <= '9' {
+		i++
+	}
+	return i == len(upper) && i > start
 }
 
 // parseArray parses an array literal: { expr, expr ; expr, expr }

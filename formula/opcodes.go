@@ -33,6 +33,8 @@ const (
 	OpEnterArrayCtx           // operand: unused; pushes array context (suppresses implicit intersection)
 	OpLeaveArrayCtx           // operand: unused; pops array context
 	OpLoad3DRange             // operand: index into Ranges; loads values across multiple sheets
+	OpLoadLocal               // operand: local slot index
+	OpStoreLocal              // operand: local slot index; pops and stores a LET local
 )
 
 var opNames = [...]string{
@@ -63,6 +65,8 @@ var opNames = [...]string{
 	OpEnterArrayCtx: "EnterArrayCtx",
 	OpLeaveArrayCtx: "LeaveArrayCtx",
 	OpLoad3DRange:   "Load3DRange",
+	OpLoadLocal:     "LoadLocal",
+	OpStoreLocal:    "StoreLocal",
 }
 
 func (op OpCode) String() string {
@@ -84,9 +88,10 @@ func (inst Instruction) String() string {
 
 // CompiledFormula is the output of the compiler: bytecode ready for the VM.
 type CompiledFormula struct {
-	Source string        // original formula text
-	Code   []Instruction // bytecode instructions
-	Consts []Value       // constant pool (numbers and strings)
-	Refs   []CellAddr    // cell reference table
-	Ranges []RangeAddr   // range reference table
+	Source     string        // original formula text
+	Code       []Instruction // bytecode instructions
+	Consts     []Value       // constant pool (numbers and strings)
+	Refs       []CellAddr    // cell reference table
+	Ranges     []RangeAddr   // range reference table
+	LocalCount uint32        // number of LET local slots required at runtime
 }

@@ -8,6 +8,7 @@ func init() {
 	Register("IF", NoCtx(fnIF))
 	Register("IFERROR", NoCtx(fnIFERROR))
 	Register("IFS", NoCtx(fnIFS))
+	Register("LET", NoCtx(fnLET))
 	Register("NOT", NoCtx(fnNOT))
 	Register("OR", NoCtx(fnOR))
 	Register("SORT", NoCtx(fnSORT))
@@ -88,6 +89,15 @@ func fnIFERROR(args []Value) (Value, error) {
 		return args[1], nil
 	}
 	return args[0], nil
+}
+
+func fnLET(args []Value) (Value, error) {
+	// LET is compiled into local load/store opcodes. A direct runtime call
+	// means the AST was constructed incorrectly, so fail as a shape error.
+	if len(args) < 3 || len(args)%2 == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return ErrorVal(ErrValVALUE), nil
 }
 
 func fnAND(args []Value) (Value, error) {
