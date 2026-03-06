@@ -136,6 +136,24 @@ func TestFormulaCellInXML(t *testing.T) {
 	}
 }
 
+func TestDynamicArrayFormulaPrefixesInXML(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", `SORT(UNIQUE(FILTER(B1:B10,B1:B10<>"")))`)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dynamic-array-prefixes.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
+	want := `<f>_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(B1:B10,B1:B10&lt;&gt;&#34;&#34;)))</f>`
+	if !strings.Contains(sheetXML, want) {
+		t.Fatalf("dynamic array formula XML missing expected prefixes\nwant: %s\nxml: %s", want, sheetXML)
+	}
+}
+
 func TestFormulaAndValueCoexist(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

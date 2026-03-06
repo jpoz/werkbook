@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -141,5 +142,74 @@ func TestGetValue(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("GetValue(%q).Raw() = %v (%T), want %v (%T)", tt.cell, got, got, tt.want, tt.want)
 		}
+	}
+}
+
+func TestSharedStringsCountMatchesReferences(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", "dup")
+	s.SetValue("A2", "dup")
+	s.SetValue("A3", "unique")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "shared-strings-count.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer zr.Close()
+
+	var sstXML []byte
+	for _, zf := range zr.File {
+		if zf.Name != "xl/sharedStrings.xml" {
+			continue
+		}
+		rc, err := zf.Open()
+		if err != nil {
+			t.Fatalf("open shared strings: %v", err)
+		}
+		sstXML, err = io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read shared strings: %v", err)
+		}
+	}
+	if len(sstXML) == 0 {
+		t.Fatal("expected xl/sharedStrings.xml in ZIP")
+	}
+
+	type xmlSST struct {
+		Count       string     `xml:"count,attr"`
+		UniqueCount string     `xml:"uniqueCount,attr"`
+		SI          []struct{} `xml:"si"`
+	}
+	var sst xmlSST
+	if err := xml.Unmarshal(sstXML, &sst); err != nil {
+		t.Fatalf("parse shared strings XML: %v", err)
+	}
+
+	count, err := strconv.Atoi(sst.Count)
+	if err != nil {
+		t.Fatalf("parse count: %v", err)
+	}
+	uniqueCount, err := strconv.Atoi(sst.UniqueCount)
+	if err != nil {
+		t.Fatalf("parse uniqueCount: %v", err)
+	}
+
+	if count != 3 {
+		t.Fatalf("shared string count = %d, want 3", count)
+	}
+	if uniqueCount != 2 {
+		t.Fatalf("shared string uniqueCount = %d, want 2", uniqueCount)
+	}
+	if len(sst.SI) != 2 {
+		t.Fatalf("shared string item count = %d, want 2", len(sst.SI))
 	}
 }

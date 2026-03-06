@@ -122,8 +122,8 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		}
 
 		for _, xr := range ws.SheetData.Rows {
-			rd := RowData{Num: xr.R, Hidden: xr.Hidden}
-			if xr.CustomHeight && xr.Ht != 0 {
+			rd := RowData{Num: xr.R, Hidden: xr.Hidden == 1}
+			if xr.CustomHeight == 1 && xr.Ht != 0 {
 				rd.Height = xr.Ht
 			}
 			for _, xc := range xr.Cells {
@@ -255,7 +255,7 @@ func readStyles(files map[string]*zip.File) []StyleData {
 		if xf.Alignment != nil {
 			sd.HAlign = xf.Alignment.Horizontal
 			sd.VAlign = xf.Alignment.Vertical
-			sd.WrapText = xf.Alignment.WrapText
+			sd.WrapText = xf.Alignment.WrapText == 1
 		}
 
 		styles = append(styles, sd)

@@ -78,8 +78,8 @@ func TestStyleSheetBuilder_AddStyle_Alignment(t *testing.T) {
 	}
 	ss := ssb.Build()
 	xf := ss.CellXfs.Xf[idx]
-	if !xf.ApplyAlignment {
-		t.Error("ApplyAlignment = false, want true")
+	if xf.ApplyAlignment == 0 {
+		t.Error("ApplyAlignment = 0, want 1")
 	}
 	if xf.Alignment == nil {
 		t.Fatal("Alignment is nil")
@@ -90,8 +90,8 @@ func TestStyleSheetBuilder_AddStyle_Alignment(t *testing.T) {
 	if xf.Alignment.Vertical != "top" {
 		t.Errorf("Vertical = %q, want top", xf.Alignment.Vertical)
 	}
-	if !xf.Alignment.WrapText {
-		t.Error("WrapText = false, want true")
+	if xf.Alignment.WrapText == 0 {
+		t.Error("WrapText = 0, want 1")
 	}
 }
 

@@ -197,16 +197,20 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 				Min:         cw.Min,
 				Max:         cw.Max,
 				Width:       cw.Width,
-				CustomWidth: true,
+				CustomWidth: 1,
 			})
 		}
 	}
 
 	for _, rd := range sd.Rows {
-		row := xlsxRow{R: rd.Num, Hidden: rd.Hidden}
+		var hidden ooxmlBool
+		if rd.Hidden {
+			hidden = 1
+		}
+		row := xlsxRow{R: rd.Num, Hidden: hidden}
 		if rd.Height != 0 {
 			row.Ht = rd.Height
-			row.CustomHeight = true
+			row.CustomHeight = 1
 		}
 		for _, cd := range rd.Cells {
 			c := xlsxC{
