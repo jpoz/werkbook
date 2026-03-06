@@ -2812,8 +2812,8 @@ func TestCOUNTIFWildcardEscapes(t *testing.T) {
 		{`COUNTIF(A1:A8,"star~*")`, 1}, // star*
 		// a~?b means: "a" then literal ? then "b"
 		{`COUNTIF(A1:A8,"a~?b")`, 1}, // a?b
-		// ~** alone: no unescaped wildcards, matches literal "**" (Excel behaviour).
-		{`COUNTIF(A1:A8,"~**")`, 0}, // no cell is exactly "**"
+		// ~** means: literal * then wildcard * (match anything) → cells starting with *
+		{`COUNTIF(A1:A8,"~**")`, 1}, // *star
 		// ~* alone: matches literal "*"
 		{`COUNTIF(A1:A8,"~*")`, 0}, // no cell is exactly "*"
 		// SUMIF with wildcard escapes
@@ -5701,9 +5701,11 @@ func TestMatchesCriteriaExtended(t *testing.T) {
 		{name: "eq20_matches_str_20", v: StringVal("20"), crit: StringVal("=20"), want: true},
 		// Numeric operand with ordering operators does NOT match text-numbers
 		{name: "gt10_no_match_str_15", v: StringVal("15"), crit: StringVal(">10"), want: false},
-		// Tilde escape without remaining wildcards: "~**" matches literal "**"
-		{name: "tilde_star_star_no_match", v: StringVal("*Special"), crit: StringVal("~**"), want: false},
+		// Tilde escape: "~**" means literal * followed by wildcard * (match anything)
+		{name: "tilde_star_star_match", v: StringVal("*Special"), crit: StringVal("~**"), want: true},
 		{name: "tilde_star_star_exact", v: StringVal("**"), crit: StringVal("~**"), want: true},
+		{name: "tilde_star_star_just_star", v: StringVal("*"), crit: StringVal("~**"), want: true},
+		{name: "tilde_star_star_no_star", v: StringVal("abc"), crit: StringVal("~**"), want: false},
 		// "~*" matches literal "*"
 		{name: "tilde_star_exact", v: StringVal("*"), crit: StringVal("~*"), want: true},
 		{name: "tilde_star_no_match", v: StringVal("*abc"), crit: StringVal("~*"), want: false},

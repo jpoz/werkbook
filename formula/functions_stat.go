@@ -692,10 +692,10 @@ const (
 // classifyWildcard examines a criteria string and returns what kind of
 // wildcard processing it needs.
 //
-// In Excel, ~* escapes a literal * and also absorbs any immediately
-// following identical wildcard characters.  So "~**" has no unescaped
-// wildcards (it matches literal "**"), whereas "*~**" still has unescaped
-// wildcards at the leading and trailing positions.
+// In Excel, ~* escapes a single literal *, ~? escapes a single literal ?,
+// and ~~ escapes a single literal ~.  So "~**" has an escaped * followed
+// by an unescaped wildcard *, meaning it matches strings starting with
+// a literal '*'.
 func classifyWildcard(s string) wildcardMode {
 	hasEscape := false
 	for i := 0; i < len(s); i++ {
@@ -703,14 +703,7 @@ func classifyWildcard(s string) wildcardMode {
 		case '~':
 			if i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
 				hasEscape = true
-				escaped := s[i+1]
 				i++ // skip the escaped char
-				// Also skip any immediately following identical wildcard chars.
-				if escaped == '*' || escaped == '?' {
-					for i+1 < len(s) && s[i+1] == escaped {
-						i++
-					}
-				}
 			}
 		case '*', '?':
 			return wildcardFull
@@ -731,13 +724,6 @@ func unescapePattern(s string) string {
 		if s[i] == '~' && i+1 < len(s) && (s[i+1] == '*' || s[i+1] == '?' || s[i+1] == '~') {
 			b.WriteByte(s[i+1])
 			i++ // skip escaped char
-			// Also emit any immediately following identical wildcard chars.
-			if s[i] == '*' || s[i] == '?' {
-				for i+1 < len(s) && s[i+1] == s[i] {
-					i++
-					b.WriteByte(s[i])
-				}
-			}
 		} else {
 			b.WriteByte(s[i])
 		}
