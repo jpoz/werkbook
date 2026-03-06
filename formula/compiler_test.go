@@ -372,17 +372,43 @@ func TestCompileUnknownFunction(t *testing.T) {
 }
 
 func TestCompileXludfPrefix(t *testing.T) {
-	// _xludf. prefix means "user-defined function" — must not resolve.
-	node, err := Parse("_xludf.CEILING.MATH(2.5)")
+	// _xludf. prefix means "user-defined function" — must produce #NAME?
+	// at runtime (not a compile error) so IFERROR and similar can catch it.
+	src := "_xludf.CEILING.MATH(2.5)"
+	node, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	_, err = Compile("_xludf.CEILING.MATH(2.5)", node)
-	if err == nil {
-		t.Fatal("expected compile error for _xludf. prefixed function")
+	cf, err := Compile(src, node)
+	if err != nil {
+		t.Fatalf("unexpected compile error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown function") {
-		t.Errorf("error = %q, want it to contain 'unknown function'", err.Error())
+	result, err := Eval(cf, nil, &EvalContext{})
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNAME {
+		t.Errorf("got %v, want #NAME? error", result)
+	}
+}
+
+func TestXludfPrefixWithIFERROR(t *testing.T) {
+	// IFERROR should catch the #NAME? from a _xludf. function.
+	src := `IFERROR(_xludf.ACOT(0),"caught")`
+	node, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	cf, err := Compile(src, node)
+	if err != nil {
+		t.Fatalf("unexpected compile error: %v", err)
+	}
+	result, err := Eval(cf, nil, &EvalContext{})
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if result.Type != ValueString || result.Str != "caught" {
+		t.Errorf("got %v, want string 'caught'", result)
 	}
 }
 
