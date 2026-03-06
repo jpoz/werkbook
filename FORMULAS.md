@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **306** Excel formula functions.
+Werkbook supports **308** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -11,7 +11,7 @@ Werkbook supports **306** Excel formula functions.
 | ACOTH | Math & Trig | 31 |
 | ADDRESS | Lookup & Reference | - |
 | ANCHORARRAY | Lookup & Reference | 6 |
-| AND | Logical | 27 |
+| AND | Logical | 31 |
 | ARABIC | Math & Trig | - |
 | ARRAYTOTEXT | Text | 24 |
 | ASIN | Math & Trig | - |
@@ -98,6 +98,7 @@ Werkbook supports **306** Excel formula functions.
 | EXP | Math & Trig | - |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
+| FALSE | Logical | - |
 | FILTER | Lookup & Reference | 31 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
@@ -123,10 +124,10 @@ Werkbook supports **306** Excel formula functions.
 | HLOOKUP | Lookup & Reference | 22 |
 | HOUR | Date & Time | - |
 | HSTACK | Lookup & Reference | 18 |
-| IF | Logical | 21 |
-| IFERROR | Logical | 25 |
+| IF | Logical | 29 |
+| IFERROR | Logical | 27 |
 | IFNA | Information | 5 |
-| IFS | Logical | 32 |
+| IFS | Logical | 34 |
 | INDEX | Lookup & Reference | 13 |
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
@@ -185,7 +186,7 @@ Werkbook supports **306** Excel formula functions.
 | NORM.INV | Statistical | 28 |
 | NORM.S.DIST | Statistical | 27 |
 | NORM.S.INV | Statistical | 27 |
-| NOT | Logical | 8 |
+| NOT | Logical | 10 |
 | NOW | Date & Time | 2 |
 | NPER | Financial | 3 |
 | NPV | Financial | 25 |
@@ -194,7 +195,7 @@ Werkbook supports **306** Excel formula functions.
 | OCT2DEC | Engineering | 43 |
 | OCT2HEX | Engineering | 36 |
 | ODD | Math & Trig | - |
-| OR | Logical | 48 |
+| OR | Logical | 50 |
 | PDURATION | Financial | 21 |
 | PEARSON | Statistical | 23 |
 | PERCENTILE | Statistical | 31 |
@@ -264,7 +265,7 @@ Werkbook supports **306** Excel formula functions.
 | SUMX2MY2 | Math & Trig | 31 |
 | SUMX2PY2 | Math & Trig | 31 |
 | SUMXMY2 | Math & Trig | 31 |
-| SWITCH | Logical | 28 |
+| SWITCH | Logical | 30 |
 | SYD | Financial | 23 |
 | T | Text | 5 |
 | TAKE | Lookup & Reference | 30 |
@@ -283,6 +284,7 @@ Werkbook supports **306** Excel formula functions.
 | TRANSPOSE | Lookup & Reference | 35 |
 | TRIM | Text | 18 |
 | TRIMMEAN | Statistical | 23 |
+| TRUE | Logical | - |
 | TRUNC | Math & Trig | - |
 | TYPE | Information | - |
 | UNIQUE | Lookup & Reference | 29 |
@@ -307,7 +309,7 @@ Werkbook supports **306** Excel formula functions.
 | XIRR | Financial | 19 |
 | XLOOKUP | Lookup & Reference | 22 |
 | XNPV | Financial | 18 |
-| XOR | Logical | 32 |
+| XOR | Logical | 34 |
 | YEAR | Date & Time | 26 |
 | YEARFRAC | Date & Time | - |
 

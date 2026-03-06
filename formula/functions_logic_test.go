@@ -4,6 +4,113 @@ import (
 	"testing"
 )
 
+func assertLogicValueEqual(t *testing.T, got, want Value) {
+	t.Helper()
+
+	if got.Type != want.Type {
+		t.Fatalf("type = %v, want %v (got=%v)", got.Type, want.Type, got)
+	}
+
+	switch want.Type {
+	case ValueBool:
+		if got.Bool != want.Bool {
+			t.Fatalf("bool = %v, want %v", got.Bool, want.Bool)
+		}
+	case ValueNumber:
+		if cmpFloatExact(got.Num, want.Num) != 0 {
+			t.Fatalf("num = %v, want %v", got.Num, want.Num)
+		}
+	case ValueString:
+		if got.Str != want.Str {
+			t.Fatalf("str = %q, want %q", got.Str, want.Str)
+		}
+	case ValueError:
+		if got.Err != want.Err {
+			t.Fatalf("err = %v, want %v", got.Err, want.Err)
+		}
+	}
+}
+
+func TestTRUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{"direct", "TRUE()", BoolVal(true)},
+		{"if_true_branch", `IF(TRUE(),"yes","no")`, StringVal("yes")},
+		{"if_without_else", "IF(TRUE(),1)", NumberVal(1)},
+		{"and_with_true", "AND(TRUE(),TRUE())", BoolVal(true)},
+		{"and_with_number", "AND(TRUE(),1)", BoolVal(true)},
+		{"or_with_false", "OR(FALSE(),TRUE())", BoolVal(true)},
+		{"xor_with_false", "XOR(TRUE(),FALSE())", BoolVal(true)},
+		{"not", "NOT(TRUE())", BoolVal(false)},
+		{"comparison_to_literal_true", "TRUE()=TRUE", BoolVal(true)},
+		{"comparison_to_literal_false", "TRUE()=FALSE", BoolVal(false)},
+		{"if_or_expression", "IF(OR(TRUE(),FALSE()),10,20)", NumberVal(10)},
+		{"if_and_expression", "IF(AND(TRUE(),1),5,6)", NumberVal(5)},
+		{"switch_match", `SWITCH(TRUE(),FALSE(),"no",TRUE(),"yes")`, StringVal("yes")},
+		{"ifs_match", `IFS(TRUE(),"hit",FALSE(),"miss")`, StringVal("hit")},
+		{"iferror_passthrough", `IFERROR(TRUE(),"fallback")`, BoolVal(true)},
+		{"too_many_args_number", "TRUE(1)", ErrorVal(ErrValVALUE)},
+		{"too_many_args_bool", "TRUE(FALSE())", ErrorVal(ErrValVALUE)},
+		{"too_many_args_multiple", "TRUE(1,2)", ErrorVal(ErrValVALUE)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLogicValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestFALSE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{"direct", "FALSE()", BoolVal(false)},
+		{"if_false_branch", `IF(FALSE(),"yes","no")`, StringVal("no")},
+		{"if_without_else", `IF(FALSE(),"yes")`, BoolVal(false)},
+		{"and_with_true", "AND(TRUE(),FALSE())", BoolVal(false)},
+		{"and_with_zero", "AND(FALSE(),0)", BoolVal(false)},
+		{"or_all_false", "OR(FALSE(),FALSE())", BoolVal(false)},
+		{"xor_all_false", "XOR(FALSE(),FALSE())", BoolVal(false)},
+		{"not", "NOT(FALSE())", BoolVal(true)},
+		{"comparison_to_literal_false", "FALSE()=FALSE", BoolVal(true)},
+		{"comparison_to_literal_true", "FALSE()=TRUE", BoolVal(false)},
+		{"if_or_expression", "IF(OR(FALSE(),0),10,20)", NumberVal(20)},
+		{"if_and_expression", "IF(AND(TRUE(),FALSE()),5,6)", NumberVal(6)},
+		{"switch_match", `SWITCH(FALSE(),TRUE(),"yes",FALSE(),"no")`, StringVal("no")},
+		{"ifs_match", `IFS(FALSE(),"miss",TRUE(),"hit")`, StringVal("hit")},
+		{"iferror_passthrough", `IFERROR(FALSE(),"fallback")`, BoolVal(false)},
+		{"too_many_args_number", "FALSE(1)", ErrorVal(ErrValVALUE)},
+		{"too_many_args_bool", "FALSE(TRUE())", ErrorVal(ErrValVALUE)},
+		{"too_many_args_multiple", "FALSE(1,2)", ErrorVal(ErrValVALUE)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLogicValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 func TestAND(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -526,9 +633,9 @@ func TestXOR(t *testing.T) {
 			{"XOR(TRUE,FALSE)", true},   // odd TRUE count
 			{"XOR(FALSE,FALSE)", false}, // zero TRUE count
 			// Three booleans
-			{"XOR(TRUE,TRUE,TRUE)", true},    // 3 TRUE = odd
-			{"XOR(TRUE,TRUE,FALSE)", false},  // 2 TRUE = even
-			{"XOR(TRUE,FALSE,FALSE)", true},  // 1 TRUE = odd
+			{"XOR(TRUE,TRUE,TRUE)", true},     // 3 TRUE = odd
+			{"XOR(TRUE,TRUE,FALSE)", false},   // 2 TRUE = even
+			{"XOR(TRUE,FALSE,FALSE)", true},   // 1 TRUE = odd
 			{"XOR(FALSE,FALSE,FALSE)", false}, // 0 TRUE
 			// Four TRUE (even count) → FALSE
 			{"XOR(TRUE,TRUE,TRUE,TRUE)", false},
