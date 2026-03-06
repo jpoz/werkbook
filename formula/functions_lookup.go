@@ -20,6 +20,7 @@ func init() {
 	Register("TAKE", NoCtx(fnTAKE))
 	Register("DROP", NoCtx(fnDROP))
 	Register("CHOOSECOLS", NoCtx(fnCHOOSECOLS))
+	Register("CHOOSEROWS", NoCtx(fnCHOOSEROWS))
 	Register("TOCOL", NoCtx(fnTOCOL))
 	Register("TOROW", NoCtx(fnTOROW))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
@@ -1434,6 +1435,40 @@ func fnCHOOSECOLS(args []Value) (Value, error) {
 			}
 		}
 		result[r] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// fnCHOOSEROWS implements CHOOSEROWS(array, row_num1, [row_num2], ...).
+func fnCHOOSEROWS(args []Value) (Value, error) {
+	if len(args) < 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	numRows, _ := gridDims(grid)
+	selectRows := make([]int, len(args)-1)
+	for i, arg := range args[1:] {
+		rowIdx, e := normalizeChooserIndex(arg, numRows)
+		if e != nil {
+			return *e, nil
+		}
+		selectRows[i] = rowIdx
+	}
+
+	result := make([][]Value, len(selectRows))
+	for i, srcRow := range selectRows {
+		row := make([]Value, len(grid[srcRow]))
+		copy(row, grid[srcRow])
+		result[i] = row
 	}
 
 	if len(result) == 1 && len(result[0]) == 1 {

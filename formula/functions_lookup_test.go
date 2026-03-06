@@ -4242,6 +4242,258 @@ func TestCHOOSECOLS_ViaEval(t *testing.T) {
 	}
 }
 
+func TestCHOOSEROWS(t *testing.T) {
+	base := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2), NumberVal(3)},
+		{NumberVal(4), NumberVal(5), NumberVal(6)},
+		{NumberVal(7), NumberVal(8), NumberVal(9)},
+	}}
+	mixed := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a"), BoolVal(true), ErrorVal(ErrValNA)},
+		{EmptyVal(), NumberVal(2), StringVal("z")},
+		{NumberVal(9), StringVal("tail"), BoolVal(false)},
+	}}
+
+	tests := []struct {
+		name string
+		args []Value
+		want Value
+	}{
+		{
+			name: "first_row",
+			args: []Value{base, NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name: "last_row_negative",
+			args: []Value{base, NumberVal(-1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(7), NumberVal(8), NumberVal(9)},
+			}},
+		},
+		{
+			name: "reorder_rows",
+			args: []Value{base, NumberVal(3), NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(7), NumberVal(8), NumberVal(9)},
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name: "duplicate_rows",
+			args: []Value{base, NumberVal(2), NumberVal(2), NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name: "mixed_positive_and_negative",
+			args: []Value{base, NumberVal(-1), NumberVal(2), NumberVal(-3)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(7), NumberVal(8), NumberVal(9)},
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name: "scalar_first_row",
+			args: []Value{NumberVal(9), NumberVal(1)},
+			want: NumberVal(9),
+		},
+		{
+			name: "scalar_negative_one",
+			args: []Value{StringVal("x"), NumberVal(-1)},
+			want: StringVal("x"),
+		},
+		{
+			name: "bool_index_true_coerces_to_one",
+			args: []Value{base, BoolVal(true)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name: "numeric_string_index",
+			args: []Value{base, StringVal("2")},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+			}},
+		},
+		{
+			name: "fractional_index_truncates",
+			args: []Value{base, NumberVal(2.9)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+			}},
+		},
+		{
+			name: "fractional_negative_index_truncates",
+			args: []Value{base, NumberVal(-1.9)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(7), NumberVal(8), NumberVal(9)},
+			}},
+		},
+		{
+			name: "preserves_error_values",
+			args: []Value{mixed, NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{StringVal("a"), BoolVal(true), ErrorVal(ErrValNA)},
+			}},
+		},
+		{
+			name: "preserves_empty_values",
+			args: []Value{mixed, NumberVal(2)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{EmptyVal(), NumberVal(2), StringVal("z")},
+			}},
+		},
+		{
+			name: "multiple_rows_with_mixed_types",
+			args: []Value{mixed, NumberVal(3), NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(9), StringVal("tail"), BoolVal(false)},
+				{StringVal("a"), BoolVal(true), ErrorVal(ErrValNA)},
+			}},
+		},
+		{
+			name: "array_error_passthrough",
+			args: []Value{ErrorVal(ErrValREF), NumberVal(1)},
+			want: ErrorVal(ErrValREF),
+		},
+		{
+			name: "empty_array_is_value_error",
+			args: []Value{{Type: ValueArray, Array: [][]Value{}}, NumberVal(1)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "zero_index_errors",
+			args: []Value{base, NumberVal(0)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "positive_index_too_large_errors",
+			args: []Value{base, NumberVal(4)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "negative_index_too_large_errors",
+			args: []Value{base, NumberVal(-4)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "nonnumeric_string_index_errors",
+			args: []Value{base, StringVal("abc")},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "error_index_propagates",
+			args: []Value{base, ErrorVal(ErrValDIV0)},
+			want: ErrorVal(ErrValDIV0),
+		},
+		{
+			name: "too_few_args_errors",
+			args: []Value{base},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "no_args_errors",
+			args: nil,
+			want: ErrorVal(ErrValVALUE),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := fnCHOOSEROWS(tt.args)
+			if err != nil {
+				t.Fatalf("fnCHOOSEROWS: %v", err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestCHOOSEROWS_ViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 3, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(6),
+			{Col: 1, Row: 3}: NumberVal(7),
+			{Col: 2, Row: 3}: NumberVal(8),
+			{Col: 3, Row: 3}: NumberVal(9),
+			{Col: 1, Row: 4}: NumberVal(10),
+			{Col: 2, Row: 4}: NumberVal(11),
+			{Col: 3, Row: 4}: NumberVal(12),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{
+			name:    "range_reorder",
+			formula: "CHOOSEROWS(A1:C4,4,1)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(10), NumberVal(11), NumberVal(12)},
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+			}},
+		},
+		{
+			name:    "range_negative_index",
+			formula: "CHOOSEROWS(A1:C4,-2)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(7), NumberVal(8), NumberVal(9)},
+			}},
+		},
+		{
+			name:    "scalar_formula",
+			formula: "CHOOSEROWS(42,1)",
+			want:    NumberVal(42),
+		},
+		{
+			name:    "string_index_formula",
+			formula: `CHOOSEROWS(A1:C4,"2")`,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(4), NumberVal(5), NumberVal(6)},
+			}},
+		},
+		{
+			name:    "bool_index_formula",
+			formula: "CHOOSEROWS(A1:C4,TRUE,4)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(2), NumberVal(3)},
+				{NumberVal(10), NumberVal(11), NumberVal(12)},
+			}},
+		},
+		{
+			name:    "too_few_args_formula",
+			formula: "CHOOSEROWS(A1:C4)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TOCOL
 // ---------------------------------------------------------------------------
