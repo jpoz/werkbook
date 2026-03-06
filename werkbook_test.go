@@ -2,6 +2,7 @@ package werkbook_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -75,5 +76,34 @@ func TestSaveAsCreatesFile(t *testing.T) {
 	}
 	if info.Size() == 0 {
 		t.Error("file is empty")
+	}
+}
+
+func TestWriteToAndOpenReader(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	if err := s.SetValue("A1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFormula("B1", `A1&" world"`); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+
+	f2, err := werkbook.OpenReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+
+	v, err := f2.Sheet("Sheet1").GetValue("B1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != werkbook.TypeString || v.String != "hello world" {
+		t.Fatalf("B1 = %#v, want \"hello world\"", v)
 	}
 }

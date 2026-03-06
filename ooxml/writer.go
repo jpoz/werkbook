@@ -133,11 +133,15 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
 	}
 	for i, sd := range data.Sheets {
-		wb.Sheets.Sheet = append(wb.Sheets.Sheet, xlsxSheet{
+		sheet := xlsxSheet{
 			Name:    sd.Name,
 			SheetID: i + 1,
 			RID:     fmt.Sprintf("rId%d", i+1),
-		})
+		}
+		if sd.State != "" {
+			sheet.State = sd.State
+		}
+		wb.Sheets.Sheet = append(wb.Sheets.Sheet, sheet)
 	}
 	if len(data.DefinedNames) > 0 {
 		wb.DefinedNames = &xlsxDefinedNames{}
@@ -201,6 +205,16 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 			})
 		}
 	}
+	if len(sd.MergeCells) > 0 {
+		ws.MergeCells = &xlsxMergeCells{Count: len(sd.MergeCells)}
+		for _, mc := range sd.MergeCells {
+			ref := mc.StartAxis
+			if mc.EndAxis != "" && mc.EndAxis != mc.StartAxis {
+				ref += ":" + mc.EndAxis
+			}
+			ws.MergeCells.MergeCell = append(ws.MergeCells.MergeCell, xlsxMergeCell{Ref: ref})
+		}
+	}
 
 	for _, rd := range sd.Rows {
 		var hidden ooxmlBool
@@ -249,4 +263,3 @@ func writeXML(zw *zip.Writer, name string, v any) error {
 	}
 	return enc.Close()
 }
-

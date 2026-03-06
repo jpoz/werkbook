@@ -1,7 +1,9 @@
 package werkbook
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -13,12 +15,12 @@ import (
 type File struct {
 	sheets       []*Sheet
 	sheetNames   []string
-	date1904     bool                       // true if the workbook uses the 1904 date system (Mac Excel)
-	calcGen      uint64                     // incremented on any cell mutation; starts at 1
-	evaluating   map[cellKey]bool           // tracks cells being evaluated (circular ref detection)
-	deps         *formula.DepGraph          // cell dependency graph for incremental recalculation
-	tables       []formula.TableInfo        // table definitions for structured reference expansion
-	definedNames []formula.DefinedNameInfo  // defined names (named ranges) for formula expansion
+	date1904     bool                      // true if the workbook uses the 1904 date system (Mac Excel)
+	calcGen      uint64                    // incremented on any cell mutation; starts at 1
+	evaluating   map[cellKey]bool          // tracks cells being evaluated (circular ref detection)
+	deps         *formula.DepGraph         // cell dependency graph for incremental recalculation
+	tables       []formula.TableInfo       // table definitions for structured reference expansion
+	definedNames []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -76,13 +78,21 @@ func (f *File) SheetNames() []string {
 	return names
 }
 
+// SheetIndex returns the 0-based index of the named sheet, or -1 if not found.
+func (f *File) SheetIndex(name string) int {
+	for i, n := range f.sheetNames {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // NewSheet adds a new empty sheet with the given name.
 // Returns an error if a sheet with that name already exists.
 func (f *File) NewSheet(name string) (*Sheet, error) {
-	for _, n := range f.sheetNames {
-		if n == name {
-			return nil, fmt.Errorf("sheet %q already exists", name)
-		}
+	if f.SheetIndex(name) >= 0 {
+		return nil, fmt.Errorf("sheet %q already exists", name)
 	}
 	return f.addSheet(name), nil
 }
@@ -93,22 +103,38 @@ func (f *File) DeleteSheet(name string) error {
 	if len(f.sheets) <= 1 {
 		return fmt.Errorf("cannot delete the only sheet")
 	}
-	for i, s := range f.sheets {
-		if s.name == name {
-			// Unregister all formulas on the deleted sheet.
-			for _, r := range s.rows {
-				for col, c := range r.cells {
-					if c.formula != "" {
-						f.deps.Unregister(formula.QualifiedCell{Sheet: name, Col: col, Row: r.num})
-					}
-				}
-			}
-			f.sheets = append(f.sheets[:i], f.sheets[i+1:]...)
-			f.sheetNames = append(f.sheetNames[:i], f.sheetNames[i+1:]...)
-			return nil
+	idx := f.SheetIndex(name)
+	if idx < 0 {
+		return ErrSheetNotFound
+	}
+
+	f.sheets = append(f.sheets[:idx], f.sheets[idx+1:]...)
+	f.sheetNames = append(f.sheetNames[:idx], f.sheetNames[idx+1:]...)
+
+	// Remove table metadata for the deleted sheet.
+	filteredTables := f.tables[:0]
+	for _, t := range f.tables {
+		if t.SheetName != name {
+			filteredTables = append(filteredTables, t)
 		}
 	}
-	return ErrSheetNotFound
+	f.tables = filteredTables
+
+	// Sheet-scoped names on the deleted sheet disappear; later sheet indexes shift down.
+	filteredNames := f.definedNames[:0]
+	for _, dn := range f.definedNames {
+		switch {
+		case dn.LocalSheetID == idx:
+			continue
+		case dn.LocalSheetID > idx:
+			dn.LocalSheetID--
+		}
+		filteredNames = append(filteredNames, dn)
+	}
+	f.definedNames = filteredNames
+
+	f.rebuildFormulaState()
+	return nil
 }
 
 func (f *File) addSheet(name string) *Sheet {
@@ -116,6 +142,44 @@ func (f *File) addSheet(name string) *Sheet {
 	f.sheets = append(f.sheets, s)
 	f.sheetNames = append(f.sheetNames, name)
 	return s
+}
+
+// SetSheetName renames a sheet.
+func (f *File) SetSheetName(old, new string) error {
+	if old == new {
+		if f.SheetIndex(old) < 0 {
+			return ErrSheetNotFound
+		}
+		return nil
+	}
+	idx := f.SheetIndex(old)
+	if idx < 0 {
+		return ErrSheetNotFound
+	}
+	if f.SheetIndex(new) >= 0 {
+		return fmt.Errorf("sheet %q already exists", new)
+	}
+
+	f.sheets[idx].name = new
+	f.sheetNames[idx] = new
+	for i := range f.tables {
+		if f.tables[i].SheetName == old {
+			f.tables[i].SheetName = new
+		}
+	}
+
+	f.rebuildFormulaState()
+	return nil
+}
+
+// SetSheetVisible sets whether a sheet is visible.
+func (f *File) SetSheetVisible(name string, visible bool) error {
+	s := f.Sheet(name)
+	if s == nil {
+		return ErrSheetNotFound
+	}
+	s.visible = visible
+	return nil
 }
 
 // SaveAs writes the workbook to the given file path.
@@ -133,6 +197,11 @@ func (f *File) SaveAs(name string) error {
 	return out.Close()
 }
 
+// WriteTo serializes the workbook to the given writer.
+func (f *File) WriteTo(w io.Writer) error {
+	return ooxml.WriteWorkbook(w, f.buildWorkbookData())
+}
+
 // Open opens an existing XLSX file for reading.
 func Open(name string) (*File, error) {
 	osf, err := os.Open(name)
@@ -146,11 +215,24 @@ func Open(name string) (*File, error) {
 		return nil, err
 	}
 
-	data, err := ooxml.ReadWorkbook(osf, info.Size())
+	return OpenReaderAt(osf, info.Size())
+}
+
+// OpenReader opens an XLSX from an arbitrary reader.
+func OpenReader(r io.Reader) (*File, error) {
+	buf, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
+	return OpenReaderAt(bytes.NewReader(buf), int64(len(buf)))
+}
 
+// OpenReaderAt opens an XLSX from a random-access reader.
+func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
+	data, err := ooxml.ReadWorkbook(r, size)
+	if err != nil {
+		return nil, err
+	}
 	return fileFromData(data), nil
 }
 
@@ -168,11 +250,23 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
+		s.visible = sd.State != "hidden" && sd.State != "veryHidden"
 
 		// Restore column widths.
 		for _, cw := range sd.ColWidths {
 			for col := cw.Min; col <= cw.Max; col++ {
 				s.colWidths[col] = cw.Width
+			}
+		}
+
+		// Restore merged cells.
+		if len(sd.MergeCells) > 0 {
+			s.merges = make([]MergeRange, len(sd.MergeCells))
+			for i, mc := range sd.MergeCells {
+				s.merges[i] = MergeRange{
+					Start: mc.StartAxis,
+					End:   mc.EndAxis,
+				}
 			}
 		}
 
@@ -244,7 +338,6 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 	return f
 }
 
-
 func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
 	switch cd.Type {
 	case "s":
@@ -299,20 +392,28 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 
 // registerAllFormulas iterates all cells and registers compiled formulas in
 // the dependency graph. Called at the end of fileFromData.
-// sheetIndex returns the 0-based index of the named sheet, or -1 if not found.
-func (f *File) sheetIndex(name string) int {
-	for i, n := range f.sheetNames {
-		if n == name {
-			return i
+func (f *File) rebuildFormulaState() {
+	f.calcGen++
+	f.deps = formula.NewDepGraph()
+	for _, s := range f.sheets {
+		for _, r := range s.rows {
+			for _, c := range r.cells {
+				if c.formula == "" {
+					continue
+				}
+				c.compiled = nil
+				c.cachedGen = 0
+				c.dirty = true
+			}
 		}
 	}
-	return -1
+	f.registerAllFormulas()
 }
 
 // expandFormula expands table refs and defined names in a formula string.
 func (f *File) expandFormula(src string, sheetName string, row int) string {
 	src = formula.ExpandTableRefs(src, f.tables, row)
-	src = formula.ExpandDefinedNames(src, f.definedNames, f.sheetIndex(sheetName))
+	src = formula.ExpandDefinedNames(src, f.definedNames, f.SheetIndex(sheetName))
 	return src
 }
 

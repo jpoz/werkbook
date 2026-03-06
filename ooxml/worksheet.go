@@ -6,10 +6,11 @@ import (
 )
 
 type xlsxWorksheet struct {
-	XMLName   xml.Name      `xml:"worksheet"`
-	Xmlns     string        `xml:"xmlns,attr"`
-	Cols      *xlsxCols     `xml:"cols,omitempty"`
-	SheetData xlsxSheetData `xml:"sheetData"`
+	XMLName    xml.Name        `xml:"worksheet"`
+	Xmlns      string          `xml:"xmlns,attr"`
+	Cols       *xlsxCols       `xml:"cols,omitempty"`
+	SheetData  xlsxSheetData   `xml:"sheetData"`
+	MergeCells *xlsxMergeCells `xml:"mergeCells,omitempty"`
 }
 
 type xlsxCols struct {
@@ -49,6 +50,15 @@ type xlsxCol struct {
 	CustomWidth ooxmlBool `xml:"customWidth,attr,omitempty"`
 }
 
+type xlsxMergeCells struct {
+	Count     int             `xml:"count,attr,omitempty"`
+	MergeCell []xlsxMergeCell `xml:"mergeCell"`
+}
+
+type xlsxMergeCell struct {
+	Ref string `xml:"ref,attr"`
+}
+
 type xlsxSheetData struct {
 	Rows []xlsxRow `xml:"row"`
 }
@@ -62,12 +72,12 @@ type xlsxRow struct {
 }
 
 type xlsxC struct {
-	R  string   `xml:"r,attr"`
-	S  int      `xml:"s,attr,omitempty"`
-	T  string   `xml:"t,attr,omitempty"`
-	FE *xlsxF   `xml:"f,omitempty"` // formula element with attributes
-	V  string   `xml:"v,omitempty"`
-	IS *xlsxIS  `xml:"is,omitempty"`
+	R  string  `xml:"r,attr"`
+	S  int     `xml:"s,attr,omitempty"`
+	T  string  `xml:"t,attr,omitempty"`
+	FE *xlsxF  `xml:"f,omitempty"` // formula element with attributes
+	V  string  `xml:"v,omitempty"`
+	IS *xlsxIS `xml:"is,omitempty"`
 }
 
 // F returns the formula text (for backward-compat convenience).

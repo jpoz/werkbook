@@ -110,7 +110,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 			return nil, fmt.Errorf("read sheet %q: %w", s.Name, err)
 		}
 
-		sd := SheetData{Name: s.Name}
+		sd := SheetData{Name: s.Name, State: s.State}
 
 		// Extract column widths.
 		if ws.Cols != nil {
@@ -132,6 +132,20 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 			}
 			if len(rd.Cells) > 0 || rd.Height != 0 || rd.Hidden {
 				sd.Rows = append(sd.Rows, rd)
+			}
+		}
+		if ws.MergeCells != nil {
+			for _, mc := range ws.MergeCells.MergeCell {
+				parts := strings.SplitN(mc.Ref, ":", 2)
+				start := parts[0]
+				end := start
+				if len(parts) == 2 {
+					end = parts[1]
+				}
+				sd.MergeCells = append(sd.MergeCells, MergeCellData{
+					StartAxis: start,
+					EndAxis:   end,
+				})
 			}
 		}
 
@@ -320,19 +334,19 @@ func decodeOOXMLEscapes(s string) string {
 
 // xlsxTable represents the <table> root element in xl/tables/table*.xml.
 type xlsxTable struct {
-	XMLName        xml.Name           `xml:"table"`
-	Name           string             `xml:"name,attr"`
-	DisplayName    string             `xml:"displayName,attr"`
-	Ref            string             `xml:"ref,attr"`
-	HeaderRowCount *int               `xml:"headerRowCount,attr"`
-	TotalsRowCount int                `xml:"totalsRowCount,attr"`
-	AutoFilter     *xlsxAutoFilter    `xml:"autoFilter"`
-	TableColumns   xlsxTableColumns   `xml:"tableColumns"`
+	XMLName        xml.Name         `xml:"table"`
+	Name           string           `xml:"name,attr"`
+	DisplayName    string           `xml:"displayName,attr"`
+	Ref            string           `xml:"ref,attr"`
+	HeaderRowCount *int             `xml:"headerRowCount,attr"`
+	TotalsRowCount int              `xml:"totalsRowCount,attr"`
+	AutoFilter     *xlsxAutoFilter  `xml:"autoFilter"`
+	TableColumns   xlsxTableColumns `xml:"tableColumns"`
 }
 
 type xlsxAutoFilter struct {
-	Ref           string               `xml:"ref,attr"`
-	FilterColumns []xlsxFilterColumn   `xml:"filterColumn"`
+	Ref           string             `xml:"ref,attr"`
+	FilterColumns []xlsxFilterColumn `xml:"filterColumn"`
 }
 
 type xlsxFilterColumn struct {
