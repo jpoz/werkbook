@@ -58,7 +58,7 @@ Werkbook supports **306** Excel formula functions.
 | COUNTA | Statistical | 18 |
 | COUNTBLANK | Statistical | 15 |
 | COUNTIF | Statistical | 17 |
-| COUNTIFS | Statistical | 46 |
+| COUNTIFS | Statistical | 47 |
 | COVAR | Statistical | - |
 | COVARIANCE.P | Statistical | - |
 | COVARIANCE.S | Statistical | - |
@@ -98,7 +98,7 @@ Werkbook supports **306** Excel formula functions.
 | EXP | Math & Trig | - |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
-| FILTER | Lookup & Reference | 28 |
+| FILTER | Lookup & Reference | 31 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
 | FISHERINV | Statistical | 15 |
@@ -245,7 +245,7 @@ Werkbook supports **306** Excel formula functions.
 | SLN | Financial | 6 |
 | SLOPE | Statistical | 16 |
 | SMALL | Statistical | 28 |
-| SORT | Logical | 21 |
+| SORT | Logical | 25 |
 | SQRT | Math & Trig | 29 |
 | SQRTPI | Math & Trig | - |
 | STANDARDIZE | Statistical | 16 |
@@ -256,9 +256,9 @@ Werkbook supports **306** Excel formula functions.
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
 | SUBTOTAL | Math & Trig | - |
-| SUM | Statistical | 34 |
+| SUM | Statistical | 35 |
 | SUMIF | Statistical | 36 |
-| SUMIFS | Statistical | 41 |
+| SUMIFS | Statistical | 42 |
 | SUMPRODUCT | Statistical | 22 |
 | SUMSQ | Statistical | - |
 | SUMX2MY2 | Math & Trig | 31 |
@@ -285,7 +285,7 @@ Werkbook supports **306** Excel formula functions.
 | TRIMMEAN | Statistical | 23 |
 | TRUNC | Math & Trig | - |
 | TYPE | Information | - |
-| UNIQUE | Lookup & Reference | 27 |
+| UNIQUE | Lookup & Reference | 29 |
 | UPPER | Text | 23 |
 | VALUE | Text | - |
 | VALUETOTEXT | Text | 26 |
@@ -305,7 +305,7 @@ Werkbook supports **306** Excel formula functions.
 | WRAPCOLS | Lookup & Reference | 20 |
 | WRAPROWS | Lookup & Reference | 19 |
 | XIRR | Financial | 19 |
-| XLOOKUP | Lookup & Reference | 21 |
+| XLOOKUP | Lookup & Reference | 22 |
 | XNPV | Financial | 18 |
 | XOR | Logical | 32 |
 | YEAR | Date & Time | 26 |

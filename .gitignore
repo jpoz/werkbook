@@ -31,3 +31,6 @@ go.work.sum
 # Claude
 .claude/
 CLAUDE.md
+
+# Local Codex skills
+.agents/
