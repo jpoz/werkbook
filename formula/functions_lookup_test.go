@@ -947,7 +947,7 @@ func TestMATCHDefaultUnsortedStringsWithEmpty(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
 			// rows 1-2 empty
-			{Col: 1, Row: 3}: StringVal("LPs name"),          // header
+			{Col: 1, Row: 3}: StringVal("LPs name"),           // header
 			{Col: 1, Row: 4}: StringVal("Brian Schechter"),    // target
 			{Col: 1, Row: 5}: StringVal("Foundation Capital"), // after target
 			// rows 6-10 empty
@@ -3940,6 +3940,305 @@ func TestTAKE_SingleResultIsScalar(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 1 {
 		t.Errorf("expected scalar 1, got %v", got)
+	}
+}
+
+func assertLookupValueEqual(t *testing.T, got, want Value) {
+	t.Helper()
+
+	if got.Type != want.Type {
+		t.Fatalf("type mismatch: got %v, want %v (got=%v want=%v)", got.Type, want.Type, got, want)
+	}
+
+	switch want.Type {
+	case ValueEmpty:
+		return
+	case ValueNumber:
+		if got.Num != want.Num {
+			t.Fatalf("number mismatch: got %g, want %g", got.Num, want.Num)
+		}
+	case ValueString:
+		if got.Str != want.Str {
+			t.Fatalf("string mismatch: got %q, want %q", got.Str, want.Str)
+		}
+	case ValueBool:
+		if got.Bool != want.Bool {
+			t.Fatalf("bool mismatch: got %v, want %v", got.Bool, want.Bool)
+		}
+	case ValueError:
+		if got.Err != want.Err {
+			t.Fatalf("error mismatch: got %v, want %v", got.Err, want.Err)
+		}
+	case ValueArray:
+		if len(got.Array) != len(want.Array) {
+			t.Fatalf("row count mismatch: got %d, want %d", len(got.Array), len(want.Array))
+		}
+		for r := range want.Array {
+			if len(got.Array[r]) != len(want.Array[r]) {
+				t.Fatalf("col count mismatch at row %d: got %d, want %d", r, len(got.Array[r]), len(want.Array[r]))
+			}
+			for c := range want.Array[r] {
+				assertLookupValueEqual(t, got.Array[r][c], want.Array[r][c])
+			}
+		}
+	default:
+		t.Fatalf("unsupported value type in test helper: %v", want.Type)
+	}
+}
+
+func TestCHOOSECOLS(t *testing.T) {
+	base := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2), NumberVal(3)},
+		{NumberVal(4), NumberVal(5), NumberVal(6)},
+	}}
+	ragged := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2), NumberVal(3)},
+		{NumberVal(4)},
+	}}
+	mixed := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a"), BoolVal(true), ErrorVal(ErrValNA)},
+		{EmptyVal(), NumberVal(2), StringVal("z")},
+	}}
+
+	tests := []struct {
+		name string
+		args []Value
+		want Value
+	}{
+		{
+			name: "first_column",
+			args: []Value{base, NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1)},
+				{NumberVal(4)},
+			}},
+		},
+		{
+			name: "last_column_negative",
+			args: []Value{base, NumberVal(-1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(3)},
+				{NumberVal(6)},
+			}},
+		},
+		{
+			name: "reorder_columns",
+			args: []Value{base, NumberVal(3), NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(3), NumberVal(1)},
+				{NumberVal(6), NumberVal(4)},
+			}},
+		},
+		{
+			name: "duplicate_columns",
+			args: []Value{base, NumberVal(2), NumberVal(2), NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2), NumberVal(2), NumberVal(1)},
+				{NumberVal(5), NumberVal(5), NumberVal(4)},
+			}},
+		},
+		{
+			name: "mixed_positive_and_negative",
+			args: []Value{base, NumberVal(-1), NumberVal(2), NumberVal(-3)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(3), NumberVal(2), NumberVal(1)},
+				{NumberVal(6), NumberVal(5), NumberVal(4)},
+			}},
+		},
+		{
+			name: "scalar_first_column",
+			args: []Value{NumberVal(9), NumberVal(1)},
+			want: NumberVal(9),
+		},
+		{
+			name: "scalar_negative_one",
+			args: []Value{StringVal("x"), NumberVal(-1)},
+			want: StringVal("x"),
+		},
+		{
+			name: "bool_index_true_coerces_to_one",
+			args: []Value{base, BoolVal(true)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1)},
+				{NumberVal(4)},
+			}},
+		},
+		{
+			name: "numeric_string_index",
+			args: []Value{base, StringVal("2")},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2)},
+				{NumberVal(5)},
+			}},
+		},
+		{
+			name: "fractional_index_truncates",
+			args: []Value{base, NumberVal(2.9)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2)},
+				{NumberVal(5)},
+			}},
+		},
+		{
+			name: "fractional_negative_index_truncates",
+			args: []Value{base, NumberVal(-1.9)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(3)},
+				{NumberVal(6)},
+			}},
+		},
+		{
+			name: "ragged_rows_fill_missing_with_empty",
+			args: []Value{ragged, NumberVal(2), NumberVal(3)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2), NumberVal(3)},
+				{EmptyVal(), EmptyVal()},
+			}},
+		},
+		{
+			name: "preserves_error_values",
+			args: []Value{mixed, NumberVal(3)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{ErrorVal(ErrValNA)},
+				{StringVal("z")},
+			}},
+		},
+		{
+			name: "preserves_empty_values",
+			args: []Value{mixed, NumberVal(1)},
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{StringVal("a")},
+				{EmptyVal()},
+			}},
+		},
+		{
+			name: "array_error_passthrough",
+			args: []Value{ErrorVal(ErrValREF), NumberVal(1)},
+			want: ErrorVal(ErrValREF),
+		},
+		{
+			name: "empty_array_is_value_error",
+			args: []Value{{Type: ValueArray, Array: [][]Value{}}, NumberVal(1)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "zero_index_errors",
+			args: []Value{base, NumberVal(0)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "positive_index_too_large_errors",
+			args: []Value{base, NumberVal(4)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "negative_index_too_large_errors",
+			args: []Value{base, NumberVal(-4)},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "non_numeric_string_index_errors",
+			args: []Value{base, StringVal("abc")},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "error_index_propagates",
+			args: []Value{base, ErrorVal(ErrValDIV0)},
+			want: ErrorVal(ErrValDIV0),
+		},
+		{
+			name: "too_few_args_errors",
+			args: []Value{base},
+			want: ErrorVal(ErrValVALUE),
+		},
+		{
+			name: "no_args_errors",
+			args: nil,
+			want: ErrorVal(ErrValVALUE),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := fnCHOOSECOLS(tt.args)
+			if err != nil {
+				t.Fatalf("fnCHOOSECOLS: %v", err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestCHOOSECOLS_ViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 3, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 3, Row: 2}: NumberVal(6),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{
+			name:    "range_reorder",
+			formula: "CHOOSECOLS(A1:C2,3,1)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(3), NumberVal(1)},
+				{NumberVal(6), NumberVal(4)},
+			}},
+		},
+		{
+			name:    "range_negative_index",
+			formula: "CHOOSECOLS(A1:C2,-2)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2)},
+				{NumberVal(5)},
+			}},
+		},
+		{
+			name:    "scalar_formula",
+			formula: "CHOOSECOLS(42,1)",
+			want:    NumberVal(42),
+		},
+		{
+			name:    "string_index_formula",
+			formula: `CHOOSECOLS(A1:C2,"2")`,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(2)},
+				{NumberVal(5)},
+			}},
+		},
+		{
+			name:    "bool_index_formula",
+			formula: "CHOOSECOLS(A1:C2,TRUE,3)",
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(3)},
+				{NumberVal(4), NumberVal(6)},
+			}},
+		},
+		{
+			name:    "too_few_args_formula",
+			formula: "CHOOSECOLS(A1:C2)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
 	}
 }
 
