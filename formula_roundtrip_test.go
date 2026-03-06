@@ -4,11 +4,13 @@ import (
 	"archive/zip"
 	"encoding/xml"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/jpoz/werkbook"
+	"github.com/jpoz/werkbook/ooxml"
 )
 
 func TestSetFormulaGetFormula(t *testing.T) {
@@ -148,9 +150,121 @@ func TestDynamicArrayFormulaPrefixesInXML(t *testing.T) {
 	}
 
 	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
-	want := `<f>_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(B1:B10,B1:B10&lt;&gt;&#34;&#34;)))</f>`
+	want := `<f t="array" ref="A1">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(B1:B10,B1:B10&lt;&gt;&#34;&#34;)))</f>`
 	if !strings.Contains(sheetXML, want) {
 		t.Fatalf("dynamic array formula XML missing expected prefixes\nwant: %s\nxml: %s", want, sheetXML)
+	}
+}
+
+func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
+	f := werkbook.New(werkbook.FirstSheet("Out - Ledger Summary"))
+	s := f.Sheet("Out - Ledger Summary")
+	if _, err := f.NewSheet("treasury-ledger"); err != nil {
+		t.Fatalf("NewSheet: %v", err)
+	}
+
+	s.SetFormula("A2", `SORT(UNIQUE(FILTER('treasury-ledger'!E2:E1000,'treasury-ledger'!E2:E1000<>"")))`)
+	s.SetFormula("B2", `COUNTIFS('treasury-ledger'!E:E,ANCHORARRAY(A2))`)
+	s.SetFormula("C2", `SUMIFS('treasury-ledger'!F:F,'treasury-ledger'!E:E,ANCHORARRAY(A2))/100`)
+	s.SetFormula("D2", `SINGLE(IF(SUMIFS('treasury-ledger'!F:F,'treasury-ledger'!E:E,ANCHORARRAY(A2))>0,"Inflow","Outflow"))`)
+
+	val, _ := s.GetValue("A2")
+	if val.Type != werkbook.TypeError || val.String != "#CALC!" {
+		t.Fatalf("A2 cached value = %#v, want #CALC!", val)
+	}
+	val, _ = s.GetValue("D2")
+	if val.Type != werkbook.TypeError || val.String != "#NAME?" {
+		t.Fatalf("D2 cached value = %#v, want #NAME?", val)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dynamic-array-metadata.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
+	if !strings.Contains(sheetXML, `<c r="A2" t="str" cm="1">`) {
+		t.Fatalf("expected A2 to be written as a dynamic-array string cell, XML: %s", sheetXML)
+	}
+	if !strings.Contains(sheetXML, `<f t="array" ref="A2">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(`) {
+		t.Fatalf("expected A2 dynamic-array formula markup, XML: %s", sheetXML)
+	}
+	if !strings.Contains(sheetXML, `<c r="B2" cm="1">`) || !strings.Contains(sheetXML, `<f t="array" ref="B2">COUNTIFS(`) {
+		t.Fatalf("expected B2 dynamic-array formula markup, XML: %s", sheetXML)
+	}
+	if !strings.Contains(sheetXML, `<c r="D2" t="str" cm="1">`) {
+		t.Fatalf("expected D2 to be written as a dynamic-array string cell, XML: %s", sheetXML)
+	}
+	if !strings.Contains(sheetXML, `<f t="array" ref="D2">_xlfn.SINGLE(`) {
+		t.Fatalf("expected D2 SINGLE formula to use _xlfn prefix and dynamic-array markup, XML: %s", sheetXML)
+	}
+
+	workbookRels := string(readSheetXML(t, path, "xl/_rels/workbook.xml.rels"))
+	if !strings.Contains(workbookRels, `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata"`) {
+		t.Fatalf("expected workbook relationships to include sheet metadata, XML: %s", workbookRels)
+	}
+
+	contentTypes := string(readSheetXML(t, path, "[Content_Types].xml"))
+	if !strings.Contains(contentTypes, `PartName="/xl/metadata.xml"`) {
+		t.Fatalf("expected content types to include metadata.xml, XML: %s", contentTypes)
+	}
+
+	metadataXML := string(readSheetXML(t, path, "xl/metadata.xml"))
+	if !strings.Contains(metadataXML, `dynamicArrayProperties`) {
+		t.Fatalf("expected metadata.xml to contain dynamic array properties, XML: %s", metadataXML)
+	}
+
+	r, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open temp xlsx: %v", err)
+	}
+	defer r.Close()
+	info, err := r.Stat()
+	if err != nil {
+		t.Fatalf("Stat temp xlsx: %v", err)
+	}
+	data, err := ooxml.ReadWorkbook(r, info.Size())
+	if err != nil {
+		t.Fatalf("ReadWorkbook: %v", err)
+	}
+	foundA2 := false
+	for _, sd := range data.Sheets {
+		if sd.Name != "Out - Ledger Summary" {
+			continue
+		}
+		for _, rd := range sd.Rows {
+			for _, cd := range rd.Cells {
+				if cd.Ref != "A2" {
+					continue
+				}
+				foundA2 = true
+				if !cd.IsDynamicArray {
+					t.Fatalf("expected ooxml reader to mark A2 as dynamic array: %#v", cd)
+				}
+			}
+		}
+	}
+	if !foundA2 {
+		t.Fatal("A2 not found in parsed workbook data")
+	}
+
+	f2, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	s2 := f2.Sheet("Out - Ledger Summary")
+	val, _ = s2.GetValue("A2")
+	if val.Type != werkbook.TypeError || val.String != "#CALC!" {
+		t.Fatalf("A2 round-trip value = %#v, want #CALC!", val)
+	}
+	got, err := s2.GetFormula("D2")
+	if err != nil {
+		t.Fatalf("GetFormula D2: %v", err)
+	}
+	wantFormula := `SINGLE(IF(SUMIFS('treasury-ledger'!F:F,'treasury-ledger'!E:E,ANCHORARRAY(A2))>0,"Inflow","Outflow"))`
+	if got != wantFormula {
+		t.Fatalf("formula round-trip = %q, want %q", got, wantFormula)
 	}
 }
 

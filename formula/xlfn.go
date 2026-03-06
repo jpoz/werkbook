@@ -9,8 +9,12 @@ var xlfnPrefix = map[string]string{
 	"ANCHORARRAY":     "_xlfn.",
 	"ARABIC":          "_xlfn.",
 	"BASE":            "_xlfn.",
+	"BYCOL":           "_xlfn.",
+	"BYROW":           "_xlfn.",
 	"CEILING.MATH":    "_xlfn.",
 	"CEILING.PRECISE": "_xlfn.",
+	"CHOOSECOLS":      "_xlfn.",
+	"CHOOSEROWS":      "_xlfn.",
 	"COMBINA":         "_xlfn.",
 	"CONCAT":          "_xlfn.",
 	"COT":             "_xlfn.",
@@ -21,14 +25,20 @@ var xlfnPrefix = map[string]string{
 	"CSCH":            "_xlfn.",
 	"DAYS":            "_xlfn.",
 	"DECIMAL":         "_xlfn.",
+	"DROP":            "_xlfn.",
+	"EXPAND":          "_xlfn.",
 	"FILTER":          "_xlfn._xlws.",
 	"FLOOR.MATH":      "_xlfn.",
 	"FLOOR.PRECISE":   "_xlfn.",
 	"FORECAST.LINEAR": "_xlfn.",
 	"GAMMALN.PRECISE": "_xlfn.",
+	"HSTACK":          "_xlfn.",
 	"IFNA":            "_xlfn.",
 	"IFS":             "_xlfn.",
 	"ISOWEEKNUM":      "_xlfn.",
+	"LAMBDA":          "_xlfn.",
+	"MAKEARRAY":       "_xlfn.",
+	"MAP":             "_xlfn.",
 	"MAXIFS":          "_xlfn.",
 	"MINIFS":          "_xlfn.",
 	"MODE.SNGL":       "_xlfn.",
@@ -40,21 +50,66 @@ var xlfnPrefix = map[string]string{
 	"PERCENTILE.EXC":  "_xlfn.",
 	"PERCENTRANK.EXC": "_xlfn.",
 	"PERCENTRANK.INC": "_xlfn.",
+	"RANDARRAY":       "_xlfn.",
 	"RANK.AVG":        "_xlfn.",
 	"RANK.EQ":         "_xlfn.",
 	"QUARTILE.EXC":    "_xlfn.",
+	"REDUCE":          "_xlfn.",
+	"SCAN":            "_xlfn.",
 	"SEC":             "_xlfn.",
 	"SECH":            "_xlfn.",
+	"SEQUENCE":        "_xlfn.",
+	"SINGLE":          "_xlfn.",
 	"SORT":            "_xlfn._xlws.",
+	"SORTBY":          "_xlfn.",
 	"STDEV.P":         "_xlfn.",
 	"STDEV.S":         "_xlfn.",
 	"SWITCH":          "_xlfn.",
+	"TAKE":            "_xlfn.",
 	"TEXTJOIN":        "_xlfn.",
+	"TEXTSPLIT":       "_xlfn.",
+	"TOCOL":           "_xlfn.",
+	"TOROW":           "_xlfn.",
 	"UNIQUE":          "_xlfn.",
 	"VAR.P":           "_xlfn.",
 	"VAR.S":           "_xlfn.",
+	"VSTACK":          "_xlfn.",
+	"WRAPCOLS":        "_xlfn.",
+	"WRAPROWS":        "_xlfn.",
 	"XLOOKUP":         "_xlfn.",
 	"XOR":             "_xlfn.",
+}
+
+var dynamicArrayFunctions = map[string]struct{}{
+	"ANCHORARRAY": {},
+	"BYCOL":       {},
+	"BYROW":       {},
+	"CHOOSECOLS":  {},
+	"CHOOSEROWS":  {},
+	"DROP":        {},
+	"EXPAND":      {},
+	"FILTER":      {},
+	"HSTACK":      {},
+	"LAMBDA":      {},
+	"MAKEARRAY":   {},
+	"MAP":         {},
+	"RANDARRAY":   {},
+	"REDUCE":      {},
+	"SCAN":        {},
+	"SEQUENCE":    {},
+	"SINGLE":      {},
+	"SORT":        {},
+	"SORTBY":      {},
+	"SWITCH":      {},
+	"TAKE":        {},
+	"TEXTSPLIT":   {},
+	"TOCOL":       {},
+	"TOROW":       {},
+	"UNIQUE":      {},
+	"VSTACK":      {},
+	"WRAPCOLS":    {},
+	"WRAPROWS":    {},
+	"XLOOKUP":     {},
 }
 
 // AddXlfnPrefixes tokenizes the formula and inserts the required OOXML
@@ -109,6 +164,37 @@ func AddXlfnPrefixes(f string) string {
 	return string(buf)
 }
 
+// IsDynamicArrayFormula reports whether the formula uses Excel dynamic-array
+// semantics and must be serialized with dynamic-array OOXML metadata.
+func IsDynamicArrayFormula(f string) bool {
+	if f == "" {
+		return false
+	}
+	tokens, err := Tokenize(f)
+	if err == nil {
+		for _, tok := range tokens {
+			if tok.Type != TokFunc {
+				continue
+			}
+			name := normalizeFuncName(strings.TrimSuffix(tok.Value, "("))
+			if _, ok := dynamicArrayFunctions[name]; ok {
+				return true
+			}
+		}
+		return false
+	}
+
+	upper := strings.ToUpper(f)
+	for name := range dynamicArrayFunctions {
+		if strings.Contains(upper, name+"(") ||
+			strings.Contains(upper, "_XLFN."+name+"(") ||
+			strings.Contains(upper, "_XLFN._XLWS."+name+"(") {
+			return true
+		}
+	}
+	return false
+}
+
 // StripXlfnPrefixes tokenizes the formula and removes OOXML prefixes
 // (_xlfn. and _xlfn._xlws.) from function names. Only TokFunc tokens
 // are modified, so strings and cell references are never touched.
@@ -152,4 +238,11 @@ func StripXlfnPrefixes(f string) string {
 		buf = append(buf[:r.pos], buf[r.pos+r.len:]...)
 	}
 	return string(buf)
+}
+
+func normalizeFuncName(name string) string {
+	upper := strings.ToUpper(name)
+	upper = strings.TrimPrefix(upper, "_XLFN._XLWS.")
+	upper = strings.TrimPrefix(upper, "_XLFN.")
+	return upper
 }

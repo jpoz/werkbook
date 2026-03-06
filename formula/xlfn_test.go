@@ -19,6 +19,7 @@ func TestAddXlfnPrefixes(t *testing.T) {
 		{name: "XLOOKUP gets prefix", in: "XLOOKUP(A1,B:B,C:C)", want: "_xlfn.XLOOKUP(A1,B:B,C:C)"},
 		{name: "TEXTJOIN gets prefix", in: `TEXTJOIN(",",TRUE,A1:A5)`, want: `_xlfn.TEXTJOIN(",",TRUE,A1:A5)`},
 		{name: "UNIQUE gets prefix", in: "UNIQUE(A1:A5)", want: "_xlfn.UNIQUE(A1:A5)"},
+		{name: "SINGLE gets prefix", in: "SINGLE(A1)", want: "_xlfn.SINGLE(A1)"},
 		{name: "nested xlfn functions", in: "MAXIFS(A1:A5,B1:B5,IFS(C1>0,1))", want: "_xlfn.MAXIFS(A1:A5,B1:B5,_xlfn.IFS(C1>0,1))"},
 		{name: "nested dynamic array functions", in: `SORT(UNIQUE(FILTER(A1:A10,A1:A10<>"")))`, want: `_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(A1:A10,A1:A10<>"")))`},
 		{name: "mixed legacy and xlfn", in: "SUM(MAXIFS(A1:A5,B1:B5,1))", want: "SUM(_xlfn.MAXIFS(A1:A5,B1:B5,1))"},
@@ -76,6 +77,7 @@ func TestAddStripRoundTrip(t *testing.T) {
 		"MAXIFS(A1:A5,B1:B5,1)",
 		"SORT(A1:A5)",
 		"UNIQUE(A1:A5)",
+		"SINGLE(A1)",
 		`SORT(UNIQUE(FILTER(A1:A10,A1:A10<>"")))`,
 		"SUM(MAXIFS(A1:A5,B1:B5,IFS(C1>0,1)))",
 		"SUM(A1:A5)",
@@ -88,6 +90,28 @@ func TestAddStripRoundTrip(t *testing.T) {
 			stripped := StripXlfnPrefixes(added)
 			if stripped != f {
 				t.Errorf("round-trip failed: %q -> %q -> %q", f, added, stripped)
+			}
+		})
+	}
+}
+
+func TestIsDynamicArrayFormula(t *testing.T) {
+	tests := []struct {
+		formula string
+		want    bool
+	}{
+		{formula: "", want: false},
+		{formula: "SUM(A1:A5)", want: false},
+		{formula: "FILTER(A1:A5,A1:A5<>\"\")", want: true},
+		{formula: "_xlfn.ANCHORARRAY(A1)", want: true},
+		{formula: "_xlfn.SINGLE(A1)", want: true},
+		{formula: "XLOOKUP(A1,B:B,C:C)", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			if got := IsDynamicArrayFormula(tt.formula); got != tt.want {
+				t.Fatalf("IsDynamicArrayFormula(%q) = %v, want %v", tt.formula, got, tt.want)
 			}
 		})
 	}

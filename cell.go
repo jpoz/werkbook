@@ -8,6 +8,7 @@ type Cell struct {
 	value          Value
 	formula        string
 	isArrayFormula bool // CSE (Ctrl+Shift+Enter) array formula
+	formulaRef     string
 	compiled       *formula.CompiledFormula
 	cachedGen      uint64 // file.calcGen when value was last computed from formula
 	dirty          bool   // needs recalculation via dependency graph
