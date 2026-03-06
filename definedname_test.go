@@ -20,8 +20,8 @@ func TestDefinedNameFormulaEval(t *testing.T) {
 					{
 						Num: 1,
 						Cells: []ooxml.CellData{
-							{Ref: "A1", Value: "100"},          // plain value
-							{Ref: "B1", Formula: "A1+MyName"},  // uses defined name
+							{Ref: "A1", Value: "100"},         // plain value
+							{Ref: "B1", Formula: "A1+MyName"}, // uses defined name
 						},
 					},
 					{
@@ -121,5 +121,291 @@ func TestDefinedNameRoundTrip(t *testing.T) {
 	}
 	if data2.DefinedNames[1].Name != "LocalName" || data2.DefinedNames[1].LocalSheetID != 0 {
 		t.Errorf("defined name 1 = %+v", data2.DefinedNames[1])
+	}
+}
+
+func TestDefinedNamesAccessor(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{Name: "Sheet1"},
+			{Name: "Sheet2"},
+		},
+		DefinedNames: []ooxml.DefinedName{
+			{Name: "GlobalName", Value: "Sheet1!$A$1", LocalSheetID: -1},
+			{Name: "LocalName", Value: "Sheet2!$B$2", LocalSheetID: 1},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "defined-names.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := f.DefinedNames()
+	if len(got) != 2 {
+		t.Fatalf("got %d defined names, want 2", len(got))
+	}
+	if got[0].Name != "GlobalName" || got[0].Value != "Sheet1!$A$1" || got[0].LocalSheetID != -1 {
+		t.Fatalf("defined name 0 = %+v", got[0])
+	}
+	if got[1].Name != "LocalName" || got[1].Value != "Sheet2!$B$2" || got[1].LocalSheetID != 1 {
+		t.Fatalf("defined name 1 = %+v", got[1])
+	}
+
+	got[0].Name = "mutated"
+	again := f.DefinedNames()
+	if again[0].Name != "GlobalName" {
+		t.Fatalf("DefinedNames returned aliasing slice, got %+v", again[0])
+	}
+}
+
+func TestResolveDefinedNameSingleCell(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: "Sheet1",
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{{Ref: "A1", Value: "42"}}},
+				},
+			},
+		},
+		DefinedNames: []ooxml.DefinedName{
+			{Name: "MyCell", Value: "Sheet1!$A$1", LocalSheetID: -1},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resolve_single.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	out.Close()
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals, err := f.ResolveDefinedName("MyCell", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vals) != 1 || len(vals[0]) != 1 {
+		t.Fatalf("expected 1x1 grid, got %dx%d", len(vals), len(vals[0]))
+	}
+	if vals[0][0].Type != werkbook.TypeNumber || vals[0][0].Number != 42 {
+		t.Errorf("got %v, want 42", vals[0][0])
+	}
+}
+
+func TestResolveDefinedNameRange(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: "Sheet1",
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{
+						{Ref: "A1", Value: "1"},
+						{Ref: "B1", Value: "2"},
+					}},
+					{Num: 2, Cells: []ooxml.CellData{
+						{Ref: "A2", Value: "3"},
+						{Ref: "B2", Value: "4"},
+					}},
+				},
+			},
+		},
+		DefinedNames: []ooxml.DefinedName{
+			{Name: "MyRange", Value: "Sheet1!$A$1:$B$2", LocalSheetID: -1},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resolve_range.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	out.Close()
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals, err := f.ResolveDefinedName("MyRange", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vals) != 2 || len(vals[0]) != 2 {
+		t.Fatalf("expected 2x2 grid, got %dx%d", len(vals), len(vals[0]))
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for r, row := range vals {
+		for c, v := range row {
+			if v.Type != werkbook.TypeNumber || v.Number != want[r][c] {
+				t.Errorf("[%d][%d] = %v, want %v", r, c, v, want[r][c])
+			}
+		}
+	}
+}
+
+func TestResolveDefinedNameCaseInsensitive(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: "Sheet1",
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{{Ref: "A1", Value: "99"}}},
+				},
+			},
+		},
+		DefinedNames: []ooxml.DefinedName{
+			{Name: "Revenue", Value: "Sheet1!$A$1", LocalSheetID: -1},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resolve_case.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	out.Close()
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals, err := f.ResolveDefinedName("revenue", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vals[0][0].Type != werkbook.TypeNumber || vals[0][0].Number != 99 {
+		t.Errorf("got %v, want 99", vals[0][0])
+	}
+}
+
+func TestResolveDefinedNameSheetScoped(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: "Sheet1",
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{{Ref: "A1", Value: "10"}}},
+				},
+			},
+			{
+				Name: "Sheet2",
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{{Ref: "A1", Value: "20"}}},
+				},
+			},
+		},
+		DefinedNames: []ooxml.DefinedName{
+			{Name: "Rate", Value: "Sheet1!$A$1", LocalSheetID: -1}, // global
+			{Name: "Rate", Value: "Sheet2!$A$1", LocalSheetID: 1},  // local to Sheet2
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resolve_scope.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	out.Close()
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// From Sheet2 context (index 1), should get the local name → 20.
+	vals, err := f.ResolveDefinedName("Rate", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vals[0][0].Number != 20 {
+		t.Errorf("sheet-scoped: got %v, want 20", vals[0][0])
+	}
+
+	// From Sheet1 context (index 0), should get the global name → 10.
+	vals, err = f.ResolveDefinedName("Rate", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vals[0][0].Number != 10 {
+		t.Errorf("global: got %v, want 10", vals[0][0])
+	}
+}
+
+func TestResolveDefinedNameNotFound(t *testing.T) {
+	data := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{Name: "Sheet1", Rows: []ooxml.RowData{
+				{Num: 1, Cells: []ooxml.CellData{{Ref: "A1", Value: "1"}}},
+			}},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resolve_notfound.xlsx")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ooxml.WriteWorkbook(out, data); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	out.Close()
+
+	f, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.ResolveDefinedName("DoesNotExist", -1)
+	if err == nil {
+		t.Fatal("expected error for missing defined name")
 	}
 }
