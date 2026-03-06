@@ -2645,7 +2645,23 @@ func fnNormInv(args []Value) (Value, error) {
 	if stdev <= 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
-	return NumberVal(mean + stdev*normSInv(p)), nil
+	x := mean + stdev*normSInv(p)
+	// When mean=0 and stdev=1 the result must equal NORM.S.INV exactly
+	// (Excel treats NORM.INV(p,0,1) identically to NORM.S.INV(p)).
+	// For all other parameters, refine with Newton-Raphson on the full
+	// normal distribution. The Acklam approximation gives ~8 digits;
+	// two iterations bring us to ~16 digits of precision.
+	if mean != 0 || stdev != 1 {
+		for range 2 {
+			z := (x - mean) / stdev
+			cdf := normSDistCDF(z)
+			pdf := normSDistPDF(z)
+			if pdf > 0 {
+				x -= (cdf - p) / (pdf / stdev)
+			}
+		}
+	}
+	return NumberVal(x), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2748,15 +2764,5 @@ func normSInv(p float64) float64 {
 			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 	}
 
-	// Refine with Newton-Raphson to achieve full float64 precision.
-	// Each iteration roughly doubles the number of correct digits.
-	// Acklam gives ~8 digits; two iterations bring us to ~16.
-	for range 2 {
-		phi := normSDistCDF(x)
-		pdf := normSDistPDF(x)
-		if pdf > 0 {
-			x -= (phi - p) / pdf
-		}
-	}
 	return x
 }
