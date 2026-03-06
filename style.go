@@ -49,7 +49,7 @@ type BorderSide struct {
 type BorderStyle int
 
 const (
-	BorderNone   BorderStyle = iota
+	BorderNone BorderStyle = iota
 	BorderThin
 	BorderMedium
 	BorderThick
@@ -254,4 +254,34 @@ func styleDataToStyle(sd ooxml.StyleData) *Style {
 // styleKey returns a string key for deduplicating styles.
 func styleKey(sd ooxml.StyleData) string {
 	return fmt.Sprintf("%+v", sd)
+}
+
+func cloneStyle(s *Style) *Style {
+	if s == nil {
+		return nil
+	}
+
+	clone := &Style{
+		NumFmt:   s.NumFmt,
+		NumFmtID: s.NumFmtID,
+	}
+
+	if s.Font != nil {
+		font := *s.Font
+		clone.Font = &font
+	}
+	if s.Fill != nil {
+		fill := *s.Fill
+		clone.Fill = &fill
+	}
+	if s.Border != nil {
+		border := *s.Border
+		clone.Border = &border
+	}
+	if s.Alignment != nil {
+		alignment := *s.Alignment
+		clone.Alignment = &alignment
+	}
+
+	return clone
 }

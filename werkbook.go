@@ -432,26 +432,7 @@ func (f *File) expandFormula(src string, sheetName string, row int) string {
 
 func (f *File) registerAllFormulas() {
 	for _, s := range f.sheets {
-		for _, r := range s.rows {
-			for col, c := range r.cells {
-				if c.formula == "" {
-					continue
-				}
-				// Expand table structured references and defined names before parsing.
-				src := f.expandFormula(c.formula, s.name, r.num)
-				node, err := formula.Parse(src)
-				if err != nil {
-					continue
-				}
-				cf, err := formula.Compile(src, node)
-				if err != nil {
-					continue
-				}
-				c.compiled = cf
-				qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: r.num}
-				f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
-			}
-		}
+		f.registerSheetFormulas(s)
 	}
 }
 
