@@ -19,6 +19,7 @@ func init() {
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
 	Register("TAKE", NoCtx(fnTAKE))
 	Register("DROP", NoCtx(fnDROP))
+	Register("CHOOSECOLS", NoCtx(fnCHOOSECOLS))
 	Register("TOCOL", NoCtx(fnTOCOL))
 	Register("TOROW", NoCtx(fnTOROW))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
@@ -1374,6 +1375,65 @@ func fnDROP(args []Value) (Value, error) {
 			}
 		}
 		result[i-rowStart] = row
+	}
+
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
+}
+
+// normalizeChooserIndex converts a CHOOSECOLS/CHOOSEROWS selector to a
+// zero-based index, supporting negative indexes from the end.
+func normalizeChooserIndex(arg Value, max int) (int, *Value) {
+	idxNum, e := CoerceNum(arg)
+	if e != nil {
+		return 0, e
+	}
+
+	idx := int(idxNum)
+	if idx == 0 || idx > max || idx < -max {
+		errVal := ErrorVal(ErrValVALUE)
+		return 0, &errVal
+	}
+	if idx < 0 {
+		idx = max + idx + 1
+	}
+	return idx - 1, nil
+}
+
+// fnCHOOSECOLS implements CHOOSECOLS(array, col_num1, [col_num2], ...).
+func fnCHOOSECOLS(args []Value) (Value, error) {
+	if len(args) < 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	grid, errVal := normalizeToGrid(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+
+	_, numCols := gridDims(grid)
+	selectCols := make([]int, len(args)-1)
+	for i, arg := range args[1:] {
+		colIdx, e := normalizeChooserIndex(arg, numCols)
+		if e != nil {
+			return *e, nil
+		}
+		selectCols[i] = colIdx
+	}
+
+	result := make([][]Value, len(grid))
+	for r, srcRow := range grid {
+		row := make([]Value, len(selectCols))
+		for c, srcCol := range selectCols {
+			if srcCol < len(srcRow) {
+				row[c] = srcRow[srcCol]
+			} else {
+				row[c] = EmptyVal()
+			}
+		}
+		result[r] = row
 	}
 
 	if len(result) == 1 && len(result[0]) == 1 {

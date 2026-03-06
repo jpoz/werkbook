@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **304** Excel formula functions.
+Werkbook supports **305** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -38,6 +38,7 @@ Werkbook supports **304** Excel formula functions.
 | CEILING.PRECISE | Math & Trig | 37 |
 | CHAR | Text | 8 |
 | CHOOSE | Text | 24 |
+| CHOOSECOLS | Lookup & Reference | 7 |
 | CLEAN | Text | - |
 | CODE | Text | 12 |
 | COLUMN | Information | - |
@@ -311,7 +312,7 @@ Werkbook supports **304** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **164** Excel functions are not yet supported.
+The following **163** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -340,7 +341,6 @@ The following **164** Excel functions are not yet supported.
 | CHISQ.INV | Statistical |
 | CHISQ.INV.RT | Statistical |
 | CHISQ.TEST | Statistical |
-| CHOOSECOLS | Lookup & Reference |
 | CHOOSEROWS | Lookup & Reference |
 | COMPLEX | Engineering |
 | CONFIDENCE.NORM | Statistical |
