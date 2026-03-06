@@ -1,6 +1,9 @@
 package ooxml
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"strconv"
+)
 
 type xlsxWorksheet struct {
 	XMLName   xml.Name      `xml:"worksheet"`
@@ -13,11 +16,37 @@ type xlsxCols struct {
 	Col []xlsxCol `xml:"col"`
 }
 
+// ooxmlBool is a boolean type for OOXML XML attributes.
+// It unmarshals both "true"/"false" and "1"/"0", and always marshals as "1" or
+// is omitted when false (via omitempty on int).
+type ooxmlBool int
+
+func (b *ooxmlBool) UnmarshalXMLAttr(attr xml.Attr) error {
+	switch attr.Value {
+	case "1", "true", "on":
+		*b = 1
+	case "0", "false", "off", "":
+		*b = 0
+	default:
+		// Try parsing as int for any other numeric value.
+		n, err := strconv.Atoi(attr.Value)
+		if err != nil {
+			return err
+		}
+		if n != 0 {
+			*b = 1
+		} else {
+			*b = 0
+		}
+	}
+	return nil
+}
+
 type xlsxCol struct {
-	Min         int     `xml:"min,attr"`
-	Max         int     `xml:"max,attr"`
-	Width       float64 `xml:"width,attr"`
-	CustomWidth bool    `xml:"customWidth,attr,omitempty"`
+	Min         int       `xml:"min,attr"`
+	Max         int       `xml:"max,attr"`
+	Width       float64   `xml:"width,attr"`
+	CustomWidth ooxmlBool `xml:"customWidth,attr,omitempty"`
 }
 
 type xlsxSheetData struct {
@@ -25,11 +54,11 @@ type xlsxSheetData struct {
 }
 
 type xlsxRow struct {
-	R            int     `xml:"r,attr"`
-	Ht           float64 `xml:"ht,attr,omitempty"`
-	CustomHeight bool    `xml:"customHeight,attr,omitempty"`
-	Hidden       bool    `xml:"hidden,attr,omitempty"`
-	Cells        []xlsxC `xml:"c"`
+	R            int       `xml:"r,attr"`
+	Ht           float64   `xml:"ht,attr,omitempty"`
+	CustomHeight ooxmlBool `xml:"customHeight,attr,omitempty"`
+	Hidden       ooxmlBool `xml:"hidden,attr,omitempty"`
+	Cells        []xlsxC   `xml:"c"`
 }
 
 type xlsxC struct {

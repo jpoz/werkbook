@@ -16,6 +16,18 @@ type xlsxStyleSheet struct {
 	Borders       xlsxBorders      `xml:"borders"`
 	CellStyleXfs  xlsxCellStyleXfs `xml:"cellStyleXfs"`
 	CellXfs       xlsxCellXfs      `xml:"cellXfs"`
+	CellStyles    xlsxCellStyles   `xml:"cellStyles"`
+}
+
+type xlsxCellStyles struct {
+	Count     int              `xml:"count,attr"`
+	CellStyle []xlsxCellStyle  `xml:"cellStyle"`
+}
+
+type xlsxCellStyle struct {
+	Name      string `xml:"name,attr"`
+	XfID      int    `xml:"xfId,attr"`
+	BuiltinID int    `xml:"builtinId,attr"`
 }
 
 type xlsxNumFmts struct {
@@ -99,23 +111,23 @@ type xlsxCellXfs struct {
 }
 
 type xlsxXf struct {
-	NumFmtID        int             `xml:"numFmtId,attr"`
-	FontID          int             `xml:"fontId,attr"`
-	FillID          int             `xml:"fillId,attr"`
-	BorderID        int             `xml:"borderId,attr"`
-	XfID            int             `xml:"xfId,attr,omitempty"`
-	ApplyFont       bool            `xml:"applyFont,attr,omitempty"`
-	ApplyFill       bool            `xml:"applyFill,attr,omitempty"`
-	ApplyBorder     bool            `xml:"applyBorder,attr,omitempty"`
-	ApplyAlignment  bool            `xml:"applyAlignment,attr,omitempty"`
-	ApplyNumberFormat bool          `xml:"applyNumberFormat,attr,omitempty"`
-	Alignment       *xlsxAlignment  `xml:"alignment,omitempty"`
+	NumFmtID          int            `xml:"numFmtId,attr"`
+	FontID            int            `xml:"fontId,attr"`
+	FillID            int            `xml:"fillId,attr"`
+	BorderID          int            `xml:"borderId,attr"`
+	XfID              *int           `xml:"xfId,attr"` // required on cellXfs entries; pointer so 0 is not omitted
+	ApplyFont         ooxmlBool      `xml:"applyFont,attr,omitempty"`
+	ApplyFill         ooxmlBool      `xml:"applyFill,attr,omitempty"`
+	ApplyBorder       ooxmlBool      `xml:"applyBorder,attr,omitempty"`
+	ApplyAlignment    ooxmlBool      `xml:"applyAlignment,attr,omitempty"`
+	ApplyNumberFormat ooxmlBool      `xml:"applyNumberFormat,attr,omitempty"`
+	Alignment         *xlsxAlignment `xml:"alignment,omitempty"`
 }
 
 type xlsxAlignment struct {
-	Horizontal string `xml:"horizontal,attr,omitempty"`
-	Vertical   string `xml:"vertical,attr,omitempty"`
-	WrapText   bool   `xml:"wrapText,attr,omitempty"`
+	Horizontal string    `xml:"horizontal,attr,omitempty"`
+	Vertical   string    `xml:"vertical,attr,omitempty"`
+	WrapText   ooxmlBool `xml:"wrapText,attr,omitempty"`
 }
 
 // StyleSheetBuilder builds a deduplicated OOXML style sheet.
@@ -166,7 +178,8 @@ func NewStyleSheetBuilder() *StyleSheetBuilder {
 	ssb.borderKeys[borderKey(ssb.borders[0])] = 0
 
 	// Default xf (cellXfs index 0)
-	defaultXf := xlsxXf{NumFmtID: 0, FontID: 0, FillID: 0, BorderID: 0, XfID: 0}
+	xfID0 := 0
+	defaultXf := xlsxXf{NumFmtID: 0, FontID: 0, FillID: 0, BorderID: 0, XfID: &xfID0}
 	ssb.xfs = append(ssb.xfs, defaultXf)
 	ssb.xfKeys[xfKey(defaultXf)] = 0
 
@@ -181,31 +194,36 @@ func (ssb *StyleSheetBuilder) AddStyle(sd StyleData) int {
 	borderID := ssb.addBorder(sd)
 	numFmtID := ssb.addNumFmt(sd)
 
+	xfID0 := 0
 	xf := xlsxXf{
 		NumFmtID: numFmtID,
 		FontID:   fontID,
 		FillID:   fillID,
 		BorderID: borderID,
-		XfID:     0,
+		XfID:     &xfID0,
 	}
 	if fontID != 0 {
-		xf.ApplyFont = true
+		xf.ApplyFont = 1
 	}
 	if fillID > 1 { // 0=none, 1=gray125 are defaults
-		xf.ApplyFill = true
+		xf.ApplyFill = 1
 	}
 	if borderID != 0 {
-		xf.ApplyBorder = true
+		xf.ApplyBorder = 1
 	}
 	if numFmtID != 0 {
-		xf.ApplyNumberFormat = true
+		xf.ApplyNumberFormat = 1
 	}
 	if sd.HAlign != "" || sd.VAlign != "" || sd.WrapText {
-		xf.ApplyAlignment = true
+		xf.ApplyAlignment = 1
+		var wt ooxmlBool
+		if sd.WrapText {
+			wt = 1
+		}
 		xf.Alignment = &xlsxAlignment{
 			Horizontal: sd.HAlign,
 			Vertical:   sd.VAlign,
-			WrapText:   sd.WrapText,
+			WrapText:   wt,
 		}
 	}
 
@@ -330,9 +348,13 @@ func (ssb *StyleSheetBuilder) Build() xlsxStyleSheet {
 		Borders: xlsxBorders{Count: len(ssb.borders), Border: ssb.borders},
 		CellStyleXfs: xlsxCellStyleXfs{
 			Count: 1,
-			Xf:    []xlsxXf{{NumFmtID: 0, FontID: 0, FillID: 0, BorderID: 0}},
+			Xf:    []xlsxXf{{NumFmtID: 0, FontID: 0, FillID: 0, BorderID: 0, XfID: nil}},
 		},
 		CellXfs: xlsxCellXfs{Count: len(ssb.xfs), Xf: ssb.xfs},
+		CellStyles: xlsxCellStyles{
+			Count:     1,
+			CellStyle: []xlsxCellStyle{{Name: "Normal", XfID: 0, BuiltinID: 0}},
+		},
 	}
 	if len(ssb.numFmts) > 0 {
 		ss.NumFmts = &xlsxNumFmts{Count: len(ssb.numFmts), NumFmt: ssb.numFmts}
@@ -383,11 +405,11 @@ func borderColor(bs xlsxBorderSide) string {
 
 func xfKey(xf xlsxXf) string {
 	var ah, av string
-	var wt bool
+	var wt ooxmlBool
 	if xf.Alignment != nil {
 		ah = xf.Alignment.Horizontal
 		av = xf.Alignment.Vertical
 		wt = xf.Alignment.WrapText
 	}
-	return fmt.Sprintf("xf:%d|%d|%d|%d|%s|%s|%v", xf.NumFmtID, xf.FontID, xf.FillID, xf.BorderID, ah, av, wt)
+	return fmt.Sprintf("xf:%d|%d|%d|%d|%s|%s|%d", xf.NumFmtID, xf.FontID, xf.FillID, xf.BorderID, ah, av, wt)
 }

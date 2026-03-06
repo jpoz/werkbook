@@ -65,6 +65,7 @@ func (si xlsxSI) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 type SharedStringTable struct {
 	strings []string
 	index   map[string]int
+	count   int
 }
 
 // NewSharedStringTable creates a new empty shared string table.
@@ -77,6 +78,7 @@ func NewSharedStringTable() *SharedStringTable {
 // Add adds a string to the table and returns its index.
 // If the string already exists, it returns the existing index.
 func (sst *SharedStringTable) Add(s string) int {
+	sst.count++
 	if idx, ok := sst.index[s]; ok {
 		return idx
 	}
@@ -105,7 +107,7 @@ func (sst *SharedStringTable) Strings() []string {
 func (sst *SharedStringTable) ToXML() xlsxSST {
 	x := xlsxSST{
 		Xmlns:       NSSpreadsheetML,
-		Count:       len(sst.strings),
+		Count:       sst.count,
 		UniqueCount: len(sst.strings),
 	}
 	for _, s := range sst.strings {

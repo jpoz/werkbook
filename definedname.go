@@ -3,6 +3,8 @@ package werkbook
 import (
 	"fmt"
 	"strings"
+
+	"github.com/jpoz/werkbook/formula"
 )
 
 // DefinedName represents an Excel defined name, including workbook-scoped
@@ -24,6 +26,29 @@ func (f *File) DefinedNames() []DefinedName {
 		}
 	}
 	return out
+}
+
+// AddDefinedName adds a new defined name to the workbook. Use LocalSheetID -1
+// for workbook scope or a 0-based sheet index for sheet scope.
+func (f *File) AddDefinedName(dn DefinedName) {
+	f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
+		Name:         dn.Name,
+		Value:        dn.Value,
+		LocalSheetID: dn.LocalSheetID,
+	})
+}
+
+// DeleteDefinedName removes the first defined name matching name and scope.
+// Returns an error if no matching name is found.
+func (f *File) DeleteDefinedName(name string, localSheetID int) error {
+	lower := strings.ToLower(name)
+	for i, dn := range f.definedNames {
+		if strings.ToLower(dn.Name) == lower && dn.LocalSheetID == localSheetID {
+			f.definedNames = append(f.definedNames[:i], f.definedNames[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("defined name %q not found", name)
 }
 
 // ResolveDefinedName looks up a defined name by its name and returns the
