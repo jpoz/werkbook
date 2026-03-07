@@ -31,6 +31,7 @@ var xlfnPrefix = map[string]string{
 	"DROP":            "_xlfn.",
 	"EXPON.DIST":      "_xlfn.",
 	"EXPAND":          "_xlfn.",
+	"F.DIST":          "_xlfn.",
 	"FILTER":          "_xlfn._xlws.",
 	"FLOOR.MATH":      "_xlfn.",
 	"FLOOR.PRECISE":   "_xlfn.",

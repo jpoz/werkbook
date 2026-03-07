@@ -14977,3 +14977,130 @@ func TestT_INV_argCount(t *testing.T) {
 		t.Errorf(`IFERROR(T.INV(0.5),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// F.DIST
+// ---------------------------------------------------------------------------
+
+func TestF_DIST(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// CDF tests
+		{"cdf_basic", "F.DIST(15.2069,6,4,TRUE)", 0.9900000430, false, 0},
+		{"cdf_x0", "F.DIST(0,5,5,TRUE)", 0, false, 0},
+		{"cdf_x0_df1_1", "F.DIST(0,1,5,TRUE)", 0, false, 0},
+		{"cdf_x1_equal_df", "F.DIST(1,5,5,TRUE)", 0.5, false, 0},
+		{"cdf_x1_df10_10", "F.DIST(1,10,10,TRUE)", 0.5, false, 0},
+		{"cdf_large_x", "F.DIST(100,5,5,TRUE)", 0.9999475709, false, 0},
+		{"cdf_small_x", "F.DIST(0.01,5,5,TRUE)", 0.0000524291, false, 0},
+		{"cdf_df_1_1", "F.DIST(1,1,1,TRUE)", 0.5, false, 0},
+		{"cdf_df_2_3", "F.DIST(2,2,3,TRUE)", 0.7194341411, false, 0},
+		{"cdf_df_5_10", "F.DIST(2,5,10,TRUE)", 0.8358050491, false, 0},
+		{"cdf_df_10_20", "F.DIST(1.5,10,20,TRUE)", 0.7890535375, false, 0},
+		{"cdf_df_1_100", "F.DIST(3.84,1,100,TRUE)", 0.9471726649, false, 0},
+		{"cdf_truncation", "F.DIST(1,5.7,5.7,TRUE)", 0.5, false, 0},
+		{"cdf_truncation2", "F.DIST(2,2.9,3.9,TRUE)", 0.7194341411, false, 0},
+		{"cdf_small_df", "F.DIST(5,1,1,TRUE)", 0.7322795272, false, 0},
+		{"cdf_large_df", "F.DIST(1,100,100,TRUE)", 0.5, false, 0},
+
+		// PDF tests
+		{"pdf_basic", "F.DIST(15.2069,6,4,FALSE)", 0.0012237917, false, 0},
+		{"pdf_x0_df1_2", "F.DIST(0,2,5,FALSE)", 1, false, 0},
+		{"pdf_x0_df1_gt2", "F.DIST(0,3,5,FALSE)", 0, false, 0},
+		{"pdf_x0_df1_4", "F.DIST(0,4,10,FALSE)", 0, false, 0},
+		{"pdf_x1_df10_10", "F.DIST(1,10,10,FALSE)", 0.6152343750, false, 0},
+		{"pdf_df_1_1", "F.DIST(1,1,1,FALSE)", 0.1591549431, false, 0},
+		{"pdf_df_2_3", "F.DIST(1,2,3,FALSE)", 0.2788548009, false, 0},
+		{"pdf_df_5_10", "F.DIST(2,5,10,FALSE)", 0.1620057422, false, 0},
+		{"pdf_df_10_20", "F.DIST(1.5,10,20,FALSE)", 0.3581610917, false, 0},
+		{"pdf_large_x", "F.DIST(10,5,5,FALSE)", 0.0026667077, false, 0},
+		{"pdf_small_x", "F.DIST(0.1,5,5,FALSE)", 0.2666707709, false, 0},
+
+		// Error: x < 0
+		{"err_neg_x", "F.DIST(-1,5,5,TRUE)", 0, true, ErrValNUM},
+		{"err_neg_x_pdf", "F.DIST(-0.001,5,5,FALSE)", 0, true, ErrValNUM},
+
+		// Error: df1 < 1
+		{"err_df1_zero", "F.DIST(1,0,5,TRUE)", 0, true, ErrValNUM},
+		{"err_df1_neg", "F.DIST(1,-1,5,TRUE)", 0, true, ErrValNUM},
+		{"err_df1_frac_lt1", "F.DIST(1,0.9,5,TRUE)", 0, true, ErrValNUM},
+
+		// Error: df2 < 1
+		{"err_df2_zero", "F.DIST(1,5,0,TRUE)", 0, true, ErrValNUM},
+		{"err_df2_neg", "F.DIST(1,5,-1,TRUE)", 0, true, ErrValNUM},
+		{"err_df2_frac_lt1", "F.DIST(1,5,0.5,TRUE)", 0, true, ErrValNUM},
+
+		// Error: non-numeric
+		{"err_non_numeric_x", `F.DIST("abc",5,5,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df1", `F.DIST(1,"abc",5,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df2", `F.DIST(1,5,"abc",TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `F.DIST(1,5,5,"abc")`, 0, true, ErrValVALUE},
+
+		// Error: x=0 with df1=1 (PDF diverges)
+		{"err_x0_df1_1_pdf", "F.DIST(0,1,5,FALSE)", 0, true, ErrValNUM},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("%s = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s = %v (type %d), want number", tt.formula, got, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestF_DIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "F.DIST(1,5,5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("F.DIST(1,5,5) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "F.DIST(1,5,5,TRUE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("F.DIST(1,5,5,TRUE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(F.DIST(1,5,5),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(F.DIST(1,5,5),"err") = %v, want string "err"`, got)
+	}
+}

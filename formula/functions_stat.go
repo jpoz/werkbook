@@ -94,6 +94,7 @@ func init() {
 	Register("GAMMA.INV", NoCtx(fnGammaInv))
 	Register("T.DIST", NoCtx(fnTDist))
 	Register("T.INV", NoCtx(fnTInv))
+	Register("F.DIST", NoCtx(fnFDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -3670,4 +3671,83 @@ func betacf(a, b, x float64) float64 {
 		}
 	}
 	return h
+}
+
+// ---------------------------------------------------------------------------
+// F.DIST — F probability distribution
+// ---------------------------------------------------------------------------
+// F.DIST(x, deg_freedom1, deg_freedom2, cumulative)
+//
+//	x            – value at which to evaluate (must be >= 0)
+//	deg_freedom1 – numerator degrees of freedom (truncated to integer, >= 1)
+//	deg_freedom2 – denominator degrees of freedom (truncated to integer, >= 1)
+//	cumulative   – TRUE for CDF, FALSE for PDF
+
+func fnFDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	xRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	df1Raw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	df2Raw, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	if xRaw < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Truncate degrees of freedom to integers.
+	d1 := math.Trunc(df1Raw)
+	d2 := math.Trunc(df2Raw)
+	if d1 < 1 || d2 < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: I(d1*x/(d1*x+d2), d1/2, d2/2) using the regularized
+		// incomplete beta function.
+		if xRaw == 0 {
+			return NumberVal(0), nil
+		}
+		z := d1 * xRaw / (d1*xRaw + d2)
+		return NumberVal(regBetaInc(z, d1/2.0, d2/2.0)), nil
+	}
+
+	// PDF
+	if xRaw == 0 {
+		if d1 < 2 {
+			// df1 = 1: PDF diverges at x=0.
+			return ErrorVal(ErrValNUM), nil
+		}
+		if d1 == 2 {
+			return NumberVal(1), nil
+		}
+		// df1 > 2: PDF is 0 at x=0.
+		return NumberVal(0), nil
+	}
+
+	// Use log form for numerical stability:
+	// log(f(x)) = 0.5*d1*log(d1) + 0.5*d2*log(d2) +
+	//             (0.5*d1-1)*log(x) - 0.5*(d1+d2)*log(d1*x+d2) -
+	//             lbeta(d1/2, d2/2)
+	lgA, _ := math.Lgamma(d1 / 2)
+	lgB, _ := math.Lgamma(d2 / 2)
+	lgAB, _ := math.Lgamma((d1 + d2) / 2)
+	lb := lgA + lgB - lgAB
+
+	logPdf := 0.5*d1*math.Log(d1) + 0.5*d2*math.Log(d2) +
+		(0.5*d1-1)*math.Log(xRaw) - 0.5*(d1+d2)*math.Log(d1*xRaw+d2) - lb
+	return NumberVal(math.Exp(logPdf)), nil
 }

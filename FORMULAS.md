@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **321** Excel formula functions.
+Werkbook supports **322** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -100,6 +100,7 @@ Werkbook supports **321** Excel formula functions.
 | EXACT | Text | - |
 | EXP | Math & Trig | - |
 | EXPON.DIST | Statistical | 28 |
+| F.DIST | Statistical | 42 |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
 | FILTER | Lookup & Reference | 31 |
@@ -131,7 +132,7 @@ Werkbook supports **321** Excel formula functions.
 | HOUR | Date & Time | 16 |
 | HSTACK | Lookup & Reference | 18 |
 | IF | Logical | 21 |
-| IFERROR | Logical | 37 |
+| IFERROR | Logical | 38 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 13 |
@@ -328,7 +329,7 @@ Werkbook supports **321** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **147** Excel functions are not yet supported.
+The following **146** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -380,7 +381,6 @@ The following **147** Excel functions are not yet supported.
 | DVARP | Database |
 | ENCODEURL | Web |
 | EXPAND | Lookup & Reference |
-| F.DIST | Statistical |
 | F.DIST.RT | Statistical |
 | F.INV | Statistical |
 | F.INV.RT | Statistical |
