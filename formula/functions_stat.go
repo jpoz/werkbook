@@ -89,6 +89,7 @@ func init() {
 	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
 	Register("LOGNORM.INV", NoCtx(fnLognormInv))
 	Register("CHISQ.DIST", NoCtx(fnChisqDist))
+	Register("CHISQ.INV", NoCtx(fnChisqInv))
 	Register("GAMMA.DIST", NoCtx(fnGammaDist))
 	Register("GAMMA.INV", NoCtx(fnGammaInv))
 }
@@ -3376,4 +3377,46 @@ func fnChisqDist(args []Value) (Value, error) {
 	lgA, _ := math.Lgamma(alpha)
 	logPdf := (alpha-1)*math.Log(x) - x/2.0 - alpha*math.Log(2) - lgA
 	return NumberVal(math.Exp(logPdf)), nil
+}
+
+// ---------------------------------------------------------------------------
+// CHISQ.INV — Inverse of the left-tailed chi-squared distribution
+// ---------------------------------------------------------------------------
+// CHISQ.INV(probability, deg_freedom)
+// Since chi-squared is gamma(alpha=df/2, beta=2):
+//   CHISQ.INV(p, df) = GAMMA.INV(p, df/2, 2)
+
+func fnChisqInv(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	dfRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	if p < 0 || p > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Truncate deg_freedom to integer.
+	df := math.Trunc(dfRaw)
+	if df < 1 || df > 1e10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Edge cases.
+	if p == 0 {
+		return NumberVal(0), nil
+	}
+	if p == 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Delegate to GAMMA.INV(p, df/2, 2).
+	return fnGammaInv([]Value{NumberVal(p), NumberVal(df / 2), NumberVal(2)})
 }

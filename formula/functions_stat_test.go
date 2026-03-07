@@ -14341,3 +14341,184 @@ func TestCHISQ_DIST_x0_df1_pdf(t *testing.T) {
 		t.Errorf("CHISQ.DIST(0,1,FALSE) = %g, want +Inf", got.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CHISQ.INV
+// ---------------------------------------------------------------------------
+
+func TestCHISQ_INV(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-5
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr bool
+		errVal  ErrorValue
+	}{
+		// Basic cases from spec
+		{"basic_1", "CHISQ.INV(0.93,1)", 3.283020286, false, 0},
+		{"basic_2", "CHISQ.INV(0.6,2)", 1.832581464, false, 0},
+
+		// p=0 returns 0
+		{"p_zero", "CHISQ.INV(0,5)", 0, false, 0},
+		{"p_zero_df1", "CHISQ.INV(0,1)", 0, false, 0},
+
+		// p=0.5 with df=1
+		{"p05_df1", "CHISQ.INV(0.5,1)", 0.454937, false, 0},
+
+		// Critical values (commonly used in statistics)
+		{"crit_95_df1", "CHISQ.INV(0.95,1)", 3.841459, false, 0},
+		{"crit_95_df2", "CHISQ.INV(0.95,2)", 5.991465, false, 0},
+		{"crit_95_df5", "CHISQ.INV(0.95,5)", 11.070498, false, 0},
+		{"crit_95_df10", "CHISQ.INV(0.95,10)", 18.307038, false, 0},
+		{"crit_99_df1", "CHISQ.INV(0.99,1)", 6.634897, false, 0},
+		{"crit_99_df5", "CHISQ.INV(0.99,5)", 15.086272, false, 0},
+
+		// Large df
+		{"large_df_50", "CHISQ.INV(0.5,50)", 49.334937, false, 0},
+		{"large_df_100", "CHISQ.INV(0.5,100)", 99.334127, false, 0},
+
+		// Small p
+		{"small_p", "CHISQ.INV(0.01,5)", 0.554300, false, 0},
+		{"small_p_df1", "CHISQ.INV(0.01,1)", 0.000157, false, 0},
+
+		// Large p
+		{"large_p_df5", "CHISQ.INV(0.99,5)", 15.086272, false, 0},
+		{"large_p_df10", "CHISQ.INV(0.99,10)", 23.209251, false, 0},
+
+		// Various df values at p=0.5
+		{"p05_df2", "CHISQ.INV(0.5,2)", 1.386294, false, 0},
+		{"p05_df3", "CHISQ.INV(0.5,3)", 2.365974, false, 0},
+		{"p05_df5", "CHISQ.INV(0.5,5)", 4.351460, false, 0},
+		{"p05_df10", "CHISQ.INV(0.5,10)", 9.341818, false, 0},
+		{"p05_df20", "CHISQ.INV(0.5,20)", 19.337430, false, 0},
+
+		// Truncation: 3.7 truncates to 3, same as df=3
+		{"trunc_37", "CHISQ.INV(0.5,3.7)", 2.365974, false, 0},
+		{"trunc_19", "CHISQ.INV(0.5,1.9)", 0.454937, false, 0},
+
+		// Error: p < 0
+		{"err_p_neg", "CHISQ.INV(-0.1,5)", 0, true, ErrValNUM},
+
+		// Error: p > 1
+		{"err_p_gt1", "CHISQ.INV(1.5,5)", 0, true, ErrValNUM},
+
+		// Error: p = 1
+		{"err_p_one", "CHISQ.INV(1,5)", 0, true, ErrValNUM},
+
+		// Error: df = 0
+		{"err_df_zero", "CHISQ.INV(0.5,0)", 0, true, ErrValNUM},
+
+		// Error: df < 0
+		{"err_df_neg", "CHISQ.INV(0.5,-1)", 0, true, ErrValNUM},
+
+		// Error: df < 1 after truncation
+		{"err_df_frac_below1", "CHISQ.INV(0.5,0.9)", 0, true, ErrValNUM},
+
+		// Error: df > 10^10
+		{"err_df_too_large", "CHISQ.INV(0.5,10000000001)", 0, true, ErrValNUM},
+
+		// Error: non-numeric
+		{"err_non_numeric_p", `CHISQ.INV("abc",5)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df", `CHISQ.INV(0.5,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Fatalf("%s: want error %v, got type=%d val=%v", tt.formula, tt.errVal, got.Type, got)
+				}
+				if got.Err != tt.errVal {
+					t.Errorf("%s: want error %v, got %v", tt.formula, tt.errVal, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g (diff=%g)", tt.formula, got.Num, tt.want, math.Abs(got.Num-tt.want))
+			}
+		})
+	}
+}
+
+func TestCHISQ_INV_argCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "CHISQ.INV(0.5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("CHISQ.INV(0.5) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "CHISQ.INV(0.5,5,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("CHISQ.INV(0.5,5,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(CHISQ.INV(0.5),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(CHISQ.INV(0.5),"err") = %v, want string "err"`, got)
+	}
+}
+
+func TestCHISQ_INV_roundtrip(t *testing.T) {
+	// Verify CHISQ.INV(CHISQ.DIST(x, df, TRUE), df) ≈ x
+	resolver := &mockResolver{}
+	const tol = 1e-4
+
+	cases := []struct {
+		x  float64
+		df int
+	}{
+		{5, 3},
+		{1, 1},
+		{10, 5},
+		{2, 2},
+		{15, 10},
+		{0.5, 1},
+		{20, 20},
+		{3, 7},
+	}
+
+	for _, tc := range cases {
+		formula := fmt.Sprintf("CHISQ.INV(CHISQ.DIST(%g,%d,TRUE),%d)",
+			tc.x, tc.df, tc.df)
+		t.Run(fmt.Sprintf("x=%g_df=%d", tc.x, tc.df), func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tc.x) > tol {
+				t.Errorf("%s = %g, want %g", formula, got.Num, tc.x)
+			}
+		})
+	}
+}
