@@ -49,6 +49,7 @@ var xlfnPrefix = map[string]string{
 	"NORM.S.INV":      "_xlfn.",
 	"NUMBERVALUE":     "_xlfn.",
 	"PERCENTILE.EXC":  "_xlfn.",
+	"POISSON.DIST":    "_xlfn.",
 	"PERCENTRANK.EXC": "_xlfn.",
 	"PERCENTRANK.INC": "_xlfn.",
 	"RANDARRAY":       "_xlfn.",

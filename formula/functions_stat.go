@@ -83,6 +83,7 @@ func init() {
 	Register("NORM.S.DIST", NoCtx(fnNormSDist))
 	Register("NORM.S.INV", NoCtx(fnNormSInv))
 	Register("BINOM.DIST", NoCtx(fnBinomDist))
+	Register("POISSON.DIST", NoCtx(fnPoissonDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -2838,4 +2839,62 @@ func binomPMF(n, k int, p float64) float64 {
 	logBinom := logC - logK - logNK
 	logProb := logBinom + float64(k)*math.Log(p) + float64(n-k)*math.Log(1-p)
 	return math.Exp(logProb)
+}
+
+// fnPoissonDist implements POISSON.DIST(x, mean, cumulative).
+func fnPoissonDist(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	xf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate x to integer.
+	k := int(xf)
+
+	if k < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if mean < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: mean == 0.
+	if mean == 0 {
+		if k == 0 {
+			return NumberVal(1), nil
+		}
+		if cum != 0 {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	if cum != 0 {
+		// CDF: P(X <= k) = sum from i=0 to k of PMF(i)
+		sum := 0.0
+		for i := 0; i <= k; i++ {
+			sum += poissonPMF(i, mean)
+		}
+		return NumberVal(sum), nil
+	}
+	return NumberVal(poissonPMF(k, mean)), nil
+}
+
+// poissonPMF returns the Poisson probability mass function:
+// P(X=k) = (mean^k * e^(-mean)) / k!
+// Uses log-gamma for numerical stability.
+func poissonPMF(k int, mean float64) float64 {
+	lg, _ := math.Lgamma(float64(k + 1))
+	return math.Exp(float64(k)*math.Log(mean) - mean - lg)
 }

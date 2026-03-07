@@ -125,7 +125,7 @@ Werkbook supports **310** Excel formula functions.
 | HOUR | Date & Time | 16 |
 | HSTACK | Lookup & Reference | 18 |
 | IF | Logical | 21 |
-| IFERROR | Logical | 26 |
+| IFERROR | Logical | 27 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 13 |
@@ -207,7 +207,7 @@ Werkbook supports **310** Excel formula functions.
 | PERMUTATIONA | Statistical | 17 |
 | PI | Math & Trig | - |
 | PMT | Financial | 5 |
-| POISSON.DIST | Statistical | - |
+| POISSON.DIST | Statistical | 26 |
 | POWER | Math & Trig | 48 |
 | PPMT | Financial | 2 |
 | PRODUCT | Math & Trig | - |

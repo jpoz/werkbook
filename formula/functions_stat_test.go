@@ -13217,3 +13217,144 @@ func TestBINOM_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(BINOM.DIST(5,10,0.5),"err") = %v, want string "err"`, got)
 	}
 }
+
+func TestPOISSON_DIST(t *testing.T) {
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic PMF
+		{"pmf_basic", "POISSON.DIST(2,5,FALSE)", 0.084224, false, 0},
+
+		// Basic CDF
+		{"cdf_basic", "POISSON.DIST(2,5,TRUE)", 0.124652, false, 0},
+
+		// Zero events PMF: e^(-5)
+		{"pmf_zero_events", "POISSON.DIST(0,5,FALSE)", 0.006738, false, 0},
+
+		// Zero events CDF (same as PMF when x=0)
+		{"cdf_zero_events", "POISSON.DIST(0,5,TRUE)", 0.006738, false, 0},
+
+		// Mean 0, x=0, PMF: should be 1
+		{"pmf_mean0_x0", "POISSON.DIST(0,0,FALSE)", 1, false, 0},
+
+		// Mean 0, x>0, PMF: should be 0
+		{"pmf_mean0_x5", "POISSON.DIST(5,0,FALSE)", 0, false, 0},
+
+		// Mean 0, CDF: should be 1
+		{"cdf_mean0_x0", "POISSON.DIST(0,0,TRUE)", 1, false, 0},
+
+		// Mean 0, x>0, CDF: should be 1
+		{"cdf_mean0_x5", "POISSON.DIST(5,0,TRUE)", 1, false, 0},
+
+		// Large x CDF approaching 1
+		{"cdf_large_x", "POISSON.DIST(20,5,TRUE)", 1.0, false, 0},
+
+		// Truncation: 2.9 → 2
+		{"truncation", "POISSON.DIST(2.9,5,FALSE)", 0.084224, false, 0},
+
+		// Mean 1, x=1, PMF: 1 * e^(-1) / 1! = e^(-1)
+		{"pmf_mean1_x1", "POISSON.DIST(1,1,FALSE)", 0.367879, false, 0},
+
+		// Mean 1, x=1, CDF: P(0) + P(1) = e^(-1) + e^(-1) = 2*e^(-1)
+		{"cdf_mean1_x1", "POISSON.DIST(1,1,TRUE)", 0.735759, false, 0},
+
+		// Small mean: P(0; 0.1) = e^(-0.1)
+		{"pmf_small_mean", "POISSON.DIST(0,0.1,FALSE)", 0.904837, false, 0},
+
+		// Large mean: P(10; 10)
+		{"pmf_large_mean", "POISSON.DIST(10,10,FALSE)", 0.12511, false, 0},
+
+		// Single event: P(1; 0.5) = 0.5 * e^(-0.5)
+		{"pmf_single_event", "POISSON.DIST(1,0.5,FALSE)", 0.303265, false, 0},
+
+		// Large x PMF: P(10; 5)
+		{"pmf_large_x", "POISSON.DIST(10,5,FALSE)", 0.018133, false, 0},
+
+		// CDF x=5, mean=5
+		{"cdf_x5_mean5", "POISSON.DIST(5,5,TRUE)", 0.615961, false, 0},
+
+		// PMF x=0, mean=1: e^(-1)
+		{"pmf_x0_mean1", "POISSON.DIST(0,1,FALSE)", 0.367879, false, 0},
+
+		// CDF x=0, mean=1: e^(-1)
+		{"cdf_x0_mean1", "POISSON.DIST(0,1,TRUE)", 0.367879, false, 0},
+
+		// PMF x=3, mean=2
+		{"pmf_x3_mean2", "POISSON.DIST(3,2,FALSE)", 0.180447, false, 0},
+
+		// Error: x < 0
+		{"err_neg_x", "POISSON.DIST(-1,5,FALSE)", 0, true, ErrValNUM},
+
+		// Error: mean < 0
+		{"err_neg_mean", "POISSON.DIST(2,-1,FALSE)", 0, true, ErrValNUM},
+
+		// Error: non-numeric x
+		{"err_non_numeric_x", `POISSON.DIST("abc",5,FALSE)`, 0, true, ErrValVALUE},
+
+		// Error: non-numeric mean
+		{"err_non_numeric_mean", `POISSON.DIST(2,"abc",FALSE)`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestPOISSON_DIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "POISSON.DIST(2,5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("POISSON.DIST(2,5) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "POISSON.DIST(2,5,FALSE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("POISSON.DIST(2,5,FALSE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(POISSON.DIST(2,5),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(POISSON.DIST(2,5),"err") = %v, want string "err"`, got)
+	}
+}
