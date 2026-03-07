@@ -95,6 +95,7 @@ func init() {
 	Register("T.DIST", NoCtx(fnTDist))
 	Register("T.INV", NoCtx(fnTInv))
 	Register("F.DIST", NoCtx(fnFDist))
+	Register("F.INV", NoCtx(fnFInv))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -3750,4 +3751,161 @@ func fnFDist(args []Value) (Value, error) {
 	logPdf := 0.5*d1*math.Log(d1) + 0.5*d2*math.Log(d2) +
 		(0.5*d1-1)*math.Log(xRaw) - 0.5*(d1+d2)*math.Log(d1*xRaw+d2) - lb
 	return NumberVal(math.Exp(logPdf)), nil
+}
+
+// ---------------------------------------------------------------------------
+// F.INV — Inverse of the F probability distribution
+// ---------------------------------------------------------------------------
+// F.INV(probability, deg_freedom1, deg_freedom2)
+//
+//	probability  – 0 <= p <= 1
+//	deg_freedom1 – numerator degrees of freedom (truncated to integer, >= 1)
+//	deg_freedom2 – denominator degrees of freedom (truncated to integer, >= 1)
+//
+// Returns x such that F.DIST(x, df1, df2, TRUE) = probability.
+
+func fnFInv(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	df1Raw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	df2Raw, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	if p < 0 || p > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Truncate degrees of freedom to integers.
+	d1 := math.Trunc(df1Raw)
+	d2 := math.Trunc(df2Raw)
+	if d1 < 1 || d2 < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Edge cases.
+	if p == 0 {
+		return NumberVal(0), nil
+	}
+	if p == 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// fDistCDF computes the CDF of the F-distribution at x:
+	//   I(d1*x/(d1*x+d2), d1/2, d2/2)
+	fDistCDF := func(x float64) float64 {
+		if x <= 0 {
+			return 0
+		}
+		z := d1 * x / (d1*x + d2)
+		return regBetaInc(z, d1/2.0, d2/2.0)
+	}
+
+	// fDistPDF computes the PDF of the F-distribution at x (log form for stability).
+	lgA, _ := math.Lgamma(d1 / 2)
+	lgB, _ := math.Lgamma(d2 / 2)
+	lgAB, _ := math.Lgamma((d1 + d2) / 2)
+	lb := lgA + lgB - lgAB
+
+	fDistPDF := func(x float64) float64 {
+		if x <= 0 {
+			return 0
+		}
+		logPdf := 0.5*d1*math.Log(d1) + 0.5*d2*math.Log(d2) +
+			(0.5*d1-1)*math.Log(x) - 0.5*(d1+d2)*math.Log(d1*x+d2) - lb
+		return math.Exp(logPdf)
+	}
+
+	// Initial guess: use the mean of the F-distribution (d2/(d2-2)) scaled by p,
+	// or a simple heuristic for a starting point.
+	var x float64
+	if d2 > 2 {
+		mean := d2 / (d2 - 2)
+		// Use the normal inverse to adjust the initial guess.
+		z := normSInv(p)
+		// Approximate: x ≈ mean * exp(z * sqrt(2/d1))
+		x = mean * math.Exp(z*math.Sqrt(2/d1))
+		if x <= 0 {
+			x = 0.001
+		}
+	} else {
+		// For small d2, start with 1.0 and adjust.
+		x = 1.0
+		if p < 0.5 {
+			x = 0.5 * p
+			if x < 0.001 {
+				x = 0.001
+			}
+		} else if p > 0.9 {
+			x = 10.0
+		}
+	}
+
+	// Newton-Raphson iteration.
+	const maxIter = 100
+	const tol = 1e-12
+
+	for i := 0; i < maxIter; i++ {
+		cdf := fDistCDF(x)
+		f := cdf - p
+
+		if math.Abs(f) < tol {
+			return NumberVal(x), nil
+		}
+
+		pdf := fDistPDF(x)
+		if pdf < 1e-300 {
+			break
+		}
+
+		step := f / pdf
+		xNew := x - step
+		// Ensure x stays positive.
+		if xNew <= 0 {
+			x = x / 2
+		} else {
+			x = xNew
+		}
+	}
+
+	// Bisection fallback.
+	lo := 0.0
+	hi := x
+	if hi <= 0 {
+		hi = 1.0
+	}
+	// Expand hi until CDF(hi) > p.
+	for fDistCDF(hi) < p {
+		hi *= 2
+		if hi > 1e100 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	for i := 0; i < 200; i++ {
+		mid := (lo + hi) / 2
+		cdf := fDistCDF(mid)
+		if math.Abs(cdf-p) < tol {
+			return NumberVal(mid), nil
+		}
+		if cdf < p {
+			lo = mid
+		} else {
+			hi = mid
+		}
+		if (hi - lo) < tol*math.Abs(hi) {
+			return NumberVal((lo + hi) / 2), nil
+		}
+	}
+
+	return ErrorVal(ErrValNA), nil
 }

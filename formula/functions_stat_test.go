@@ -15104,3 +15104,182 @@ func TestF_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(F.DIST(1,5,5),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// F.INV
+// ---------------------------------------------------------------------------
+
+func TestF_INV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic tests
+		{"basic_001_6_4", "F.INV(0.01,6,4)", 0.10930991, false, 0},
+		{"basic_099_6_4", "F.INV(0.99,6,4)", 15.2069, false, 0},
+		{"basic_05_5_5", "F.INV(0.5,5,5)", 1.0, false, 0},
+		{"basic_05_10_10", "F.INV(0.5,10,10)", 1.0, false, 0},
+		{"basic_05_1_1", "F.INV(0.5,1,1)", 1.0, false, 0},
+
+		// p=0 edge case
+		{"p_zero", "F.INV(0,5,5)", 0, false, 0},
+
+		// Various critical values at p=0.95
+		{"p095_1_1", "F.INV(0.95,1,1)", 161.4476, false, 0},
+		{"p095_2_3", "F.INV(0.95,2,3)", 9.552094, false, 0},
+		{"p095_5_10", "F.INV(0.95,5,10)", 3.325835, false, 0},
+		{"p095_10_20", "F.INV(0.95,10,20)", 2.347878, false, 0},
+
+		// Small probability
+		{"small_p_001_5_5", "F.INV(0.001,5,5)", 0.0336107355, false, 0},
+
+		// Large probability
+		{"large_p_999_5_5", "F.INV(0.999,5,5)", 29.7523985773, false, 0},
+
+		// Various df combinations
+		{"df_2_5", "F.INV(0.5,2,5)", 0.7987697769, false, 0},
+		{"df_10_20", "F.INV(0.5,10,20)", 0.9662638886, false, 0},
+		{"df_5_100", "F.INV(0.5,5,100)", 0.8761990472, false, 0},
+		{"df_1_100", "F.INV(0.5,1,100)", 0.4582627146, false, 0},
+
+		// Truncation: F.INV(0.5, 5.7, 5.7) == F.INV(0.5, 5, 5)
+		{"df_truncation", "F.INV(0.5,5.7,5.7)", 1.0, false, 0},
+
+		// More diverse probabilities
+		{"p010_5_10", "F.INV(0.10,5,10)", 0.3032690890, false, 0},
+		{"p025_5_10", "F.INV(0.25,5,10)", 0.5291416856, false, 0},
+		{"p075_5_10", "F.INV(0.75,5,10)", 1.5853232594, false, 0},
+		{"p090_5_10", "F.INV(0.90,5,10)", 2.5216406862, false, 0},
+
+		// Error: p < 0
+		{"err_p_neg", "F.INV(-0.1,5,5)", 0, true, ErrValNUM},
+
+		// Error: p > 1
+		{"err_p_gt1", "F.INV(1.5,5,5)", 0, true, ErrValNUM},
+
+		// Error: p = 1
+		{"err_p_one", "F.INV(1,5,5)", 0, true, ErrValNUM},
+
+		// Error: df1 < 1
+		{"err_df1_zero", "F.INV(0.5,0,5)", 0, true, ErrValNUM},
+		{"err_df1_neg", "F.INV(0.5,-1,5)", 0, true, ErrValNUM},
+		{"err_df1_frac_lt1", "F.INV(0.5,0.9,5)", 0, true, ErrValNUM},
+
+		// Error: df2 < 1
+		{"err_df2_zero", "F.INV(0.5,5,0)", 0, true, ErrValNUM},
+		{"err_df2_neg", "F.INV(0.5,5,-1)", 0, true, ErrValNUM},
+		{"err_df2_frac_lt1", "F.INV(0.5,5,0.5)", 0, true, ErrValNUM},
+
+		// Error: non-numeric arguments
+		{"err_non_numeric_p", `F.INV("abc",5,5)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df1", `F.INV(0.5,"abc",5)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df2", `F.INV(0.5,5,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("%s = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s = %v (type %d), want number", tt.formula, got, got.Type)
+			}
+			if tt.wantNum == 0 {
+				if math.Abs(got.Num) > tol {
+					t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else {
+				relErr := math.Abs(got.Num-tt.wantNum) / math.Abs(tt.wantNum)
+				if relErr > 1e-4 {
+					t.Errorf("%s = %g, want %g (relErr=%g)", tt.formula, got.Num, tt.wantNum, relErr)
+				}
+			}
+		})
+	}
+}
+
+func TestF_INV_roundtrip(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-6
+
+	// F.INV(F.DIST(x, df1, df2, TRUE), df1, df2) should ≈ x
+	cases := []struct {
+		x   float64
+		df1 int
+		df2 int
+	}{
+		{5, 3, 7},
+		{1, 5, 5},
+		{2, 2, 3},
+		{0.5, 10, 20},
+		{3, 1, 100},
+		{10, 5, 5},
+		{0.1, 5, 10},
+	}
+
+	for _, tc := range cases {
+		formula := fmt.Sprintf("F.INV(F.DIST(%g,%d,%d,TRUE),%d,%d)", tc.x, tc.df1, tc.df2, tc.df1, tc.df2)
+		t.Run(formula, func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s = %v, want number", formula, got)
+			}
+			relErr := math.Abs(got.Num-tc.x) / math.Abs(tc.x)
+			if relErr > tol {
+				t.Errorf("%s = %g, want %g (relErr=%g)", formula, got.Num, tc.x, relErr)
+			}
+		})
+	}
+}
+
+func TestF_INV_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "F.INV(0.5,5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("F.INV(0.5,5) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "F.INV(0.5,5,5,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("F.INV(0.5,5,5,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(F.INV(0.5,5),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(F.INV(0.5,5),"err") = %v, want string "err"`, got)
+	}
+}
