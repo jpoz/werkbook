@@ -55,6 +55,7 @@ func init() {
 	Register("FLOOR", NoCtx(fnFLOOR))
 	Register("FLOOR.MATH", NoCtx(fnFLOORMATH))
 	Register("FLOOR.PRECISE", NoCtx(fnFLOORPRECISE))
+	Register("GAMMA", NoCtx(fnGamma))
 	Register("GCD", NoCtx(fnGCD))
 	Register("INT", NoCtx(fnINT))
 	Register("LCM", NoCtx(fnLCM))
@@ -739,6 +740,24 @@ func fnFACTDOUBLE(args []Value) (Value, error) {
 	if n <= 0 { return NumberVal(1), nil }
 	result := 1.0
 	for i := n; i >= 2; i -= 2 { result *= float64(i) }
+	return NumberVal(result), nil
+}
+func fnGamma(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// 0 or negative integer → #NUM!
+	if n == 0 || (n < 0 && n == math.Trunc(n)) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := math.Gamma(n)
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(result), nil
 }
 func fnGCD(args []Value) (Value, error) {

@@ -5189,3 +5189,107 @@ func TestLOG(t *testing.T) {
 		})
 	}
 }
+
+func TestGAMMA(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Positive integers: GAMMA(n) = (n-1)!
+		{"int_1", "GAMMA(1)", 1, 0},
+		{"int_2", "GAMMA(2)", 1, 0},
+		{"int_3", "GAMMA(3)", 2, 0},
+		{"int_4", "GAMMA(4)", 6, 0},
+		{"int_5", "GAMMA(5)", 24, 0},
+		{"int_10", "GAMMA(10)", 362880, 0},
+
+		// Large integer
+		{"int_20", "GAMMA(20)", 121645100408832000, 1e3},
+
+		// Half-integer values
+		{"half_0.5", "GAMMA(0.5)", 1.7724538509055159, 1e-9},
+		{"half_1.5", "GAMMA(1.5)", 0.886226925452758, 1e-9},
+		{"half_2.5", "GAMMA(2.5)", 1.3293403881791370, 1e-9},
+
+		// Fractional values
+		{"frac_0.1", "GAMMA(0.1)", 9.513507698668732, 1e-6},
+		{"frac_0.001", "GAMMA(0.001)", 999.4237724845955, 1e-3},
+
+		// Negative non-integer values
+		{"neg_0.5", "GAMMA(-0.5)", -3.544907701811032, 1e-9},
+		{"neg_1.5", "GAMMA(-1.5)", 2.363271801207354, 1e-9},
+		{"neg_3.75", "GAMMA(-3.75)", 0.267866128861417, 1e-9},
+
+		// String coercion
+		{"string_num", "GAMMA(\"2.5\")", 1.3293403881791370, 1e-9},
+
+		// Boolean coercion
+		{"bool_true", "GAMMA(TRUE)", 1, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Zero → #NUM!
+		{"zero", "GAMMA(0)", ErrValNUM},
+
+		// Negative integers → #NUM!
+		{"neg_int_1", "GAMMA(-1)", ErrValNUM},
+		{"neg_int_2", "GAMMA(-2)", ErrValNUM},
+		{"neg_int_100", "GAMMA(-100)", ErrValNUM},
+
+		// Overflow → #NUM!
+		{"overflow", "GAMMA(200)", ErrValNUM},
+
+		// Non-numeric string → #VALUE!
+		{"non_numeric", "GAMMA(\"abc\")", ErrValVALUE},
+
+		// Wrong arg count → #VALUE!
+		{"no_args", "GAMMA()", ErrValVALUE},
+		{"too_many_args", "GAMMA(1,2)", ErrValVALUE},
+
+		// Error propagation
+		{"err_div0", "GAMMA(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
