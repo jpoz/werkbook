@@ -54,6 +54,7 @@ Returns sheet names, dimensions, cell counts, formula presence, and data ranges.
 wb read data.xlsx
 wb read --range A1:C10 data.xlsx
 wb read --headers --where "Status=Failed" data.xlsx
+wb read --show-formulas data.xlsx
 wb read --format markdown --headers data.xlsx
 wb read --all-sheets data.xlsx
 wb read --limit 5 --headers data.xlsx
@@ -71,6 +72,7 @@ Returns stored/cached values. Use `calc` to force formula recalculation.
 | `--where <expr>` | Filter rows (repeatable, AND logic). Operators: `=`, `!=`, `<`, `>`, `<=`, `>=` |
 | `--headers` | Treat first row as headers |
 | `--include-formulas` | Include formula strings in output |
+| `--show-formulas` | Display formula text instead of cached values for formula cells |
 | `--include-styles` | Include style objects in output |
 | `--style-summary` | Include human-readable style summary per cell |
 | `--no-dates` | Disable date detection; show raw numbers |

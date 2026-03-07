@@ -296,6 +296,39 @@ func TestReadIncludeFormulas(t *testing.T) {
 	}
 }
 
+func TestReadShowFormulasJSON(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRunJSON("read", "--show-formulas", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+
+	found := false
+	for _, row := range rd.Rows {
+		if row.Row != 4 {
+			continue
+		}
+		cd, ok := row.Cells["B4"]
+		if !ok {
+			continue
+		}
+		found = true
+		if cd.Display != "=SUM(B2:B3)" {
+			t.Fatalf("expected display formula, got %q", cd.Display)
+		}
+		if cd.Formula != "" {
+			t.Fatalf("did not expect formula field without --include-formulas, got %q", cd.Formula)
+		}
+	}
+	if !found {
+		t.Fatal("expected B4 in output")
+	}
+}
+
 func TestReadMarkdown(t *testing.T) {
 	path := createTestFile(t)
 	stdout, _, code := captureRun([]string{"read", "--format", "markdown", "--headers", path})
@@ -323,11 +356,22 @@ func TestReadTextDefault(t *testing.T) {
 	if len(lines) < 5 {
 		t.Fatalf("expected heading plus table, got:\n%s", stdout)
 	}
-	if lines[2] != "| Name | Value |" {
+	if lines[2] != "| Name  | Value |" {
 		t.Errorf("expected markdown header row, got %q", lines[2])
 	}
-	if lines[3] != "| ---- | ----- |" {
+	if lines[3] != "| ----- | ----- |" {
 		t.Errorf("expected markdown divider row, got %q", lines[3])
+	}
+}
+
+func TestReadShowFormulasText(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRun([]string{"read", "--show-formulas", "--range", "B4:B4", path})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "=SUM(B2:B3)") {
+		t.Fatalf("expected formula text in rendered output, got:\n%s", stdout)
 	}
 }
 
@@ -522,14 +566,14 @@ func TestCalcTextCompactsEmptyColumns(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(lines) < 6 {
+	if len(lines) < 5 {
 		t.Fatalf("expected heading plus compact table, got:\n%s", stdout)
 	}
 	if lines[2] != "| Values | Returns | Large   |" {
 		t.Errorf("expected empty columns to be removed, got header %q", lines[2])
 	}
-	if lines[4] != "| 2      | 1.05    | 1000000 |" {
-		t.Errorf("expected first data row to stay aligned, got %q", lines[4])
+	if lines[3] != "| 2      | 1.05    | 1000000 |" {
+		t.Errorf("expected first data row to stay aligned, got %q", lines[3])
 	}
 }
 
@@ -604,6 +648,28 @@ func TestInvalidFormat(t *testing.T) {
 	resp := parseResponse(t, stdout)
 	if resp.Error.Code != ErrCodeInvalidFormat {
 		t.Errorf("expected error code %s, got %s", ErrCodeInvalidFormat, resp.Error.Code)
+	}
+}
+
+func TestMissingFlagValue(t *testing.T) {
+	_, stderr, code := captureRunJSON("read", "--sheet")
+	if code != ExitUsage {
+		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error.Message != "--sheet requires a value" {
+		t.Fatalf("expected missing-value message, got %q", resp.Error.Message)
+	}
+}
+
+func TestFormulaUnknownSubcommand(t *testing.T) {
+	_, stderr, code := captureRunJSON("formula", "bogus")
+	if code != ExitUsage {
+		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error.Message != "unknown subcommand: bogus. Available: list" {
+		t.Fatalf("expected normalized subcommand error, got %q", resp.Error.Message)
 	}
 }
 

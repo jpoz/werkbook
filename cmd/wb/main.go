@@ -32,14 +32,46 @@ func run(args []string) int {
 		start:  time.Now(),
 	}
 
-	// Extract global flags from args.
+	remaining, exitCode, handled := extractGlobalFlags(args, globals)
+	if handled {
+		return exitCode
+	}
+	globals = remaining.globals
+
+	if exitCode, handled := normalizeGlobals(&globals); handled {
+		return exitCode
+	}
+
+	if len(remaining.args) == 0 {
+		if globals.mode == modeAgent {
+			writeError("", errUsage("command required"), globals)
+			return ExitUsage
+		}
+		printUsage()
+		return ExitUsage
+	}
+
+	root, state := newRootCommand(globals)
+	root.SetArgs(remaining.args)
+	if err := root.Execute(); err != nil {
+		return handleCLIError(err, globals)
+	}
+	return state.exitCode
+}
+
+type extractedGlobals struct {
+	args    []string
+	globals globalFlags
+}
+
+func extractGlobalFlags(args []string, globals globalFlags) (extractedGlobals, int, bool) {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--format":
 			if i+1 >= len(args) {
 				writeError("", errUsage("--format requires a value"), globals)
-				return ExitUsage
+				return extractedGlobals{}, ExitUsage, true
 			}
 			globals.format = args[i+1]
 			globals.formatSet = true
@@ -47,7 +79,7 @@ func run(args []string) int {
 		case "--mode":
 			if i+1 >= len(args) {
 				writeError("", errUsage("--mode requires a value"), globals)
-				return ExitUsage
+				return extractedGlobals{}, ExitUsage, true
 			}
 			globals.mode = args[i+1]
 			i++
@@ -58,7 +90,10 @@ func run(args []string) int {
 		}
 	}
 
-	// Validate mode.
+	return extractedGlobals{args: remaining, globals: globals}, ExitSuccess, false
+}
+
+func normalizeGlobals(globals *globalFlags) (int, bool) {
 	switch globals.mode {
 	case modeDefault, modeAgent:
 		// ok
@@ -67,11 +102,10 @@ func run(args []string) int {
 			Code:    ErrCodeUsage,
 			Message: fmt.Sprintf("unknown mode %q", globals.mode),
 			Hint:    "Supported modes: default, agent.",
-		}, globals)
-		return ExitUsage
+		}, *globals)
+		return ExitUsage, true
 	}
 
-	// Validate format.
 	switch globals.format {
 	case FormatText, FormatJSON, FormatMarkdown, FormatCSV:
 		// ok
@@ -80,11 +114,10 @@ func run(args []string) int {
 			Code:    ErrCodeInvalidFormat,
 			Message: fmt.Sprintf("unknown format %q", globals.format),
 			Hint:    "Supported formats: text, json, markdown, csv.",
-		}, globals)
-		return ExitUsage
+		}, *globals)
+		return ExitUsage, true
 	}
 
-	// Agent mode always emits JSON envelopes.
 	if globals.mode == modeAgent && globals.format != FormatJSON {
 		if globals.formatSet {
 			globals.warnings = append(globals.warnings, "agent mode forces --format json")
@@ -92,43 +125,7 @@ func run(args []string) int {
 		globals.format = FormatJSON
 	}
 
-	if len(remaining) == 0 {
-		if globals.mode == modeAgent {
-			writeError("", errUsage("command required"), globals)
-			return ExitUsage
-		}
-		printUsage()
-		return ExitUsage
-	}
-
-	command := remaining[0]
-	cmdArgs := remaining[1:]
-
-	switch command {
-	case "info":
-		return cmdInfo(cmdArgs, globals)
-	case "read":
-		return cmdRead(cmdArgs, globals)
-	case "edit":
-		return cmdEdit(cmdArgs, globals)
-	case "create":
-		return cmdCreate(cmdArgs, globals)
-	case "calc":
-		return cmdCalc(cmdArgs, globals)
-	case "dep":
-		return cmdDep(cmdArgs, globals)
-	case "formula":
-		return cmdFormula(cmdArgs, globals)
-	case "capabilities":
-		return cmdCapabilities(cmdArgs, globals)
-	case "version":
-		return cmdVersion(cmdArgs, globals)
-	case "help", "--help", "-h":
-		return cmdHelp(cmdArgs, globals)
-	default:
-		writeError("", errUsage(fmt.Sprintf("unknown command %q", command)), globals)
-		return ExitUsage
-	}
+	return ExitSuccess, false
 }
 
 func writeSuccess(command string, data any, globals globalFlags) {
