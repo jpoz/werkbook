@@ -88,6 +88,7 @@ func init() {
 	Register("WEIBULL.DIST", NoCtx(fnWeibullDist))
 	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
 	Register("LOGNORM.INV", NoCtx(fnLognormInv))
+	Register("GAMMA.DIST", NoCtx(fnGammaDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -2979,14 +2980,8 @@ func fnWeibullDist(args []Value) (Value, error) {
 	}
 	// PDF: f(x) = (alpha/beta) * (x/beta)^(alpha-1) * exp(-(x/beta)^alpha)
 	if x == 0 {
-		if alpha == 1 {
-			return NumberVal(1 / beta), nil
-		}
-		if alpha > 1 {
-			return NumberVal(0), nil
-		}
-		// alpha < 1: (x/beta)^(alpha-1) -> infinity
-		return ErrorVal(ErrValNUM), nil
+		// Excel returns 0 for all PDF evaluations at x=0.
+		return NumberVal(0), nil
 	}
 	return NumberVal((alpha / beta) * math.Pow(x/beta, alpha-1) * math.Exp(-math.Pow(x/beta, alpha))), nil
 }

@@ -13491,10 +13491,10 @@ func TestWEIBULL_DIST(t *testing.T) {
 		{"pdf_large_alpha", "WEIBULL.DIST(1,10,1,FALSE)", 3.678794412, false, 0},
 
 		// PDF x=0 edge cases
-		{"pdf_x0_alpha1", "WEIBULL.DIST(0,1,2,FALSE)", 0.5, false, 0},
+		{"pdf_x0_alpha1", "WEIBULL.DIST(0,1,2,FALSE)", 0, false, 0},
 		{"pdf_x0_alpha2", "WEIBULL.DIST(0,2,1,FALSE)", 0, false, 0},
 		{"pdf_x0_alpha3", "WEIBULL.DIST(0,3,1,FALSE)", 0, false, 0},
-		{"pdf_x0_alpha05", "WEIBULL.DIST(0,0.5,1,FALSE)", 0, true, ErrValNUM},
+		{"pdf_x0_alpha05", "WEIBULL.DIST(0,0.5,1,FALSE)", 0, false, 0},
 
 		// CDF tests
 		{"cdf_basic", "WEIBULL.DIST(105,20,100,TRUE)", 0.929581, false, 0},
