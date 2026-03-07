@@ -86,6 +86,7 @@ func init() {
 	Register("POISSON.DIST", NoCtx(fnPoissonDist))
 	Register("EXPON.DIST", NoCtx(fnExponDist))
 	Register("WEIBULL.DIST", NoCtx(fnWeibullDist))
+	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -2987,4 +2988,46 @@ func fnWeibullDist(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal((alpha / beta) * math.Pow(x/beta, alpha-1) * math.Exp(-math.Pow(x/beta, alpha))), nil
+}
+
+// ---------------------------------------------------------------------------
+// LOGNORM.DIST — Lognormal distribution (PDF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnLognormDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	if x <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: Φ((ln(x) - μ) / σ)
+		z := (math.Log(x) - mean) / stdev
+		return NumberVal(normSDistCDF(z)), nil
+	}
+	// PDF: (1 / (x * σ * √(2π))) * exp(-((ln(x) - μ)² / (2σ²)))
+	lnx := math.Log(x)
+	return NumberVal((1 / (x * stdev * math.Sqrt(2*math.Pi))) * math.Exp(-(lnx-mean)*(lnx-mean)/(2*stdev*stdev))), nil
 }

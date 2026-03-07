@@ -13578,3 +13578,158 @@ func TestWEIBULL_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(WEIBULL.DIST(1,1,1),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LOGNORM.DIST
+// ---------------------------------------------------------------------------
+
+func TestLOGNORMDIST(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		want      float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// CDF tests
+		{"cdf_excel_example", "LOGNORM.DIST(4,3.5,1.2,TRUE)", 0.0390836, false, 0},
+		{"cdf_x1_mean0_sd1", "LOGNORM.DIST(1,0,1,TRUE)", 0.5, false, 0},
+		{"cdf_x1_mean0_sd05", "LOGNORM.DIST(1,0,0.5,TRUE)", 0.5, false, 0},
+		{"cdf_large_x", "LOGNORM.DIST(1000,0,1,TRUE)", 1.0, false, 0},
+		{"cdf_small_x", "LOGNORM.DIST(0.001,0,1,TRUE)", 0.0, false, 0},
+		{"cdf_neg_mean", "LOGNORM.DIST(1,-1,1,TRUE)", 0.841345, false, 0},
+		{"cdf_large_mean", "LOGNORM.DIST(10,5,2,TRUE)", 0.088715, false, 0},
+		{"cdf_small_sd", "LOGNORM.DIST(2.7183,1,0.01,TRUE)", 0.500267, false, 0},
+		{"cdf_x_exp_mean", "LOGNORM.DIST(7.389056,2,1,TRUE)", 0.5, false, 0},
+		{"cdf_mean2_sd05", "LOGNORM.DIST(10,2,0.5,TRUE)", 0.727467, false, 0},
+
+		// PDF tests
+		{"pdf_excel_example", "LOGNORM.DIST(4,3.5,1.2,FALSE)", 0.0176176, false, 0},
+		{"pdf_x1_mean0_sd1", "LOGNORM.DIST(1,0,1,FALSE)", 0.398942, false, 0},
+		{"pdf_x1_mean0_sd05", "LOGNORM.DIST(1,0,0.5,FALSE)", 0.797885, false, 0},
+		{"pdf_neg_mean", "LOGNORM.DIST(1,-1,1,FALSE)", 0.241971, false, 0},
+		{"pdf_x2_mean0_sd1", "LOGNORM.DIST(2,0,1,FALSE)", 0.156874, false, 0},
+		{"pdf_x05_mean0_sd1", "LOGNORM.DIST(0.5,0,1,FALSE)", 0.627496, false, 0},
+		{"pdf_large_x", "LOGNORM.DIST(100,0,1,FALSE)", 0.0000000990, false, 0},
+		{"pdf_small_x", "LOGNORM.DIST(0.01,0,1,FALSE)", 0.0009902387, false, 0},
+		{"pdf_mean2_sd05", "LOGNORM.DIST(10,2,0.5,FALSE)", 0.0664376, false, 0},
+
+		// Error cases
+		{"err_x_zero", "LOGNORM.DIST(0,0,1,TRUE)", 0, true, ErrValNUM},
+		{"err_x_neg", "LOGNORM.DIST(-1,0,1,TRUE)", 0, true, ErrValNUM},
+		{"err_stdev_zero", "LOGNORM.DIST(1,0,0,TRUE)", 0, true, ErrValNUM},
+		{"err_stdev_neg", "LOGNORM.DIST(1,0,-1,TRUE)", 0, true, ErrValNUM},
+		{"err_non_numeric_x", `LOGNORM.DIST("abc",0,1,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_mean", `LOGNORM.DIST(1,"abc",1,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_stdev", `LOGNORM.DIST(1,0,"abc",TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `LOGNORM.DIST(1,0,1,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error %d", tt.formula, got, tt.wantErr)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s error = %d, want %d", tt.formula, got.Err, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s = %v (type %d), want number", tt.formula, got, got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+}
+
+func TestLOGNORMDIST_ArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "LOGNORM.DIST(4,3.5,1.2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("LOGNORM.DIST(4,3.5,1.2) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "LOGNORM.DIST(4,3.5,1.2,TRUE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("LOGNORM.DIST(4,3.5,1.2,TRUE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(LOGNORM.DIST(4,3.5,1.2),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(LOGNORM.DIST(4,3.5,1.2),"err") = %v, want string "err"`, got)
+	}
+}
+
+func TestLOGNORMDIST_CDFPDFRelation(t *testing.T) {
+	// Verify that CDF at x=1, mean=0, stddev=1 is exactly 0.5
+	// since ln(1) = 0, so z = (0-0)/1 = 0, and Φ(0) = 0.5
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "LOGNORM.DIST(1,0,1,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("expected number, got type %d", got.Type)
+	}
+	if got.Num != 0.5 {
+		t.Errorf("LOGNORM.DIST(1,0,1,TRUE) = %g, want exactly 0.5", got.Num)
+	}
+
+	// For any mean μ, LOGNORM.DIST(exp(μ), μ, σ, TRUE) should be 0.5
+	// because ln(exp(μ)) = μ, so z = (μ-μ)/σ = 0, Φ(0) = 0.5
+	cases := []struct {
+		mean  float64
+		stdev float64
+	}{
+		{0, 1},
+		{1, 2},
+		{-1, 0.5},
+		{5, 3},
+		{0.5, 0.1},
+	}
+	for _, tc := range cases {
+		x := math.Exp(tc.mean)
+		formula := fmt.Sprintf("LOGNORM.DIST(%g,%g,%g,TRUE)", x, tc.mean, tc.stdev)
+		t.Run(fmt.Sprintf("cdf_half_mean%g_sd%g", tc.mean, tc.stdev), func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got type %d", got.Type)
+			}
+			if math.Abs(got.Num-0.5) > 1e-10 {
+				t.Errorf("%s = %g, want 0.5", formula, got.Num)
+			}
+		})
+	}
+}
