@@ -15549,3 +15549,72 @@ func TestCONFIDENCE_T_convergesToNorm(t *testing.T) {
 		t.Errorf("CONFIDENCE.T and CONFIDENCE.NORM should converge for large n, diff = %g", got.Num)
 	}
 }
+
+func TestPERCENTILE_INC(t *testing.T) {
+	// PERCENTILE.INC is an alias for PERCENTILE — verify it works identically
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"basic", "PERCENTILE.INC(A1:A4,0.3)", 1.9},
+		{"min", "PERCENTILE.INC(A1:A4,0)", 1},
+		{"max", "PERCENTILE.INC(A1:A4,1)", 4},
+		{"median", "PERCENTILE.INC(A1:A4,0.5)", 2.5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || math.Abs(got.Num-tt.want) > 1e-9 {
+				t.Errorf("%s = %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestQUARTILE_INC(t *testing.T) {
+	// QUARTILE.INC is an alias for QUARTILE — verify it works identically
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"q0", "QUARTILE.INC(A1:A4,0)", 1},
+		{"q1", "QUARTILE.INC(A1:A4,1)", 1.75},
+		{"q2", "QUARTILE.INC(A1:A4,2)", 2.5},
+		{"q3", "QUARTILE.INC(A1:A4,3)", 3.25},
+		{"q4", "QUARTILE.INC(A1:A4,4)", 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || math.Abs(got.Num-tt.want) > 1e-9 {
+				t.Errorf("%s = %v, want %g", tt.formula, got, tt.want)
+			}
+		})
+	}
+}

@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **325** Excel formula functions.
+Werkbook supports **327** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -210,8 +210,9 @@ Werkbook supports **325** Excel formula functions.
 | OR | Logical | 48 |
 | PDURATION | Financial | 21 |
 | PEARSON | Statistical | 23 |
-| PERCENTILE | Statistical | 31 |
+| PERCENTILE | Statistical | 32 |
 | PERCENTILE.EXC | Statistical | 31 |
+| PERCENTILE.INC | Statistical | 4 |
 | PERCENTRANK | Statistical | 26 |
 | PERCENTRANK.EXC | Statistical | 29 |
 | PERCENTRANK.INC | Statistical | 3 |
@@ -225,8 +226,9 @@ Werkbook supports **325** Excel formula functions.
 | PRODUCT | Math & Trig | - |
 | PROPER | Text | - |
 | PV | Financial | 3 |
-| QUARTILE | Statistical | 35 |
+| QUARTILE | Statistical | 36 |
 | QUARTILE.EXC | Statistical | 27 |
+| QUARTILE.INC | Statistical | 5 |
 | QUOTIENT | Math & Trig | - |
 | RADIANS | Math & Trig | - |
 | RAND | Math & Trig | 1 |
@@ -332,7 +334,7 @@ Werkbook supports **325** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **143** Excel functions are not yet supported.
+The following **141** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -444,14 +446,12 @@ The following **143** Excel functions are not yet supported.
 | ODDLPRICE | Financial |
 | ODDLYIELD | Financial |
 | OFFSET | Lookup & Reference |
-| PERCENTILE.INC | Statistical |
 | PHI | Statistical |
 | PHONETIC | Text |
 | PRICE | Financial |
 | PRICEDISC | Financial |
 | PRICEMAT | Financial |
 | PROB | Statistical |
-| QUARTILE.INC | Statistical |
 | RANDARRAY | Math & Trig |
 | RECEIVED | Financial |
 | REDUCE | Logical |
