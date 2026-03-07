@@ -87,6 +87,7 @@ func init() {
 	Register("EXPON.DIST", NoCtx(fnExponDist))
 	Register("WEIBULL.DIST", NoCtx(fnWeibullDist))
 	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
+	Register("LOGNORM.INV", NoCtx(fnLognormInv))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -3030,4 +3031,34 @@ func fnLognormDist(args []Value) (Value, error) {
 	// PDF: (1 / (x * σ * √(2π))) * exp(-((ln(x) - μ)² / (2σ²)))
 	lnx := math.Log(x)
 	return NumberVal((1 / (x * stdev * math.Sqrt(2*math.Pi))) * math.Exp(-(lnx-mean)*(lnx-mean)/(2*stdev*stdev))), nil
+}
+
+// ---------------------------------------------------------------------------
+// LOGNORM.INV — Inverse of the lognormal CDF
+// ---------------------------------------------------------------------------
+
+func fnLognormInv(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	stdev, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	if p <= 0 || p >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if stdev <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// LOGNORM.INV(p, μ, σ) = exp(μ + σ * NORM.S.INV(p))
+	return NumberVal(math.Exp(mean + stdev*normSInv(p))), nil
 }

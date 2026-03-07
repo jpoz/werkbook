@@ -46,6 +46,7 @@ var xlfnPrefix = map[string]string{
 	"MINIFS":          "_xlfn.",
 	"MODE.SNGL":       "_xlfn.",
 	"LOGNORM.DIST":    "_xlfn.",
+	"LOGNORM.INV":     "_xlfn.",
 	"NORM.DIST":       "_xlfn.",
 	"NORM.INV":        "_xlfn.",
 	"NORM.S.DIST":     "_xlfn.",

@@ -13733,3 +13733,147 @@ func TestLOGNORMDIST_CDFPDFRelation(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LOGNORM.INV
+// ---------------------------------------------------------------------------
+
+func TestLOGNORMINV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		want      float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic cases
+		{"excel_example", "LOGNORM.INV(0.039084,3.5,1.2)", 4.0000252, false, 0},
+		{"median_mean0_sd1", "LOGNORM.INV(0.5,0,1)", 1.0, false, 0},
+		{"median_mean1_sd1", "LOGNORM.INV(0.5,1,1)", 2.718282, false, 0},
+		{"median_mean2_sd1", "LOGNORM.INV(0.5,2,1)", 7.389056, false, 0},
+		{"median_mean0_sd05", "LOGNORM.INV(0.5,0,0.5)", 1.0, false, 0},
+		{"neg_mean", "LOGNORM.INV(0.5,-1,1)", 0.367879, false, 0},
+		{"large_stddev", "LOGNORM.INV(0.5,0,5)", 1.0, false, 0},
+
+		// Small and large probabilities
+		{"small_p_0.01", "LOGNORM.INV(0.01,0,1)", 0.097652, false, 0},
+		{"large_p_0.99", "LOGNORM.INV(0.99,0,1)", 10.24047, false, 0},
+		{"small_p_0.001", "LOGNORM.INV(0.001,0,1)", 0.045491, false, 0},
+		{"large_p_0.999", "LOGNORM.INV(0.999,0,1)", 21.98218, false, 0},
+		{"p_0.1", "LOGNORM.INV(0.1,0,1)", 0.277606, false, 0},
+		{"p_0.9", "LOGNORM.INV(0.9,0,1)", 3.602224, false, 0},
+		{"p_0.25", "LOGNORM.INV(0.25,0,1)", 0.509416, false, 0},
+		{"p_0.75", "LOGNORM.INV(0.75,0,1)", 1.963031, false, 0},
+
+		// Various mean/stdev combinations
+		{"mean3_sd2", "LOGNORM.INV(0.5,3,2)", 20.08554, false, 0},
+		{"mean5_sd05", "LOGNORM.INV(0.5,5,0.5)", 148.41316, false, 0},
+		{"neg_mean2", "LOGNORM.INV(0.5,-2,1)", 0.135335, false, 0},
+		{"mean0_sd01", "LOGNORM.INV(0.5,0,0.1)", 1.0, false, 0},
+
+		// Error cases
+		{"err_p_zero", "LOGNORM.INV(0,0,1)", 0, true, ErrValNUM},
+		{"err_p_one", "LOGNORM.INV(1,0,1)", 0, true, ErrValNUM},
+		{"err_p_neg", "LOGNORM.INV(-0.5,0,1)", 0, true, ErrValNUM},
+		{"err_p_gt1", "LOGNORM.INV(1.5,0,1)", 0, true, ErrValNUM},
+		{"err_stdev_zero", "LOGNORM.INV(0.5,0,0)", 0, true, ErrValNUM},
+		{"err_stdev_neg", "LOGNORM.INV(0.5,0,-1)", 0, true, ErrValNUM},
+		{"err_non_numeric_p", `LOGNORM.INV("abc",0,1)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_mean", `LOGNORM.INV(0.5,"abc",1)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_stdev", `LOGNORM.INV(0.5,0,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error %d", tt.formula, got, tt.wantErr)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s error = %d, want %d", tt.formula, got.Err, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s = %v (type %d), want number", tt.formula, got, got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+}
+
+func TestLOGNORMINV_ArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "LOGNORM.INV(0.5,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("LOGNORM.INV(0.5,0) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "LOGNORM.INV(0.5,0,1,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("LOGNORM.INV(0.5,0,1,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(LOGNORM.INV(0.5,0),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(LOGNORM.INV(0.5,0),"err") = %v, want string "err"`, got)
+	}
+}
+
+func TestLOGNORMINV_RoundTrip(t *testing.T) {
+	// Verify LOGNORM.INV(LOGNORM.DIST(x, μ, σ, TRUE), μ, σ) ≈ x
+	resolver := &mockResolver{}
+
+	cases := []struct {
+		x, mean, stdev float64
+	}{
+		{4, 3.5, 1.2},
+		{1, 0, 1},
+		{10, 2, 0.5},
+		{0.5, -1, 2},
+		{100, 5, 1},
+	}
+
+	for _, tc := range cases {
+		formula := fmt.Sprintf("LOGNORM.INV(LOGNORM.DIST(%g,%g,%g,TRUE),%g,%g)",
+			tc.x, tc.mean, tc.stdev, tc.mean, tc.stdev)
+		t.Run(fmt.Sprintf("x%g_mean%g_sd%g", tc.x, tc.mean, tc.stdev), func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got type %d", got.Type)
+			}
+			if math.Abs(got.Num-tc.x) > 1e-4 {
+				t.Errorf("%s = %g, want %g", formula, got.Num, tc.x)
+			}
+		})
+	}
+}
