@@ -10,6 +10,7 @@ func init() {
 	Register("NOT", NoCtx(fnNOT))
 	Register("OR", NoCtx(fnOR))
 	Register("SORT", NoCtx(fnSORT))
+	Register("SORTBY", NoCtx(fnSORTBY))
 	Register("SWITCH", NoCtx(fnSWITCH))
 	Register("XOR", NoCtx(fnXOR))
 }
@@ -281,4 +282,144 @@ func fnSORT(args []Value) (Value, error) {
 	})
 
 	return Value{Type: ValueArray, Array: rows}, nil
+}
+
+func fnSORTBY(args []Value) (Value, error) {
+	if len(args) < 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Normalize array argument to a 2D grid.
+	arr := args[0]
+	var grid [][]Value
+	switch arr.Type {
+	case ValueArray:
+		grid = arr.Array
+	case ValueError:
+		return arr, nil
+	default:
+		grid = [][]Value{{arr}}
+	}
+	if len(grid) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	numRows := len(grid)
+
+	// Parse (by_array, sort_order) pairs from remaining args.
+	// After args[0], remaining args are grouped in pairs of 2: (by_array, sort_order).
+	// If the last group has only 1 element, sort_order defaults to 1.
+	remaining := args[1:]
+	type sortKey struct {
+		values []Value
+		order  int // 1 = ascending, -1 = descending
+	}
+	var keys []sortKey
+
+	for i := 0; i < len(remaining); i += 2 {
+		byArg := remaining[i]
+
+		// Propagate errors from by_array.
+		if byArg.Type == ValueError {
+			return byArg, nil
+		}
+
+		// Normalize by_array to a 2D grid, then flatten to a 1D vector.
+		var byGrid [][]Value
+		switch byArg.Type {
+		case ValueArray:
+			byGrid = byArg.Array
+		default:
+			byGrid = [][]Value{{byArg}}
+		}
+
+		// Validate: by_array must be a vector (single row or single column).
+		byRows := len(byGrid)
+		byCols := 0
+		for _, row := range byGrid {
+			if len(row) > byCols {
+				byCols = len(row)
+			}
+		}
+		if byRows > 1 && byCols > 1 {
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Flatten to 1D.
+		var flat []Value
+		if byCols <= 1 {
+			// Column vector or single cell: one value per row.
+			for _, row := range byGrid {
+				if len(row) > 0 {
+					flat = append(flat, row[0])
+				} else {
+					flat = append(flat, EmptyVal())
+				}
+			}
+		} else {
+			// Row vector: one value per column.
+			if len(byGrid) > 0 {
+				flat = byGrid[0]
+			}
+		}
+
+		// Validate: by_array length must match number of rows in array.
+		if len(flat) != numRows {
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Check for errors in the by_array values.
+		for _, v := range flat {
+			if v.Type == ValueError {
+				return v, nil
+			}
+		}
+
+		// Parse sort_order (defaults to 1 if not provided).
+		order := 1
+		if i+1 < len(remaining) {
+			so, e := CoerceNum(remaining[i+1])
+			if e != nil {
+				return *e, nil
+			}
+			order = int(so)
+			if order != 1 && order != -1 {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		}
+
+		keys = append(keys, sortKey{values: flat, order: order})
+	}
+
+	if len(keys) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Build index slice and sort using stable sort.
+	indices := make([]int, numRows)
+	for i := range indices {
+		indices[i] = i
+	}
+
+	sort.SliceStable(indices, func(a, b int) bool {
+		for _, k := range keys {
+			cmp := CompareValues(k.values[indices[a]], k.values[indices[b]])
+			if cmp != 0 {
+				if k.order < 0 {
+					return cmp > 0
+				}
+				return cmp < 0
+			}
+		}
+		return false
+	})
+
+	// Build result array by reordering rows.
+	result := make([][]Value, numRows)
+	for i, idx := range indices {
+		row := make([]Value, len(grid[idx]))
+		copy(row, grid[idx])
+		result[i] = row
+	}
+
+	return Value{Type: ValueArray, Array: result}, nil
 }

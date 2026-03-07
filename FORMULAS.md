@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **306** Excel formula functions.
+Werkbook supports **307** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -246,6 +246,7 @@ Werkbook supports **306** Excel formula functions.
 | SLOPE | Statistical | 16 |
 | SMALL | Statistical | 28 |
 | SORT | Logical | 25 |
+| SORTBY | Logical | 2 |
 | SQRT | Math & Trig | 29 |
 | SQRTPI | Math & Trig | - |
 | STANDARDIZE | Statistical | 16 |
@@ -313,7 +314,7 @@ Werkbook supports **306** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **162** Excel functions are not yet supported.
+The following **161** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -457,7 +458,6 @@ The following **162** Excel functions are not yet supported.
 | SHEET | Information |
 | SHEETS | Information |
 | SKEW.P | Statistical |
-| SORTBY | Logical |
 | STDEVA | Statistical |
 | STDEVPA | Statistical |
 | T.DIST | Statistical |

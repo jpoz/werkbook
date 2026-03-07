@@ -1623,6 +1623,526 @@ func TestSORT_StableSort(t *testing.T) {
 	}
 }
 
+func TestSORTBY(t *testing.T) {
+	t.Run("basic ascending by single key", func(t *testing.T) {
+		// SORTBY({5;3;1;4;2}, {50;30;10;40;20}) → {1;2;3;4;5}
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(5)}, {NumberVal(3)}, {NumberVal(1)}, {NumberVal(4)}, {NumberVal(2)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(50)}, {NumberVal(30)}, {NumberVal(10)}, {NumberVal(40)}, {NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 5 ||
+			got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 ||
+			got.Array[2][0].Num != 3 || got.Array[3][0].Num != 4 ||
+			got.Array[4][0].Num != 5 {
+			t.Errorf("SORTBY ascending = %v, want {1;2;3;4;5}", got)
+		}
+	})
+
+	t.Run("descending sort", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)}, {NumberVal(30)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by, NumberVal(-1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 3 || got.Array[1][0].Num != 2 || got.Array[2][0].Num != 1 {
+			t.Errorf("SORTBY descending = %v, want {3;2;1}", got)
+		}
+	})
+
+	t.Run("multiple sort keys primary and secondary", func(t *testing.T) {
+		// Sort by first key ascending, then second key descending to break ties.
+		// Rows: (A,2), (B,1), (A,1), (B,2)
+		// By1:   1, 2, 1, 2  (group: A=1, B=2)
+		// By2:   2, 1, 1, 2  (secondary sort descending)
+		// Expected: (A,2), (A,1), (B,2), (B,1) → by1 asc, by2 desc
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("A"), NumberVal(2)},
+			{StringVal("B"), NumberVal(1)},
+			{StringVal("A"), NumberVal(1)},
+			{StringVal("B"), NumberVal(2)},
+		}}
+		by1 := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(1)}, {NumberVal(2)},
+		}}
+		by2 := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(2)}, {NumberVal(1)}, {NumberVal(1)}, {NumberVal(2)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by1, NumberVal(1), by2, NumberVal(-1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 4 ||
+			got.Array[0][0].Str != "A" || got.Array[0][1].Num != 2 ||
+			got.Array[1][0].Str != "A" || got.Array[1][1].Num != 1 ||
+			got.Array[2][0].Str != "B" || got.Array[2][1].Num != 2 ||
+			got.Array[3][0].Str != "B" || got.Array[3][1].Num != 1 {
+			t.Errorf("SORTBY multi-key = %v, want A2,A1,B2,B1", got)
+		}
+	})
+
+	t.Run("sort multi-column array by external key", func(t *testing.T) {
+		// Array has multiple columns, sort by an external key.
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("c"), NumberVal(30)},
+			{StringVal("a"), NumberVal(10)},
+			{StringVal("b"), NumberVal(20)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3)}, {NumberVal(1)}, {NumberVal(2)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "a" || got.Array[0][1].Num != 10 ||
+			got.Array[1][0].Str != "b" || got.Array[1][1].Num != 20 ||
+			got.Array[2][0].Str != "c" || got.Array[2][1].Num != 30 {
+			t.Errorf("SORTBY multi-col = %v, want a10,b20,c30", got)
+		}
+	})
+
+	t.Run("single element array", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(42)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 1 || got.Array[0][0].Num != 42 {
+			t.Errorf("SORTBY single = %v, want {42}", got)
+		}
+	})
+
+	t.Run("already sorted data", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)}, {NumberVal(30)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 || got.Array[2][0].Num != 3 {
+			t.Errorf("SORTBY already sorted = %v, want {1;2;3}", got)
+		}
+	})
+
+	t.Run("reverse sorted data", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3)}, {NumberVal(2)}, {NumberVal(1)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(30)}, {NumberVal(20)}, {NumberVal(10)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 || got.Array[2][0].Num != 3 {
+			t.Errorf("SORTBY reverse = %v, want {1;2;3}", got)
+		}
+	})
+
+	t.Run("duplicate sort keys preserves order (stability)", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("first")},
+			{StringVal("second")},
+			{StringVal("third")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(1)}, {NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "first" ||
+			got.Array[1][0].Str != "second" ||
+			got.Array[2][0].Str != "third" {
+			t.Errorf("SORTBY stable = %v, want original order preserved", got)
+		}
+	})
+
+	t.Run("string sort keys", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("cherry")}, {StringVal("apple")}, {StringVal("banana")},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 2 || got.Array[1][0].Num != 3 || got.Array[2][0].Num != 1 {
+			t.Errorf("SORTBY string keys = %v, want {2;3;1} (sorted by apple,banana,cherry)", got)
+		}
+	})
+
+	t.Run("mixed type sort keys", func(t *testing.T) {
+		// Numbers sort before strings in Excel.
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")}, {StringVal("D")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("z")}, {NumberVal(2)}, {StringVal("a")}, {NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 4 ||
+			got.Array[0][0].Str != "D" || got.Array[1][0].Str != "B" ||
+			got.Array[2][0].Str != "C" || got.Array[3][0].Str != "A" {
+			t.Errorf("SORTBY mixed keys = %v, want {D;B;C;A} (nums first, then strings)", got)
+		}
+	})
+
+	t.Run("numeric sort keys with negatives and decimals", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")}, {StringVal("D")}, {StringVal("E")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(0)}, {NumberVal(-5.5)}, {NumberVal(3.14)}, {NumberVal(-10)}, {NumberVal(1.5)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 5 ||
+			got.Array[0][0].Str != "D" || // -10
+			got.Array[1][0].Str != "B" || // -5.5
+			got.Array[2][0].Str != "A" || // 0
+			got.Array[3][0].Str != "E" || // 1.5
+			got.Array[4][0].Str != "C" { // 3.14
+			t.Errorf("SORTBY negative/decimal keys = %v, want {D;B;A;E;C}", got)
+		}
+	})
+
+	t.Run("error propagation from array", func(t *testing.T) {
+		arr := ErrorVal(ErrValREF)
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Errorf("SORTBY error array = %v, want #REF!", got)
+		}
+	})
+
+	t.Run("error propagation from by_array", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)},
+		}}
+		by := ErrorVal(ErrValNA)
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("SORTBY error by_array = %v, want #N/A", got)
+		}
+	})
+
+	t.Run("error in by_array values", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {ErrorVal(ErrValDIV0)}, {NumberVal(30)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("SORTBY error in by_array values = %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("invalid sort order not 1 or -1 returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by, NumberVal(2)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY invalid order = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("invalid sort order zero returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by, NumberVal(0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY order=0 = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("by_array size mismatch returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY size mismatch = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too few args returns VALUE error", func(t *testing.T) {
+		got, err := fnSORTBY([]Value{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("one arg returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY(arr) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("scalar inputs treated as 1x1 array", func(t *testing.T) {
+		got, err := fnSORTBY([]Value{NumberVal(42), NumberVal(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 1 || got.Array[0][0].Num != 42 {
+			t.Errorf("SORTBY(42,1) = %v, want {{42}}", got)
+		}
+	})
+
+	t.Run("does not mutate original array", func(t *testing.T) {
+		original := [][]Value{
+			{NumberVal(3)}, {NumberVal(1)}, {NumberVal(2)},
+		}
+		arr := Value{Type: ValueArray, Array: original}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(30)}, {NumberVal(10)}, {NumberVal(20)},
+		}}
+		_, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if original[0][0].Num != 3 || original[1][0].Num != 1 || original[2][0].Num != 2 {
+			t.Errorf("SORTBY mutated original array: %v", original)
+		}
+	})
+
+	t.Run("by_array as row vector", func(t *testing.T) {
+		// by_array is a row vector {30, 10, 20} — length 3 matches numRows=3.
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("c")}, {StringVal("a")}, {StringVal("b")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(30), NumberVal(10), NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "a" || got.Array[1][0].Str != "b" || got.Array[2][0].Str != "c" {
+			t.Errorf("SORTBY row vector = %v, want {a;b;c}", got)
+		}
+	})
+
+	t.Run("by_array is 2D array returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10), NumberVal(20)},
+			{NumberVal(30), NumberVal(40)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY 2D by_array = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("multiple keys with default sort order on last", func(t *testing.T) {
+		// SORTBY(arr, by1, 1, by2) — 4 args: second key defaults to ascending.
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")}, {StringVal("D")},
+		}}
+		by1 := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(2)}, {NumberVal(1)}, {NumberVal(2)}, {NumberVal(1)},
+		}}
+		by2 := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(2)}, {NumberVal(2)}, {NumberVal(1)}, {NumberVal(1)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by1, NumberVal(1), by2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Sort by1 asc: B(1),D(1) then A(2),C(2). By2 asc within: D(1),B(2), C(1),A(2).
+		if got.Type != ValueArray || len(got.Array) != 4 ||
+			got.Array[0][0].Str != "D" || got.Array[1][0].Str != "B" ||
+			got.Array[2][0].Str != "C" || got.Array[3][0].Str != "A" {
+			t.Errorf("SORTBY multi-key default order = %v, want {D;B;C;A}", got)
+		}
+	})
+
+	t.Run("cell reference based test", func(t *testing.T) {
+		// Set up A1:A5 = {5,3,1,4,2}, B1:B5 = {50,30,10,40,20}
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 1, Row: 3}: NumberVal(1),
+				{Col: 1, Row: 4}: NumberVal(4),
+				{Col: 1, Row: 5}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(50),
+				{Col: 2, Row: 2}: NumberVal(30),
+				{Col: 2, Row: 3}: NumberVal(10),
+				{Col: 2, Row: 4}: NumberVal(40),
+				{Col: 2, Row: 5}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SORTBY(A1:A5,B1:B5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 5 ||
+			got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 ||
+			got.Array[2][0].Num != 3 || got.Array[3][0].Num != 4 ||
+			got.Array[4][0].Num != 5 {
+			t.Errorf("SORTBY(A1:A5,B1:B5) = %v, want {1;2;3;4;5}", got)
+		}
+	})
+
+	t.Run("cell reference descending", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 1, Row: 3}: NumberVal(1),
+				{Col: 2, Row: 1}: NumberVal(50),
+				{Col: 2, Row: 2}: NumberVal(30),
+				{Col: 2, Row: 3}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, "SORTBY(A1:A3,B1:B3,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 5 || got.Array[1][0].Num != 3 || got.Array[2][0].Num != 1 {
+			t.Errorf("SORTBY descending cell ref = %v, want {5;3;1}", got)
+		}
+	})
+
+	t.Run("boolean sort keys", func(t *testing.T) {
+		// Booleans: FALSE sorts before TRUE.
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {BoolVal(false)}, {BoolVal(true)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "B" ||
+			got.Array[1][0].Str != "A" ||
+			got.Array[2][0].Str != "C" {
+			t.Errorf("SORTBY boolean keys = %v, want {B;A;C}", got)
+		}
+	})
+
+	t.Run("sort order as string coerced to number", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(10)}, {NumberVal(20)}, {NumberVal(30)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by, StringVal("-1")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Num != 3 || got.Array[1][0].Num != 2 || got.Array[2][0].Num != 1 {
+			t.Errorf("SORTBY string order = %v, want {3;2;1}", got)
+		}
+	})
+
+	t.Run("empty array returns VALUE error", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{}}
+		by := Value{Type: ValueArray, Array: [][]Value{}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY empty = %v, want #VALUE!", got)
+		}
+	})
+}
+
 func TestSWITCH(t *testing.T) {
 	resolver := &mockResolver{}
 
