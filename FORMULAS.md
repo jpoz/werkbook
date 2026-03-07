@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **317** Excel formula functions.
+Werkbook supports **318** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -38,6 +38,7 @@ Werkbook supports **317** Excel formula functions.
 | CEILING.MATH | Math & Trig | 37 |
 | CEILING.PRECISE | Math & Trig | 37 |
 | CHAR | Text | 8 |
+| CHISQ.DIST | Statistical | 39 |
 | CHOOSE | Text | 24 |
 | CHOOSECOLS | Lookup & Reference | 7 |
 | CHOOSEROWS | Lookup & Reference | 7 |
@@ -129,7 +130,7 @@ Werkbook supports **317** Excel formula functions.
 | HOUR | Date & Time | 16 |
 | HSTACK | Lookup & Reference | 18 |
 | IF | Logical | 21 |
-| IFERROR | Logical | 33 |
+| IFERROR | Logical | 34 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 13 |
@@ -324,7 +325,7 @@ Werkbook supports **317** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **151** Excel functions are not yet supported.
+The following **150** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -347,7 +348,6 @@ The following **151** Excel functions are not yet supported.
 | BYCOL | Logical |
 | BYROW | Logical |
 | CELL | Information |
-| CHISQ.DIST | Statistical |
 | CHISQ.DIST.RT | Statistical |
 | CHISQ.INV | Statistical |
 | CHISQ.INV.RT | Statistical |

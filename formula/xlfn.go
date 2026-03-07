@@ -12,6 +12,7 @@ var xlfnPrefix = map[string]string{
 	"BINOM.DIST":      "_xlfn.",
 	"BYCOL":           "_xlfn.",
 	"BYROW":           "_xlfn.",
+	"CHISQ.DIST":      "_xlfn.",
 	"CEILING.MATH":    "_xlfn.",
 	"CEILING.PRECISE": "_xlfn.",
 	"CHOOSECOLS":      "_xlfn.",

@@ -88,6 +88,7 @@ func init() {
 	Register("WEIBULL.DIST", NoCtx(fnWeibullDist))
 	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
 	Register("LOGNORM.INV", NoCtx(fnLognormInv))
+	Register("CHISQ.DIST", NoCtx(fnChisqDist))
 	Register("GAMMA.DIST", NoCtx(fnGammaDist))
 	Register("GAMMA.INV", NoCtx(fnGammaInv))
 }
@@ -3316,4 +3317,63 @@ func fnGammaInv(args []Value) (Value, error) {
 	}
 
 	return ErrorVal(ErrValNA), nil
+}
+
+// ---------------------------------------------------------------------------
+// CHISQ.DIST — Chi-squared distribution (PDF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnChisqDist(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	dfRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	if x < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Truncate deg_freedom to integer.
+	df := math.Trunc(dfRaw)
+	if df < 1 || df > 1e10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	alpha := df / 2.0
+
+	if cum != 0 {
+		// CDF: regularized lower incomplete gamma P(df/2, x/2)
+		return NumberVal(regLowerGamma(alpha, x/2.0)), nil
+	}
+
+	// PDF: gamma PDF with alpha=df/2, beta=2
+	// f(x) = x^(alpha-1) * exp(-x/2) / (2^alpha * Γ(alpha))
+	if x == 0 {
+		if df == 1 {
+			// PDF diverges at x=0 for df=1 (alpha=0.5).
+			// Excel returns Inf.
+			return NumberVal(math.Inf(1)), nil
+		}
+		if df == 2 {
+			// alpha=1, PDF = exp(0)/(2*1) = 0.5
+			return NumberVal(0.5), nil
+		}
+		// df > 2 ⇒ alpha > 1 ⇒ PDF = 0
+		return NumberVal(0), nil
+	}
+
+	lgA, _ := math.Lgamma(alpha)
+	logPdf := (alpha-1)*math.Log(x) - x/2.0 - alpha*math.Log(2) - lgA
+	return NumberVal(math.Exp(logPdf)), nil
 }

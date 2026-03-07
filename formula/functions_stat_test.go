@@ -14199,3 +14199,145 @@ func TestGAMMA_INV_roundtrip(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CHISQ.DIST
+// ---------------------------------------------------------------------------
+
+func TestCHISQ_DIST(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-5
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr bool
+		errVal  ErrorValue
+	}{
+		// CDF tests
+		{"cdf_basic", "CHISQ.DIST(0.5,1,TRUE)", 0.52049988, false, 0},
+		{"cdf_df2", "CHISQ.DIST(2,2,TRUE)", 0.63212056, false, 0},
+		{"cdf_df3", "CHISQ.DIST(3,3,TRUE)", 0.60837482, false, 0},
+		{"cdf_df5", "CHISQ.DIST(5,5,TRUE)", 0.58411981, false, 0},
+		{"cdf_x0", "CHISQ.DIST(0,5,TRUE)", 0, false, 0},
+		{"cdf_x0_df1", "CHISQ.DIST(0,1,TRUE)", 0, false, 0},
+		{"cdf_x0_df2", "CHISQ.DIST(0,2,TRUE)", 0, false, 0},
+		{"cdf_df1_p95", "CHISQ.DIST(3.841,1,TRUE)", 0.94998632, false, 0},
+		{"cdf_df2_p95", "CHISQ.DIST(5.991,2,TRUE)", 0.94998838, false, 0},
+		{"cdf_df10", "CHISQ.DIST(10,10,TRUE)", 0.55950671, false, 0},
+		{"cdf_large_x", "CHISQ.DIST(100,5,TRUE)", 1.0, false, 0},
+		{"cdf_df20", "CHISQ.DIST(20,20,TRUE)", 0.54207029, false, 0},
+		{"cdf_small_x", "CHISQ.DIST(0.01,1,TRUE)", 0.07965567, false, 0},
+		{"cdf_df1_x1", "CHISQ.DIST(1,1,TRUE)", 0.68268949, false, 0},
+
+		// PDF tests
+		{"pdf_basic", "CHISQ.DIST(2,3,FALSE)", 0.20755375, false, 0},
+		{"pdf_df1", "CHISQ.DIST(1,1,FALSE)", 0.24197072, false, 0},
+		{"pdf_df2", "CHISQ.DIST(2,2,FALSE)", 0.18393972, false, 0},
+		{"pdf_df5", "CHISQ.DIST(4,5,FALSE)", 0.14397591, false, 0},
+		{"pdf_df10", "CHISQ.DIST(10,10,FALSE)", 0.08773368, false, 0},
+		{"pdf_small_x", "CHISQ.DIST(0.1,2,FALSE)", 0.47561471, false, 0},
+		{"pdf_x0_df2", "CHISQ.DIST(0,2,FALSE)", 0.5, false, 0},
+		{"pdf_x0_df3", "CHISQ.DIST(0,3,FALSE)", 0, false, 0},
+		{"pdf_x0_df4", "CHISQ.DIST(0,4,FALSE)", 0, false, 0},
+		{"pdf_x0_df10", "CHISQ.DIST(0,10,FALSE)", 0, false, 0},
+		{"pdf_large_x", "CHISQ.DIST(20,5,FALSE)", 0.00053999, false, 0},
+
+		// Truncation: 3.7 → 3
+		{"trunc_pdf", "CHISQ.DIST(2,3.7,FALSE)", 0.20755375, false, 0},
+		{"trunc_cdf", "CHISQ.DIST(0.5,1.9,TRUE)", 0.52049988, false, 0},
+
+		// Error: x < 0
+		{"err_neg_x", "CHISQ.DIST(-1,3,TRUE)", 0, true, ErrValNUM},
+		{"err_neg_x_pdf", "CHISQ.DIST(-0.001,1,FALSE)", 0, true, ErrValNUM},
+
+		// Error: df < 1
+		{"err_df_zero", "CHISQ.DIST(1,0,TRUE)", 0, true, ErrValNUM},
+		{"err_df_neg", "CHISQ.DIST(1,-1,TRUE)", 0, true, ErrValNUM},
+		{"err_df_frac_below1", "CHISQ.DIST(1,0.9,TRUE)", 0, true, ErrValNUM},
+
+		// Error: df > 10^10
+		{"err_df_too_large", "CHISQ.DIST(1,10000000001,TRUE)", 0, true, ErrValNUM},
+
+		// Error: non-numeric
+		{"err_non_numeric_x", `CHISQ.DIST("abc",1,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_df", `CHISQ.DIST(1,"abc",TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `CHISQ.DIST(1,1,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Fatalf("%s: want error %v, got type=%d val=%v", tt.formula, tt.errVal, got.Type, got)
+				}
+				if got.Err != tt.errVal {
+					t.Errorf("%s: want error %v, got %v", tt.formula, tt.errVal, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g (diff=%g)", tt.formula, got.Num, tt.want, math.Abs(got.Num-tt.want))
+			}
+		})
+	}
+}
+
+func TestCHISQ_DIST_argCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "CHISQ.DIST(1,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("CHISQ.DIST(1,1) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "CHISQ.DIST(1,1,TRUE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("CHISQ.DIST(1,1,TRUE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(CHISQ.DIST(1,1),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(CHISQ.DIST(1,1),"err") = %v, want string "err"`, got)
+	}
+}
+
+func TestCHISQ_DIST_x0_df1_pdf(t *testing.T) {
+	// df=1 ⇒ alpha=0.5, PDF diverges at x=0 (Excel returns +Inf)
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "CHISQ.DIST(0,1,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("CHISQ.DIST(0,1,FALSE): want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if !math.IsInf(got.Num, 1) {
+		t.Errorf("CHISQ.DIST(0,1,FALSE) = %g, want +Inf", got.Num)
+	}
+}
