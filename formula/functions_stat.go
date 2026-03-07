@@ -2771,6 +2771,12 @@ func normSInv(p float64) float64 {
 			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 	}
 
+	// Halley rational refinement (one iteration) to reach full float64
+	// precision, matching Excel's NORM.S.INV results.
+	e := 0.5*math.Erfc(-x/math.Sqrt2) - p
+	u := e * math.Sqrt(2*math.Pi) * math.Exp(x*x/2)
+	x = x - u/(1+x*u/2)
+
 	return x
 }
 
