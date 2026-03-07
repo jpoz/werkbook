@@ -15754,3 +15754,193 @@ func TestBETA_DIST_argcount(t *testing.T) {
 		t.Errorf("BETA.DIST(0.5,2,3,TRUE,0,1,99) should error, got type=%d", got.Type)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// BETA.INV
+// ---------------------------------------------------------------------------
+
+func TestBETA_INV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Excel documentation example
+		{"excel_example", "BETA.INV(0.685470581,8,10,1,3)", 2, false, 0},
+
+		// Symmetric distribution: BETA.INV(0.5, 2, 2) = 0.5
+		{"symmetric_2_2", "BETA.INV(0.5,2,2)", 0.5, false, 0},
+
+		// Uniform distribution: BETA.INV(0.5, 1, 1) = 0.5
+		{"uniform_1_1", "BETA.INV(0.5,1,1)", 0.5, false, 0},
+
+		// Symmetric alpha=beta=3
+		{"symmetric_3_3", "BETA.INV(0.5,3,3)", 0.5, false, 0},
+
+		// Symmetric alpha=beta=0.5
+		{"symmetric_05_05", "BETA.INV(0.5,0.5,0.5)", 0.5, false, 0},
+
+		// p=0 → returns A (lower bound)
+		{"p_zero", "BETA.INV(0,2,3)", 0, false, 0},
+
+		// p=1 → returns B (upper bound)
+		{"p_one", "BETA.INV(1,2,3)", 1, false, 0},
+
+		// Round-trip from BETA.DIST: BETA.DIST(0.5, 2, 3, TRUE) = 0.6875
+		{"round_trip_05_2_3", "BETA.INV(0.6875,2,3)", 0.5, false, 0},
+
+		// Round-trip from BETA.DIST: BETA.DIST(0.1, 2, 5, TRUE) ≈ 0.114265
+		{"round_trip_01_2_5", "BETA.INV(0.114265,2,5)", 0.1, false, 0},
+
+		// Round-trip from BETA.DIST: BETA.DIST(0.9, 2, 5, TRUE) ≈ 0.999945
+		{"round_trip_09_2_5", "BETA.INV(0.999945,2,5)", 0.9, false, 0},
+
+		// Skewed left (alpha=5, beta=1)
+		{"skewed_left", "BETA.INV(0.03125,5,1)", 0.5, false, 0},
+
+		// Skewed right (alpha=1, beta=5)
+		{"skewed_right", "BETA.INV(0.96875,1,5)", 0.5, false, 0},
+
+		// Custom bounds: BETA.INV(0.5, 2, 2, 10, 20) = 15
+		{"custom_bounds_symmetric", "BETA.INV(0.5,2,2,10,20)", 15, false, 0},
+
+		// Custom bounds with negative range
+		{"custom_bounds_neg", "BETA.INV(0.5,2,2,-5,5)", 0, false, 0},
+
+		// Custom bounds: p=0 returns A
+		{"custom_bounds_p0", "BETA.INV(0,2,3,1,3)", 1, false, 0},
+
+		// Custom bounds: p=1 returns B
+		{"custom_bounds_p1", "BETA.INV(1,2,3,1,3)", 3, false, 0},
+
+		// Small alpha, large beta → distribution concentrated near 0
+		{"small_alpha_large_beta", "BETA.INV(0.5,0.5,5)", 0.0466872, false, 0},
+
+		// Large alpha, small beta → distribution concentrated near 1
+		{"large_alpha_small_beta", "BETA.INV(0.5,5,0.5)", 0.9533128, false, 0},
+
+		// Near p=1
+		{"near_p_one", "BETA.INV(0.99,2,3)", 0.8591325, false, 0},
+
+		// Near p=0 (but positive)
+		{"near_p_zero", "BETA.INV(0.01,2,3)", 0.0419986, false, 0},
+
+		// Fractional alpha and beta
+		{"fractional_params", "BETA.INV(0.5,1.5,2.5)", 0.3524523, false, 0},
+
+		// Large parameters
+		{"large_params", "BETA.INV(0.5,100,100)", 0.5, false, 0},
+
+		// Error: probability < 0
+		{"err_p_neg", "BETA.INV(-0.1,2,3)", 0, true, ErrValNUM},
+
+		// Error: probability > 1
+		{"err_p_gt1", "BETA.INV(1.1,2,3)", 0, true, ErrValNUM},
+
+		// Error: alpha <= 0
+		{"err_alpha_zero", "BETA.INV(0.5,0,3)", 0, true, ErrValNUM},
+		{"err_alpha_neg", "BETA.INV(0.5,-1,3)", 0, true, ErrValNUM},
+
+		// Error: beta <= 0
+		{"err_beta_zero", "BETA.INV(0.5,2,0)", 0, true, ErrValNUM},
+		{"err_beta_neg", "BETA.INV(0.5,2,-1)", 0, true, ErrValNUM},
+
+		// Error: A >= B
+		{"err_A_eq_B", "BETA.INV(0.5,2,3,5,5)", 0, true, ErrValNUM},
+		{"err_A_gt_B", "BETA.INV(0.5,2,3,5,3)", 0, true, ErrValNUM},
+
+		// Error: non-numeric arguments
+		{"err_non_numeric_p", `BETA.INV("abc",2,3)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_alpha", `BETA.INV(0.5,"abc",3)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_beta", `BETA.INV(0.5,2,"abc")`, 0, true, ErrValVALUE},
+		{"err_non_numeric_A", `BETA.INV(0.5,2,3,"abc")`, 0, true, ErrValVALUE},
+		{"err_non_numeric_B", `BETA.INV(0.5,2,3,0,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s: want error %d, got type=%d num=%g", tt.formula, tt.wantErr, got.Type, got.Num)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s: want err=%d, got err=%d", tt.formula, tt.wantErr, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestBETA_INV_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args (2)
+	cf := evalCompile(t, "BETA.INV(0.5,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("BETA.INV(0.5,2) should error, got type=%d", got.Type)
+	}
+
+	// Too many args (6)
+	cf = evalCompile(t, "BETA.INV(0.5,2,3,0,1,99)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("BETA.INV(0.5,2,3,0,1,99) should error, got type=%d", got.Type)
+	}
+}
+
+func TestBETA_INV_round_trip(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	// BETA.INV(BETA.DIST(x, alpha, beta, TRUE), alpha, beta) ≈ x
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{"rt_03_2_5", "BETA.INV(BETA.DIST(0.3,2,5,TRUE),2,5)", 0.3},
+		{"rt_07_3_2", "BETA.INV(BETA.DIST(0.7,3,2,TRUE),3,2)", 0.7},
+		{"rt_05_10_10", "BETA.INV(BETA.DIST(0.5,10,10,TRUE),10,10)", 0.5},
+		{"rt_02_1_3", "BETA.INV(BETA.DIST(0.2,1,3,TRUE),1,3)", 0.2},
+		{"rt_custom_bounds", "BETA.INV(BETA.DIST(5,2,3,TRUE,0,10),2,3,0,10)", 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+}

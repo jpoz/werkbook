@@ -99,6 +99,7 @@ func init() {
 	Register("T.DIST", NoCtx(fnTDist))
 	Register("T.INV", NoCtx(fnTInv))
 	Register("BETA.DIST", NoCtx(fnBetaDist))
+	Register("BETA.INV", NoCtx(fnBetaInv))
 	Register("F.DIST", NoCtx(fnFDist))
 	Register("F.INV", NoCtx(fnFInv))
 }
@@ -4132,4 +4133,144 @@ func fnBetaDist(args []Value) (Value, error) {
 
 	logPdf := (alpha-1)*math.Log(z) + (beta-1)*math.Log(1-z) - lb - math.Log(b-a)
 	return NumberVal(math.Exp(logPdf)), nil
+}
+
+// ---------------------------------------------------------------------------
+// BETA.INV — Inverse of the beta cumulative distribution function
+// ---------------------------------------------------------------------------
+// BETA.INV(probability, alpha, beta, [A], [B])
+//
+//	probability – value at which to evaluate the inverse (0 < p <= 1;
+//	              p=0 returns A, p<=0 or p>1 ⇒ #NUM!)
+//	alpha       – first shape parameter (> 0)
+//	beta        – second shape parameter (> 0)
+//	A           – optional lower bound (default 0)
+//	B           – optional upper bound (default 1)
+//
+// Returns x such that BETA.DIST(x, alpha, beta, TRUE, A, B) = probability.
+
+func fnBetaInv(args []Value) (Value, error) {
+	if len(args) < 3 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	alpha, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	bt, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	a := 0.0 // lower bound
+	b := 1.0 // upper bound
+	if len(args) >= 4 {
+		a, e = CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if len(args) >= 5 {
+		b, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// Validate parameters.
+	if alpha <= 0 || bt <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if p <= 0 || p > 1 {
+		// Excel: probability <= 0 or > 1 ⇒ #NUM!
+		// But p == 0 returns A in practice.
+		if p == 0 {
+			return NumberVal(a), nil
+		}
+		return ErrorVal(ErrValNUM), nil
+	}
+	if a >= b {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// p == 1 → return B
+	if p == 1 {
+		return NumberVal(b), nil
+	}
+
+	// Find z in [0,1] such that regBetaInc(z, alpha, bt) = p,
+	// then transform back: x = a + z*(b-a).
+
+	// Initial guess: use the mean of the beta distribution as starting point.
+	z := alpha / (alpha + bt)
+
+	// Newton-Raphson iteration.
+	// f(z)  = regBetaInc(z, alpha, bt) - p
+	// f'(z) = betaPDF(z) = z^(alpha-1) * (1-z)^(bt-1) / B(alpha,bt)
+	lgA, _ := math.Lgamma(alpha)
+	lgB, _ := math.Lgamma(bt)
+	lgAB, _ := math.Lgamma(alpha + bt)
+	lbeta := lgA + lgB - lgAB
+
+	const maxIter = 200
+	const tol = 1e-12
+
+	for i := 0; i < maxIter; i++ {
+		cdf := regBetaInc(z, alpha, bt)
+		f := cdf - p
+
+		if math.Abs(f) < tol {
+			return NumberVal(a + z*(b-a)), nil
+		}
+
+		// Beta PDF as derivative of the CDF.
+		if z <= 0 || z >= 1 {
+			break // can't compute PDF at boundary; fall to bisection
+		}
+		logPdf := (alpha-1)*math.Log(z) + (bt-1)*math.Log(1-z) - lbeta
+		pdf := math.Exp(logPdf)
+
+		if pdf < 1e-300 {
+			break // PDF too small for Newton step; bisection fallback
+		}
+
+		step := f / pdf
+		zNew := z - step
+
+		// Keep z strictly in (0,1).
+		if zNew <= 0 {
+			z = z / 2
+		} else if zNew >= 1 {
+			z = (z + 1) / 2
+		} else {
+			z = zNew
+		}
+	}
+
+	// Bisection fallback on [0, 1].
+	lo := 0.0
+	hi := 1.0
+
+	for i := 0; i < maxIter; i++ {
+		mid := (lo + hi) / 2
+		cdf := regBetaInc(mid, alpha, bt)
+		if math.Abs(cdf-p) < tol {
+			return NumberVal(a + mid*(b-a)), nil
+		}
+		if cdf < p {
+			lo = mid
+		} else {
+			hi = mid
+		}
+		if (hi - lo) < tol {
+			return NumberVal(a + (lo+hi)/2*(b-a)), nil
+		}
+	}
+
+	return NumberVal(a + (lo+hi)/2*(b-a)), nil
 }
