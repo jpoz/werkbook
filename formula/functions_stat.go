@@ -98,6 +98,7 @@ func init() {
 	Register("GAMMA.INV", NoCtx(fnGammaInv))
 	Register("T.DIST", NoCtx(fnTDist))
 	Register("T.INV", NoCtx(fnTInv))
+	Register("BETA.DIST", NoCtx(fnBetaDist))
 	Register("F.DIST", NoCtx(fnFDist))
 	Register("F.INV", NoCtx(fnFInv))
 }
@@ -4017,4 +4018,118 @@ func fnConfidenceT(args []Value) (Value, error) {
 		return ErrorVal(ErrValNA), nil
 	}
 	return NumberVal(t * stddev / math.Sqrt(size)), nil
+}
+
+// ---------------------------------------------------------------------------
+// BETA.DIST — Beta distribution (CDF or PDF)
+// ---------------------------------------------------------------------------
+// BETA.DIST(x, alpha, beta, cumulative, [A], [B])
+//
+//	x          – value at which to evaluate (must be between A and B)
+//	alpha      – first shape parameter (> 0)
+//	beta       – second shape parameter (> 0)
+//	cumulative – TRUE for CDF, FALSE for PDF
+//	A          – optional lower bound (default 0)
+//	B          – optional upper bound (default 1)
+
+func fnBetaDist(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 6 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	alpha, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	beta, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	a := 0.0 // lower bound
+	b := 1.0 // upper bound
+	if len(args) >= 5 {
+		a, e = CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+	}
+	if len(args) >= 6 {
+		b, e = CoerceNum(args[5])
+		if e != nil {
+			return *e, nil
+		}
+	}
+
+	// Validate parameters.
+	if alpha <= 0 || beta <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if a == b {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if x < a || x > b {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Transform to standard [0,1] range.
+	z := (x - a) / (b - a)
+
+	if cum != 0 {
+		// CDF: regularized incomplete beta function I_z(alpha, beta).
+		return NumberVal(regBetaInc(z, alpha, beta)), nil
+	}
+
+	// PDF: z^(alpha-1) * (1-z)^(beta-1) / (B(alpha,beta) * (b-a))
+	// Handle boundary cases.
+	if z == 0 {
+		if alpha < 1 {
+			// PDF diverges.
+			return ErrorVal(ErrValNUM), nil
+		}
+		if alpha == 1 {
+			// PDF = (1-0)^(beta-1) / (B(1,beta) * (b-a)) = 1 / (B(1,beta) * (b-a))
+			// B(1, beta) = 1/beta, so PDF = beta / (b-a)
+			lgA, _ := math.Lgamma(alpha)
+			lgB, _ := math.Lgamma(beta)
+			lgAB, _ := math.Lgamma(alpha + beta)
+			lb := lgA + lgB - lgAB
+			logPdf := (beta-1)*math.Log(1) - lb - math.Log(b-a)
+			return NumberVal(math.Exp(logPdf)), nil
+		}
+		// alpha > 1: PDF = 0
+		return NumberVal(0), nil
+	}
+	if z == 1 {
+		if beta < 1 {
+			// PDF diverges.
+			return ErrorVal(ErrValNUM), nil
+		}
+		if beta == 1 {
+			lgA, _ := math.Lgamma(alpha)
+			lgB, _ := math.Lgamma(beta)
+			lgAB, _ := math.Lgamma(alpha + beta)
+			lb := lgA + lgB - lgAB
+			logPdf := (alpha-1)*math.Log(1) - lb - math.Log(b-a)
+			return NumberVal(math.Exp(logPdf)), nil
+		}
+		// beta > 1: PDF = 0
+		return NumberVal(0), nil
+	}
+
+	lgA, _ := math.Lgamma(alpha)
+	lgB, _ := math.Lgamma(beta)
+	lgAB, _ := math.Lgamma(alpha + beta)
+	lb := lgA + lgB - lgAB
+
+	logPdf := (alpha-1)*math.Log(z) + (beta-1)*math.Log(1-z) - lb - math.Log(b-a)
+	return NumberVal(math.Exp(logPdf)), nil
 }

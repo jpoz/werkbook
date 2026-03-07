@@ -15618,3 +15618,139 @@ func TestQUARTILE_INC(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// BETA.DIST
+// ---------------------------------------------------------------------------
+
+func TestBETA_DIST(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// CDF with custom bounds (Excel documentation example)
+		{"cdf_custom_bounds", "BETA.DIST(2,8,10,TRUE,1,3)", 0.6854706, false, 0},
+		// PDF with custom bounds (Excel documentation example)
+		{"pdf_custom_bounds", "BETA.DIST(2,8,10,FALSE,1,3)", 1.4837646, false, 0},
+
+		// Standard beta CDF
+		{"cdf_standard_basic", "BETA.DIST(0.5,2,3,TRUE)", 0.6875, false, 0},
+		{"cdf_standard_alpha3_beta3", "BETA.DIST(0.5,3,3,TRUE)", 0.5, false, 0},
+		{"cdf_standard_alpha1_beta1", "BETA.DIST(0.5,1,1,TRUE)", 0.5, false, 0},
+		{"cdf_standard_alpha05_beta05", "BETA.DIST(0.5,0.5,0.5,TRUE)", 0.5, false, 0},
+		{"cdf_near_zero", "BETA.DIST(0.1,2,5,TRUE)", 0.114265, false, 0},
+		{"cdf_near_one", "BETA.DIST(0.9,2,5,TRUE)", 0.999945, false, 0},
+		{"cdf_alpha5_beta1", "BETA.DIST(0.5,5,1,TRUE)", 0.03125, false, 0},
+		{"cdf_alpha1_beta5", "BETA.DIST(0.5,1,5,TRUE)", 0.96875, false, 0},
+
+		// CDF boundary values
+		{"cdf_x_equals_A", "BETA.DIST(0,2,3,TRUE)", 0, false, 0},
+		{"cdf_x_equals_B", "BETA.DIST(1,2,3,TRUE)", 1, false, 0},
+
+		// Standard beta PDF
+		{"pdf_standard_basic", "BETA.DIST(0.5,2,3,FALSE)", 1.5, false, 0},
+		{"pdf_uniform", "BETA.DIST(0.5,1,1,FALSE)", 1, false, 0},
+		{"pdf_symmetric", "BETA.DIST(0.5,3,3,FALSE)", 1.875, false, 0},
+		{"pdf_alpha5_beta2", "BETA.DIST(0.8,5,2,FALSE)", 2.4576, false, 0},
+		{"pdf_alpha2_beta5", "BETA.DIST(0.2,2,5,FALSE)", 2.4576, false, 0},
+
+		// PDF boundary values
+		{"pdf_x0_alpha1", "BETA.DIST(0,1,3,FALSE)", 3, false, 0},
+		{"pdf_x0_alpha_gt1", "BETA.DIST(0,2,3,FALSE)", 0, false, 0},
+		{"pdf_x1_beta1", "BETA.DIST(1,3,1,FALSE)", 3, false, 0},
+		{"pdf_x1_beta_gt1", "BETA.DIST(1,3,2,FALSE)", 0, false, 0},
+
+		// Custom bounds CDF
+		{"cdf_custom_bounds_2", "BETA.DIST(5,2,3,TRUE,0,10)", 0.6875, false, 0},
+		{"cdf_custom_neg_bounds", "BETA.DIST(0,2,3,TRUE,-5,5)", 0.6875, false, 0},
+
+		// Custom bounds PDF
+		{"pdf_custom_bounds_scaled", "BETA.DIST(5,2,3,FALSE,0,10)", 0.15, false, 0},
+
+		// Error: alpha <= 0
+		{"err_alpha_zero", "BETA.DIST(0.5,0,3,TRUE)", 0, true, ErrValNUM},
+		{"err_alpha_neg", "BETA.DIST(0.5,-1,3,TRUE)", 0, true, ErrValNUM},
+
+		// Error: beta <= 0
+		{"err_beta_zero", "BETA.DIST(0.5,2,0,TRUE)", 0, true, ErrValNUM},
+		{"err_beta_neg", "BETA.DIST(0.5,2,-1,TRUE)", 0, true, ErrValNUM},
+
+		// Error: x < A
+		{"err_x_lt_A", "BETA.DIST(-0.1,2,3,TRUE)", 0, true, ErrValNUM},
+		{"err_x_lt_A_custom", "BETA.DIST(0,2,3,TRUE,1,3)", 0, true, ErrValNUM},
+
+		// Error: x > B
+		{"err_x_gt_B", "BETA.DIST(1.1,2,3,TRUE)", 0, true, ErrValNUM},
+		{"err_x_gt_B_custom", "BETA.DIST(4,2,3,TRUE,1,3)", 0, true, ErrValNUM},
+
+		// Error: A = B
+		{"err_A_eq_B", "BETA.DIST(1,2,3,TRUE,1,1)", 0, true, ErrValNUM},
+
+		// Error: non-numeric
+		{"err_non_numeric_x", `BETA.DIST("abc",2,3,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_alpha", `BETA.DIST(0.5,"abc",3,TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_beta", `BETA.DIST(0.5,2,"abc",TRUE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `BETA.DIST(0.5,2,3,"abc")`, 0, true, ErrValVALUE},
+		{"err_non_numeric_A", `BETA.DIST(0.5,2,3,TRUE,"abc")`, 0, true, ErrValVALUE},
+		{"err_non_numeric_B", `BETA.DIST(0.5,2,3,TRUE,0,"abc")`, 0, true, ErrValVALUE},
+
+		// PDF with x=0 and alpha < 1 (diverges)
+		{"err_pdf_x0_alpha_lt1", "BETA.DIST(0,0.5,3,FALSE)", 0, true, ErrValNUM},
+		// PDF with x=1 and beta < 1 (diverges)
+		{"err_pdf_x1_beta_lt1", "BETA.DIST(1,3,0.5,FALSE)", 0, true, ErrValNUM},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s: want error %d, got type=%d num=%g", tt.formula, tt.wantErr, got.Type, got.Num)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s: want err=%d, got err=%d", tt.formula, tt.wantErr, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestBETA_DIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "BETA.DIST(0.5,2,3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("BETA.DIST(0.5,2,3) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "BETA.DIST(0.5,2,3,TRUE,0,1,99)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("BETA.DIST(0.5,2,3,TRUE,0,1,99) should error, got type=%d", got.Type)
+	}
+}
