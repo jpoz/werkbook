@@ -78,6 +78,7 @@ var xlfnPrefix = map[string]string{
 	"WRAPCOLS":        "_xlfn.",
 	"WRAPROWS":        "_xlfn.",
 	"XLOOKUP":         "_xlfn.",
+	"XMATCH":          "_xlfn.",
 	"XOR":             "_xlfn.",
 }
 

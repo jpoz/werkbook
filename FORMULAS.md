@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **309** Excel formula functions.
+Werkbook supports **310** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -207,6 +207,7 @@ Werkbook supports **309** Excel formula functions.
 | PERMUTATIONA | Statistical | 17 |
 | PI | Math & Trig | - |
 | PMT | Financial | 5 |
+| POISSON.DIST | Statistical | - |
 | POWER | Math & Trig | 48 |
 | PPMT | Financial | 2 |
 | PRODUCT | Math & Trig | - |
@@ -316,7 +317,7 @@ Werkbook supports **309** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **159** Excel functions are not yet supported.
+The following **158** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -443,7 +444,6 @@ The following **159** Excel functions are not yet supported.
 | PERCENTILE.INC | Statistical |
 | PHI | Statistical |
 | PHONETIC | Text |
-| POISSON.DIST | Statistical |
 | PRICE | Financial |
 | PRICEDISC | Financial |
 | PRICEMAT | Financial |
