@@ -63,6 +63,10 @@ func (v Value) GoString() string {
 
 // toValue converts an arbitrary Go value to a Value.
 func toValue(v any) (Value, error) {
+	return toValueWithDate1904(v, false)
+}
+
+func toValueWithDate1904(v any, date1904 bool) (Value, error) {
 	switch val := v.(type) {
 	case nil:
 		return Value{Type: TypeEmpty}, nil
@@ -102,7 +106,7 @@ func toValue(v any) (Value, error) {
 		}
 		return Value{Type: TypeNumber, Number: val}, nil
 	case time.Time:
-		serial := timeToExcelSerial(val)
+		serial := timeToExcelSerialForDateSystem(val, date1904)
 		return Value{Type: TypeNumber, Number: serial}, nil
 	case Value:
 		return val, nil

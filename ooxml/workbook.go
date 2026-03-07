@@ -10,11 +10,20 @@ type xlsxWorkbookPr struct {
 	Date1904 string `xml:"date1904,attr,omitempty"`
 }
 
+type xlsxCalcPr struct {
+	CalcMode       string `xml:"calcMode,attr,omitempty"`
+	CalcID         int    `xml:"calcId,attr,omitempty"`
+	FullCalcOnLoad string `xml:"fullCalcOnLoad,attr,omitempty"`
+	ForceFullCalc  string `xml:"forceFullCalc,attr,omitempty"`
+	CalcCompleted  string `xml:"calcCompleted,attr,omitempty"`
+}
+
 type xlsxWorkbook struct {
 	XMLName      xml.Name          `xml:"workbook"`
 	Xmlns        string            `xml:"xmlns,attr"`
 	XmlnsR       string            `xml:"xmlns:r,attr"`
 	WorkbookPr   *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
+	CalcPr       *xlsxCalcPr       `xml:"calcPr,omitempty"`
 	Sheets       xlsxSheets        `xml:"sheets"`
 	DefinedNames *xlsxDefinedNames `xml:"definedNames,omitempty"`
 }
@@ -94,10 +103,20 @@ type DefinedName struct {
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
 	Date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
+	CalcProps    CalcPropertiesData
 	Sheets       []SheetData
 	Styles       []StyleData   // index 0 = default (empty)
 	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
 	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
+}
+
+// CalcPropertiesData holds workbook-level calculation settings from <calcPr>.
+type CalcPropertiesData struct {
+	Mode           string
+	ID             int
+	FullCalcOnLoad bool
+	ForceFullCalc  bool
+	Completed      bool
 }
 
 // MergeCellData holds one merged range.
@@ -144,7 +163,18 @@ type TableDef struct {
 	Columns         []string // column names in order
 	HeaderRowCount  int      // number of header rows (default 1)
 	TotalsRowCount  int      // number of totals rows (default 0)
+	HasAutoFilter   bool     // true if the table has an <autoFilter> element
 	HasActiveFilter bool     // true if table has autoFilter with active filterColumn elements
+	Style           *TableStyleData
+}
+
+// TableStyleData holds the <tableStyleInfo> attributes for a table.
+type TableStyleData struct {
+	Name              string
+	ShowFirstColumn   bool
+	ShowLastColumn    bool
+	ShowRowStripes    bool
+	ShowColumnStripes bool
 }
 
 // ColWidthData holds the width for a range of columns.

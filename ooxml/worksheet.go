@@ -8,9 +8,11 @@ import (
 type xlsxWorksheet struct {
 	XMLName    xml.Name        `xml:"worksheet"`
 	Xmlns      string          `xml:"xmlns,attr"`
+	XmlnsR     string          `xml:"xmlns:r,attr,omitempty"`
 	Cols       *xlsxCols       `xml:"cols,omitempty"`
 	SheetData  xlsxSheetData   `xml:"sheetData"`
 	MergeCells *xlsxMergeCells `xml:"mergeCells,omitempty"`
+	TableParts *xlsxTableParts `xml:"tableParts,omitempty"`
 }
 
 type xlsxCols struct {
@@ -108,4 +110,24 @@ type xlsxF struct {
 
 type xlsxIS struct {
 	T string `xml:"t"`
+}
+
+type xlsxTableParts struct {
+	Count     int             `xml:"count,attr,omitempty"`
+	TablePart []xlsxTablePart `xml:"tablePart"`
+}
+
+type xlsxTablePart struct {
+	RID string
+}
+
+// MarshalXML writes the tablePart element with a raw r:id attribute so the
+// worksheet-level xmlns:r declaration is reused instead of redefined locally.
+func (tp xlsxTablePart) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Name = xml.Name{Local: "tablePart"}
+	start.Attr = []xml.Attr{{Name: xml.Name{Local: "r:id"}, Value: tp.RID}}
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	return e.EncodeToken(start.End())
 }

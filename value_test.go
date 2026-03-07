@@ -3,6 +3,7 @@ package werkbook
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/jpoz/werkbook/ooxml"
 )
@@ -107,7 +108,7 @@ func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := cellDataToValue(tt.cd, tt.styles)
+			got := cellDataToValue(tt.cd, tt.styles, false)
 			if got.Type != tt.wantType {
 				t.Fatalf("cellDataToValue(%+v).Type = %v, want %v", tt.cd, got.Type, tt.wantType)
 			}
@@ -116,6 +117,40 @@ func TestCellDataToValue_SharedStringNumeric(t *testing.T) {
 			}
 			if tt.wantType == TypeString && got.String != tt.wantStr {
 				t.Errorf("cellDataToValue(%+v).String = %q, want %q", tt.cd, got.String, tt.wantStr)
+			}
+		})
+	}
+}
+
+func TestCellDataToValue_DateCell(t *testing.T) {
+	tests := []struct {
+		name     string
+		cd       ooxml.CellData
+		date1904 bool
+		want     float64
+	}{
+		{
+			name:     "1900 date system",
+			cd:       ooxml.CellData{Type: "d", Value: "2024-06-15"},
+			date1904: false,
+			want:     timeToExcelSerial(time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)),
+		},
+		{
+			name:     "1904 date system",
+			cd:       ooxml.CellData{Type: "d", Value: "1904-01-01T00:00:00Z"},
+			date1904: true,
+			want:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cellDataToValue(tt.cd, nil, tt.date1904)
+			if got.Type != TypeNumber {
+				t.Fatalf("cellDataToValue(%+v).Type = %v, want %v", tt.cd, got.Type, TypeNumber)
+			}
+			if got.Number != tt.want {
+				t.Fatalf("cellDataToValue(%+v).Number = %v, want %v", tt.cd, got.Number, tt.want)
 			}
 		})
 	}

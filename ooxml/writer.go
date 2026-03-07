@@ -9,6 +9,11 @@ import (
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n"
 
+type tableWriteInfo struct {
+	PartNum int
+	Def     TableDef
+}
+
 // WriteWorkbook writes a complete XLSX file to w from the given WorkbookData.
 func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	zw := zip.NewWriter(w)
@@ -17,6 +22,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	if sheetCount == 0 {
 		return fmt.Errorf("workbook must have at least one sheet")
 	}
+	tablePlan := buildTableWritePlan(data.Tables)
 
 	// Build shared string table from all string cells.
 	sst := NewSharedStringTable()
@@ -50,7 +56,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, sst.Len() > 0, hasDynamicArrays); err != nil {
+	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays); err != nil {
 		return err
 	}
 
@@ -76,9 +82,19 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 
 	// xl/worksheets/sheet{N}.xml
 	for i, sd := range data.Sheets {
-		if err := writeSheet(zw, i+1, &sd, styleIndexMap); err != nil {
+		sheetTables := tablePlan[i]
+		if err := writeSheet(zw, i+1, &sd, styleIndexMap, sheetTables); err != nil {
 			return err
 		}
+		if len(sheetTables) > 0 {
+			if err := writeSheetRels(zw, i+1, sheetTables); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := writeTables(zw, tablePlan); err != nil {
+		return err
 	}
 
 	// xl/sharedStrings.xml (only if there are strings)
@@ -97,7 +113,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays bool) error {
+func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays bool) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -127,6 +143,12 @@ func writeContentTypes(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays 
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml",
 		})
 	}
+	for i := range tableCount {
+		ct.Overrides = append(ct.Overrides, xlsxOverride{
+			PartName:    fmt.Sprintf("/xl/tables/table%d.xml", i+1),
+			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
+		})
+	}
 	return writeXML(zw, "[Content_Types].xml", ct)
 }
 
@@ -147,6 +169,15 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 	}
 	if data.Date1904 {
 		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
+	}
+	if hasCalcProps(data.CalcProps) {
+		wb.CalcPr = &xlsxCalcPr{
+			CalcMode:       data.CalcProps.Mode,
+			CalcID:         data.CalcProps.ID,
+			FullCalcOnLoad: boolString(data.CalcProps.FullCalcOnLoad),
+			ForceFullCalc:  boolString(data.CalcProps.ForceFullCalc),
+			CalcCompleted:  boolString(data.CalcProps.Completed),
+		}
 	}
 	for i, sd := range data.Sheets {
 		sheet := xlsxSheet{
@@ -212,9 +243,18 @@ func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays 
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
 }
 
-func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) error {
+func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tables []tableWriteInfo) error {
 	ws := xlsxWorksheet{
 		Xmlns: NSSpreadsheetML,
+	}
+	if len(tables) > 0 {
+		ws.XmlnsR = NSOfficeDocument
+		ws.TableParts = &xlsxTableParts{Count: len(tables)}
+		for i := range tables {
+			ws.TableParts.TablePart = append(ws.TableParts.TablePart, xlsxTablePart{
+				RID: fmt.Sprintf("rId%d", i+1),
+			})
+		}
 	}
 
 	// Populate column widths.
@@ -274,6 +314,51 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int) err
 		ws.SheetData.Rows = append(ws.SheetData.Rows, row)
 	}
 	return writeXML(zw, fmt.Sprintf("xl/worksheets/sheet%d.xml", num), ws)
+}
+
+func writeSheetRels(zw *zip.Writer, sheetNum int, tables []tableWriteInfo) error {
+	rels := xlsxRelationships{Xmlns: NSRelationships}
+	for i, tw := range tables {
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     fmt.Sprintf("rId%d", i+1),
+			Type:   RelTypeTable,
+			Target: fmt.Sprintf("../tables/table%d.xml", tw.PartNum),
+		})
+	}
+	return writeXML(zw, fmt.Sprintf("xl/worksheets/_rels/sheet%d.xml.rels", sheetNum), rels)
+}
+
+func writeTables(zw *zip.Writer, tablePlan map[int][]tableWriteInfo) error {
+	for _, sheetTables := range tablePlan {
+		for _, tw := range sheetTables {
+			if err := writeTableXML(zw, tw.PartNum, tw.Def); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func buildTableWritePlan(tables []TableDef) map[int][]tableWriteInfo {
+	plan := make(map[int][]tableWriteInfo)
+	for i, td := range tables {
+		plan[td.SheetIndex] = append(plan[td.SheetIndex], tableWriteInfo{
+			PartNum: i + 1,
+			Def:     td,
+		})
+	}
+	return plan
+}
+
+func hasCalcProps(props CalcPropertiesData) bool {
+	return props.Mode != "" || props.ID != 0 || props.FullCalcOnLoad || props.ForceFullCalc || props.Completed
+}
+
+func boolString(v bool) string {
+	if v {
+		return "1"
+	}
+	return ""
 }
 
 func writeSST(zw *zip.Writer, sst *SharedStringTable) error {

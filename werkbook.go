@@ -15,10 +15,12 @@ import (
 type File struct {
 	sheets       []*Sheet
 	sheetNames   []string
-	date1904     bool                      // true if the workbook uses the 1904 date system (Mac Excel)
-	calcGen      uint64                    // incremented on any cell mutation; starts at 1
-	evaluating   map[cellKey]bool          // tracks cells being evaluated (circular ref detection)
-	deps         *formula.DepGraph         // cell dependency graph for incremental recalculation
+	date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
+	calcProps    CalcProperties
+	calcGen      uint64            // incremented on any cell mutation; starts at 1
+	evaluating   map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
+	deps         *formula.DepGraph // cell dependency graph for incremental recalculation
+	tableDefs    []Table
 	tables       []formula.TableInfo       // table definitions for structured reference expansion
 	definedNames []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
 }
@@ -35,12 +37,20 @@ type Option func(*options)
 
 type options struct {
 	firstSheet string
+	date1904   bool
 }
 
 // FirstSheet sets the name of the initial sheet (default "Sheet1").
 func FirstSheet(name string) Option {
 	return func(o *options) {
 		o.firstSheet = name
+	}
+}
+
+// WithDate1904 configures a newly created workbook to use the 1904 date system.
+func WithDate1904(enabled bool) Option {
+	return func(o *options) {
+		o.date1904 = enabled
 	}
 }
 
@@ -51,7 +61,7 @@ func New(opts ...Option) *File {
 	for _, fn := range opts {
 		fn(&o)
 	}
-	f := &File{calcGen: 1, deps: formula.NewDepGraph()}
+	f := &File{calcGen: 1, date1904: o.date1904, deps: formula.NewDepGraph()}
 	f.addSheet(o.firstSheet)
 	return f
 }
@@ -119,6 +129,13 @@ func (f *File) DeleteSheet(name string) error {
 		}
 	}
 	f.tables = filteredTables
+	filteredTableDefs := f.tableDefs[:0]
+	for _, t := range f.tableDefs {
+		if t.SheetName != name {
+			filteredTableDefs = append(filteredTableDefs, t)
+		}
+	}
+	f.tableDefs = filteredTableDefs
 
 	// Sheet-scoped names on the deleted sheet disappear; later sheet indexes shift down.
 	filteredNames := f.definedNames[:0]
@@ -165,6 +182,11 @@ func (f *File) SetSheetName(old, new string) error {
 	for i := range f.tables {
 		if f.tables[i].SheetName == old {
 			f.tables[i].SheetName = new
+		}
+	}
+	for i := range f.tableDefs {
+		if f.tableDefs[i].SheetName == old {
+			f.tableDefs[i].SheetName = new
 		}
 	}
 
@@ -237,7 +259,12 @@ func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
 }
 
 func fileFromData(data *ooxml.WorkbookData) *File {
-	f := &File{calcGen: 1, date1904: data.Date1904, deps: formula.NewDepGraph()}
+	f := &File{
+		calcGen:   1,
+		date1904:  data.Date1904,
+		calcProps: calcPropsFromData(data.CalcProps),
+		deps:      formula.NewDepGraph(),
+	}
 
 	// Convert StyleData slice to *Style slice for assignment.
 	var parsedStyles []*Style
@@ -283,7 +310,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 				if err != nil {
 					continue
 				}
-				v := cellDataToValue(cd, parsedStyles)
+				v := cellDataToValue(cd, parsedStyles, f.date1904)
 				r := s.ensureRow(row)
 				c := r.ensureCell(col)
 				c.value = v
@@ -323,6 +350,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 			TotalRows:       td.TotalsRowCount,
 			HasActiveFilter: td.HasActiveFilter,
 		}
+		f.tableDefs = append(f.tableDefs, tableFromData(td, sheetName))
 		f.tables = append(f.tables, ti)
 	}
 
@@ -339,7 +367,7 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 	return f
 }
 
-func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
+func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
 	switch cd.Type {
 	case "s":
 		// Shared-string cells are always strings. In Excel, a cell stored
@@ -350,6 +378,12 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style) Value {
 	case "str", "inlineStr":
 		if cd.Formula != "" && (cd.IsDynamicArray || cd.IsArrayFormula || cd.FormulaType == "array") && isFormulaErrorString(cd.Value) {
 			return Value{Type: TypeError, String: cd.Value}
+		}
+		return Value{Type: TypeString, String: cd.Value}
+	case "d":
+		n, err := excelDateStringToSerial(cd.Value, date1904)
+		if err == nil {
+			return Value{Type: TypeNumber, Number: n}
 		}
 		return Value{Type: TypeString, String: cd.Value}
 	case "b":
@@ -380,7 +414,10 @@ func isFormulaErrorString(v string) bool {
 }
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
-	data := &ooxml.WorkbookData{Date1904: f.date1904}
+	data := &ooxml.WorkbookData{
+		Date1904:  f.date1904,
+		CalcProps: f.calcProps.toData(),
+	}
 
 	// Style dedup: index 0 is always the default (empty StyleData).
 	styles := []ooxml.StyleData{{}}
@@ -398,6 +435,13 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 			Value:        dn.Value,
 			LocalSheetID: dn.LocalSheetID,
 		})
+	}
+	for _, td := range f.tableDefs {
+		sheetIdx := f.SheetIndex(td.SheetName)
+		if sheetIdx < 0 {
+			continue
+		}
+		data.Tables = append(data.Tables, td.toData(sheetIdx))
 	}
 
 	return data

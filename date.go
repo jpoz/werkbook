@@ -1,6 +1,7 @@
 package werkbook
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -16,6 +17,17 @@ var excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // timeToExcelSerial converts a time.Time to an Excel serial date number.
 func timeToExcelSerial(t time.Time) float64 {
+	return timeToExcelSerialForDateSystem(t, false)
+}
+
+func timeToExcelSerialForDateSystem(t time.Time, date1904 bool) float64 {
+	if date1904 {
+		return timeToExcelSerial1904(t)
+	}
+	return timeToExcelSerial1900(t)
+}
+
+func timeToExcelSerial1900(t time.Time) float64 {
 	// Calculate the number of days between the Excel epoch and the given time.
 	// We cannot use t.Sub(excelEpoch) because time.Duration is an int64 of
 	// nanoseconds, which overflows for dates more than ~292 years from the epoch.
@@ -37,6 +49,37 @@ func timeToExcelSerial(t time.Time) float64 {
 		days++
 	}
 	return days
+}
+
+func timeToExcelSerial1904(t time.Time) float64 {
+	y1, m1, d1 := excel1904Epoch.Date()
+	y2, m2, d2 := t.Date()
+	epochDays := julianDayNumber(y1, int(m1), d1)
+	tDays := julianDayNumber(y2, int(m2), d2)
+	days := float64(tDays - epochDays)
+
+	h, min, sec := t.Clock()
+	days += (float64(h)*3600 + float64(min)*60 + float64(sec)) / 86400.0
+	return days
+}
+
+func excelDateStringToSerial(s string, date1904 bool) (float64, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+	var parsed time.Time
+	var err error
+	for _, layout := range layouts {
+		parsed, err = time.Parse(layout, s)
+		if err == nil {
+			return timeToExcelSerialForDateSystem(parsed.UTC(), date1904), nil
+		}
+	}
+	return 0, fmt.Errorf("invalid Excel date %q", s)
 }
 
 // julianDayNumber returns a Julian Day Number for the given date, useful for

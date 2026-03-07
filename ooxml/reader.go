@@ -78,6 +78,15 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		v := wb.WorkbookPr.Date1904
 		data.Date1904 = v == "1" || v == "true"
 	}
+	if wb.CalcPr != nil {
+		data.CalcProps = CalcPropertiesData{
+			Mode:           wb.CalcPr.CalcMode,
+			ID:             wb.CalcPr.CalcID,
+			FullCalcOnLoad: parseOOXMLBoolString(wb.CalcPr.FullCalcOnLoad),
+			ForceFullCalc:  parseOOXMLBoolString(wb.CalcPr.ForceFullCalc),
+			Completed:      parseOOXMLBoolString(wb.CalcPr.CalcCompleted),
+		}
+	}
 
 	// Parse defined names.
 	if wb.DefinedNames != nil {
@@ -194,6 +203,9 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 	case "str":
 		cd.Type = "str"
 		cd.Value = xc.V
+	case "d":
+		cd.Type = "d"
+		cd.Value = xc.V
 	case "b":
 		cd.Type = "b"
 		cd.Value = xc.V
@@ -205,6 +217,15 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		cd.Value = xc.V
 	}
 	return cd
+}
+
+func parseOOXMLBoolString(v string) bool {
+	switch strings.ToLower(v) {
+	case "1", "true", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func formulaType(fe *xlsxF) string {
@@ -365,14 +386,15 @@ func decodeOOXMLEscapes(s string) string {
 
 // xlsxTable represents the <table> root element in xl/tables/table*.xml.
 type xlsxTable struct {
-	XMLName        xml.Name         `xml:"table"`
-	Name           string           `xml:"name,attr"`
-	DisplayName    string           `xml:"displayName,attr"`
-	Ref            string           `xml:"ref,attr"`
-	HeaderRowCount *int             `xml:"headerRowCount,attr"`
-	TotalsRowCount int              `xml:"totalsRowCount,attr"`
-	AutoFilter     *xlsxAutoFilter  `xml:"autoFilter"`
-	TableColumns   xlsxTableColumns `xml:"tableColumns"`
+	XMLName        xml.Name            `xml:"table"`
+	Name           string              `xml:"name,attr"`
+	DisplayName    string              `xml:"displayName,attr"`
+	Ref            string              `xml:"ref,attr"`
+	HeaderRowCount *int                `xml:"headerRowCount,attr"`
+	TotalsRowCount int                 `xml:"totalsRowCount,attr"`
+	AutoFilter     *xlsxAutoFilter     `xml:"autoFilter"`
+	TableColumns   xlsxTableColumns    `xml:"tableColumns"`
+	TableStyleInfo *xlsxTableStyleInfo `xml:"tableStyleInfo"`
 }
 
 type xlsxAutoFilter struct {
@@ -390,6 +412,14 @@ type xlsxTableColumns struct {
 
 type xlsxTableColumn struct {
 	Name string `xml:"name,attr"`
+}
+
+type xlsxTableStyleInfo struct {
+	Name              string    `xml:"name,attr"`
+	ShowFirstColumn   ooxmlBool `xml:"showFirstColumn,attr,omitempty"`
+	ShowLastColumn    ooxmlBool `xml:"showLastColumn,attr,omitempty"`
+	ShowRowStripes    ooxmlBool `xml:"showRowStripes,attr,omitempty"`
+	ShowColumnStripes ooxmlBool `xml:"showColumnStripes,attr,omitempty"`
 }
 
 // readSheetTables reads table definitions referenced by a sheet's relationship file.
@@ -439,6 +469,7 @@ func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex in
 			Ref:             xt.Ref,
 			SheetIndex:      sheetIndex,
 			TotalsRowCount:  xt.TotalsRowCount,
+			HasAutoFilter:   xt.AutoFilter != nil,
 			HasActiveFilter: xt.AutoFilter != nil && len(xt.AutoFilter.FilterColumns) > 0,
 		}
 		// Default headerRowCount is 1 if not specified.
@@ -449,6 +480,15 @@ func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex in
 		}
 		for _, col := range xt.TableColumns.Column {
 			td.Columns = append(td.Columns, decodeOOXMLEscapes(col.Name))
+		}
+		if xt.TableStyleInfo != nil {
+			td.Style = &TableStyleData{
+				Name:              xt.TableStyleInfo.Name,
+				ShowFirstColumn:   xt.TableStyleInfo.ShowFirstColumn != 0,
+				ShowLastColumn:    xt.TableStyleInfo.ShowLastColumn != 0,
+				ShowRowStripes:    xt.TableStyleInfo.ShowRowStripes != 0,
+				ShowColumnStripes: xt.TableStyleInfo.ShowColumnStripes != 0,
+			}
 		}
 		tables = append(tables, td)
 	}

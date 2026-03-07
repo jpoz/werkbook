@@ -56,7 +56,7 @@ func (s *Sheet) SetValue(cell string, v any) error {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
 
-	val, err := toValue(v)
+	val, err := toValueWithDate1904(v, s.file.date1904)
 	if err != nil {
 		return err
 	}
