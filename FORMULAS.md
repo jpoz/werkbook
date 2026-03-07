@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **337** Excel formula functions.
+Werkbook supports **338** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -142,7 +142,7 @@ Werkbook supports **337** Excel formula functions.
 | HSTACK | Lookup & Reference | 18 |
 | HYPGEOM.DIST | Statistical | 37 |
 | IF | Logical | 21 |
-| IFERROR | Logical | 42 |
+| IFERROR | Logical | 43 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | INDEX | Lookup & Reference | 13 |
@@ -198,6 +198,7 @@ Werkbook supports **337** Excel formula functions.
 | MUNIT | Math & Trig | 38 |
 | N | Information | - |
 | NA | Information | - |
+| NEGBINOM.DIST | Statistical | 30 |
 | NETWORKDAYS | Date & Time | 26 |
 | NETWORKDAYS.INTL | Date & Time | 43 |
 | NOMINAL | Financial | 17 |
@@ -344,7 +345,7 @@ Werkbook supports **337** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **131** Excel functions are not yet supported.
+The following **130** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -443,7 +444,6 @@ The following **131** Excel functions are not yet supported.
 | MDURATION | Financial |
 | MIDB | Text |
 | MODE.MULT | Statistical |
-| NEGBINOM.DIST | Statistical |
 | ODDFPRICE | Financial |
 | ODDFYIELD | Financial |
 | ODDLPRICE | Financial |

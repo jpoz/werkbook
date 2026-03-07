@@ -16618,3 +16618,169 @@ func TestHYPGEOM_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(HYPGEOM.DIST(1,4,8,20),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// NEGBINOM.DIST
+// ---------------------------------------------------------------------------
+
+func TestNEGBINOM_DIST(t *testing.T) {
+	const tol = 1e-7
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic PMF — Excel: NEGBINOM.DIST(10,5,0.25,FALSE) ≈ 0.0550487
+		{"pmf_basic", "NEGBINOM.DIST(10,5,0.25,FALSE)", 0.0550487, false, 0},
+
+		// Basic CDF — Excel: NEGBINOM.DIST(10,5,0.25,TRUE) ≈ 0.3135141
+		{"cdf_basic", "NEGBINOM.DIST(10,5,0.25,TRUE)", 0.3135141, false, 0},
+
+		// PMF with p=0.5 — NEGBINOM.DIST(3,5,0.5,FALSE)
+		// C(7,4)*0.5^5*0.5^3 = 35 * 0.03125 * 0.125 = 0.13671875
+		{"pmf_p05", "NEGBINOM.DIST(3,5,0.5,FALSE)", 0.13671875, false, 0},
+
+		// CDF with p=0.5 — NEGBINOM.DIST(3,5,0.5,TRUE)
+		{"cdf_p05", "NEGBINOM.DIST(3,5,0.5,TRUE)", 0.36328125, false, 0},
+
+		// Zero failures PMF — P(X=0) = p^r
+		// NEGBINOM.DIST(0,5,0.5,FALSE) = 0.5^5 = 0.03125
+		{"pmf_zero_failures", "NEGBINOM.DIST(0,5,0.5,FALSE)", 0.03125, false, 0},
+
+		// Zero failures CDF — same as PMF
+		{"cdf_zero_failures", "NEGBINOM.DIST(0,5,0.5,TRUE)", 0.03125, false, 0},
+
+		// r=1, geometric distribution: PMF = p*(1-p)^f
+		// NEGBINOM.DIST(3,1,0.3,FALSE) = 0.3*0.7^3 = 0.1029
+		{"pmf_geometric", "NEGBINOM.DIST(3,1,0.3,FALSE)", 0.1029, false, 0},
+
+		// r=1, geometric distribution CDF
+		// CDF = 1-(1-p)^(f+1) = 1-0.7^4 = 1-0.2401 = 0.7599
+		{"cdf_geometric", "NEGBINOM.DIST(3,1,0.3,TRUE)", 0.7599, false, 0},
+
+		// p=0, f=0: certain to have zero failures if... wait, p=0 means
+		// success never happens. But the convention: p^r with p=0 and f=0
+		// returns 1 (edge case).
+		{"pmf_p0_f0", "NEGBINOM.DIST(0,1,0,FALSE)", 1, false, 0},
+
+		// p=0, f>0: no successes ever, so PMF is 0
+		{"pmf_p0_f_pos", "NEGBINOM.DIST(5,1,0,FALSE)", 0, false, 0},
+
+		// p=1, f=0: success always, zero failures, PMF = 1^r = 1
+		{"pmf_p1_f0", "NEGBINOM.DIST(0,3,1,FALSE)", 1, false, 0},
+
+		// p=1, f>0: no failures possible, PMF = 0
+		{"pmf_p1_f_pos", "NEGBINOM.DIST(2,3,1,FALSE)", 0, false, 0},
+
+		// CDF at p=1, f=0: CDF = 1
+		{"cdf_p1_f0", "NEGBINOM.DIST(0,3,1,TRUE)", 1, false, 0},
+
+		// CDF at p=0, f=0: CDF = I_0(r, 1) = 0 — but PMF for f=0 is 1
+		// regBetaInc(0, r, f+1) = 0, which contradicts. Actually p=0 edge:
+		// regBetaInc handles x=0 returning 0.
+		{"cdf_p0_f0", "NEGBINOM.DIST(0,1,0,TRUE)", 0, false, 0},
+
+		// Truncation: 10.9 -> 10, 5.7 -> 5
+		{"truncation", "NEGBINOM.DIST(10.9,5.7,0.25,FALSE)", 0.0550487, false, 0},
+
+		// Large failures PMF — NEGBINOM.DIST(50,10,0.3,FALSE)
+		{"pmf_large_f", "NEGBINOM.DIST(50,10,0.3,FALSE)", 0.0013344436566226712, false, 0},
+
+		// Large failures CDF — NEGBINOM.DIST(50,10,0.3,TRUE)
+		{"cdf_large_f", "NEGBINOM.DIST(50,10,0.3,TRUE)", 0.9941288117574135, false, 0},
+
+		// High p PMF — NEGBINOM.DIST(2,10,0.9,FALSE)
+		// Very likely to succeed, few failures expected
+		{"pmf_high_p", "NEGBINOM.DIST(2,10,0.9,FALSE)", 0.1917731420550001, false, 0},
+
+		// High p CDF — NEGBINOM.DIST(2,10,0.9,TRUE)
+		{"cdf_high_p", "NEGBINOM.DIST(2,10,0.9,TRUE)", 0.889130022255, false, 0},
+
+		// r=1, p=1, f=0: geometric with certain success
+		{"pmf_r1_p1_f0", "NEGBINOM.DIST(0,1,1,FALSE)", 1, false, 0},
+
+		// Error: number_f < 0
+		{"err_neg_f", "NEGBINOM.DIST(-1,5,0.25,FALSE)", 0, true, ErrValNUM},
+
+		// Error: number_s < 1
+		{"err_s_zero", "NEGBINOM.DIST(5,0,0.25,FALSE)", 0, true, ErrValNUM},
+
+		// Error: probability_s < 0
+		{"err_p_neg", "NEGBINOM.DIST(5,5,-0.1,FALSE)", 0, true, ErrValNUM},
+
+		// Error: probability_s > 1
+		{"err_p_gt1", "NEGBINOM.DIST(5,5,1.1,FALSE)", 0, true, ErrValNUM},
+
+		// Error: non-numeric first arg
+		{"err_non_numeric_f", `NEGBINOM.DIST("abc",5,0.25,FALSE)`, 0, true, ErrValVALUE},
+
+		// Error: non-numeric second arg
+		{"err_non_numeric_s", `NEGBINOM.DIST(10,"abc",0.25,FALSE)`, 0, true, ErrValVALUE},
+
+		// Error: non-numeric third arg
+		{"err_non_numeric_p", `NEGBINOM.DIST(10,5,"abc",FALSE)`, 0, true, ErrValVALUE},
+
+		// Error: non-numeric fourth arg
+		{"err_non_numeric_cum", `NEGBINOM.DIST(10,5,0.25,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f", got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestNEGBINOM_DIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "NEGBINOM.DIST(10,5,0.25)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NEGBINOM.DIST(10,5,0.25) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "NEGBINOM.DIST(10,5,0.25,FALSE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("NEGBINOM.DIST(10,5,0.25,FALSE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(NEGBINOM.DIST(10,5,0.25),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(NEGBINOM.DIST(10,5,0.25),"err") = %v, want string "err"`, got)
+	}
+}

@@ -110,6 +110,7 @@ func init() {
 	Register("F.INV", NoCtx(fnFInv))
 	Register("F.INV.RT", NoCtx(fnFInvRT))
 	Register("HYPGEOM.DIST", NoCtx(fnHypgeomDist))
+	Register("NEGBINOM.DIST", NoCtx(fnNegbinomDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -4646,4 +4647,77 @@ func hypgeomPMF(k, n, bigM, bigN int) float64 {
 
 	logP := (lgM1 - lgK1 - lgMK1) + (lgNM1 - lgNK1 - lgNMNK1) - (lgN1 - lgn1 - lgNn1)
 	return math.Exp(logP)
+}
+
+// fnNegbinomDist implements NEGBINOM.DIST(number_f, number_s, probability_s, cumulative).
+// Returns the negative binomial distribution — the probability of number_f failures
+// before the number_s-th success, with probability_s chance of success on each trial.
+func fnNegbinomDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	ff, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	rf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	p, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate to integers.
+	f := int(ff)
+	r := int(rf)
+
+	if f < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if r < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if p < 0 || p > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: use the regularized incomplete beta function.
+		// CDF of NegBinom(f; r, p) = I_p(r, f+1)
+		return NumberVal(regBetaInc(p, float64(r), float64(f+1))), nil
+	}
+
+	// PMF: P(X=f) = C(f+r-1, r-1) * p^r * (1-p)^f
+	return NumberVal(negbinomPMF(f, r, p)), nil
+}
+
+// negbinomPMF returns the negative binomial PMF:
+// P(X=f) = C(f+r-1, r-1) * p^r * (1-p)^f
+// Uses log-gamma for numerical stability.
+func negbinomPMF(f, r int, p float64) float64 {
+	if p == 0 {
+		if f == 0 {
+			return 1
+		}
+		return 0
+	}
+	if p == 1 {
+		if f == 0 {
+			return 1
+		}
+		return 0
+	}
+	// log(C(f+r-1, r-1)) = lgamma(f+r) - lgamma(r) - lgamma(f+1)
+	lgFR, _ := math.Lgamma(float64(f + r))
+	lgR, _ := math.Lgamma(float64(r))
+	lgF1, _ := math.Lgamma(float64(f + 1))
+	logC := lgFR - lgR - lgF1
+	logProb := logC + float64(r)*math.Log(p) + float64(f)*math.Log(1-p)
+	return math.Exp(logProb)
 }
