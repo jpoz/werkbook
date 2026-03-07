@@ -131,6 +131,12 @@ build: ## Verify the package compiles
 	$(call print_stage,Building)
 	go build ./...
 
+.PHONY: install
+install: ## Install the wb CLI locally
+	$(call print_stage,Installing wb CLI)
+	go install ./cmd/wb
+	$(call print_success,wb installed to $$(go env GOPATH)/bin/wb)
+
 .PHONY: clean
 clean: ## Remove generated artifacts
 	$(call print_stage,Cleaning)

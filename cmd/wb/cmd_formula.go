@@ -20,6 +20,9 @@ func cmdFormula(args []string, globals globalFlags) int {
 		}
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON) {
+		return ExitUsage
+	}
 
 	if len(args) == 0 {
 		writeError(cmd, errUsage("subcommand required: 'formula list'"), globals)

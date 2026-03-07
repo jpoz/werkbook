@@ -422,8 +422,8 @@ func fnHOUR(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Hour())), nil
+	hour, _, _ := excelSerialTimeParts(n)
+	return NumberVal(float64(hour)), nil
 }
 
 func fnMINUTE(args []Value) (Value, error) {
@@ -434,8 +434,8 @@ func fnMINUTE(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Minute())), nil
+	_, minute, _ := excelSerialTimeParts(n)
+	return NumberVal(float64(minute)), nil
 }
 
 func fnSECOND(args []Value) (Value, error) {
@@ -446,8 +446,20 @@ func fnSECOND(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(n)
-	return NumberVal(float64(t.Second())), nil
+	_, _, second := excelSerialTimeParts(n)
+	return NumberVal(float64(second)), nil
+}
+
+func excelSerialTimeParts(serial float64) (int, int, int) {
+	frac := serial - math.Floor(serial)
+	totalSeconds := int(math.Round(frac * 86400))
+	if totalSeconds == 86400 {
+		totalSeconds = 0
+	}
+	hour := totalSeconds / 3600
+	minute := (totalSeconds % 3600) / 60
+	second := totalSeconds % 60
+	return hour, minute, second
 }
 
 func fnTIME(args []Value) (Value, error) {
@@ -713,7 +725,7 @@ var monthNames = map[string]time.Month{
 	"february": time.February, "feb": time.February,
 	"march": time.March, "mar": time.March,
 	"april": time.April, "apr": time.April,
-	"may": time.May,
+	"may":  time.May,
 	"june": time.June, "jun": time.June,
 	"july": time.July, "jul": time.July,
 	"august": time.August, "aug": time.August,
@@ -972,7 +984,7 @@ func fnWEEKNUM(args []Value) (Value, error) {
 
 	offset := int(jan1Wd-weekStart+7) % 7
 	dayOfYear := t.YearDay()
-	weekNum := (dayOfYear + offset - 1) / 7 + 1
+	weekNum := (dayOfYear+offset-1)/7 + 1
 	return NumberVal(float64(weekNum)), nil
 }
 

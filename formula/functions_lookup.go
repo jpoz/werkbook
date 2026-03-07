@@ -30,6 +30,7 @@ func init() {
 	Register("HSTACK", NoCtx(fnHSTACK))
 	Register("VSTACK", NoCtx(fnVSTACK))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
+	Register("XMATCH", NoCtx(fnXMATCH))
 }
 
 // fnANCHORARRAY implements ANCHORARRAY(ref). It returns the full dynamic
@@ -1844,4 +1845,357 @@ func transposeGrid(grid [][]Value) [][]Value {
 		}
 	}
 	return result
+}
+
+// fnXMATCH implements XMATCH(lookup_value, lookup_array, [match_mode], [search_mode]).
+// It returns the 1-based relative position of an item in an array.
+func fnXMATCH(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	lookup := args[0]
+	if lookup.Type == ValueError {
+		return lookup, nil
+	}
+
+	arr := args[1]
+	if arr.Type == ValueError {
+		return arr, nil
+	}
+
+	matchMode := 0
+	if len(args) >= 3 {
+		if args[2].Type == ValueError {
+			return args[2], nil
+		}
+		mm, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		matchMode = int(mm)
+	}
+
+	searchMode := 1
+	if len(args) >= 4 {
+		if args[3].Type == ValueError {
+			return args[3], nil
+		}
+		sm, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		searchMode = int(sm)
+	}
+
+	// Validate match_mode.
+	switch matchMode {
+	case 0, -1, 1, 2:
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Validate search_mode.
+	switch searchMode {
+	case 1, -1, 2, -2:
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten lookup_array into a single slice.
+	var values []Value
+	if arr.Type == ValueArray {
+		for _, row := range arr.Array {
+			values = append(values, row...)
+		}
+	} else {
+		values = []Value{arr}
+	}
+
+	n := len(values)
+	if n == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	switch matchMode {
+	case 0:
+		// Exact match.
+		return xmatchExact(lookup, values, searchMode), nil
+
+	case 2:
+		// Wildcard match.
+		return xmatchWildcard(lookup, values, searchMode), nil
+
+	case -1:
+		// Exact match or next smallest.
+		return xmatchNextSmallest(lookup, values, searchMode), nil
+
+	case 1:
+		// Exact match or next largest.
+		return xmatchNextLargest(lookup, values, searchMode), nil
+	}
+
+	return ErrorVal(ErrValVALUE), nil
+}
+
+// xmatchExact performs exact match (match_mode 0) with the given search_mode.
+func xmatchExact(lookup Value, values []Value, searchMode int) Value {
+	n := len(values)
+	switch searchMode {
+	case 1:
+		// First-to-last.
+		for i := 0; i < n; i++ {
+			if CompareValuesExact(values[i], lookup) == 0 {
+				return NumberVal(float64(i + 1))
+			}
+		}
+	case -1:
+		// Last-to-first.
+		for i := n - 1; i >= 0; i-- {
+			if CompareValuesExact(values[i], lookup) == 0 {
+				return NumberVal(float64(i + 1))
+			}
+		}
+	case 2:
+		// Binary search ascending.
+		lo, hi := 0, n-1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValuesExact(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp < 0 {
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+	case -2:
+		// Binary search descending.
+		lo, hi := 0, n-1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValuesExact(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp > 0 {
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+	}
+	return ErrorVal(ErrValNA)
+}
+
+// xmatchWildcard performs wildcard match (match_mode 2) with the given search_mode.
+func xmatchWildcard(lookup Value, values []Value, searchMode int) Value {
+	pattern := ValueToString(lookup)
+	re, err := excelPatternToRegexp(pattern)
+	if err != nil {
+		return ErrorVal(ErrValVALUE)
+	}
+	anchored, err := regexp.Compile("(?i)^" + re.String() + "$")
+	if err != nil {
+		return ErrorVal(ErrValVALUE)
+	}
+
+	n := len(values)
+	switch searchMode {
+	case 1, 2:
+		// First-to-last (binary search not meaningful for wildcard, use linear).
+		for i := 0; i < n; i++ {
+			if anchored.MatchString(ValueToString(values[i])) {
+				return NumberVal(float64(i + 1))
+			}
+		}
+	case -1, -2:
+		// Last-to-first.
+		for i := n - 1; i >= 0; i-- {
+			if anchored.MatchString(ValueToString(values[i])) {
+				return NumberVal(float64(i + 1))
+			}
+		}
+	}
+	return ErrorVal(ErrValNA)
+}
+
+// xmatchNextSmallest performs exact match or next smallest (match_mode -1).
+func xmatchNextSmallest(lookup Value, values []Value, searchMode int) Value {
+	n := len(values)
+	switch searchMode {
+	case 1:
+		// Linear first-to-last: find best match <= lookup.
+		best := -1
+		for i := 0; i < n; i++ {
+			if values[i].Type == ValueEmpty {
+				continue
+			}
+			cmp := CompareValues(values[i], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(i + 1))
+			}
+			if cmp < 0 {
+				if best < 0 || CompareValues(values[i], values[best]) > 0 {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			return NumberVal(float64(best + 1))
+		}
+	case -1:
+		// Linear last-to-first: find best match <= lookup.
+		best := -1
+		for i := n - 1; i >= 0; i-- {
+			if values[i].Type == ValueEmpty {
+				continue
+			}
+			cmp := CompareValues(values[i], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(i + 1))
+			}
+			if cmp < 0 {
+				if best < 0 || CompareValues(values[i], values[best]) > 0 {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			return NumberVal(float64(best + 1))
+		}
+	case 2:
+		// Binary search ascending: data sorted ascending.
+		lo, hi := 0, n-1
+		result := -1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValues(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp < 0 {
+				result = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		if result >= 0 {
+			return NumberVal(float64(result + 1))
+		}
+	case -2:
+		// Binary search descending: data sorted descending.
+		// We want the largest value <= lookup (next smallest).
+		// In descending order, values decrease left-to-right.
+		lo, hi := 0, n-1
+		result := -1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValues(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp > 0 {
+				// values[mid] > lookup → need smaller values → go right
+				lo = mid + 1
+			} else {
+				// values[mid] < lookup → candidate; look left for closer
+				result = mid
+				hi = mid - 1
+			}
+		}
+		if result >= 0 {
+			return NumberVal(float64(result + 1))
+		}
+	}
+	return ErrorVal(ErrValNA)
+}
+
+// xmatchNextLargest performs exact match or next largest (match_mode 1).
+func xmatchNextLargest(lookup Value, values []Value, searchMode int) Value {
+	n := len(values)
+	switch searchMode {
+	case 1:
+		// Linear first-to-last: find best match >= lookup.
+		best := -1
+		for i := 0; i < n; i++ {
+			if values[i].Type == ValueEmpty {
+				continue
+			}
+			cmp := CompareValues(values[i], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(i + 1))
+			}
+			if cmp > 0 {
+				if best < 0 || CompareValues(values[i], values[best]) < 0 {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			return NumberVal(float64(best + 1))
+		}
+	case -1:
+		// Linear last-to-first: find best match >= lookup.
+		best := -1
+		for i := n - 1; i >= 0; i-- {
+			if values[i].Type == ValueEmpty {
+				continue
+			}
+			cmp := CompareValues(values[i], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(i + 1))
+			}
+			if cmp > 0 {
+				if best < 0 || CompareValues(values[i], values[best]) < 0 {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			return NumberVal(float64(best + 1))
+		}
+	case 2:
+		// Binary search ascending: data sorted ascending.
+		lo, hi := 0, n-1
+		result := -1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValues(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp < 0 {
+				lo = mid + 1
+			} else {
+				result = mid
+				hi = mid - 1
+			}
+		}
+		if result >= 0 {
+			return NumberVal(float64(result + 1))
+		}
+	case -2:
+		// Binary search descending: data sorted descending.
+		// We want the smallest value >= lookup (next largest).
+		// In descending order, values decrease left-to-right.
+		lo, hi := 0, n-1
+		result := -1
+		for lo <= hi {
+			mid := lo + (hi-lo)/2
+			cmp := CompareValues(values[mid], lookup)
+			if cmp == 0 {
+				return NumberVal(float64(mid + 1))
+			} else if cmp > 0 {
+				// values[mid] > lookup → candidate; look right for closer
+				result = mid
+				lo = mid + 1
+			} else {
+				// values[mid] < lookup → need larger values → go left
+				hi = mid - 1
+			}
+		}
+		if result >= 0 {
+			return NumberVal(float64(result + 1))
+		}
+	}
+	return ErrorVal(ErrValNA)
 }

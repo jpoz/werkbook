@@ -20,7 +20,7 @@ wb <command> [flags] <file>
 
 | Flag | Description |
 |------|-------------|
-| `--format <json\|markdown\|csv>` | Output format (default: `json`) |
+| `--format <text\|json\|markdown\|csv>` | Output format (default: `text`). Text output may omit columns that are entirely empty. |
 | `--mode <default\|agent>` | Output contract mode (default: `default`) |
 | `--compact` | Emit compact JSON (no indentation) |
 
@@ -33,7 +33,7 @@ wb capabilities
 ```
 
 Returns structured metadata for commands, flags, modes, and agent-mode behavior.
-This is the preferred discovery entrypoint for agentic usage.
+Default output is summarized for humans. Use `--format json` or `--mode agent` for the full structured metadata payload.
 
 ### `info` — Show workbook metadata
 
@@ -54,6 +54,7 @@ Returns sheet names, dimensions, cell counts, formula presence, and data ranges.
 wb read data.xlsx
 wb read --range A1:C10 data.xlsx
 wb read --headers --where "Status=Failed" data.xlsx
+wb read --show-formulas data.xlsx
 wb read --format markdown --headers data.xlsx
 wb read --all-sheets data.xlsx
 wb read --limit 5 --headers data.xlsx
@@ -71,6 +72,7 @@ Returns stored/cached values. Use `calc` to force formula recalculation.
 | `--where <expr>` | Filter rows (repeatable, AND logic). Operators: `=`, `!=`, `<`, `>`, `<=`, `>=` |
 | `--headers` | Treat first row as headers |
 | `--include-formulas` | Include formula strings in output |
+| `--show-formulas` | Display formula text instead of cached values for formula cells |
 | `--include-styles` | Include style objects in output |
 | `--style-summary` | Include human-readable style summary per cell |
 | `--no-dates` | Disable date detection; show raw numbers |
@@ -181,7 +183,7 @@ wb --mode agent help read
 ```
 
 In default mode, help is human-readable text.
-In `--mode agent`, help is returned as structured JSON on stdout.
+With `--format json` or `--mode agent`, help is returned as structured JSON on stdout.
 
 ### `version` — Print version
 
@@ -191,7 +193,16 @@ wb version
 
 ## Output
 
-All commands return structured JSON by default:
+Commands render human-readable text by default. For example:
+
+```text
+$ wb version
+dev
+```
+
+Use `--format json` or `--mode agent` when you need structured output:
+
+For `read` and `calc`, text mode favors readability over exact sheet shape and may omit columns that are entirely empty. Use `json`, `csv`, or `markdown` when you need the full grid preserved.
 
 ```json
 {
@@ -206,7 +217,14 @@ All commands return structured JSON by default:
 }
 ```
 
-Errors are written to stderr (or stdout when `--mode agent` is enabled):
+In default mode, errors are plain text on stderr:
+
+```text
+Error [FILE_NOT_FOUND]: could not open "missing.xlsx": ...
+Hint: Check the file path. Use 'wb create' to create a new file.
+```
+
+In JSON mode, errors are written as structured envelopes (to stderr by default, or stdout when `--mode agent` is enabled):
 
 ```json
 {

@@ -31,6 +31,7 @@ type rowData struct {
 type cellData struct {
 	Value        any    `json:"value"`
 	Type         string `json:"type"`
+	Display      string `json:"display,omitempty"`
 	Formatted    string `json:"formatted,omitempty"`
 	Formula      string `json:"formula,omitempty"`
 	HasFormula   bool   `json:"has_formula,omitempty"`
@@ -44,9 +45,12 @@ func cmdRead(args []string, globals globalFlags) int {
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON, FormatMarkdown, FormatCSV) {
+		return ExitUsage
+	}
 
 	var sheetFlag, rangeFlag string
-	var includeFormulas, includeStyles, headersFlag, allSheets, styleSummaryFlag, noDatesFlag bool
+	var includeFormulas, showFormulas, includeStyles, headersFlag, allSheets, styleSummaryFlag, noDatesFlag bool
 	var limitFlag int
 	var whereExprs []string
 
@@ -92,6 +96,9 @@ func cmdRead(args []string, globals globalFlags) int {
 			i += 2
 		case "--include-formulas":
 			includeFormulas = true
+			i++
+		case "--show-formulas":
+			showFormulas = true
 			i++
 		case "--include-styles":
 			includeStyles = true
@@ -153,6 +160,7 @@ func cmdRead(args []string, globals globalFlags) int {
 		rangeFlag:       rangeFlag,
 		headersFlag:     headersFlag,
 		includeFormulas: includeFormulas,
+		showFormulas:    showFormulas,
 		includeStyles:   includeStyles,
 		styleSummary:    styleSummaryFlag,
 		noDates:         noDatesFlag,
@@ -188,6 +196,7 @@ type readOpts struct {
 	rangeFlag       string
 	headersFlag     bool
 	includeFormulas bool
+	showFormulas    bool
 	includeStyles   bool
 	styleSummary    bool
 	noDates         bool
@@ -202,20 +211,26 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 		return ExitInternal
 	}
 
-	if globals.format == FormatMarkdown || globals.format == FormatCSV {
+	if isTableFormat(globals.format) {
 		var sb strings.Builder
 		for i, name := range names {
 			s := f.Sheet(name)
 			if s == nil {
 				continue
 			}
-			headers, tableRows, _, err := readSheetTable(s, opts)
+			headers, tableRows, rangeStr, err := readSheetTable(s, opts)
 			if err != nil {
 				writeError(cmd, errValidation(err.Error()), globals)
 				return ExitValidate
 			}
 
-			if globals.format == FormatMarkdown {
+			switch globals.format {
+			case FormatText:
+				if i > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(renderTextTableSection(renderTableTitle("Sheet", name, rangeStr), headers, tableRows))
+			case FormatMarkdown:
 				if i > 0 {
 					sb.WriteString("\n")
 				}
@@ -223,7 +238,7 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 				sb.WriteString(name)
 				sb.WriteString("\n\n")
 				sb.WriteString(formatTable(globals.format, headers, tableRows))
-			} else {
+			case FormatCSV:
 				if i > 0 {
 					sb.WriteString("\n")
 				}
@@ -261,13 +276,16 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 }
 
 func readSingleSheet(cmd string, s *werkbook.Sheet, filePath, sheetName string, opts readOpts, globals globalFlags) int {
-	if globals.format == FormatMarkdown || globals.format == FormatCSV {
-		headers, tableRows, _, err := readSheetTable(s, opts)
+	if isTableFormat(globals.format) {
+		headers, tableRows, rangeStr, err := readSheetTable(s, opts)
 		if err != nil {
 			writeError(cmd, errValidation(err.Error()), globals)
 			return ExitValidate
 		}
-		output := formatTable(globals.format, headers, tableRows)
+		output := formatTable(displayTableFormat(globals.format), headers, tableRows)
+		if globals.format == FormatText {
+			output = renderTextTableSection(renderTableTitle("Sheet", sheetName, rangeStr), headers, tableRows)
+		}
 		fmt.Print(output)
 		return ExitSuccess
 	}
@@ -293,8 +311,7 @@ func readSheetTable(s *werkbook.Sheet, opts readOpts) (headers []string, tableRo
 	if opts.headersFlag {
 		for c := col1; c <= col2; c++ {
 			ref, _ := werkbook.CoordinatesToCellName(c, row1)
-			v, _ := s.GetValue(ref)
-			headers = append(headers, valueToString(v))
+			headers = append(headers, displayCellValue(s, ref, opts))
 		}
 	}
 
@@ -334,12 +351,7 @@ func readSheetTable(s *werkbook.Sheet, opts readOpts) (headers []string, tableRo
 		var row []string
 		for c := col1; c <= col2; c++ {
 			ref, _ := werkbook.CoordinatesToCellName(c, r)
-			v, _ := s.GetValue(ref)
-			if !opts.noDates && v.Type == werkbook.TypeNumber && isDateCell(s, ref, v) {
-				row = append(row, werkbook.ExcelSerialToTime(v.Number).Format("2006-01-02"))
-			} else {
-				row = append(row, valueToString(v))
-			}
+			row = append(row, displayCellValue(s, ref, opts))
 		}
 
 		if len(resolved) > 0 && !matchesFilters(row, resolved) {
@@ -388,8 +400,7 @@ func buildReadData(s *werkbook.Sheet, filePath, sheetName string, opts readOpts)
 	if opts.headersFlag {
 		for c := col1; c <= col2; c++ {
 			ref, _ := werkbook.CoordinatesToCellName(c, row1)
-			v, _ := s.GetValue(ref)
-			headers = append(headers, valueToString(v))
+			headers = append(headers, displayCellValue(s, ref, opts))
 		}
 	}
 
@@ -418,8 +429,7 @@ func buildReadData(s *werkbook.Sheet, filePath, sheetName string, opts readOpts)
 			var strRow []string
 			for c := col1; c <= col2; c++ {
 				ref, _ := werkbook.CoordinatesToCellName(c, r)
-				v, _ := s.GetValue(ref)
-				strRow = append(strRow, valueToString(v))
+				strRow = append(strRow, displayCellValue(s, ref, opts))
 			}
 			if !matchesFilters(strRow, resolved) {
 				continue
@@ -452,6 +462,10 @@ func buildReadData(s *werkbook.Sheet, filePath, sheetName string, opts readOpts)
 				if opts.includeFormulas {
 					cd.Formula = formula
 				}
+			}
+
+			if opts.showFormulas {
+				cd.Display = displayCellValue(s, ref, opts)
 			}
 
 			if opts.includeStyles {
@@ -492,6 +506,21 @@ func buildReadData(s *werkbook.Sheet, filePath, sheetName string, opts readOpts)
 		Headers: headers,
 		Rows:    rows,
 	}, ExitSuccess, nil
+}
+
+func displayCellValue(s *werkbook.Sheet, ref string, opts readOpts) string {
+	if opts.showFormulas {
+		formula, _ := s.GetFormula(ref)
+		if formula != "" {
+			return "=" + formula
+		}
+	}
+
+	v, _ := s.GetValue(ref)
+	if !opts.noDates && v.Type == werkbook.TypeNumber && isDateCell(s, ref, v) {
+		return werkbook.ExcelSerialToTime(v.Number).Format("2006-01-02")
+	}
+	return valueToString(v)
 }
 
 // resolveRange returns the column/row bounds for a sheet given an optional range flag.

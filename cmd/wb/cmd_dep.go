@@ -47,6 +47,9 @@ func cmdDep(args []string, globals globalFlags) int {
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON, FormatMarkdown) {
+		return ExitUsage
+	}
 
 	var cellFlag, rangeFlag, sheetFlag, directionFlag string
 	depthFlag := 1
@@ -351,7 +354,7 @@ func cmdDep(args []string, globals globalFlags) int {
 		Cells: entries,
 	}
 
-	if globals.format == FormatMarkdown {
+	if globals.format == FormatText || globals.format == FormatMarkdown {
 		fmt.Print(formatDepMarkdown(data))
 		return ExitSuccess
 	}

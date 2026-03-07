@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+func excelDateSerial(year int, month time.Month, day int) float64 {
+	return math.Floor(TimeToExcelSerial(time.Date(year, month, day, 0, 0, 0, 0, time.UTC)))
+}
+
 func TestDATE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -85,15 +89,15 @@ func TestDATEComprehensive(t *testing.T) {
 
 		// Excel doc examples
 		{"doc_example_2008_1_2", "DATE(2008,1,2)", 39449, false, 0},
-		{"doc_example_108_1_2", "DATE(108,1,2)", 39449, false, 0},  // 1900+108=2008
-		{"doc_example_2008_14_2", "DATE(2008,14,2)", 39846, false, 0}, // Feb 2, 2009
-		{"doc_example_2008_neg3_2", "DATE(2008,-3,2)", 39327, false, 0}, // Sep 2, 2007
-		{"doc_example_2008_1_35", "DATE(2008,1,35)", 39482, false, 0}, // Feb 4, 2008
+		{"doc_example_108_1_2", "DATE(108,1,2)", 39449, false, 0},         // 1900+108=2008
+		{"doc_example_2008_14_2", "DATE(2008,14,2)", 39846, false, 0},     // Feb 2, 2009
+		{"doc_example_2008_neg3_2", "DATE(2008,-3,2)", 39327, false, 0},   // Sep 2, 2007
+		{"doc_example_2008_1_35", "DATE(2008,1,35)", 39482, false, 0},     // Feb 4, 2008
 		{"doc_example_2008_1_neg15", "DATE(2008,1,-15)", 39432, false, 0}, // Dec 16, 2007
 
 		// Year < 1900 behavior (0-1899 adds to 1900)
-		{"year_0_jan1", "DATE(0,1,1)", 1, false, 0},           // 1900-01-01 = serial 1
-		{"year_99_jan1", "DATE(99,1,1)", 36161, false, 0},     // 1999-01-01
+		{"year_0_jan1", "DATE(0,1,1)", 1, false, 0},               // 1900-01-01 = serial 1
+		{"year_99_jan1", "DATE(99,1,1)", 36161, false, 0},         // 1999-01-01
 		{"year_1899_dec31", "DATE(1899,12,31)", 693962, false, 0}, // 3799-12-31
 
 		// Year 1900 (serial number 1 for Jan 1)
@@ -109,13 +113,13 @@ func TestDATEComprehensive(t *testing.T) {
 		{"month_overflow_25", "DATE(2023,25,1)", 45658, false, 0}, // Jan 1, 2025
 
 		// Month negative/zero: DATE(2023,0,1) → Dec 2022
-		{"month_zero", "DATE(2023,0,1)", 44896, false, 0},   // Dec 1, 2022
-		{"month_neg1", "DATE(2023,-1,1)", 44866, false, 0},  // Nov 1, 2022
+		{"month_zero", "DATE(2023,0,1)", 44896, false, 0},    // Dec 1, 2022
+		{"month_neg1", "DATE(2023,-1,1)", 44866, false, 0},   // Nov 1, 2022
 		{"month_neg12", "DATE(2023,-12,1)", 44531, false, 0}, // Dec 1, 2021 (actually Jan 1 -12 months)
 
 		// Day overflow: DATE(2023,1,32) → Feb 1
-		{"day_overflow_32", "DATE(2023,1,32)", 44958, false, 0},  // Feb 1, 2023
-		{"day_overflow_60", "DATE(2023,1,60)", 44986, false, 0},  // Mar 1, 2023
+		{"day_overflow_32", "DATE(2023,1,32)", 44958, false, 0},   // Feb 1, 2023
+		{"day_overflow_60", "DATE(2023,1,60)", 44986, false, 0},   // Mar 1, 2023
 		{"day_overflow_365", "DATE(2023,1,365)", 45291, false, 0}, // Dec 31, 2023
 
 		// Day negative/zero
@@ -129,7 +133,7 @@ func TestDATEComprehensive(t *testing.T) {
 		{"leap_year_2000_feb29", "DATE(2000,2,29)", 36585, false, 0},
 
 		// Non-leap year: DATE(2023,2,29) → Mar 1
-		{"non_leap_feb29", "DATE(2023,2,29)", 44986, false, 0}, // Mar 1, 2023
+		{"non_leap_feb29", "DATE(2023,2,29)", 44986, false, 0},   // Mar 1, 2023
 		{"non_leap_1900_feb29", "DATE(1900,2,29)", 60, false, 0}, // Excel fictional
 
 		// Large year values (but within range)
@@ -388,6 +392,316 @@ func TestDAYS360(t *testing.T) {
 			got, err := Eval(cf, resolver, nil)
 			if err != nil {
 				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDAYS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_example", `DAYS(DATEVALUE("3/15/2021"),DATEVALUE("2/1/2021"))`, 42, false, 0},
+		{"same_year", "DAYS(DATE(2021,12,31),DATE(2021,1,1))", 364, false, 0},
+		{"same_date", "DAYS(DATE(2025,1,1),DATE(2025,1,1))", 0, false, 0},
+		{"negative_result", "DAYS(DATE(2025,2,1),DATE(2025,3,15))", -42, false, 0},
+		{"leap_year_span", "DAYS(DATE(2024,3,1),DATE(2024,2,28))", 2, false, 0},
+		{"non_leap_span", "DAYS(DATE(2025,3,1),DATE(2025,2,28))", 1, false, 0},
+		{"ignores_time_components", "DAYS(DATE(2025,1,2)+TIME(23,59,59),DATE(2025,1,1)+TIME(12,0,0))", 1, false, 0},
+		{"truncates_fractional_serials", "DAYS(10.9,8.1)", 2, false, 0},
+		{"string_numbers", `DAYS("10","8")`, 2, false, 0},
+		{"excel_1900_leap_bug_gap", "DAYS(DATE(1900,3,1),DATE(1900,2,28))", 2, false, 0},
+		{"far_future", "DAYS(DATE(9999,12,31),DATE(9999,1,1))", 364, false, 0},
+		{"no_args", "DAYS()", 0, true, ErrValVALUE},
+		{"one_arg", "DAYS(1)", 0, true, ErrValVALUE},
+		{"too_many_args", "DAYS(1,2,3)", 0, true, ErrValVALUE},
+		{"non_numeric", `DAYS("abc",1)`, 0, true, ErrValVALUE},
+		{"error_propagation_end", "DAYS(1/0,1)", 0, true, ErrValDIV0},
+		{"error_propagation_start", "DAYS(1,1/0)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestEDATE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_plus_one", "EDATE(DATE(2011,1,15),1)", excelDateSerial(2011, time.February, 15), false, 0},
+		{"doc_minus_one", "EDATE(DATE(2011,1,15),-1)", excelDateSerial(2010, time.December, 15), false, 0},
+		{"doc_plus_two", "EDATE(DATE(2011,1,15),2)", excelDateSerial(2011, time.March, 15), false, 0},
+		{"month_end_non_leap", "EDATE(DATE(2025,1,31),1)", excelDateSerial(2025, time.February, 28), false, 0},
+		{"month_end_leap", "EDATE(DATE(2024,1,31),1)", excelDateSerial(2024, time.February, 29), false, 0},
+		{"cross_year_forward", "EDATE(DATE(2024,11,30),3)", excelDateSerial(2025, time.February, 28), false, 0},
+		{"cross_year_backward", "EDATE(DATE(2025,1,31),-2)", excelDateSerial(2024, time.November, 30), false, 0},
+		{"zero_months", "EDATE(DATE(2025,1,15),0)", excelDateSerial(2025, time.January, 15), false, 0},
+		{"truncates_positive_fraction", "EDATE(DATE(2025,1,15),1.9)", excelDateSerial(2025, time.February, 15), false, 0},
+		{"truncates_negative_fraction", "EDATE(DATE(2025,1,15),-1.9)", excelDateSerial(2024, time.December, 15), false, 0},
+		{"ignores_time_component", "EDATE(DATE(2025,1,15)+TIME(12,0,0),1)", excelDateSerial(2025, time.February, 15), false, 0},
+		{"leap_back_one_month", "EDATE(DATE(2024,3,31),-1)", excelDateSerial(2024, time.February, 29), false, 0},
+		{"string_months", `EDATE(DATE(2025,1,15),"2")`, excelDateSerial(2025, time.March, 15), false, 0},
+		{"too_few_args", "EDATE(DATE(2025,1,15))", 0, true, ErrValVALUE},
+		{"too_many_args", "EDATE(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
+		{"invalid_start", `EDATE("abc",1)`, 0, true, ErrValVALUE},
+		{"invalid_months", `EDATE(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
+		{"error_propagation", "EDATE(1/0,1)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestEOMONTH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_plus_one", "EOMONTH(DATE(2011,1,1),1)", excelDateSerial(2011, time.February, 28), false, 0},
+		{"doc_minus_three", "EOMONTH(DATE(2011,1,1),-3)", excelDateSerial(2010, time.October, 31), false, 0},
+		{"same_month", "EOMONTH(DATE(2025,1,15),0)", excelDateSerial(2025, time.January, 31), false, 0},
+		{"leap_february", "EOMONTH(DATE(2024,1,15),1)", excelDateSerial(2024, time.February, 29), false, 0},
+		{"month_end_self", "EOMONTH(DATE(2025,1,31),0)", excelDateSerial(2025, time.January, 31), false, 0},
+		{"previous_month_end", "EOMONTH(DATE(2025,1,31),-1)", excelDateSerial(2024, time.December, 31), false, 0},
+		{"cross_year_forward", "EOMONTH(DATE(2024,11,5),2)", excelDateSerial(2025, time.January, 31), false, 0},
+		{"truncates_positive_fraction", "EOMONTH(DATE(2025,1,15),1.9)", excelDateSerial(2025, time.February, 28), false, 0},
+		{"truncates_negative_fraction", "EOMONTH(DATE(2025,1,15),-1.9)", excelDateSerial(2024, time.December, 31), false, 0},
+		{"ignores_time_component", "EOMONTH(DATE(2025,1,15)+TIME(18,30,0),1)", excelDateSerial(2025, time.February, 28), false, 0},
+		{"leap_plus_twelve", "EOMONTH(DATE(2024,2,29),12)", excelDateSerial(2025, time.February, 28), false, 0},
+		{"leap_minus_twelve", "EOMONTH(DATE(2024,2,29),-12)", excelDateSerial(2023, time.February, 28), false, 0},
+		{"string_months", `EOMONTH(DATE(2025,1,15),"2")`, excelDateSerial(2025, time.March, 31), false, 0},
+		{"too_few_args", "EOMONTH(DATE(2025,1,15))", 0, true, ErrValVALUE},
+		{"too_many_args", "EOMONTH(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
+		{"invalid_months", `EOMONTH(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
+		{"error_propagation", "EOMONTH(DATE(2025,1,15),1/0)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestHOUR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_decimal", "HOUR(0.75)", 18, false, 0},
+		{"doc_datetime", "HOUR(DATE(2011,7,18)+TIME(7,45,0))", 7, false, 0},
+		{"doc_date_only", "HOUR(DATE(2012,4,21))", 0, false, 0},
+		{"timevalue_pm", `HOUR(TIMEVALUE("6:45 PM"))`, 18, false, 0},
+		{"midnight", "HOUR(0)", 0, false, 0},
+		{"noon", "HOUR(0.5)", 12, false, 0},
+		{"end_of_day", "HOUR(TIME(23,59,59))", 23, false, 0},
+		{"whole_day_plus_fraction", "HOUR(1.75)", 18, false, 0},
+		{"date_with_time", "HOUR(DATE(2025,1,1)+TIME(1,30,0))", 1, false, 0},
+		{"seconds_only", "HOUR(TIME(0,0,59))", 0, false, 0},
+		{"timevalue_midnight", `HOUR(TIMEVALUE("12:00 AM"))`, 0, false, 0},
+		{"timevalue_noon", `HOUR(TIMEVALUE("12:00 PM"))`, 12, false, 0},
+		{"no_args", "HOUR()", 0, true, ErrValVALUE},
+		{"too_many_args", "HOUR(1,2)", 0, true, ErrValVALUE},
+		{"non_numeric", `HOUR("abc")`, 0, true, ErrValVALUE},
+		{"error_propagation", "HOUR(1/0)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestMINUTE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_value", "MINUTE(TIME(12,45,0))", 45, false, 0},
+		{"timevalue_pm", `MINUTE(TIMEVALUE("6:45 PM"))`, 45, false, 0},
+		{"datetime_serial", "MINUTE(DATE(2025,1,1)+TIME(7,45,30))", 45, false, 0},
+		{"date_only", "MINUTE(DATE(2012,4,21))", 0, false, 0},
+		{"three_quarter_day", "MINUTE(0.75)", 0, false, 0},
+		{"end_of_hour", "MINUTE(TIME(0,59,59))", 59, false, 0},
+		{"one_minute", "MINUTE(TIME(0,1,0))", 1, false, 0},
+		{"end_of_day", "MINUTE(TIME(23,59,59))", 59, false, 0},
+		{"timevalue_seconds", `MINUTE(TIMEVALUE("1:30:45"))`, 30, false, 0},
+		{"noon", "MINUTE(0.5)", 0, false, 0},
+		{"timevalue_midnight", `MINUTE(TIMEVALUE("12:00 AM"))`, 0, false, 0},
+		{"zero_minute", "MINUTE(TIME(10,0,1))", 0, false, 0},
+		{"no_args", "MINUTE()", 0, true, ErrValVALUE},
+		{"too_many_args", "MINUTE(1,2)", 0, true, ErrValVALUE},
+		{"non_numeric", `MINUTE("abc")`, 0, true, ErrValVALUE},
+		{"error_propagation", "MINUTE(1/0)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestSECOND(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		{"doc_value", "SECOND(TIME(16,48,18))", 18, false, 0},
+		{"doc_zero", "SECOND(TIME(16,48,0))", 0, false, 0},
+		{"timevalue_seconds", `SECOND(TIMEVALUE("1:30:45"))`, 45, false, 0},
+		{"datetime_serial", "SECOND(DATE(2025,1,1)+TIME(7,45,30))", 30, false, 0},
+		{"date_only", "SECOND(DATE(2012,4,21))", 0, false, 0},
+		{"one_second", "SECOND(TIME(0,0,1))", 1, false, 0},
+		{"half_day", "SECOND(0.5)", 0, false, 0},
+		{"end_of_day", "SECOND(TIME(23,59,59))", 59, false, 0},
+		{"timevalue_noon", `SECOND(TIMEVALUE("12:00 PM"))`, 0, false, 0},
+		{"timevalue_end_of_day", `SECOND(TIMEVALUE("23:59:59"))`, 59, false, 0},
+		{"fraction_with_seconds", "SECOND(DATE(2025,1,1)+TIME(0,0,30))", 30, false, 0},
+		{"whole_day_plus_one_second", "SECOND(1+TIME(0,0,1))", 1, false, 0},
+		{"no_args", "SECOND()", 0, true, ErrValVALUE},
+		{"too_many_args", "SECOND(1,2)", 0, true, ErrValVALUE},
+		{"non_numeric", `SECOND("abc")`, 0, true, ErrValVALUE},
+		{"error_propagation", "SECOND(1/0)", 0, true, ErrValDIV0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
 			}
 			if got.Type != ValueNumber {
 				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)

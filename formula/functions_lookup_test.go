@@ -6551,3 +6551,457 @@ func TestANCHORARRAY_NoResolver(t *testing.T) {
 		t.Errorf("expected 99, got %v", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// XMATCH
+// ---------------------------------------------------------------------------
+
+func TestXMATCH(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// A1:A5 — string data
+			{Col: 1, Row: 1}: StringVal("Apple"),
+			{Col: 1, Row: 2}: StringVal("Banana"),
+			{Col: 1, Row: 3}: StringVal("Cherry"),
+			{Col: 1, Row: 4}: StringVal("Date"),
+			{Col: 1, Row: 5}: StringVal("Elderberry"),
+
+			// B1:B5 — numeric data (ascending)
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(50),
+
+			// C1:C5 — numeric data (descending)
+			{Col: 3, Row: 1}: NumberVal(50),
+			{Col: 3, Row: 2}: NumberVal(40),
+			{Col: 3, Row: 3}: NumberVal(30),
+			{Col: 3, Row: 4}: NumberVal(20),
+			{Col: 3, Row: 5}: NumberVal(10),
+
+			// D1:D3 — boolean data
+			{Col: 4, Row: 1}: BoolVal(true),
+			{Col: 4, Row: 2}: BoolVal(false),
+			{Col: 4, Row: 3}: BoolVal(true),
+
+			// E1:E5 — duplicate values
+			{Col: 5, Row: 1}: NumberVal(10),
+			{Col: 5, Row: 2}: NumberVal(20),
+			{Col: 5, Row: 3}: NumberVal(20),
+			{Col: 5, Row: 4}: NumberVal(30),
+			{Col: 5, Row: 5}: NumberVal(20),
+
+			// F1 — single element
+			{Col: 6, Row: 1}: NumberVal(42),
+
+			// G1:G3 — wildcard test data
+			{Col: 7, Row: 1}: StringVal("Banana Split"),
+			{Col: 7, Row: 2}: StringVal("Apple Pie"),
+			{Col: 7, Row: 3}: StringVal("Cherry Tart"),
+		},
+	}
+
+	t.Run("basic exact match number", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(30,B1:B5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("basic exact match string", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("Cherry",A1:A5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("exact match boolean", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(FALSE,D1:D3,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("case insensitive string match", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("banana",A1:A5,0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("not found returns NA", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("Mango",A1:A5,0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("exact match first element", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(10,B1:B5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("exact match last element", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(50,B1:B5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("single element array found", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(42,F1:F1,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("single element array not found", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(99,F1:F1,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// match_mode -1: exact match or next smallest
+	t.Run("next smallest exact hit", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(30,B1:B5,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("next smallest between values", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,B1:B5,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2 (position of 20)", got)
+		}
+	})
+
+	t.Run("next smallest below all returns NA", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(5,B1:B5,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// match_mode 1: exact match or next largest
+	t.Run("next largest exact hit", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(30,B1:B5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("next largest between values", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,B1:B5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3 (position of 30)", got)
+		}
+	})
+
+	t.Run("next largest above all returns NA", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(55,B1:B5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// match_mode 2: wildcard
+	t.Run("wildcard star match", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("Apple*",G1:G3,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("wildcard question mark match", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("Cherry Tar?",G1:G3,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("wildcard no match returns NA", func(t *testing.T) {
+		cf := evalCompile(t, `XMATCH("Mango*",G1:G3,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// search_mode -1: last-to-first
+	t.Run("search last-to-first finds last duplicate", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(20,E1:E5,0,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5 (last occurrence of 20)", got)
+		}
+	})
+
+	t.Run("search first-to-last finds first duplicate", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(20,E1:E5,0,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2 (first occurrence of 20)", got)
+		}
+	})
+
+	// search_mode 2: binary search ascending
+	t.Run("binary search ascending exact", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(30,B1:B5,0,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("binary search ascending not found", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,B1:B5,0,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// search_mode -2: binary search descending
+	t.Run("binary search descending exact", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(30,C1:C5,0,-2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("binary search descending not found", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,C1:C5,0,-2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// binary search with next smallest (match_mode -1, search_mode 2)
+	t.Run("binary search ascending next smallest", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,B1:B5,-1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2 (position of 20)", got)
+		}
+	})
+
+	// binary search with next largest (match_mode 1, search_mode 2)
+	t.Run("binary search ascending next largest", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,B1:B5,1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3 (position of 30)", got)
+		}
+	})
+
+	// binary search descending with next smallest (match_mode -1, search_mode -2)
+	t.Run("binary search descending next smallest", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,C1:C5,-1,-2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4 (position of 20)", got)
+		}
+	})
+
+	// binary search descending with next largest (match_mode 1, search_mode -2)
+	t.Run("binary search descending next largest", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(25,C1:C5,1,-2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3 (position of 30)", got)
+		}
+	})
+
+	// wildcard with reverse search
+	t.Run("wildcard reverse search finds last match", func(t *testing.T) {
+		// G1="Banana Split", G2="Apple Pie", G3="Cherry Tart"
+		// "*a*" matches all three; reverse search should find G3 (position 3)
+		cf := evalCompile(t, `XMATCH("*a*",G1:G3,2,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3 (last match in reverse)", got)
+		}
+	})
+
+	// wrong number of args
+	t.Run("too few args", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error for too few args", got)
+		}
+	})
+
+	t.Run("too many args", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(10,B1:B5,0,1,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error for too many args", got)
+		}
+	})
+
+	// default match_mode and search_mode
+	t.Run("defaults to exact match first-to-last", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(20,B1:B5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	// match_mode -1 next smallest with exact match in ascending data
+	t.Run("next smallest exact in ascending data", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(40,B1:B5,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	// match_mode 1 next largest with exact match in ascending data
+	t.Run("next largest exact in ascending data", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(40,B1:B5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	// mixed types — number not found in string array
+	t.Run("number in string array returns NA", func(t *testing.T) {
+		cf := evalCompile(t, "XMATCH(42,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+}

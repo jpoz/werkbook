@@ -31,7 +31,7 @@ wb calc file.xlsx                        # Recalculate formulas
 wb formula list                          # List available functions
 ```
 
-All output uses a JSON envelope by default. Use `--format markdown` or `--format csv` for other formats.
+Default CLI output is human-readable text. Use `--format json` or `--mode agent` for structured JSON, and `--format markdown` or `--format csv` for table output where supported.
 
 ## Quick Start
 

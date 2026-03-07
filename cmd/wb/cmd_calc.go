@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	werkbook "github.com/jpoz/werkbook"
 )
@@ -13,6 +14,9 @@ func cmdCalc(args []string, globals globalFlags) int {
 
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
+	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON, FormatMarkdown, FormatCSV) {
+		return ExitUsage
 	}
 
 	var sheetFlag, rangeFlag, outputFlag string
@@ -100,6 +104,31 @@ func cmdCalc(args []string, globals globalFlags) int {
 			writeError(cmd, errFileSave(outputFlag, err), globals)
 			return ExitFileIO
 		}
+	}
+
+	if isTableFormat(globals.format) {
+		headers, tableRows, rangeStr, err := readSheetTable(s, readOpts{
+			rangeFlag: rangeFlag,
+			noDates:   noDatesFlag,
+		})
+		if err != nil {
+			writeError(cmd, errValidation(err.Error()), globals)
+			return ExitValidate
+		}
+
+		var output string
+		switch globals.format {
+		case FormatText:
+			output = renderTextTableSection(renderTableTitle("Sheet", sheetName, rangeStr), headers, tableRows)
+			if outputFlag != "" {
+				output = strings.TrimRight(output, "\n") + "\n\nSaved: " + outputFlag + "\n"
+			}
+		default:
+			output = formatTable(globals.format, headers, tableRows)
+		}
+
+		fmt.Print(output)
+		return ExitSuccess
 	}
 
 	// Determine range.

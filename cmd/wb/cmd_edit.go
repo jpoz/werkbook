@@ -28,6 +28,9 @@ func cmdEdit(args []string, globals globalFlags) int {
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON) {
+		return ExitUsage
+	}
 
 	var sheetFlag, patchFlag, outputFlag string
 	var dryRun, validateOnly, planFlag bool

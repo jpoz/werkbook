@@ -82,6 +82,9 @@ func init() {
 	Register("NORM.INV", NoCtx(fnNormInv))
 	Register("NORM.S.DIST", NoCtx(fnNormSDist))
 	Register("NORM.S.INV", NoCtx(fnNormSInv))
+	Register("BINOM.DIST", NoCtx(fnBinomDist))
+	Register("POISSON.DIST", NoCtx(fnPoissonDist))
+	Register("EXPON.DIST", NoCtx(fnExponDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -2765,4 +2768,170 @@ func normSInv(p float64) float64 {
 	}
 
 	return x
+}
+
+// ---------------------------------------------------------------------------
+// BINOM.DIST — Binomial distribution (PMF or CDF)
+// ---------------------------------------------------------------------------
+
+func fnBinomDist(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	sf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	tf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	p, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate to integers.
+	k := int(sf)
+	n := int(tf)
+
+	if k < 0 || k > n {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if p < 0 || p > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: P(X <= k) = sum from i=0 to k of PMF(i)
+		sum := 0.0
+		for i := 0; i <= k; i++ {
+			sum += binomPMF(n, i, p)
+		}
+		return NumberVal(sum), nil
+	}
+	return NumberVal(binomPMF(n, k, p)), nil
+}
+
+// binomPMF returns the binomial probability mass function:
+// P(X=k) = C(n,k) * p^k * (1-p)^(n-k)
+// Uses log-gamma for numerical stability with large n.
+func binomPMF(n, k int, p float64) float64 {
+	if p == 0 {
+		if k == 0 {
+			return 1
+		}
+		return 0
+	}
+	if p == 1 {
+		if k == n {
+			return 1
+		}
+		return 0
+	}
+	// log(C(n,k)) = lgamma(n+1) - lgamma(k+1) - lgamma(n-k+1)
+	logC, _ := math.Lgamma(float64(n + 1))
+	logK, _ := math.Lgamma(float64(k + 1))
+	logNK, _ := math.Lgamma(float64(n - k + 1))
+	logBinom := logC - logK - logNK
+	logProb := logBinom + float64(k)*math.Log(p) + float64(n-k)*math.Log(1-p)
+	return math.Exp(logProb)
+}
+
+// fnPoissonDist implements POISSON.DIST(x, mean, cumulative).
+func fnPoissonDist(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	xf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	mean, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate x to integer.
+	k := int(xf)
+
+	if k < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if mean < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Special case: mean == 0.
+	if mean == 0 {
+		if k == 0 {
+			return NumberVal(1), nil
+		}
+		if cum != 0 {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	if cum != 0 {
+		// CDF: P(X <= k) = sum from i=0 to k of PMF(i)
+		sum := 0.0
+		for i := 0; i <= k; i++ {
+			sum += poissonPMF(i, mean)
+		}
+		return NumberVal(sum), nil
+	}
+	return NumberVal(poissonPMF(k, mean)), nil
+}
+
+// poissonPMF returns the Poisson probability mass function:
+// P(X=k) = (mean^k * e^(-mean)) / k!
+// Uses log-gamma for numerical stability.
+func poissonPMF(k int, mean float64) float64 {
+	lg, _ := math.Lgamma(float64(k + 1))
+	return math.Exp(float64(k)*math.Log(mean) - mean - lg)
+}
+
+// ---------------------------------------------------------------------------
+// EXPON.DIST — Exponential distribution
+// ---------------------------------------------------------------------------
+
+func fnExponDist(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	lambda, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	if x < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if lambda <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: F(x) = 1 - exp(-lambda * x)
+		return NumberVal(1 - math.Exp(-lambda*x)), nil
+	}
+	// PDF: f(x) = lambda * exp(-lambda * x)
+	return NumberVal(lambda * math.Exp(-lambda*x)), nil
 }

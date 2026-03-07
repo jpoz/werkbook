@@ -9,6 +9,7 @@ var xlfnPrefix = map[string]string{
 	"ANCHORARRAY":     "_xlfn.",
 	"ARABIC":          "_xlfn.",
 	"BASE":            "_xlfn.",
+	"BINOM.DIST":      "_xlfn.",
 	"BYCOL":           "_xlfn.",
 	"BYROW":           "_xlfn.",
 	"CEILING.MATH":    "_xlfn.",
@@ -26,6 +27,7 @@ var xlfnPrefix = map[string]string{
 	"DAYS":            "_xlfn.",
 	"DECIMAL":         "_xlfn.",
 	"DROP":            "_xlfn.",
+	"EXPON.DIST":      "_xlfn.",
 	"EXPAND":          "_xlfn.",
 	"FILTER":          "_xlfn._xlws.",
 	"FLOOR.MATH":      "_xlfn.",
@@ -48,6 +50,7 @@ var xlfnPrefix = map[string]string{
 	"NORM.S.INV":      "_xlfn.",
 	"NUMBERVALUE":     "_xlfn.",
 	"PERCENTILE.EXC":  "_xlfn.",
+	"POISSON.DIST":    "_xlfn.",
 	"PERCENTRANK.EXC": "_xlfn.",
 	"PERCENTRANK.INC": "_xlfn.",
 	"RANDARRAY":       "_xlfn.",
@@ -77,6 +80,7 @@ var xlfnPrefix = map[string]string{
 	"WRAPCOLS":        "_xlfn.",
 	"WRAPROWS":        "_xlfn.",
 	"XLOOKUP":         "_xlfn.",
+	"XMATCH":          "_xlfn.",
 	"XOR":             "_xlfn.",
 }
 
