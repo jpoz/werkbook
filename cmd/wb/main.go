@@ -79,7 +79,7 @@ func run(args []string) int {
 		writeError("", &ErrorInfo{
 			Code:    ErrCodeInvalidFormat,
 			Message: fmt.Sprintf("unknown format %q", globals.format),
-			Hint:    "Supported formats: json, markdown, csv.",
+			Hint:    "Supported formats: text, json, markdown, csv.",
 		}, globals)
 		return ExitUsage
 	}
