@@ -44,6 +44,9 @@ func cmdRead(args []string, globals globalFlags) int {
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON, FormatMarkdown, FormatCSV) {
+		return ExitUsage
+	}
 
 	var sheetFlag, rangeFlag string
 	var includeFormulas, includeStyles, headersFlag, allSheets, styleSummaryFlag, noDatesFlag bool
@@ -202,20 +205,26 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 		return ExitInternal
 	}
 
-	if globals.format == FormatMarkdown || globals.format == FormatCSV {
+	if isTableFormat(globals.format) {
 		var sb strings.Builder
 		for i, name := range names {
 			s := f.Sheet(name)
 			if s == nil {
 				continue
 			}
-			headers, tableRows, _, err := readSheetTable(s, opts)
+			headers, tableRows, rangeStr, err := readSheetTable(s, opts)
 			if err != nil {
 				writeError(cmd, errValidation(err.Error()), globals)
 				return ExitValidate
 			}
 
-			if globals.format == FormatMarkdown {
+			switch globals.format {
+			case FormatText:
+				if i > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(renderTextTableSection(renderTableTitle("Sheet", name, rangeStr), headers, tableRows))
+			case FormatMarkdown:
 				if i > 0 {
 					sb.WriteString("\n")
 				}
@@ -223,7 +232,7 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 				sb.WriteString(name)
 				sb.WriteString("\n\n")
 				sb.WriteString(formatTable(globals.format, headers, tableRows))
-			} else {
+			case FormatCSV:
 				if i > 0 {
 					sb.WriteString("\n")
 				}
@@ -261,13 +270,16 @@ func readAllSheets(cmd string, f *werkbook.File, filePath string, opts readOpts,
 }
 
 func readSingleSheet(cmd string, s *werkbook.Sheet, filePath, sheetName string, opts readOpts, globals globalFlags) int {
-	if globals.format == FormatMarkdown || globals.format == FormatCSV {
-		headers, tableRows, _, err := readSheetTable(s, opts)
+	if isTableFormat(globals.format) {
+		headers, tableRows, rangeStr, err := readSheetTable(s, opts)
 		if err != nil {
 			writeError(cmd, errValidation(err.Error()), globals)
 			return ExitValidate
 		}
-		output := formatTable(globals.format, headers, tableRows)
+		output := formatTable(displayTableFormat(globals.format), headers, tableRows)
+		if globals.format == FormatText {
+			output = renderTextTableSection(renderTableTitle("Sheet", sheetName, rangeStr), headers, tableRows)
+		}
 		fmt.Print(output)
 		return ExitSuccess
 	}

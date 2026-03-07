@@ -7,11 +7,12 @@ import (
 )
 
 type globalFlags struct {
-	format   string
-	mode     string
-	compact  bool
-	start    time.Time
-	warnings []string
+	format     string
+	formatSet  bool
+	mode       string
+	compact    bool
+	start      time.Time
+	warnings   []string
 }
 
 const (
@@ -26,7 +27,7 @@ func main() {
 
 func run(args []string) int {
 	globals := globalFlags{
-		format: FormatJSON,
+		format: FormatText,
 		mode:   modeDefault,
 		start:  time.Now(),
 	}
@@ -41,6 +42,7 @@ func run(args []string) int {
 				return ExitUsage
 			}
 			globals.format = args[i+1]
+			globals.formatSet = true
 			i++
 		case "--mode":
 			if i+1 >= len(args) {
@@ -71,7 +73,7 @@ func run(args []string) int {
 
 	// Validate format.
 	switch globals.format {
-	case FormatJSON, FormatMarkdown, FormatCSV:
+	case FormatText, FormatJSON, FormatMarkdown, FormatCSV:
 		// ok
 	default:
 		writeError("", &ErrorInfo{
@@ -84,7 +86,9 @@ func run(args []string) int {
 
 	// Agent mode always emits JSON envelopes.
 	if globals.mode == modeAgent && globals.format != FormatJSON {
-		globals.warnings = append(globals.warnings, "agent mode forces --format json")
+		if globals.formatSet {
+			globals.warnings = append(globals.warnings, "agent mode forces --format json")
+		}
 		globals.format = FormatJSON
 	}
 
@@ -138,6 +142,10 @@ func writeError(command string, ei *ErrorInfo, globals globalFlags) {
 }
 
 func writeResponse(resp *Response, globals globalFlags, toStderr bool) {
+	if !wantJSON(globals) {
+		writeTextResponse(resp, toStderr)
+		return
+	}
 	out, err := marshalJSON(resp, globals.compact)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"ok":false,"error":{"code":"INTERNAL","message":%q}}`+"\n", err.Error())
@@ -148,6 +156,10 @@ func writeResponse(resp *Response, globals globalFlags, toStderr bool) {
 		return
 	}
 	fmt.Println(string(out))
+}
+
+func wantJSON(globals globalFlags) bool {
+	return globals.mode == modeAgent || globals.format == FormatJSON
 }
 
 func buildMeta(command string, globals globalFlags) *responseMeta {
