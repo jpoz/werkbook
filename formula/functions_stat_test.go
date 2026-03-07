@@ -13358,3 +13358,110 @@ func TestPOISSON_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(POISSON.DIST(2,5),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// EXPON.DIST
+// ---------------------------------------------------------------------------
+
+func TestEXPON_DIST(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// PDF tests
+		{"pdf_basic", "EXPON.DIST(0.2,10,FALSE)", 1.353352832, false, 0},
+		{"pdf_x0", "EXPON.DIST(0,10,FALSE)", 10, false, 0},
+		{"pdf_lambda1_x1", "EXPON.DIST(1,1,FALSE)", 0.367879441, false, 0},
+		{"pdf_large_x", "EXPON.DIST(10,1,FALSE)", 0.0000453999, false, 0},
+		{"pdf_small_lambda", "EXPON.DIST(1,0.1,FALSE)", 0.090483742, false, 0},
+		{"pdf_large_lambda", "EXPON.DIST(0.01,100,FALSE)", 36.78794412, false, 0},
+		{"pdf_x05_lambda2", "EXPON.DIST(0.5,2,FALSE)", 0.735758882, false, 0},
+		{"pdf_x1_lambda05", "EXPON.DIST(1,0.5,FALSE)", 0.303265330, false, 0},
+		{"pdf_x2_lambda3", "EXPON.DIST(2,3,FALSE)", 0.007436478, false, 0},
+		{"pdf_x001_lambda1", "EXPON.DIST(0.01,1,FALSE)", 0.990049834, false, 0},
+
+		// CDF tests
+		{"cdf_basic", "EXPON.DIST(0.2,10,TRUE)", 0.864664717, false, 0},
+		{"cdf_x0", "EXPON.DIST(0,10,TRUE)", 0, false, 0},
+		{"cdf_lambda1_x1", "EXPON.DIST(1,1,TRUE)", 0.632120559, false, 0},
+		{"cdf_large_x", "EXPON.DIST(10,1,TRUE)", 0.999954600, false, 0},
+		{"cdf_small_lambda", "EXPON.DIST(1,0.1,TRUE)", 0.095162582, false, 0},
+		{"cdf_large_lambda", "EXPON.DIST(0.01,100,TRUE)", 0.632120559, false, 0},
+		{"cdf_x05_lambda2", "EXPON.DIST(0.5,2,TRUE)", 0.632120559, false, 0},
+		{"cdf_x1_lambda05", "EXPON.DIST(1,0.5,TRUE)", 0.393469340, false, 0},
+		{"cdf_x5_lambda1", "EXPON.DIST(5,1,TRUE)", 0.993262053, false, 0},
+		{"cdf_x001_lambda1", "EXPON.DIST(0.01,1,TRUE)", 0.009950166, false, 0},
+
+		// Error cases
+		{"err_neg_x", "EXPON.DIST(-1,10,FALSE)", 0, true, ErrValNUM},
+		{"err_lambda_zero", "EXPON.DIST(1,0,FALSE)", 0, true, ErrValNUM},
+		{"err_lambda_neg", "EXPON.DIST(1,-1,FALSE)", 0, true, ErrValNUM},
+		{"err_non_numeric_x", `EXPON.DIST("abc",10,FALSE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_lambda", `EXPON.DIST(1,"abc",FALSE)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_cum", `EXPON.DIST(1,10,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s: want error %d, got type=%d num=%g", tt.formula, tt.wantErr, got.Type, got.Num)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s: want err=%d, got err=%d", tt.formula, tt.wantErr, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestEXPON_DIST_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "EXPON.DIST(0.2,10)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("EXPON.DIST(0.2,10) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "EXPON.DIST(0.2,10,TRUE,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("EXPON.DIST(0.2,10,TRUE,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(EXPON.DIST(0.2,10),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(EXPON.DIST(0.2,10),"err") = %v, want string "err"`, got)
+	}
+}

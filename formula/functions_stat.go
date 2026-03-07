@@ -84,6 +84,7 @@ func init() {
 	Register("NORM.S.INV", NoCtx(fnNormSInv))
 	Register("BINOM.DIST", NoCtx(fnBinomDist))
 	Register("POISSON.DIST", NoCtx(fnPoissonDist))
+	Register("EXPON.DIST", NoCtx(fnExponDist))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -2897,4 +2898,40 @@ func fnPoissonDist(args []Value) (Value, error) {
 func poissonPMF(k int, mean float64) float64 {
 	lg, _ := math.Lgamma(float64(k + 1))
 	return math.Exp(float64(k)*math.Log(mean) - mean - lg)
+}
+
+// ---------------------------------------------------------------------------
+// EXPON.DIST — Exponential distribution
+// ---------------------------------------------------------------------------
+
+func fnExponDist(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	lambda, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	cum, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	if x < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if lambda <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if cum != 0 {
+		// CDF: F(x) = 1 - exp(-lambda * x)
+		return NumberVal(1 - math.Exp(-lambda*x)), nil
+	}
+	// PDF: f(x) = lambda * exp(-lambda * x)
+	return NumberVal(lambda * math.Exp(-lambda*x)), nil
 }

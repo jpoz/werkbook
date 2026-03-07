@@ -27,6 +27,7 @@ var xlfnPrefix = map[string]string{
 	"DAYS":            "_xlfn.",
 	"DECIMAL":         "_xlfn.",
 	"DROP":            "_xlfn.",
+	"EXPON.DIST":      "_xlfn.",
 	"EXPAND":          "_xlfn.",
 	"FILTER":          "_xlfn._xlws.",
 	"FLOOR.MATH":      "_xlfn.",
