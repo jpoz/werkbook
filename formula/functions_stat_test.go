@@ -14006,3 +14006,196 @@ func TestGAMMA_DIST_argcount(t *testing.T) {
 		t.Errorf(`IFERROR(GAMMA.DIST(1,1,1),"err") = %v, want string "err"`, got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GAMMA.INV
+// ---------------------------------------------------------------------------
+
+func TestGAMMA_INV(t *testing.T) {
+	const tol = 1e-5
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Basic case from spec
+		{"basic", "GAMMA.INV(0.068094,9,2)", 10.0000112, false, 0},
+
+		// Exponential distribution (alpha=1): median = ln(2) ≈ 0.693147
+		{"exp_median", "GAMMA.INV(0.5,1,1)", 0.693147, false, 0},
+
+		// Gamma(2,1): median ≈ 1.678347
+		{"gamma2_1_median", "GAMMA.INV(0.5,2,1)", 1.678347, false, 0},
+
+		// Gamma(5,2): median
+		{"gamma5_2_median", "GAMMA.INV(0.5,5,2)", 9.341818, false, 0},
+
+		// Probability 0 → returns 0
+		{"p_zero", "GAMMA.INV(0,2,1)", 0, false, 0},
+
+		// Small probability
+		{"small_p", "GAMMA.INV(0.01,1,1)", 0.010050, false, 0},
+
+		// Large probability
+		{"large_p", "GAMMA.INV(0.99,1,1)", 4.605170, false, 0},
+
+		// Alpha=1 (exponential): GAMMA.INV(1 - e^(-1), 1, 1) ≈ 1
+		{"exp_at_1", "GAMMA.INV(0.632121,1,1)", 1.000001, false, 0},
+
+		// Beta scaling: GAMMA.INV(p, a, b) = b * GAMMA.INV(p, a, 1)
+		{"beta_scale", "GAMMA.INV(0.5,2,3)", 5.035042, false, 0},
+
+		// Standard gamma (beta=1) various alpha values
+		{"std_alpha3", "GAMMA.INV(0.5,3,1)", 2.674060, false, 0},
+		{"std_alpha10", "GAMMA.INV(0.5,10,1)", 9.668715, false, 0},
+		{"std_alpha05", "GAMMA.INV(0.5,0.5,1)", 0.227468, false, 0},
+
+		// Small alpha
+		{"small_alpha", "GAMMA.INV(0.5,0.1,1)", 0.000593, false, 0},
+
+		// Large alpha
+		{"large_alpha", "GAMMA.INV(0.5,100,1)", 99.666865, false, 0},
+
+		// Large beta
+		{"large_beta", "GAMMA.INV(0.5,2,100)", 167.834699, false, 0},
+
+		// Various probabilities with alpha=3, beta=2
+		{"a3b2_p01", "GAMMA.INV(0.1,3,2)", 2.204133, false, 0},
+		{"a3b2_p025", "GAMMA.INV(0.25,3,2)", 3.454599, false, 0},
+		{"a3b2_p075", "GAMMA.INV(0.75,3,2)", 7.840804, false, 0},
+		{"a3b2_p09", "GAMMA.INV(0.9,3,2)", 10.644644, false, 0},
+
+		// Very small probability
+		{"very_small_p", "GAMMA.INV(0.001,2,1)", 0.045402, false, 0},
+
+		// Very large probability
+		{"very_large_p", "GAMMA.INV(0.999,2,1)", 9.233413, false, 0},
+
+		// Error: probability < 0
+		{"err_p_neg", "GAMMA.INV(-0.1,2,1)", 0, true, ErrValNUM},
+
+		// Error: probability > 1
+		{"err_p_gt1", "GAMMA.INV(1.5,2,1)", 0, true, ErrValNUM},
+
+		// Error: probability = 1 (Excel returns #NUM!)
+		{"err_p_one", "GAMMA.INV(1,2,1)", 0, true, ErrValNUM},
+
+		// Error: alpha = 0
+		{"err_alpha_zero", "GAMMA.INV(0.5,0,1)", 0, true, ErrValNUM},
+
+		// Error: alpha < 0
+		{"err_alpha_neg", "GAMMA.INV(0.5,-1,1)", 0, true, ErrValNUM},
+
+		// Error: beta = 0
+		{"err_beta_zero", "GAMMA.INV(0.5,2,0)", 0, true, ErrValNUM},
+
+		// Error: beta < 0
+		{"err_beta_neg", "GAMMA.INV(0.5,2,-1)", 0, true, ErrValNUM},
+
+		// Error: non-numeric arguments
+		{"err_non_numeric_p", `GAMMA.INV("abc",2,1)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_alpha", `GAMMA.INV(0.5,"abc",1)`, 0, true, ErrValVALUE},
+		{"err_non_numeric_beta", `GAMMA.INV(0.5,2,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s: want error %d, got type=%d num=%g", tt.formula, tt.wantErr, got.Type, got.Num)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s: want err=%d, got err=%d", tt.formula, tt.wantErr, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestGAMMA_INV_argcount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, "GAMMA.INV(0.5,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("GAMMA.INV(0.5,2) should error, got type=%d", got.Type)
+	}
+
+	// Too many args
+	cf = evalCompile(t, "GAMMA.INV(0.5,2,1,1)")
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("GAMMA.INV(0.5,2,1,1) should error, got type=%d", got.Type)
+	}
+
+	// IFERROR should catch the #VALUE! from wrong arg count
+	cf = evalCompile(t, `IFERROR(GAMMA.INV(0.5,2),"err")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "err" {
+		t.Errorf(`IFERROR(GAMMA.INV(0.5,2),"err") = %v, want string "err"`, got)
+	}
+}
+
+func TestGAMMA_INV_roundtrip(t *testing.T) {
+	// Verify GAMMA.INV(GAMMA.DIST(x, alpha, beta, TRUE), alpha, beta) ≈ x
+	resolver := &mockResolver{}
+	const tol = 1e-5
+
+	cases := []struct {
+		x     float64
+		alpha float64
+		beta  float64
+	}{
+		{10, 9, 2},
+		{1, 1, 1},
+		{5, 2, 3},
+		{0.5, 0.5, 1},
+		{20, 5, 2},
+		{3, 10, 0.5},
+		{100, 50, 2},
+		{0.1, 2, 1},
+	}
+
+	for _, tc := range cases {
+		formula := fmt.Sprintf("GAMMA.INV(GAMMA.DIST(%g,%g,%g,TRUE),%g,%g)",
+			tc.x, tc.alpha, tc.beta, tc.alpha, tc.beta)
+		t.Run(fmt.Sprintf("x=%g_a=%g_b=%g", tc.x, tc.alpha, tc.beta), func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tc.x) > tol {
+				t.Errorf("%s = %g, want %g", formula, got.Num, tc.x)
+			}
+		})
+	}
+}

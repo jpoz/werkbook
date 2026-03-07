@@ -89,6 +89,7 @@ func init() {
 	Register("LOGNORM.DIST", NoCtx(fnLognormDist))
 	Register("LOGNORM.INV", NoCtx(fnLognormInv))
 	Register("GAMMA.DIST", NoCtx(fnGammaDist))
+	Register("GAMMA.INV", NoCtx(fnGammaInv))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -3180,17 +3181,139 @@ func fnGammaDist(args []Value) (Value, error) {
 
 	// PDF: f(x) = (1 / (beta^alpha * Γ(alpha))) * x^(alpha-1) * exp(-x/beta)
 	if x == 0 {
-		if alpha == 1 {
-			return NumberVal(1 / beta), nil
-		}
 		if alpha > 1 {
 			return NumberVal(0), nil
 		}
-		// alpha < 1: PDF diverges to +Inf at x=0; Excel returns #NUM!
+		// alpha <= 1: Excel returns #NUM! at x=0 (PDF diverges for alpha<1,
+		// and Excel also returns #NUM! for the alpha==1 boundary case).
 		return ErrorVal(ErrValNUM), nil
 	}
 
 	lgA, _ := math.Lgamma(alpha)
 	logPdf := (alpha-1)*math.Log(x) - x/beta - alpha*math.Log(beta) - lgA
 	return NumberVal(math.Exp(logPdf)), nil
+}
+
+// ---------------------------------------------------------------------------
+// GAMMA.INV — Inverse of the gamma cumulative distribution function
+// ---------------------------------------------------------------------------
+// Given p, alpha, beta it finds x such that GAMMA.DIST(x, alpha, beta, TRUE) = p.
+
+func fnGammaInv(args []Value) (Value, error) {
+	if len(args) != 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	p, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	alpha, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	beta, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Validate ranges.
+	if p < 0 || p > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if alpha <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if beta <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Edge cases.
+	if p == 0 {
+		return NumberVal(0), nil
+	}
+	// Excel returns #NUM! for probability = 1.
+	if p == 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Initial guess using the Wilson-Hilferty normal approximation:
+	//   x/alpha ≈ (1 - 1/(9*alpha) + z * sqrt(1/(9*alpha)))^3
+	// where z = NORM.S.INV(p).
+	z := normSInv(p)
+	t := 1.0 / (9 * alpha)
+	wh := 1 - t + z*math.Sqrt(t)
+	var x float64
+	if wh > 0 {
+		x = alpha * beta * wh * wh * wh
+	} else {
+		// Fallback for cases where the WH approximation gives non-positive.
+		x = alpha * beta * 0.5
+	}
+	if x <= 0 {
+		x = beta * 0.001
+	}
+
+	// Newton-Raphson iteration.
+	// f(x) = regLowerGamma(alpha, x/beta) - p
+	// f'(x) = gammaPDF(x, alpha, beta)
+	//       = x^(alpha-1) * exp(-x/beta) / (beta^alpha * Γ(alpha))
+	lgA, _ := math.Lgamma(alpha)
+	const maxIter = 200
+	const tol = 1e-12
+
+	for i := 0; i < maxIter; i++ {
+		cdf := regLowerGamma(alpha, x/beta)
+		f := cdf - p
+
+		if math.Abs(f) < tol {
+			return NumberVal(x), nil
+		}
+
+		// Gamma PDF as the derivative of the CDF.
+		logPdf := (alpha-1)*math.Log(x) - x/beta - alpha*math.Log(beta) - lgA
+		pdf := math.Exp(logPdf)
+
+		if pdf < 1e-300 {
+			// PDF too small for Newton step; use bisection fallback.
+			break
+		}
+
+		step := f / pdf
+		xNew := x - step
+		// Ensure x stays positive.
+		if xNew <= 0 {
+			x = x / 2
+		} else {
+			x = xNew
+		}
+	}
+
+	// If Newton didn't converge, fall back to bisection.
+	lo := 0.0
+	hi := x
+	// Expand hi until CDF(hi) > p.
+	for regLowerGamma(alpha, hi/beta) < p {
+		hi *= 2
+		if hi > 1e308 {
+			return ErrorVal(ErrValNA), nil
+		}
+	}
+
+	for i := 0; i < maxIter; i++ {
+		mid := (lo + hi) / 2
+		cdf := regLowerGamma(alpha, mid/beta)
+		if math.Abs(cdf-p) < tol {
+			return NumberVal(mid), nil
+		}
+		if cdf < p {
+			lo = mid
+		} else {
+			hi = mid
+		}
+		if (hi - lo) < tol*hi {
+			return NumberVal((lo + hi) / 2), nil
+		}
+	}
+
+	return ErrorVal(ErrValNA), nil
 }
