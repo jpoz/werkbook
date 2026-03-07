@@ -13894,9 +13894,9 @@ func TestGAMMA_DIST(t *testing.T) {
 	}{
 		// PDF tests
 		{"pdf_basic", "GAMMA.DIST(10.00001131,9,2,FALSE)", 0.032639, false, 0},
-		{"pdf_x0_alpha1", "GAMMA.DIST(0,1,1,FALSE)", 1, false, 0},
+		{"pdf_x0_alpha1", "GAMMA.DIST(0,1,1,FALSE)", 0, true, ErrValNUM},
 		{"pdf_x0_alpha2", "GAMMA.DIST(0,2,1,FALSE)", 0, false, 0},
-		{"pdf_x0_alpha1_beta2", "GAMMA.DIST(0,1,2,FALSE)", 0.5, false, 0},
+		{"pdf_x0_alpha1_beta2", "GAMMA.DIST(0,1,2,FALSE)", 0, true, ErrValNUM},
 		{"pdf_exponential", "GAMMA.DIST(1,1,1,FALSE)", 0.367879441, false, 0},
 		{"pdf_alpha2_beta1", "GAMMA.DIST(1,2,1,FALSE)", 0.367879441, false, 0},
 		{"pdf_alpha3_beta1", "GAMMA.DIST(2,3,1,FALSE)", 0.270670566, false, 0},
