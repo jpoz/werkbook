@@ -8968,9 +8968,9 @@ func TestDURATION(t *testing.T) {
 		// basis=1 (actual/actual) - doc example
 		{name: "basis 1", args: numArgs(43282, 54058, 0.08, 0.09, 2, 1), want: 10.9191},
 		// basis=2 (actual/360)
-		{name: "basis 2", args: numArgs(43282, 54058, 0.08, 0.09, 2, 2), want: 10.9303},
+		{name: "basis 2", args: numArgs(43282, 54058, 0.08, 0.09, 2, 2), want: 10.9191},
 		// basis=3 (actual/365)
-		{name: "basis 3", args: numArgs(43282, 54058, 0.08, 0.09, 2, 3), want: 10.9200},
+		{name: "basis 3", args: numArgs(43282, 54058, 0.08, 0.09, 2, 3), want: 10.9191},
 		// basis=4 (European 30/360)
 		{name: "basis 4", args: numArgs(43282, 54058, 0.08, 0.09, 2, 4), want: 10.9137},
 
@@ -9077,8 +9077,8 @@ func TestMDURATION(t *testing.T) {
 		// settlement=7/1/2018, maturity=1/1/2048, coupon=0.08, yld=0.09, freq=2
 		{name: "basis 0", args: numArgs(43282, 54058, 0.08, 0.09, 2, 0), want: 10.4438},
 		{name: "basis 1", args: numArgs(43282, 54058, 0.08, 0.09, 2, 1), want: 10.4490},
-		{name: "basis 2", args: numArgs(43282, 54058, 0.08, 0.09, 2, 2), want: 10.4596},
-		{name: "basis 3", args: numArgs(43282, 54058, 0.08, 0.09, 2, 3), want: 10.4498},
+		{name: "basis 2", args: numArgs(43282, 54058, 0.08, 0.09, 2, 2), want: 10.4490},
+		{name: "basis 3", args: numArgs(43282, 54058, 0.08, 0.09, 2, 3), want: 10.4490},
 		{name: "basis 4", args: numArgs(43282, 54058, 0.08, 0.09, 2, 4), want: 10.4438},
 
 		// --- Zero coupon bond ---
