@@ -4,6 +4,407 @@ import (
 	"testing"
 )
 
+
+func TestISBLANK(t *testing.T) {
+	t.Run("empty_cell_reference", func(t *testing.T) {
+		// ISBLANK should return TRUE for a reference to an empty cell.
+		resolver := &mockResolver{}
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		// A1 is not set in the resolver, so GetCellValue returns EmptyVal()
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISBLANK(A1) empty cell = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("non_empty_cell_with_number", func(t *testing.T) {
+		// ISBLANK should return FALSE for a cell containing a number.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(A1) with number = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("non_empty_cell_with_text", func(t *testing.T) {
+		// ISBLANK should return FALSE for a cell containing text.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(A1) with text = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("non_empty_cell_with_boolean", func(t *testing.T) {
+		// ISBLANK should return FALSE for a cell containing a boolean.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(A1) with TRUE = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("empty_string_literal_not_blank", func(t *testing.T) {
+		// In Excel, ISBLANK("") returns FALSE. An empty string is NOT the same as blank.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK("")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf(`ISBLANK("") = %v, want FALSE`, got)
+		}
+	})
+
+	t.Run("number_zero_not_blank", func(t *testing.T) {
+		// ISBLANK(0) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(0) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("positive_number_not_blank", func(t *testing.T) {
+		// ISBLANK(1) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(1) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("negative_number_not_blank", func(t *testing.T) {
+		// ISBLANK(-5) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(-5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(-5) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("text_string_not_blank", func(t *testing.T) {
+		// ISBLANK("text") should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK("text")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf(`ISBLANK("text") = %v, want FALSE`, got)
+		}
+	})
+
+	t.Run("boolean_true_not_blank", func(t *testing.T) {
+		// ISBLANK(TRUE) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(TRUE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(TRUE) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("boolean_false_not_blank", func(t *testing.T) {
+		// ISBLANK(FALSE) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(FALSE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(FALSE) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("decimal_number_not_blank", func(t *testing.T) {
+		// ISBLANK(3.14) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(3.14)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(3.14) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("string_with_space_not_blank", func(t *testing.T) {
+		// ISBLANK(" ") should return FALSE - a space is text, not blank.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(" ")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf(`ISBLANK(" ") = %v, want FALSE`, got)
+		}
+	})
+
+	t.Run("cell_with_zero_not_blank", func(t *testing.T) {
+		// A cell containing 0 is not blank.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(A1) with 0 = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("cell_with_empty_string_not_blank", func(t *testing.T) {
+		// A cell containing an empty string is not blank.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal(""),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf(`ISBLANK(A1) with "" = %v, want FALSE`, got)
+		}
+	})
+
+	t.Run("cell_with_error_not_blank", func(t *testing.T) {
+		// A cell containing an error value is not blank.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(A1) with #N/A = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("multiple_empty_cells", func(t *testing.T) {
+		// Verify ISBLANK returns TRUE for different empty cell references.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10), // A1 has data
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   5,
+			CurrentRow:   5,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		// B1 is empty
+		cf := evalCompile(t, `ISBLANK(B1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISBLANK(B1) empty = %v, want TRUE", got)
+		}
+
+		// C5 is empty
+		cf = evalCompile(t, `ISBLANK(C5)`)
+		got, err = Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISBLANK(C5) empty = %v, want TRUE", got)
+		}
+
+		// Z100 is empty
+		cf = evalCompile(t, `ISBLANK(Z100)`)
+		got, err = Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISBLANK(Z100) empty = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("expression_result_not_blank", func(t *testing.T) {
+		// ISBLANK(1+1) should return FALSE since the result is a number.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(1+1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(1+1) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("no_args_returns_error", func(t *testing.T) {
+		// ISBLANK() with no arguments should return #VALUE!
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISBLANK() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too_many_args_returns_error", func(t *testing.T) {
+		// ISBLANK(A1, B1) with two arguments should return #VALUE!
+		resolver := &mockResolver{}
+		ctx := &EvalContext{
+			CurrentCol:   3,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+
+		cf := evalCompile(t, `ISBLANK(A1,B1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISBLANK(A1,B1) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("large_number_not_blank", func(t *testing.T) {
+		// ISBLANK(999999) should return FALSE.
+		resolver := &mockResolver{}
+
+		cf := evalCompile(t, `ISBLANK(999999)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISBLANK(999999) = %v, want FALSE", got)
+		}
+	})
+}
+
 func TestISEVEN(t *testing.T) {
 	resolver := &mockResolver{}
 

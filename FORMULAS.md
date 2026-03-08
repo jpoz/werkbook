@@ -154,7 +154,7 @@ Werkbook supports **343** Excel formula functions.
 | INTERCEPT | Statistical | 16 |
 | IPMT | Financial | 4 |
 | IRR | Financial | 19 |
-| ISBLANK | Information | - |
+| ISBLANK | Information | 23 |
 | ISERR | Information | - |
 | ISERROR | Information | 21 |
 | ISEVEN | Information | 4 |
