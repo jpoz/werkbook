@@ -7133,3 +7133,265 @@ func TestRECEIVED_ViaEval(t *testing.T) {
 		t.Errorf("got %f, want 1014584.65", v.Num)
 	}
 }
+
+// === ACCRINTM ===
+
+func TestACCRINTM_Comprehensive(t *testing.T) {
+	// Serial numbers for reference dates:
+	// DATE(2008,4,1) = 39539, DATE(2008,6,15) = 39614
+	// DATE(2008,2,15) = 39493, DATE(2008,5,15) = 39583
+	// DATE(2023,1,1) = 44927, DATE(2023,1,31) = 44957
+	// DATE(2023,4,1) = 45017, DATE(2023,6,30) = 45107
+	// DATE(2023,12,31) = 45291
+	// DATE(2024,1,1) = 45292, DATE(2024,7,1) = 45474
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64 // custom tolerance; 0 means use default 0.01
+	}{
+		// --- Doc example ---
+		// ACCRINTM(DATE(2008,4,1), DATE(2008,6,15), 0.1, 1000, 3) = 20.54794521
+		// A = 75 actual days, D = 365 => 1000 * 0.1 * 75 / 365
+		{
+			name: "doc example basis 3",
+			args: numArgs(39539, 39614, 0.1, 1000, 3),
+			want: 20.54794521,
+			tol:  0.00001,
+		},
+		// --- All 5 basis types with same dates (2/15/2008 to 5/15/2008, rate=0.05, par=1000) ---
+		// basis 0: US 30/360, A=90, D=360 => 1000 * 0.05 * 90/360 = 12.5
+		{
+			name: "basis 0 US 30/360",
+			args: numArgs(39493, 39583, 0.05, 1000, 0),
+			want: 12.5,
+		},
+		// basis 1: actual/actual, A=90, D=366 (2008 is leap) => 1000 * 0.05 * 90/366 = 12.29508
+		{
+			name: "basis 1 actual/actual",
+			args: numArgs(39493, 39583, 0.05, 1000, 1),
+			want: 12.29508,
+			tol:  0.001,
+		},
+		// basis 2: actual/360, A=90, D=360 => 1000 * 0.05 * 90/360 = 12.5
+		{
+			name: "basis 2 actual/360",
+			args: numArgs(39493, 39583, 0.05, 1000, 2),
+			want: 12.5,
+		},
+		// basis 3: actual/365, A=90, D=365 => 1000 * 0.05 * 90/365 = 12.32877
+		{
+			name: "basis 3 actual/365",
+			args: numArgs(39493, 39583, 0.05, 1000, 3),
+			want: 12.32877,
+			tol:  0.001,
+		},
+		// basis 4: European 30/360, A=90, D=360 => 1000 * 0.05 * 90/360 = 12.5
+		{
+			name: "basis 4 European 30/360",
+			args: numArgs(39493, 39583, 0.05, 1000, 4),
+			want: 12.5,
+		},
+		// --- Default basis (omitted = 0) ---
+		{
+			name: "default basis omitted 4 args",
+			args: numArgs(39493, 39583, 0.05, 1000),
+			want: 12.5,
+		},
+		// --- Various date ranges ---
+		// Short range: 30 days, basis 0
+		// 1/1/2023 to 1/31/2023, rate=0.08, par=1000
+		// A=30 (US 30/360), D=360 => 1000 * 0.08 * 30/360 = 6.6667
+		{
+			name: "short 30 day range",
+			args: numArgs(44927, 44957, 0.08, 1000, 0),
+			want: 6.6667,
+			tol:  0.001,
+		},
+		// 90 day range: 4/1/2023 to 6/30/2023, basis 2 (actual/360)
+		// A=90 actual days, D=360 => 5000 * 0.06 * 90/360 = 75.0
+		{
+			name: "90 day range basis 2",
+			args: numArgs(45017, 45107, 0.06, 5000, 2),
+			want: 75.0,
+		},
+		// 180 day range: 1/1/2024 to 7/1/2024, basis 3 (actual/365)
+		// A=182 actual days, D=365 => 2000 * 0.12 * 182/365 = 119.6712
+		{
+			name: "180 day range basis 3",
+			args: numArgs(45292, 45474, 0.12, 2000, 3),
+			want: 119.6712,
+			tol:  0.01,
+		},
+		// Full year: 1/1/2023 to 12/31/2023, basis 1 (actual/actual)
+		// A=364 actual days, D=365 (2023 is not leap) => 10000 * 0.05 * 364/365 = 498.6301
+		{
+			name: "full year basis 1",
+			args: numArgs(44927, 45291, 0.05, 10000, 1),
+			want: 498.6301,
+			tol:  0.01,
+		},
+		// --- Large par value ---
+		// par=1000000, rate=0.03, basis 0
+		// 2/15/2008 to 5/15/2008: A=90, D=360 => 1000000 * 0.03 * 90/360 = 7500.0
+		{
+			name: "large par value",
+			args: numArgs(39493, 39583, 0.03, 1000000, 0),
+			want: 7500.0,
+		},
+		// --- Small par value ---
+		// par=1, rate=0.1, basis 0
+		// 2/15/2008 to 5/15/2008: A=90, D=360 => 1 * 0.1 * 90/360 = 0.025
+		{
+			name: "small par value",
+			args: numArgs(39493, 39583, 0.1, 1, 0),
+			want: 0.025,
+			tol:  0.001,
+		},
+		// --- Small rate ---
+		// rate=0.001, par=1000, basis 0
+		// A=90, D=360 => 1000 * 0.001 * 90/360 = 0.25
+		{
+			name: "small rate",
+			args: numArgs(39493, 39583, 0.001, 1000, 0),
+			want: 0.25,
+			tol:  0.001,
+		},
+		// --- Large rate ---
+		// rate=2.0, par=1000, basis 0
+		// A=90, D=360 => 1000 * 2.0 * 90/360 = 500.0
+		{
+			name: "large rate",
+			args: numArgs(39493, 39583, 2.0, 1000, 0),
+			want: 500.0,
+		},
+		// --- Fractional dates get truncated ---
+		{
+			name: "fractional dates truncated",
+			args: numArgs(39539.7, 39614.9, 0.1, 1000, 3),
+			want: 20.54794521,
+			tol:  0.00001,
+		},
+		// --- Error cases ---
+		{
+			name:    "rate zero",
+			args:    numArgs(39493, 39583, 0, 1000, 0),
+			wantErr: true,
+		},
+		{
+			name:    "rate negative",
+			args:    numArgs(39493, 39583, -0.05, 1000, 0),
+			wantErr: true,
+		},
+		{
+			name:    "par zero",
+			args:    numArgs(39493, 39583, 0.05, 0, 0),
+			wantErr: true,
+		},
+		{
+			name:    "par negative",
+			args:    numArgs(39493, 39583, 0.05, -1000, 0),
+			wantErr: true,
+		},
+		{
+			name:    "issue equals settlement",
+			args:    numArgs(39493, 39493, 0.05, 1000, 0),
+			wantErr: true,
+		},
+		{
+			name:    "issue after settlement",
+			args:    numArgs(39583, 39493, 0.05, 1000, 0),
+			wantErr: true,
+		},
+		{
+			name:    "basis negative",
+			args:    numArgs(39493, 39583, 0.05, 1000, -1),
+			wantErr: true,
+		},
+		{
+			name:    "basis 5",
+			args:    numArgs(39493, 39583, 0.05, 1000, 5),
+			wantErr: true,
+		},
+		{
+			name:    "basis 99",
+			args:    numArgs(39493, 39583, 0.05, 1000, 99),
+			wantErr: true,
+		},
+		{
+			name:    "too few args 3",
+			args:    numArgs(39493, 39583, 0.05),
+			wantErr: true,
+		},
+		{
+			name:    "too many args 6",
+			args:    numArgs(39493, 39583, 0.05, 1000, 0, 1),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric issue",
+			args:    []Value{StringVal("abc"), NumberVal(39583), NumberVal(0.05), NumberVal(1000), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric settlement",
+			args:    []Value{NumberVal(39493), StringVal("xyz"), NumberVal(0.05), NumberVal(1000), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric rate",
+			args:    []Value{NumberVal(39493), NumberVal(39583), StringVal("abc"), NumberVal(1000), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric par",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(0.05), StringVal("abc"), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric basis",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(0.05), NumberVal(1000), StringVal("abc")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnAccrintm(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestACCRINTM_ViaEval(t *testing.T) {
+	// ACCRINTM(DATE(2008,4,1), DATE(2008,6,15), 0.1, 1000, 3) = 20.54794521
+	cf := evalCompile(t, "ACCRINTM(DATE(2008,4,1), DATE(2008,6,15), 0.1, 1000, 3)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-20.54794521) > 0.00001 {
+		t.Errorf("got %f, want 20.54794521", v.Num)
+	}
+}

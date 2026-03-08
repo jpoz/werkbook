@@ -40,6 +40,7 @@ func init() {
 	Register("DISC", NoCtx(fnDisc))
 	Register("INTRATE", NoCtx(fnIntrate))
 	Register("RECEIVED", NoCtx(fnReceived))
+	Register("ACCRINTM", NoCtx(fnAccrintm))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1884,4 +1885,62 @@ func fnReceived(args []Value) (Value, error) {
 
 	received := investment / denom
 	return NumberVal(received), nil
+}
+
+// fnAccrintm implements ACCRINTM(issue, settlement, rate, par, [basis]).
+// Returns the accrued interest for a security that pays interest at maturity.
+// Formula: ACCRINTM = par * rate * A / D
+// where A = accrued days from issue to settlement, D = annual basis days.
+func fnAccrintm(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	issueRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	settlementRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	rate, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	par, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	basis := 0
+	if len(args) == 5 {
+		b, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		basis = int(b)
+	}
+
+	if basis < 0 || basis > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if rate <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if par <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	issue := math.Trunc(issueRaw)
+	settlement := math.Trunc(settlementRaw)
+	if issue >= settlement {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	a, d := dayCountBasis(issue, settlement, basis)
+	if d == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	result := par * rate * a / d
+	return NumberVal(result), nil
 }

@@ -1,10 +1,11 @@
 # Supported Formulas
 
-Werkbook supports **379** Excel formula functions.
+Werkbook supports **380** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
 | ABS | Math & Trig | 26 |
+| ACCRINTM | Financial | 3 |
 | ACOS | Math & Trig | 32 |
 | ACOSH | Math & Trig | 32 |
 | ACOT | Math & Trig | 27 |
@@ -386,12 +387,11 @@ Werkbook supports **379** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **91** Excel functions are not yet supported.
+The following **90** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
 | ACCRINT | Financial |
-| ACCRINTM | Financial |
 | AGGREGATE | Math & Trig |
 | AMORDEGRC | Financial |
 | AMORLINC | Financial |
