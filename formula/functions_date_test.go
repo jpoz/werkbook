@@ -27,6 +27,47 @@ func TestDATE(t *testing.T) {
 	}
 }
 
+func TestDateFunctionsWith1904System(t *testing.T) {
+	resolver := &mockResolver{}
+	ctx1904 := &EvalContext{Date1904: true}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{name: "DATE", formula: "DATE(2024,1,31)", want: NumberVal(43860)},
+		{name: "DAY", formula: "DAY(43889)", want: NumberVal(29)},
+		{name: "EDATE", formula: "EDATE(43860,1)", want: NumberVal(43889)},
+		{name: "EOMONTH", formula: "EOMONTH(43860,0)", want: NumberVal(43860)},
+		{name: "DATEVALUE", formula: `DATEVALUE("2024-02-29")`, want: NumberVal(43889)},
+		{name: "WORKDAY.INTL", formula: "WORKDAY.INTL(43860,10,1)", want: NumberVal(43874)},
+		{name: "WEEKDAY", formula: "WEEKDAY(43874,2)", want: NumberVal(3)},
+		{name: "NETWORKDAYS.INTL", formula: "NETWORKDAYS.INTL(43860,43904,1)", want: NumberVal(33)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx1904)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.Type {
+				t.Fatalf("Eval(%q) type = %v, want %v", tt.formula, got.Type, tt.want.Type)
+			}
+			switch got.Type {
+			case ValueNumber:
+				if got.Num != tt.want.Num {
+					t.Fatalf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.Num)
+				}
+			default:
+				t.Fatalf("unexpected test value type %v", got.Type)
+			}
+		})
+	}
+}
+
 func TestFnDATEEdgeCases(t *testing.T) {
 	resolver := &mockResolver{}
 

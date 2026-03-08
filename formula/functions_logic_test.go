@@ -1,8 +1,49 @@
 package formula
 
 import (
+	"reflect"
 	"testing"
 )
+
+func TestTRUEFALSE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{"TRUE()", BoolVal(true)},
+		{"FALSE()", BoolVal(false)},
+		{"IF(TRUE(),1,0)", NumberVal(1)},
+		{"IF(FALSE(),1,0)", NumberVal(0)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+			}
+		})
+	}
+
+	for _, formula := range []string{"TRUE(1)", "FALSE(1)"} {
+		t.Run(formula, func(t *testing.T) {
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", formula, err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Fatalf("Eval(%q) = %#v, want #VALUE!", formula, got)
+			}
+		})
+	}
+}
 
 func TestAND(t *testing.T) {
 	resolver := &mockResolver{}
@@ -526,9 +567,9 @@ func TestXOR(t *testing.T) {
 			{"XOR(TRUE,FALSE)", true},   // odd TRUE count
 			{"XOR(FALSE,FALSE)", false}, // zero TRUE count
 			// Three booleans
-			{"XOR(TRUE,TRUE,TRUE)", true},    // 3 TRUE = odd
-			{"XOR(TRUE,TRUE,FALSE)", false},  // 2 TRUE = even
-			{"XOR(TRUE,FALSE,FALSE)", true},  // 1 TRUE = odd
+			{"XOR(TRUE,TRUE,TRUE)", true},     // 3 TRUE = odd
+			{"XOR(TRUE,TRUE,FALSE)", false},   // 2 TRUE = even
+			{"XOR(TRUE,FALSE,FALSE)", true},   // 1 TRUE = odd
 			{"XOR(FALSE,FALSE,FALSE)", false}, // 0 TRUE
 			// Four TRUE (even count) → FALSE
 			{"XOR(TRUE,TRUE,TRUE,TRUE)", false},

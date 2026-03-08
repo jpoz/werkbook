@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **341** Excel formula functions.
+Werkbook supports **343** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -76,10 +76,10 @@ Werkbook supports **341** Excel formula functions.
 | CSCH | Math & Trig | - |
 | CUMIPMT | Financial | 33 |
 | CUMPRINC | Financial | 29 |
-| DATE | Date & Time | 49 |
+| DATE | Date & Time | 50 |
 | DATEDIF | Date & Time | 18 |
-| DATEVALUE | Date & Time | 38 |
-| DAY | Date & Time | 5 |
+| DATEVALUE | Date & Time | 39 |
+| DAY | Date & Time | 6 |
 | DAYS | Date & Time | 17 |
 | DAYS360 | Date & Time | 7 |
 | DB | Financial | 29 |
@@ -95,9 +95,9 @@ Werkbook supports **341** Excel formula functions.
 | DOLLARDE | Financial | 18 |
 | DOLLARFR | Financial | 17 |
 | DROP | Lookup & Reference | 26 |
-| EDATE | Date & Time | 18 |
+| EDATE | Date & Time | 19 |
 | EFFECT | Financial | 18 |
-| EOMONTH | Date & Time | 17 |
+| EOMONTH | Date & Time | 18 |
 | ERF | Math & Trig | 22 |
 | ERF.PRECISE | Math & Trig | 18 |
 | ERFC | Math & Trig | 18 |
@@ -113,6 +113,7 @@ Werkbook supports **341** Excel formula functions.
 | F.INV.RT | Statistical | 21 |
 | FACT | Math & Trig | - |
 | FACTDOUBLE | Math & Trig | - |
+| FALSE | Logical | - |
 | FILTER | Lookup & Reference | 31 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
@@ -143,11 +144,11 @@ Werkbook supports **341** Excel formula functions.
 | HOUR | Date & Time | 16 |
 | HSTACK | Lookup & Reference | 18 |
 | HYPGEOM.DIST | Statistical | 37 |
-| IF | Logical | 21 |
-| IFERROR | Logical | 44 |
+| IF | Logical | 23 |
+| IFERROR | Logical | 45 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
-| INDEX | Lookup & Reference | 13 |
+| INDEX | Lookup & Reference | 15 |
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
 | INTERCEPT | Statistical | 16 |
@@ -202,7 +203,7 @@ Werkbook supports **341** Excel formula functions.
 | NA | Information | - |
 | NEGBINOM.DIST | Statistical | 30 |
 | NETWORKDAYS | Date & Time | 26 |
-| NETWORKDAYS.INTL | Date & Time | 43 |
+| NETWORKDAYS.INTL | Date & Time | 44 |
 | NOMINAL | Financial | 17 |
 | NORM.DIST | Statistical | 29 |
 | NORM.INV | Statistical | 28 |
@@ -285,7 +286,7 @@ Werkbook supports **341** Excel formula functions.
 | SUBSTITUTE | Text | 23 |
 | SUBTOTAL | Math & Trig | - |
 | SUM | Statistical | 36 |
-| SUMIF | Statistical | 36 |
+| SUMIF | Statistical | 37 |
 | SUMIFS | Statistical | 42 |
 | SUMPRODUCT | Statistical | 22 |
 | SUMSQ | Statistical | - |
@@ -316,6 +317,7 @@ Werkbook supports **341** Excel formula functions.
 | TRANSPOSE | Lookup & Reference | 35 |
 | TRIM | Text | 18 |
 | TRIMMEAN | Statistical | 23 |
+| TRUE | Logical | - |
 | TRUNC | Math & Trig | - |
 | TYPE | Information | - |
 | UNIQUE | Lookup & Reference | 29 |
@@ -331,11 +333,11 @@ Werkbook supports **341** Excel formula functions.
 | VDB | Financial | 33 |
 | VLOOKUP | Lookup & Reference | 15 |
 | VSTACK | Lookup & Reference | 18 |
-| WEEKDAY | Date & Time | - |
+| WEEKDAY | Date & Time | 1 |
 | WEEKNUM | Date & Time | - |
 | WEIBULL.DIST | Statistical | 33 |
 | WORKDAY | Date & Time | 23 |
-| WORKDAY.INTL | Date & Time | 33 |
+| WORKDAY.INTL | Date & Time | 34 |
 | WRAPCOLS | Lookup & Reference | 20 |
 | WRAPROWS | Lookup & Reference | 19 |
 | XIRR | Financial | 19 |

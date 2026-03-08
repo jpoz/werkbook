@@ -832,6 +832,9 @@ func fnSUMIF(args []Value) (Value, error) {
 
 	if rangeArg.Type != ValueArray {
 		if MatchesCriteria(rangeArg, criteria) {
+			if sumRange.Type == ValueError {
+				return sumRange, nil
+			}
 			n, e := CoerceNum(sumRange)
 			if e != nil {
 				return NumberVal(0), nil
@@ -850,6 +853,9 @@ func fnSUMIF(args []Value) (Value, error) {
 					sv = sumRange.Array[i][j]
 				} else if sumRange.Type != ValueArray {
 					sv = sumRange
+				}
+				if sv.Type == ValueError {
+					return sv, nil
 				}
 				if n, e := CoerceNum(sv); e == nil {
 					sum += n
@@ -2826,8 +2832,7 @@ func normSInv(p float64) float64 {
 			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 	}
 
-	// Halley rational refinement (one iteration) to reach full float64
-	// precision, matching Excel's NORM.S.INV results.
+	// One Halley step closes the remaining gap to Excel's float64 results.
 	e := 0.5*math.Erfc(-x/math.Sqrt2) - p
 	u := e * math.Sqrt(2*math.Pi) * math.Exp(x*x/2)
 	x = x - u/(1+x*u/2)
@@ -4664,7 +4669,7 @@ func fnHypgeomDist(args []Value) (Value, error) {
 	}
 
 	// Truncate all to integers.
-	k := int(sampleSF)       // sample_s
+	k := int(sampleSF)        // sample_s
 	n := int(numberSampleF)   // number_sample
 	bigM := int(populationSF) // population_s (M)
 	bigN := int(numberPopF)   // number_pop (N)

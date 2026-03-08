@@ -372,6 +372,12 @@ func fnINDEX(args []Value) (Value, error) {
 			return *e, nil
 		}
 		colNum = int(cn)
+	} else if len(arr.Array) == 1 {
+		// Excel treats INDEX(single_row_array, n) as INDEX(array, 1, n).
+		// This also preserves the row/column zero semantics in the special
+		// handling below: INDEX(single_row_array, 0) returns the full row.
+		ri = 1
+		colNum = int(rowNum)
 	}
 
 	// Negative indices are invalid and return #VALUE! in Excel.

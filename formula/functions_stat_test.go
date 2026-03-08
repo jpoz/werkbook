@@ -67,9 +67,9 @@ func TestCountBlank(t *testing.T) {
 			cells: map[CellAddr]Value{
 				{Col: 1, Row: 1}: NumberVal(1),
 				// A2 is empty (missing)
-				{Col: 1, Row: 3}: StringVal(""),    // empty string = blank
+				{Col: 1, Row: 3}: StringVal(""), // empty string = blank
 				{Col: 1, Row: 4}: StringVal("hello"),
-				{Col: 1, Row: 5}: NumberVal(0),      // zero is not blank
+				{Col: 1, Row: 5}: NumberVal(0), // zero is not blank
 			},
 		}
 
@@ -325,6 +325,26 @@ func TestSUMIF(t *testing.T) {
 	}
 }
 
+func TestSUMIFPropagatesMatchedSumRangeError(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("East"),
+			{Col: 1, Row: 2}: StringVal("West"),
+			{Col: 2, Row: 1}: ErrorVal(ErrValNAME),
+			{Col: 2, Row: 2}: NumberVal(10),
+		},
+	}
+
+	cf := evalCompile(t, `SUMIF(A1:A2,"East",B1:B2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNAME {
+		t.Fatalf(`SUMIF(A1:A2,"East",B1:B2) = %v, want #NAME?`, got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // COUNT – boolean handling
 // ---------------------------------------------------------------------------
@@ -488,39 +508,39 @@ func TestCOUNT(t *testing.T) {
 			expected: 3,
 		},
 		{
-			name:    "scalar number argument counted",
-			formula: "COUNT(42)",
-			cells:   map[CellAddr]Value{},
+			name:     "scalar number argument counted",
+			formula:  "COUNT(42)",
+			cells:    map[CellAddr]Value{},
 			expected: 1,
 		},
 		{
-			name:    "scalar string not counted",
-			formula: `COUNT("hello")`,
-			cells:   map[CellAddr]Value{},
+			name:     "scalar string not counted",
+			formula:  `COUNT("hello")`,
+			cells:    map[CellAddr]Value{},
 			expected: 0,
 		},
 		{
-			name:    "scalar boolean TRUE counted",
-			formula: "COUNT(TRUE)",
-			cells:   map[CellAddr]Value{},
+			name:     "scalar boolean TRUE counted",
+			formula:  "COUNT(TRUE)",
+			cells:    map[CellAddr]Value{},
 			expected: 1,
 		},
 		{
-			name:    "scalar boolean FALSE counted",
-			formula: "COUNT(FALSE)",
-			cells:   map[CellAddr]Value{},
+			name:     "scalar boolean FALSE counted",
+			formula:  "COUNT(FALSE)",
+			cells:    map[CellAddr]Value{},
 			expected: 1,
 		},
 		{
-			name:    "scalar string number counted",
-			formula: `COUNT("5")`,
-			cells:   map[CellAddr]Value{},
+			name:     "scalar string number counted",
+			formula:  `COUNT("5")`,
+			cells:    map[CellAddr]Value{},
 			expected: 1,
 		},
 		{
-			name:    "scalar non-numeric string not counted",
-			formula: `COUNT("abc")`,
-			cells:   map[CellAddr]Value{},
+			name:     "scalar non-numeric string not counted",
+			formula:  `COUNT("abc")`,
+			cells:    map[CellAddr]Value{},
 			expected: 0,
 		},
 		{
@@ -568,9 +588,9 @@ func TestCOUNT(t *testing.T) {
 			expected: 4,
 		},
 		{
-			name:    "mixed scalar args",
-			formula: `COUNT(1,2,"hi",TRUE,"3")`,
-			cells:   map[CellAddr]Value{},
+			name:     "mixed scalar args",
+			formula:  `COUNT(1,2,"hi",TRUE,"3")`,
+			cells:    map[CellAddr]Value{},
 			expected: 4, // 1, 2, TRUE, "3"
 		},
 	}
@@ -1317,10 +1337,10 @@ func TestCOUNTA(t *testing.T) {
 	t.Run("excel_doc_example", func(t *testing.T) {
 		r := &mockResolver{
 			cells: map[CellAddr]Value{
-				{Col: 1, Row: 1}: NumberVal(39790),   // date serial
-				{Col: 1, Row: 2}: NumberVal(19),       // integer
-				{Col: 1, Row: 3}: NumberVal(22.24),    // decimal
-				{Col: 1, Row: 4}: BoolVal(true),       // TRUE
+				{Col: 1, Row: 1}: NumberVal(39790),     // date serial
+				{Col: 1, Row: 2}: NumberVal(19),        // integer
+				{Col: 1, Row: 3}: NumberVal(22.24),     // decimal
+				{Col: 1, Row: 4}: BoolVal(true),        // TRUE
 				{Col: 1, Row: 5}: ErrorVal(ErrValDIV0), // #DIV/0!
 			},
 		}
@@ -1451,11 +1471,11 @@ func TestSUMIFS_AllComparisonOperators(t *testing.T) {
 		want    float64
 	}{
 		{"greater than", `SUMIFS(A1:A5,B1:B5,">30")`, 90},       // 40+50
-		{"less than", `SUMIFS(A1:A5,B1:B5,"<30")`, 30},           // 10+20
-		{"greater or equal", `SUMIFS(A1:A5,B1:B5,">=30")`, 120},  // 30+40+50
-		{"less or equal", `SUMIFS(A1:A5,B1:B5,"<=30")`, 60},      // 10+20+30
-		{"equal", `SUMIFS(A1:A5,B1:B5,"=30")`, 30},               // 30
-		{"not equal", `SUMIFS(A1:A5,B1:B5,"<>30")`, 120},         // 10+20+40+50
+		{"less than", `SUMIFS(A1:A5,B1:B5,"<30")`, 30},          // 10+20
+		{"greater or equal", `SUMIFS(A1:A5,B1:B5,">=30")`, 120}, // 30+40+50
+		{"less or equal", `SUMIFS(A1:A5,B1:B5,"<=30")`, 60},     // 10+20+30
+		{"equal", `SUMIFS(A1:A5,B1:B5,"=30")`, 30},              // 30
+		{"not equal", `SUMIFS(A1:A5,B1:B5,"<>30")`, 120},        // 10+20+40+50
 	}
 
 	for _, tt := range tests {
@@ -2372,12 +2392,12 @@ func TestAVERAGEIF_ComparisonOperators(t *testing.T) {
 		formula string
 		want    float64
 	}{
-		{"greater than", `AVERAGEIF(A1:A5,">25")`, 40},           // 30+40+50 = 120/3
-		{"less than", `AVERAGEIF(A1:A5,"<25")`, 15},              // 10+20 = 30/2
-		{"greater or equal", `AVERAGEIF(A1:A5,">=30")`, 40},      // 30+40+50 = 120/3
-		{"less or equal", `AVERAGEIF(A1:A5,"<=20")`, 15},         // 10+20 = 30/2
-		{"equal operator", `AVERAGEIF(A1:A5,"=30")`, 30},         // 30/1
-		{"not equal", `AVERAGEIF(A1:A5,"<>30")`, 30},             // 10+20+40+50 = 120/4
+		{"greater than", `AVERAGEIF(A1:A5,">25")`, 40},      // 30+40+50 = 120/3
+		{"less than", `AVERAGEIF(A1:A5,"<25")`, 15},         // 10+20 = 30/2
+		{"greater or equal", `AVERAGEIF(A1:A5,">=30")`, 40}, // 30+40+50 = 120/3
+		{"less or equal", `AVERAGEIF(A1:A5,"<=20")`, 15},    // 10+20 = 30/2
+		{"equal operator", `AVERAGEIF(A1:A5,"=30")`, 30},    // 30/1
+		{"not equal", `AVERAGEIF(A1:A5,"<>30")`, 30},        // 10+20+40+50 = 120/4
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3000,7 +3020,7 @@ func TestSUMIF_AllComparisonOperators(t *testing.T) {
 		formula string
 		want    float64
 	}{
-		{"greater than", `SUMIF(A1:A5,">30")`, 90},      // 40+50
+		{"greater than", `SUMIF(A1:A5,">30")`, 90},       // 40+50
 		{"less than", `SUMIF(A1:A5,"<30")`, 30},          // 10+20
 		{"greater or equal", `SUMIF(A1:A5,">=30")`, 120}, // 30+40+50
 		{"less or equal", `SUMIF(A1:A5,"<=30")`, 60},     // 10+20+30

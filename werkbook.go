@@ -376,9 +376,6 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
 		// Arithmetic operations will coerce via CoerceNum as needed.
 		return Value{Type: TypeString, String: cd.Value}
 	case "str", "inlineStr":
-		if cd.Formula != "" && (cd.IsDynamicArray || cd.IsArrayFormula || cd.FormulaType == "array") && isFormulaErrorString(cd.Value) {
-			return Value{Type: TypeError, String: cd.Value}
-		}
 		return Value{Type: TypeString, String: cd.Value}
 	case "d":
 		n, err := excelDateStringToSerial(cd.Value, date1904)

@@ -7,30 +7,30 @@ import (
 )
 
 func init() {
-	Register("DATE", NoCtx(fnDATE))
+	Register("DATE", fnDATECtx)
 	Register("DATEDIF", NoCtx(fnDATEDIF))
-	Register("DATEVALUE", NoCtx(fnDATEVALUE))
-	Register("DAY", NoCtx(fnDAY))
+	Register("DATEVALUE", fnDATEVALUECtx)
+	Register("DAY", fnDAYCtx)
 	Register("DAYS", NoCtx(fnDAYS))
 	Register("DAYS360", NoCtx(fnDAYS360))
-	Register("EDATE", NoCtx(fnEDATE))
-	Register("EOMONTH", NoCtx(fnEOMONTH))
+	Register("EDATE", fnEDATECtx)
+	Register("EOMONTH", fnEOMONTHCtx)
 	Register("HOUR", NoCtx(fnHOUR))
-	Register("ISOWEEKNUM", NoCtx(fnISOWEEKNUM))
+	Register("ISOWEEKNUM", fnISOWEEKNUMCtx)
 	Register("MINUTE", NoCtx(fnMINUTE))
-	Register("MONTH", NoCtx(fnMONTH))
-	Register("NETWORKDAYS", NoCtx(fnNETWORKDAYS))
-	Register("NETWORKDAYS.INTL", NoCtx(fnNetworkdaysIntl))
+	Register("MONTH", fnMONTHCtx)
+	Register("NETWORKDAYS", fnNETWORKDAYSCtx)
+	Register("NETWORKDAYS.INTL", fnNETWORKDAYSINTLCtx)
 	Register("NOW", NoCtx(fnNOW))
 	Register("SECOND", NoCtx(fnSECOND))
 	Register("TIME", NoCtx(fnTIME))
 	Register("TIMEVALUE", NoCtx(fnTIMEVALUE))
 	Register("TODAY", NoCtx(fnTODAY))
-	Register("WEEKDAY", NoCtx(fnWEEKDAY))
-	Register("WEEKNUM", NoCtx(fnWEEKNUM))
-	Register("WORKDAY", NoCtx(fnWORKDAY))
-	Register("WORKDAY.INTL", NoCtx(fnWorkdayIntl))
-	Register("YEAR", NoCtx(fnYEAR))
+	Register("WEEKDAY", fnWEEKDAYCtx)
+	Register("WEEKNUM", fnWEEKNUMCtx)
+	Register("WORKDAY", fnWORKDAYCtx)
+	Register("WORKDAY.INTL", fnWORKDAYINTLCtx)
+	Register("YEAR", fnYEARCtx)
 	Register("YEARFRAC", NoCtx(fnYEARFRAC))
 }
 
@@ -67,6 +67,25 @@ func TimeToExcelSerial(t time.Time) float64 {
 	return days
 }
 
+func timeToExcelSerialForDateSystem(t time.Time, date1904 bool) float64 {
+	if date1904 {
+		return timeToExcelSerial1904(t)
+	}
+	return TimeToExcelSerial(t)
+}
+
+func timeToExcelSerial1904(t time.Time) float64 {
+	y1, m1, d1 := Excel1904Epoch.Date()
+	y2, m2, d2 := t.Date()
+	epochDays := julianDayNumber(y1, int(m1), d1)
+	tDays := julianDayNumber(y2, int(m2), d2)
+	days := float64(tDays - epochDays)
+
+	h, min, sec := t.Clock()
+	days += (float64(h)*3600 + float64(min)*60 + float64(sec)) / 86400.0
+	return days
+}
+
 // julianDayNumber returns a Julian Day Number for the given date, useful for
 // computing the difference in days between two dates without overflow.
 func julianDayNumber(year, month, day int) int {
@@ -88,6 +107,13 @@ func ExcelSerialToTime(serial float64) time.Time {
 	return t
 }
 
+func excelSerialToTimeForDateSystem(serial float64, date1904 bool) time.Time {
+	if date1904 {
+		return ExcelSerialToTime1904(serial)
+	}
+	return ExcelSerialToTime(serial)
+}
+
 // excelSerialDateParts returns the year, month, day for an Excel serial number,
 // correctly handling serial 60 (Excel's fictional Feb 29, 1900).
 func excelSerialDateParts(serial float64) (int, time.Month, int) {
@@ -103,6 +129,14 @@ func excelSerialDateParts(serial float64) (int, time.Month, int) {
 	return t.Year(), t.Month(), t.Day()
 }
 
+func excelSerialDatePartsForDateSystem(serial float64, date1904 bool) (int, time.Month, int) {
+	if date1904 {
+		t := ExcelSerialToTime1904(serial)
+		return t.Year(), t.Month(), t.Day()
+	}
+	return excelSerialDateParts(serial)
+}
+
 // ExcelSerialToTime1904 converts an Excel serial date number to a time.Time
 // using the 1904 date system (Mac Excel). No leap-year bug adjustment is needed.
 func ExcelSerialToTime1904(serial float64) time.Time {
@@ -113,7 +147,15 @@ func ExcelSerialToTime1904(serial float64) time.Time {
 	return t
 }
 
+func fnDATECtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnDATEWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnDATE(args []Value) (Value, error) {
+	return fnDATEWithDateSystem(args, false)
+}
+
+func fnDATEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -165,18 +207,30 @@ func fnDATE(args []Value) (Value, error) {
 	// leap day). Go's time.Date normalizes Feb 29, 1900 to Mar 1, 1900, which
 	// would produce serial 61 via TimeToExcelSerial, so we intercept it here.
 	if y == 1900 && m == 2 && d == 29 {
+		if date1904 {
+			t := time.Date(1900, time.March, 1, 0, 0, 0, 0, time.UTC)
+			return NumberVal(timeToExcelSerialForDateSystem(t, true)), nil
+		}
 		return NumberVal(60), nil
 	}
 
 	t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
-	serial := TimeToExcelSerial(t)
+	serial := timeToExcelSerialForDateSystem(t, date1904)
 	if serial < 0 || serial > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(serial), nil
 }
 
+func fnDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnDAY(args []Value) (Value, error) {
+	return fnDAYWithDateSystem(args, false)
+}
+
+func fnDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -187,11 +241,19 @@ func fnDAY(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	_, _, day := excelSerialDateParts(n)
+	_, _, day := excelSerialDatePartsForDateSystem(n, date1904)
 	return NumberVal(float64(day)), nil
 }
 
+func fnMONTHCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnMONTHWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnMONTH(args []Value) (Value, error) {
+	return fnMONTHWithDateSystem(args, false)
+}
+
+func fnMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -202,7 +264,7 @@ func fnMONTH(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	_, month, _ := excelSerialDateParts(n)
+	_, month, _ := excelSerialDatePartsForDateSystem(n, date1904)
 	return NumberVal(float64(month)), nil
 }
 
@@ -222,7 +284,15 @@ func fnTODAY(args []Value) (Value, error) {
 	return NumberVal(math.Floor(TimeToExcelSerial(today))), nil
 }
 
+func fnYEARCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnYEARWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnYEAR(args []Value) (Value, error) {
+	return fnYEARWithDateSystem(args, false)
+}
+
+func fnYEARWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -233,7 +303,7 @@ func fnYEAR(args []Value) (Value, error) {
 	if n < 0 || n > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
-	year, _, _ := excelSerialDateParts(n)
+	year, _, _ := excelSerialDatePartsForDateSystem(n, date1904)
 	return NumberVal(float64(year)), nil
 }
 
@@ -501,7 +571,15 @@ func fnTIME(args []Value) (Value, error) {
 	return NumberVal(result), nil
 }
 
+func fnWEEKDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnWEEKDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnWEEKDAY(args []Value) (Value, error) {
+	return fnWEEKDAYWithDateSystem(args, false)
+}
+
+func fnWEEKDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -518,7 +596,7 @@ func fnWEEKDAY(args []Value) (Value, error) {
 		}
 	}
 
-	t := ExcelSerialToTime(serial)
+	t := excelSerialToTimeForDateSystem(serial, date1904)
 	wd := int(t.Weekday())
 
 	rt := int(returnType)
@@ -547,7 +625,15 @@ func fnWEEKDAY(args []Value) (Value, error) {
 	return NumberVal(float64(result)), nil
 }
 
+func fnISOWEEKNUMCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnISOWEEKNUMWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnISOWEEKNUM(args []Value) (Value, error) {
+	return fnISOWEEKNUMWithDateSystem(args, false)
+}
+
+func fnISOWEEKNUMWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -555,12 +641,20 @@ func fnISOWEEKNUM(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(serial)
+	t := excelSerialToTimeForDateSystem(serial, date1904)
 	_, week := t.ISOWeek()
 	return NumberVal(float64(week)), nil
 }
 
+func fnDATEVALUECtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnDATEVALUEWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnDATEVALUE(args []Value) (Value, error) {
+	return fnDATEVALUEWithDateSystem(args, false)
+}
+
+func fnDATEVALUEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -592,7 +686,7 @@ func fnDATEVALUE(args []Value) (Value, error) {
 	for _, layout := range layouts {
 		t, err := time.Parse(layout, dateOnly)
 		if err == nil {
-			return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
+			return NumberVal(math.Floor(timeToExcelSerialForDateSystem(t, date1904))), nil
 		}
 	}
 
@@ -604,7 +698,7 @@ func fnDATEVALUE(args []Value) (Value, error) {
 	for _, layout := range twoDigitLayouts {
 		t, err := time.Parse(layout, dateOnly)
 		if err == nil {
-			return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
+			return NumberVal(math.Floor(timeToExcelSerialForDateSystem(t, date1904))), nil
 		}
 	}
 
@@ -612,7 +706,7 @@ func fnDATEVALUE(args []Value) (Value, error) {
 	if m, d, ok := parseMonthDay(dateOnly); ok {
 		now := time.Now()
 		t := time.Date(now.Year(), m, d, 0, 0, 0, 0, time.UTC)
-		return NumberVal(math.Floor(TimeToExcelSerial(t))), nil
+		return NumberVal(math.Floor(timeToExcelSerialForDateSystem(t, date1904))), nil
 	}
 
 	return ErrorVal(ErrValVALUE), nil
@@ -752,7 +846,15 @@ func parseMonthDay(s string) (time.Month, int, bool) {
 	return m, d, true
 }
 
+func fnEDATECtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnEDATEWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnEDATE(args []Value) (Value, error) {
+	return fnEDATEWithDateSystem(args, false)
+}
+
+func fnEDATEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -764,7 +866,7 @@ func fnEDATE(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(serial)
+	t := excelSerialToTimeForDateSystem(serial, date1904)
 	y, mo, d := t.Date()
 	m := int(math.Trunc(months))
 	targetMonth := time.Month(int(mo) + m)
@@ -781,10 +883,18 @@ func fnEDATE(args []Value) (Value, error) {
 	if result.Month() != targetMonth {
 		result = time.Date(targetYear, targetMonth+1, 0, 0, 0, 0, 0, time.UTC)
 	}
-	return NumberVal(math.Floor(TimeToExcelSerial(result))), nil
+	return NumberVal(math.Floor(timeToExcelSerialForDateSystem(result, date1904))), nil
+}
+
+func fnEOMONTHCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnEOMONTHWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
 func fnEOMONTH(args []Value) (Value, error) {
+	return fnEOMONTHWithDateSystem(args, false)
+}
+
+func fnEOMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -796,10 +906,10 @@ func fnEOMONTH(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	t := ExcelSerialToTime(serial)
+	t := excelSerialToTimeForDateSystem(serial, date1904)
 	y, m, _ := t.Date()
 	last := time.Date(y, m+time.Month(int(math.Trunc(months))+1), 0, 0, 0, 0, 0, time.UTC)
-	return NumberVal(math.Floor(TimeToExcelSerial(last))), nil
+	return NumberVal(math.Floor(timeToExcelSerialForDateSystem(last, date1904))), nil
 }
 
 // parseHolidays extracts a set of truncated serial dates from an optional holiday argument.
@@ -828,7 +938,15 @@ func parseHolidays(arg Value) (map[float64]bool, *Value) {
 	return holidays, nil
 }
 
+func fnNETWORKDAYSCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnNETWORKDAYSWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnNETWORKDAYS(args []Value) (Value, error) {
+	return fnNETWORKDAYSWithDateSystem(args, false)
+}
+
+func fnNETWORKDAYSWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -863,7 +981,7 @@ func fnNETWORKDAYS(args []Value) (Value, error) {
 
 	count := 0.0
 	for d := from; d <= to; d++ {
-		t := ExcelSerialToTime(d)
+		t := excelSerialToTimeForDateSystem(d, date1904)
 		wd := t.Weekday()
 		if wd != time.Saturday && wd != time.Sunday && !holidays[d] {
 			count++
@@ -876,7 +994,15 @@ func fnNETWORKDAYS(args []Value) (Value, error) {
 	return NumberVal(count), nil
 }
 
+func fnNETWORKDAYSINTLCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnNetworkdaysIntlWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnNetworkdaysIntl(args []Value) (Value, error) {
+	return fnNetworkdaysIntlWithDateSystem(args, false)
+}
+
+func fnNetworkdaysIntlWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -921,7 +1047,7 @@ func fnNetworkdaysIntl(args []Value) (Value, error) {
 
 	count := 0.0
 	for d := from; d <= to; d++ {
-		t := ExcelSerialToTime(d)
+		t := excelSerialToTimeForDateSystem(d, date1904)
 		wd := int(t.Weekday())
 		if !weekend[wd] && !holidays[d] {
 			count++
@@ -934,7 +1060,15 @@ func fnNetworkdaysIntl(args []Value) (Value, error) {
 	return NumberVal(count), nil
 }
 
+func fnWEEKNUMCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnWEEKNUMWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnWEEKNUM(args []Value) (Value, error) {
+	return fnWEEKNUMWithDateSystem(args, false)
+}
+
+func fnWEEKNUMWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -952,7 +1086,7 @@ func fnWEEKNUM(args []Value) (Value, error) {
 	}
 
 	rt := int(returnType)
-	t := ExcelSerialToTime(serial)
+	t := excelSerialToTimeForDateSystem(serial, date1904)
 
 	if rt == 21 {
 		_, isoWeek := t.ISOWeek()
@@ -1138,7 +1272,15 @@ func parseWeekendParam(arg Value) ([7]bool, *Value) {
 	return def.days, nil
 }
 
+func fnWORKDAYINTLCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnWorkdayIntlWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnWorkdayIntl(args []Value) (Value, error) {
+	return fnWorkdayIntlWithDateSystem(args, false)
+}
+
+func fnWorkdayIntlWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -1174,7 +1316,7 @@ func fnWorkdayIntl(args []Value) (Value, error) {
 		}
 	}
 
-	t := ExcelSerialToTime(startSerial)
+	t := excelSerialToTimeForDateSystem(startSerial, date1904)
 
 	if days == 0 {
 		return NumberVal(startSerial), nil
@@ -1188,7 +1330,7 @@ func fnWorkdayIntl(args []Value) (Value, error) {
 
 	for days > 0 {
 		t = t.AddDate(0, 0, step)
-		serial := math.Trunc(TimeToExcelSerial(t))
+		serial := math.Trunc(timeToExcelSerialForDateSystem(t, date1904))
 		wd := int(t.Weekday())
 		if weekend[wd] {
 			continue
@@ -1199,14 +1341,22 @@ func fnWorkdayIntl(args []Value) (Value, error) {
 		days--
 	}
 
-	result := TimeToExcelSerial(t)
+	result := timeToExcelSerialForDateSystem(t, date1904)
 	if result < 0 || result > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}
 	return NumberVal(result), nil
 }
 
+func fnWORKDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
+	return fnWORKDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
+}
+
 func fnWORKDAY(args []Value) (Value, error) {
+	return fnWORKDAYWithDateSystem(args, false)
+}
+
+func fnWORKDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -1232,7 +1382,7 @@ func fnWORKDAY(args []Value) (Value, error) {
 		}
 	}
 
-	t := ExcelSerialToTime(startSerial)
+	t := excelSerialToTimeForDateSystem(startSerial, date1904)
 
 	if days == 0 {
 		return NumberVal(startSerial), nil
@@ -1246,7 +1396,7 @@ func fnWORKDAY(args []Value) (Value, error) {
 
 	for days > 0 {
 		t = t.AddDate(0, 0, step)
-		serial := math.Trunc(TimeToExcelSerial(t))
+		serial := math.Trunc(timeToExcelSerialForDateSystem(t, date1904))
 		wd := t.Weekday()
 		if wd == time.Saturday || wd == time.Sunday {
 			continue
@@ -1257,7 +1407,7 @@ func fnWORKDAY(args []Value) (Value, error) {
 		days--
 	}
 
-	result := TimeToExcelSerial(t)
+	result := timeToExcelSerialForDateSystem(t, date1904)
 	if result < 0 || result > MaxExcelSerial {
 		return ErrorVal(ErrValNUM), nil
 	}

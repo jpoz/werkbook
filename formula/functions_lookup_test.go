@@ -1045,6 +1045,30 @@ func TestINDEXEdgeCases(t *testing.T) {
 		t.Errorf("INDEX 2-arg: got %g, want 30", got.Num)
 	}
 
+	// Single-row arrays use the 2-arg form as column lookup.
+	cf = evalCompile(t, `INDEX({"OUT","IN"},2)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "IN" {
+		t.Errorf(`INDEX({"OUT","IN"},2): got %v, want "IN"`, got)
+	}
+
+	// With column_num=0, Excel returns the full single row.
+	cf = evalCompile(t, `INDEX({"OUT","IN"},0)`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 2 {
+		t.Fatalf(`INDEX({"OUT","IN"},0): got %v, want 1x2 array`, got)
+	}
+	if got.Array[0][0].Type != ValueString || got.Array[0][0].Str != "OUT" ||
+		got.Array[0][1].Type != ValueString || got.Array[0][1].Str != "IN" {
+		t.Fatalf(`INDEX({"OUT","IN"},0): got %v, want {"OUT","IN"}`, got.Array)
+	}
+
 	// row_num=0 returns entire column as an array. The caller
 	// (formulaValueToValue) converts multi-element arrays to #VALUE!
 	// in non-array formula cells.

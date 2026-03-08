@@ -255,8 +255,8 @@ func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
 	}
 	s2 := f2.Sheet("Out - Ledger Summary")
 	val, _ = s2.GetValue("A2")
-	if val.Type != werkbook.TypeError || val.String != "#CALC!" {
-		t.Fatalf("A2 round-trip value = %#v, want #CALC!", val)
+	if val.Type != werkbook.TypeString || val.String != "#CALC!" {
+		t.Fatalf("A2 round-trip value = %#v, want string #CALC!", val)
 	}
 	got, err := s2.GetFormula("D2")
 	if err != nil {

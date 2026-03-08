@@ -4,6 +4,7 @@ import "sort"
 
 func init() {
 	Register("AND", NoCtx(fnAND))
+	Register("FALSE", NoCtx(fnFALSE))
 	Register("IF", NoCtx(fnIF))
 	Register("IFERROR", NoCtx(fnIFERROR))
 	Register("IFS", NoCtx(fnIFS))
@@ -12,7 +13,22 @@ func init() {
 	Register("SORT", NoCtx(fnSORT))
 	Register("SORTBY", NoCtx(fnSORTBY))
 	Register("SWITCH", NoCtx(fnSWITCH))
+	Register("TRUE", NoCtx(fnTRUE))
 	Register("XOR", NoCtx(fnXOR))
+}
+
+func fnTRUE(args []Value) (Value, error) {
+	if len(args) != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(true), nil
+}
+
+func fnFALSE(args []Value) (Value, error) {
+	if len(args) != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return BoolVal(false), nil
 }
 
 func fnIF(args []Value) (Value, error) {

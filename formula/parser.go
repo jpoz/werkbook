@@ -317,7 +317,181 @@ func (p *Parser) parseFunc() (Node, error) {
 		return nil, fmt.Errorf("expected ')' to close function %s at position %d", name, tok.Pos)
 	}
 
-	return &FuncCall{Name: name, Args: args}, nil
+	call := &FuncCall{Name: name, Args: args}
+	if isLambdaFuncName(name) && p.peek().Type == TokLParen {
+		callArgs, err := p.parseCallArgs()
+		if err != nil {
+			return nil, err
+		}
+		return desugarLambdaInvocation(args, callArgs)
+	}
+
+	return call, nil
+}
+
+func (p *Parser) parseCallArgs() ([]Node, error) {
+	if _, err := p.expect(TokLParen); err != nil {
+		return nil, err
+	}
+	if p.peek().Type == TokRParen {
+		p.advance()
+		return nil, nil
+	}
+
+	var args []Node
+	if p.peek().Type == TokComma {
+		args = append(args, &EmptyArg{})
+	} else {
+		arg, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	for p.peek().Type == TokComma {
+		p.advance()
+		if p.peek().Type == TokComma || p.peek().Type == TokRParen {
+			args = append(args, &EmptyArg{})
+			continue
+		}
+		arg, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+	}
+
+	if _, err := p.expect(TokRParen); err != nil {
+		return nil, fmt.Errorf("expected ')' to close lambda invocation")
+	}
+	return args, nil
+}
+
+func isLambdaFuncName(name string) bool {
+	upper := strings.ToUpper(name)
+	return upper == "LAMBDA" || upper == "_XLFN.LAMBDA"
+}
+
+func desugarLambdaInvocation(lambdaArgs, callArgs []Node) (Node, error) {
+	if len(lambdaArgs) == 0 {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	body := lambdaArgs[len(lambdaArgs)-1]
+	params := lambdaArgs[:len(lambdaArgs)-1]
+	if len(callArgs) != len(params) {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	subst := make(map[string]Node, len(params))
+	for i, param := range params {
+		name, ok := lambdaParamName(param)
+		if !ok {
+			return &ErrorLit{Code: ErrVALUE}, nil
+		}
+		subst[name] = callArgs[i]
+	}
+
+	return substituteLambdaNames(body, subst), nil
+}
+
+func lambdaParamName(n Node) (string, bool) {
+	ref, ok := n.(*CellRef)
+	if !ok || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+		return "", false
+	}
+	return strings.ToUpper(colNumberToLetters(ref.Col)), true
+}
+
+func substituteLambdaNames(n Node, subst map[string]Node) Node {
+	switch v := n.(type) {
+	case *CellRef:
+		if v.Row == 0 && v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
+			if repl, ok := subst[strings.ToUpper(colNumberToLetters(v.Col))]; ok {
+				return cloneNode(repl)
+			}
+		}
+		return cloneNode(v)
+	case *RangeRef:
+		return &RangeRef{
+			From: substituteLambdaNames(v.From, subst).(*CellRef),
+			To:   substituteLambdaNames(v.To, subst).(*CellRef),
+		}
+	case *UnaryExpr:
+		return &UnaryExpr{Op: v.Op, Operand: substituteLambdaNames(v.Operand, subst)}
+	case *BinaryExpr:
+		return &BinaryExpr{
+			Op:    v.Op,
+			Left:  substituteLambdaNames(v.Left, subst),
+			Right: substituteLambdaNames(v.Right, subst),
+		}
+	case *PostfixExpr:
+		return &PostfixExpr{Op: v.Op, Operand: substituteLambdaNames(v.Operand, subst)}
+	case *FuncCall:
+		args := make([]Node, len(v.Args))
+		for i, arg := range v.Args {
+			args[i] = substituteLambdaNames(arg, subst)
+		}
+		return &FuncCall{Name: v.Name, Args: args}
+	case *ArrayLit:
+		rows := make([][]Node, len(v.Rows))
+		for i, row := range v.Rows {
+			rows[i] = make([]Node, len(row))
+			for j, elem := range row {
+				rows[i][j] = substituteLambdaNames(elem, subst)
+			}
+		}
+		return &ArrayLit{Rows: rows}
+	default:
+		return cloneNode(v)
+	}
+}
+
+func cloneNode(n Node) Node {
+	switch v := n.(type) {
+	case *NumberLit:
+		return &NumberLit{Value: v.Value, Raw: v.Raw}
+	case *StringLit:
+		return &StringLit{Value: v.Value}
+	case *BoolLit:
+		return &BoolLit{Value: v.Value}
+	case *ErrorLit:
+		return &ErrorLit{Code: v.Code}
+	case *EmptyArg:
+		return &EmptyArg{}
+	case *CellRef:
+		clone := *v
+		return &clone
+	case *RangeRef:
+		return &RangeRef{
+			From: cloneNode(v.From).(*CellRef),
+			To:   cloneNode(v.To).(*CellRef),
+		}
+	case *UnaryExpr:
+		return &UnaryExpr{Op: v.Op, Operand: cloneNode(v.Operand)}
+	case *BinaryExpr:
+		return &BinaryExpr{Op: v.Op, Left: cloneNode(v.Left), Right: cloneNode(v.Right)}
+	case *PostfixExpr:
+		return &PostfixExpr{Op: v.Op, Operand: cloneNode(v.Operand)}
+	case *FuncCall:
+		args := make([]Node, len(v.Args))
+		for i, arg := range v.Args {
+			args[i] = cloneNode(arg)
+		}
+		return &FuncCall{Name: v.Name, Args: args}
+	case *ArrayLit:
+		rows := make([][]Node, len(v.Rows))
+		for i, row := range v.Rows {
+			rows[i] = make([]Node, len(row))
+			for j, elem := range row {
+				rows[i][j] = cloneNode(elem)
+			}
+		}
+		return &ArrayLit{Rows: rows}
+	default:
+		return v
+	}
 }
 
 // parseArray parses an array literal: { expr, expr ; expr, expr }
