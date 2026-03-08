@@ -7606,6 +7606,124 @@ func TestCOTH(t *testing.T) {
 	}
 }
 
+func TestLN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// LN(1) = 0
+		{"ln_1", "LN(1)", 0, 0},
+
+		// LN(e) = 1
+		{"ln_e", "LN(2.7182818284590452)", 1, 1e-10},
+		{"ln_e_via_exp", "LN(EXP(1))", 1, 1e-10},
+
+		// LN(e^2) = 2
+		{"ln_e_squared", "LN(EXP(2))", 2, 1e-10},
+
+		// LN(EXP(x)) = x identity
+		{"ln_exp_0", "LN(EXP(0))", 0, 1e-10},
+		{"ln_exp_3", "LN(EXP(3))", 3, 1e-10},
+		{"ln_exp_5", "LN(EXP(5))", 5, 1e-10},
+		{"ln_exp_0_5", "LN(EXP(0.5))", 0.5, 1e-10},
+
+		// Excel documentation examples
+		{"excel_example_86", "LN(86)", 4.4543473, 1e-4},
+		{"excel_example_e", "LN(2.7182818)", 1, 1e-4},
+		{"excel_example_exp3", "LN(EXP(3))", 3, 0},
+
+		// Common values
+		{"ln_2", "LN(2)", 0.69314718055994530, 1e-10},
+		{"ln_10", "LN(10)", 2.30258509299404568, 1e-10},
+
+		// Large values
+		{"ln_1000", "LN(1000)", 6.90775527898213705, 1e-10},
+		{"ln_1e6", "LN(1000000)", 13.8155105579642741, 1e-10},
+		{"ln_1e15", "LN(1E15)", 34.5387763949107352, 1e-6},
+
+		// Small positive values (near zero)
+		{"ln_0_5", "LN(0.5)", -0.69314718055994530, 1e-10},
+		{"ln_0_1", "LN(0.1)", -2.30258509299404568, 1e-10},
+		{"ln_0_001", "LN(0.001)", -6.90775527898213705, 1e-10},
+		{"ln_1e-10", "LN(1E-10)", -23.0258509299404568, 1e-6},
+
+		// Boolean coercion: TRUE=1 -> LN(1)=0
+		{"ln_true", "LN(TRUE)", 0, 0},
+
+		// String coercion
+		{"ln_string_1", `LN("1")`, 0, 0},
+		{"ln_string_10", `LN("10")`, 2.30258509299404568, 1e-10},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// LN(0) -> #NUM!
+		{"ln_zero", "LN(0)", ErrValNUM},
+
+		// Negative values -> #NUM!
+		{"ln_negative_1", "LN(-1)", ErrValNUM},
+		{"ln_negative_10", "LN(-10)", ErrValNUM},
+		{"ln_negative_small", "LN(-0.001)", ErrValNUM},
+
+		// Boolean coercion: FALSE=0 -> #NUM!
+		{"ln_false", "LN(FALSE)", ErrValNUM},
+
+		// No args -> #VALUE!
+		{"no_args", "LN()", ErrValVALUE},
+
+		// Too many args -> #VALUE!
+		{"too_many_args", "LN(1,2)", ErrValVALUE},
+
+		// Non-numeric string -> #VALUE!
+		{"non_numeric_string", `LN("abc")`, ErrValVALUE},
+
+		// Error propagation
+		{"error_prop_div0", "LN(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCSC(t *testing.T) {
 	resolver := &mockResolver{}
 
