@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.1
+
+### Improvements
+
+- **Zero external dependencies**: Removed `spf13/cobra` and `spf13/pflag` from the module. The community library now has no external dependencies (stdlib only). The CLI commands already parsed their own flags, so cobra was a redundant routing layer replaced by a simple command dispatcher.
+
 ## v0.6.0
 
 ### New formula functions (55 functions)
@@ -44,7 +50,6 @@
 
 ### CLI improvements
 
-- **Adopted Cobra**: CLI now uses the Cobra framework
 - **`--show-formulas` flag**: Display raw formulas instead of computed values
 - **Human-readable text output**: New default text output format with markdown table formatting
 
