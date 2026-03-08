@@ -8741,3 +8741,114 @@ func TestQUOTIENT(t *testing.T) {
 		})
 	}
 }
+
+func TestDECIMAL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Excel documentation examples
+		{"hex_FF", `DECIMAL("FF",16)`, 255},
+		{"binary_111", `DECIMAL("111",2)`, 7},
+		{"base36_zap", `DECIMAL("zap",36)`, 45745},
+
+		// Hexadecimal (base 16)
+		{"hex_1F", `DECIMAL("1F",16)`, 31},
+		{"hex_A", `DECIMAL("A",16)`, 10},
+		{"hex_lowercase_ff", `DECIMAL("ff",16)`, 255},
+		{"hex_0", `DECIMAL("0",16)`, 0},
+
+		// Binary (base 2)
+		{"binary_0", `DECIMAL("0",2)`, 0},
+		{"binary_1", `DECIMAL("1",2)`, 1},
+		{"binary_10", `DECIMAL("10",2)`, 2},
+		{"binary_1010", `DECIMAL("1010",2)`, 10},
+		{"binary_11111111", `DECIMAL("11111111",2)`, 255},
+
+		// Octal (base 8)
+		{"octal_77", `DECIMAL("77",8)`, 63},
+		{"octal_10", `DECIMAL("10",8)`, 8},
+
+		// Decimal (base 10)
+		{"decimal_0", `DECIMAL("0",10)`, 0},
+		{"decimal_100", `DECIMAL("100",10)`, 100},
+		{"decimal_42", `DECIMAL("42",10)`, 42},
+
+		// Base 36 edge cases
+		{"base36_z", `DECIMAL("z",36)`, 35},
+		{"base36_10", `DECIMAL("10",36)`, 36},
+
+		// Numeric first arg (number coerced to string)
+		{"number_input_111_base2", `DECIMAL(111,2)`, 7},
+		{"number_input_100_base10", `DECIMAL(100,10)`, 100},
+
+		// Radix as float (truncated to integer)
+		{"radix_float_16_9", `DECIMAL("FF",16.9)`, 255},
+		{"radix_float_2_7", `DECIMAL("111",2.7)`, 7},
+
+		// Whitespace trimming
+		{"leading_space", `DECIMAL(" FF",16)`, 255},
+		{"trailing_space", `DECIMAL("FF ",16)`, 255},
+		{"both_spaces", `DECIMAL(" FF ",16)`, 255},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Invalid digits for base
+		{"invalid_digit_base2", `DECIMAL("2",2)`, ErrValNUM},
+		{"invalid_digit_base8", `DECIMAL("8",8)`, ErrValNUM},
+		{"invalid_hex_char", `DECIMAL("GG",16)`, ErrValNUM},
+
+		// Base out of range
+		{"base_too_low_0", `DECIMAL("1",0)`, ErrValNUM},
+		{"base_too_low_1", `DECIMAL("1",1)`, ErrValNUM},
+		{"base_too_high_37", `DECIMAL("1",37)`, ErrValNUM},
+
+		// Empty text
+		{"empty_string", `DECIMAL("",16)`, ErrValNUM},
+		{"whitespace_only", `DECIMAL("  ",16)`, ErrValNUM},
+
+		// Wrong argument count
+		{"no_args", `DECIMAL()`, ErrValVALUE},
+		{"one_arg", `DECIMAL("FF")`, ErrValVALUE},
+		{"three_args", `DECIMAL("FF",16,1)`, ErrValVALUE},
+
+		// Boolean first arg
+		{"bool_input", `DECIMAL(TRUE,10)`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}

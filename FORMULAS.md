@@ -87,7 +87,7 @@ Werkbook supports **343** Excel formula functions.
 | DEC2BIN | Engineering | 37 |
 | DEC2HEX | Engineering | 45 |
 | DEC2OCT | Engineering | 45 |
-| DECIMAL | Math & Trig | - |
+| DECIMAL | Math & Trig | 38 |
 | DEGREES | Math & Trig | 25 |
 | DELTA | Engineering | 24 |
 | DEVSQ | Statistical | - |
