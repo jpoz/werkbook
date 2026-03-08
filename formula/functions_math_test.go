@@ -9755,3 +9755,117 @@ func TestMULTINOMIAL(t *testing.T) {
 		})
 	}
 }
+
+func TestSUBTOTAL(t *testing.T) {
+	// Set up a resolver with values in A1:A5 = {1, 2, 3, 4, 5}.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// SUBTOTAL delegates to aggregate functions. For A1:A5 = {1,2,3,4,5}:
+	//   AVERAGE = 3, COUNT = 5, COUNTA = 5, MAX = 5, MIN = 1,
+	//   PRODUCT = 120, SUM = 15
+	//   STDEV  = sqrt(2.5) ~ 1.5811388
+	//   STDEVP = sqrt(2)   ~ 1.4142136
+	//   VAR    = 2.5
+	//   VARP   = 2
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// function_num 1-11
+		{"avg_1", "SUBTOTAL(1,A1:A5)", 3, 0},
+		{"count_2", "SUBTOTAL(2,A1:A5)", 5, 0},
+		{"counta_3", "SUBTOTAL(3,A1:A5)", 5, 0},
+		{"max_4", "SUBTOTAL(4,A1:A5)", 5, 0},
+		{"min_5", "SUBTOTAL(5,A1:A5)", 1, 0},
+		{"product_6", "SUBTOTAL(6,A1:A5)", 120, 0},
+		{"stdev_7", "SUBTOTAL(7,A1:A5)", math.Sqrt(2.5), 1e-10},
+		{"stdevp_8", "SUBTOTAL(8,A1:A5)", math.Sqrt(2), 1e-10},
+		{"sum_9", "SUBTOTAL(9,A1:A5)", 15, 0},
+		{"var_10", "SUBTOTAL(10,A1:A5)", 2.5, 1e-10},
+		{"varp_11", "SUBTOTAL(11,A1:A5)", 2, 1e-10},
+
+		// function_num 101-111 (ignore hidden rows variants, same results
+		// without a HiddenRowChecker implementation)
+		{"avg_101", "SUBTOTAL(101,A1:A5)", 3, 0},
+		{"count_102", "SUBTOTAL(102,A1:A5)", 5, 0},
+		{"counta_103", "SUBTOTAL(103,A1:A5)", 5, 0},
+		{"max_104", "SUBTOTAL(104,A1:A5)", 5, 0},
+		{"min_105", "SUBTOTAL(105,A1:A5)", 1, 0},
+		{"product_106", "SUBTOTAL(106,A1:A5)", 120, 0},
+		{"stdev_107", "SUBTOTAL(107,A1:A5)", math.Sqrt(2.5), 1e-10},
+		{"stdevp_108", "SUBTOTAL(108,A1:A5)", math.Sqrt(2), 1e-10},
+		{"sum_109", "SUBTOTAL(109,A1:A5)", 15, 0},
+		{"var_110", "SUBTOTAL(110,A1:A5)", 2.5, 1e-10},
+		{"varp_111", "SUBTOTAL(111,A1:A5)", 2, 1e-10},
+
+		// Single cell range
+		{"sum_single", "SUBTOTAL(9,A1:A1)", 1, 0},
+		{"avg_single", "SUBTOTAL(1,A1:A1)", 1, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.want {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+				}
+			} else {
+				if math.Abs(got.Num-tt.want) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.want, tt.tol)
+				}
+			}
+		})
+	}
+
+	// Error tests
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// Invalid function_num values
+		{"invalid_0", "SUBTOTAL(0,A1:A5)", ErrValVALUE},
+		{"invalid_12", "SUBTOTAL(12,A1:A5)", ErrValVALUE},
+		{"invalid_100", "SUBTOTAL(100,A1:A5)", ErrValVALUE},
+		{"invalid_112", "SUBTOTAL(112,A1:A5)", ErrValVALUE},
+		{"invalid_neg", "SUBTOTAL(-1,A1:A5)", ErrValVALUE},
+		{"invalid_99", "SUBTOTAL(99,A1:A5)", ErrValVALUE},
+
+		// Wrong argument count (too few)
+		{"too_few_args", "SUBTOTAL(9)", ErrValVALUE},
+
+		// Error propagation: error in function_num
+		{"error_in_funcnum", "SUBTOTAL(1/0,A1:A5)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}

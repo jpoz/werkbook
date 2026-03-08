@@ -284,7 +284,7 @@ Werkbook supports **343** Excel formula functions.
 | STDEVP | Statistical | 4 |
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
-| SUBTOTAL | Math & Trig | - |
+| SUBTOTAL | Math & Trig | 32 |
 | SUM | Statistical | 36 |
 | SUMIF | Statistical | 37 |
 | SUMIFS | Statistical | 42 |
