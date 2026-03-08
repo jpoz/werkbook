@@ -227,7 +227,7 @@ Werkbook supports **343** Excel formula functions.
 | PERCENTRANK | Statistical | 26 |
 | PERCENTRANK.EXC | Statistical | 29 |
 | PERCENTRANK.INC | Statistical | 3 |
-| PERMUT | Math & Trig | - |
+| PERMUT | Math & Trig | 39 |
 | PERMUTATIONA | Statistical | 17 |
 | PHI | Statistical | 11 |
 | PI | Math & Trig | 13 |

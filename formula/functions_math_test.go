@@ -9426,3 +9426,105 @@ func TestPRODUCT_AllEmptyRange(t *testing.T) {
 		t.Errorf("got %v (%g), want 0", got.Type, got.Num)
 	}
 }
+
+func TestPERMUT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Excel doc examples
+		{"doc_example_100_3", "PERMUT(100,3)", 970200},
+		{"doc_example_3_2", "PERMUT(3,2)", 6},
+		// Basic permutations
+		{"5_perm_2", "PERMUT(5,2)", 20},
+		{"6_perm_3", "PERMUT(6,3)", 120},
+		{"10_perm_4", "PERMUT(10,4)", 5040},
+		// PERMUT(n,0) = 1 for any n > 0
+		{"4_perm_0", "PERMUT(4,0)", 1},
+		{"10_perm_0", "PERMUT(10,0)", 1},
+		{"1_perm_0", "PERMUT(1,0)", 1},
+		// PERMUT(n,n) = n!
+		{"4_perm_4", "PERMUT(4,4)", 24},
+		{"5_perm_5", "PERMUT(5,5)", 120},
+		{"1_perm_1", "PERMUT(1,1)", 1},
+		// PERMUT(n,1) = n
+		{"5_perm_1", "PERMUT(5,1)", 5},
+		{"12_perm_1", "PERMUT(12,1)", 12},
+		// Larger values
+		{"20_perm_5", "PERMUT(20,5)", 1860480},
+		{"8_perm_3", "PERMUT(8,3)", 336},
+		// Decimal truncation — arguments are truncated to integers
+		{"decimal_n", "PERMUT(5.9,2)", 20},
+		{"decimal_k", "PERMUT(5,2.7)", 20},
+		{"decimal_both", "PERMUT(6.9,3.1)", 120},
+		// String coercion
+		{"string_n", `PERMUT("5",2)`, 20},
+		{"string_k", `PERMUT(5,"2")`, 20},
+		{"string_both", `PERMUT("10","3")`, 720},
+		// Boolean coercion
+		{"bool_true_n", "PERMUT(TRUE,0)", 1},
+		{"bool_true_k", "PERMUT(5,TRUE)", 5},
+		{"bool_false_k", "PERMUT(5,FALSE)", 1},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// n < k → #NUM!
+		{"n_less_than_k", "PERMUT(3,5)", ErrValNUM},
+		{"n_less_than_k_2", "PERMUT(2,10)", ErrValNUM},
+		// n <= 0 → #NUM!
+		{"zero_n", "PERMUT(0,0)", ErrValNUM},
+		{"negative_n", "PERMUT(-1,2)", ErrValNUM},
+		{"negative_n_large", "PERMUT(-5,3)", ErrValNUM},
+		// Negative k → #NUM!
+		{"negative_k", "PERMUT(5,-1)", ErrValNUM},
+		{"negative_k_large", "PERMUT(10,-3)", ErrValNUM},
+		// Both negative → #NUM!
+		{"both_negative", "PERMUT(-3,-1)", ErrValNUM},
+		// Wrong number of arguments → #VALUE!
+		{"no_args", "PERMUT()", ErrValVALUE},
+		{"one_arg", "PERMUT(5)", ErrValVALUE},
+		{"three_args", "PERMUT(5,2,1)", ErrValVALUE},
+		// Non-numeric string → #VALUE!
+		{"non_numeric_n", `PERMUT("abc",2)`, ErrValVALUE},
+		{"non_numeric_k", `PERMUT(5,"xyz")`, ErrValVALUE},
+		// Error propagation
+		{"error_div0_n", "PERMUT(1/0,2)", ErrValDIV0},
+		{"error_div0_k", "PERMUT(5,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}
