@@ -156,7 +156,7 @@ Werkbook supports **343** Excel formula functions.
 | IRR | Financial | 19 |
 | ISBLANK | Information | - |
 | ISERR | Information | - |
-| ISERROR | Information | - |
+| ISERROR | Information | 21 |
 | ISEVEN | Information | 4 |
 | ISFORMULA | Information | 7 |
 | ISLOGICAL | Information | - |
@@ -165,7 +165,7 @@ Werkbook supports **343** Excel formula functions.
 | ISNUMBER | Information | - |
 | ISODD | Information | 4 |
 | ISOWEEKNUM | Date & Time | - |
-| ISTEXT | Information | - |
+| ISTEXT | Information | 24 |
 | KURT | Statistical | 22 |
 | LARGE | Statistical | 30 |
 | LCM | Math & Trig | 39 |

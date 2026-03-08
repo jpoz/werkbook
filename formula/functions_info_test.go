@@ -507,6 +507,127 @@ func TestCOLUMN(t *testing.T) {
 	})
 }
 
+func TestISTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// String values → TRUE
+		{"simple_string", `ISTEXT("hello")`, true},
+		{"empty_string", `ISTEXT("")`, true},
+		{"string_with_spaces", `ISTEXT("  ")`, true},
+		{"numeric_string", `ISTEXT("19")`, true},
+		{"string_true", `ISTEXT("TRUE")`, true},
+		{"string_false", `ISTEXT("FALSE")`, true},
+		{"string_with_number", `ISTEXT("123abc")`, true},
+		{"single_char", `ISTEXT("A")`, true},
+		{"string_with_special_chars", `ISTEXT("hello world!")`, true},
+
+		// Numeric values → FALSE
+		{"integer", `ISTEXT(1)`, false},
+		{"zero", `ISTEXT(0)`, false},
+		{"negative", `ISTEXT(-1)`, false},
+		{"decimal", `ISTEXT(3.14)`, false},
+		{"large_number", `ISTEXT(1000000)`, false},
+
+		// Boolean values → FALSE
+		{"true", `ISTEXT(TRUE)`, false},
+		{"false", `ISTEXT(FALSE)`, false},
+
+		// Expressions resulting in non-text → FALSE
+		{"addition", `ISTEXT(1+1)`, false},
+		{"comparison", `ISTEXT(1>0)`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueBool {
+				t.Fatalf("%s = %v (type %d), want bool", tt.formula, got, got.Type)
+			}
+			if got.Bool != tt.want {
+				t.Errorf("%s = %v, want %v", tt.formula, got.Bool, tt.want)
+			}
+		})
+	}
+
+	// Error values → FALSE (errors are not text)
+	t.Run("error_div0", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("ISTEXT(1/0) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("error_NA", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT(#N/A)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("ISTEXT(#N/A) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("error_VALUE", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT(#VALUE!)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("ISTEXT(#VALUE!) = %v, want FALSE", got)
+		}
+	})
+
+	// Wrong argument count → #VALUE!
+	t.Run("no_args", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISTEXT() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISTEXT(\"a\",\"b\") = %v, want #VALUE!", got)
+		}
+	})
+
+	// Concatenation result is text → TRUE
+	t.Run("concatenation", func(t *testing.T) {
+		cf := evalCompile(t, `ISTEXT("hello"&" world")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf(`ISTEXT("hello"&" world") = %v, want TRUE`, got)
+		}
+	})
+}
+
 func TestIFNA(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -526,5 +647,67 @@ func TestIFNA(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 42 {
 		t.Errorf("IFNA(42) = %v, want 42", got)
+	}
+}
+
+func TestISERROR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name     string
+		formula  string
+		wantTyp  ValueType
+		wantBool bool
+		wantErr  ErrorValue
+	}{
+		// All error types should return TRUE
+		{"DIV0_error", `ISERROR(1/0)`, ValueBool, true, 0},
+		{"NA_function", `ISERROR(NA())`, ValueBool, true, 0},
+		{"NA_literal", `ISERROR(#N/A)`, ValueBool, true, 0},
+		{"VALUE_error", `ISERROR(#VALUE!)`, ValueBool, true, 0},
+		{"REF_error", `ISERROR(#REF!)`, ValueBool, true, 0},
+		{"NUM_error", `ISERROR(#NUM!)`, ValueBool, true, 0},
+		{"NULL_error", `ISERROR(#NULL!)`, ValueBool, true, 0},
+		{"NAME_error", `ISERROR(#NAME?)`, ValueBool, true, 0},
+
+		// Non-error values should return FALSE
+		{"number_positive", `ISERROR(1)`, ValueBool, false, 0},
+		{"number_zero", `ISERROR(0)`, ValueBool, false, 0},
+		{"number_negative", `ISERROR(-5)`, ValueBool, false, 0},
+		{"number_decimal", `ISERROR(3.14)`, ValueBool, false, 0},
+		{"text", `ISERROR("text")`, ValueBool, false, 0},
+		{"empty_string", `ISERROR("")`, ValueBool, false, 0},
+		{"bool_true", `ISERROR(TRUE)`, ValueBool, false, 0},
+		{"bool_false", `ISERROR(FALSE)`, ValueBool, false, 0},
+
+		// Expressions that produce errors
+		{"div_by_zero_expr", `ISERROR(0/0)`, ValueBool, true, 0},
+
+		// Expressions that do not produce errors
+		{"valid_arithmetic", `ISERROR(2+3)`, ValueBool, false, 0},
+		{"valid_division", `ISERROR(10/2)`, ValueBool, false, 0},
+
+		// Wrong number of arguments returns #VALUE!
+		{"no_args", `ISERROR()`, ValueError, false, ErrValVALUE},
+		{"two_args", `ISERROR(1,2)`, ValueError, false, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantTyp == ValueBool {
+				if got.Type != ValueBool || got.Bool != tt.wantBool {
+					t.Errorf("%s = %v, want bool %v", tt.formula, got, tt.wantBool)
+				}
+			} else {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("%s = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			}
+		})
 	}
 }
