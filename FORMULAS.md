@@ -161,7 +161,7 @@ Werkbook supports **343** Excel formula functions.
 | ISFORMULA | Information | 7 |
 | ISLOGICAL | Information | 27 |
 | ISNA | Information | 21 |
-| ISNONTEXT | Information | - |
+| ISNONTEXT | Information | 26 |
 | ISNUMBER | Information | 23 |
 | ISODD | Information | 4 |
 | ISOWEEKNUM | Date & Time | - |

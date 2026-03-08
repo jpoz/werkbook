@@ -1029,6 +1029,194 @@ func TestISTEXT(t *testing.T) {
 	})
 }
 
+func TestISNONTEXT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// Numeric values → TRUE (numbers are non-text)
+		{"integer", `ISNONTEXT(1)`, true},
+		{"zero", `ISNONTEXT(0)`, true},
+		{"negative", `ISNONTEXT(-1)`, true},
+		{"decimal", `ISNONTEXT(3.14)`, true},
+		{"large_number", `ISNONTEXT(1000000)`, true},
+
+		// Boolean values → TRUE (booleans are non-text)
+		{"true", `ISNONTEXT(TRUE)`, true},
+		{"false", `ISNONTEXT(FALSE)`, true},
+
+		// String values → FALSE (text is NOT non-text)
+		{"simple_string", `ISNONTEXT("hello")`, false},
+		{"empty_string", `ISNONTEXT("")`, false},
+		{"string_with_spaces", `ISNONTEXT("  ")`, false},
+		{"numeric_string", `ISNONTEXT("19")`, false},
+		{"string_true", `ISNONTEXT("TRUE")`, false},
+		{"string_false", `ISNONTEXT("FALSE")`, false},
+		{"string_with_number", `ISNONTEXT("123abc")`, false},
+		{"single_char", `ISNONTEXT("A")`, false},
+
+		// Expressions resulting in non-text → TRUE
+		{"addition", `ISNONTEXT(1+1)`, true},
+		{"comparison", `ISNONTEXT(1>0)`, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueBool {
+				t.Fatalf("%s = %v (type %d), want bool", tt.formula, got, got.Type)
+			}
+			if got.Bool != tt.want {
+				t.Errorf("%s = %v, want %v", tt.formula, got.Bool, tt.want)
+			}
+		})
+	}
+
+	// Error values → TRUE (errors are non-text)
+	t.Run("error_div0", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("ISNONTEXT(1/0) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("error_NA", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT(#N/A)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("ISNONTEXT(#N/A) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("error_VALUE", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT(#VALUE!)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("ISNONTEXT(#VALUE!) = %v, want TRUE", got)
+		}
+	})
+
+	// Blank cell → TRUE (Excel docs: "this function returns TRUE if the value refers to a blank cell")
+	t.Run("blank_cell", func(t *testing.T) {
+		blankResolver := &mockResolver{}
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     blankResolver,
+		}
+
+		cf := evalCompile(t, `ISNONTEXT(A1)`)
+		got, err := Eval(cf, blankResolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("ISNONTEXT(A1) blank cell = %v, want TRUE", got)
+		}
+	})
+
+	// Cell containing text → FALSE
+	t.Run("cell_with_text", func(t *testing.T) {
+		textResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     textResolver,
+		}
+
+		cf := evalCompile(t, `ISNONTEXT(A1)`)
+		got, err := Eval(cf, textResolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("ISNONTEXT(A1) with text = %v, want FALSE", got)
+		}
+	})
+
+	// Cell containing number → TRUE
+	t.Run("cell_with_number", func(t *testing.T) {
+		numResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     numResolver,
+		}
+
+		cf := evalCompile(t, `ISNONTEXT(A1)`)
+		got, err := Eval(cf, numResolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("ISNONTEXT(A1) with number = %v, want TRUE", got)
+		}
+	})
+
+	// Concatenation result is text → FALSE
+	t.Run("concatenation", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT("hello"&" world")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf(`ISNONTEXT("hello"&" world") = %v, want FALSE`, got)
+		}
+	})
+
+	// Wrong argument count → #VALUE!
+	t.Run("no_args", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISNONTEXT() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, `ISNONTEXT("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISNONTEXT(\"a\",\"b\") = %v, want #VALUE!", got)
+		}
+	})
+}
+
 func TestCOLUMNS(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
