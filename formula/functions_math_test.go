@@ -6088,6 +6088,118 @@ func TestEVEN(t *testing.T) {
 	}
 }
 
+func TestODD(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic positive numbers
+		{"pos_1", "ODD(1)", 1},
+		{"pos_2", "ODD(2)", 3},
+		{"pos_3", "ODD(3)", 3},
+		{"pos_4", "ODD(4)", 5},
+		{"pos_5", "ODD(5)", 5},
+		{"pos_6", "ODD(6)", 7},
+
+		// Already-odd positive numbers
+		{"already_odd_7", "ODD(7)", 7},
+		{"already_odd_9", "ODD(9)", 9},
+		{"already_odd_11", "ODD(11)", 11},
+
+		// Zero (Excel returns 1)
+		{"zero", "ODD(0)", 1},
+
+		// Negative numbers (rounds away from zero)
+		{"neg_1", "ODD(-1)", -1},
+		{"neg_2", "ODD(-2)", -3},
+		{"neg_3", "ODD(-3)", -3},
+		{"neg_4", "ODD(-4)", -5},
+
+		// Already-odd negative numbers
+		{"neg_odd_5", "ODD(-5)", -5},
+		{"neg_odd_7", "ODD(-7)", -7},
+
+		// Positive decimals (rounds up away from zero to nearest odd)
+		{"pos_decimal_1_5", "ODD(1.5)", 3},
+		{"pos_decimal_0_1", "ODD(0.1)", 1},
+		{"pos_decimal_2_1", "ODD(2.1)", 3},
+		{"pos_decimal_3_9", "ODD(3.9)", 5},
+		{"pos_decimal_4_5", "ODD(4.5)", 5},
+
+		// Negative decimals (rounds away from zero to nearest odd)
+		{"neg_decimal_1_5", "ODD(-1.5)", -3},
+		{"neg_decimal_0_1", "ODD(-0.1)", -1},
+		{"neg_decimal_2_1", "ODD(-2.1)", -3},
+
+		// Large numbers
+		{"large_even", "ODD(1000000)", 1000001},
+		{"large_odd", "ODD(999999)", 999999},
+		{"large_neg", "ODD(-1000000)", -1000001},
+
+		// String coercion
+		{"string_pos", `ODD("3")`, 3},
+		{"string_neg", `ODD("-2")`, -3},
+
+		// Boolean coercion
+		{"bool_true", "ODD(TRUE)", 1},
+		{"bool_false", "ODD(FALSE)", 1},
+
+		// Excel doc examples
+		{"doc_ex1", "ODD(1.5)", 3},
+		{"doc_ex2", "ODD(3)", 3},
+		{"doc_ex3", "ODD(2)", 3},
+		{"doc_ex4", "ODD(-1)", -1},
+		{"doc_ex5", "ODD(-2)", -3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.wantNum {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "ODD()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "ODD(1,2)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric", `ODD("abc")`, ErrValVALUE},
+		// Error propagation
+		{"err_div0", "ODD(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestEXP(t *testing.T) {
 	resolver := &mockResolver{}
 

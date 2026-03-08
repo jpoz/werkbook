@@ -217,7 +217,7 @@ Werkbook supports **343** Excel formula functions.
 | OCT2BIN | Engineering | 38 |
 | OCT2DEC | Engineering | 43 |
 | OCT2HEX | Engineering | 36 |
-| ODD | Math & Trig | - |
+| ODD | Math & Trig | 40 |
 | OR | Logical | 48 |
 | PDURATION | Financial | 21 |
 | PEARSON | Statistical | 23 |
