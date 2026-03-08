@@ -100,6 +100,7 @@ var xlfnPrefix = map[string]string{
 	"SINGLE":          "_xlfn.",
 	"SORT":            "_xlfn._xlws.",
 	"SORTBY":          "_xlfn.",
+	"SKEW.P":          "_xlfn.",
 	"STDEV.P":         "_xlfn.",
 	"STDEV.S":         "_xlfn.",
 	"T.DIST":          "_xlfn.",

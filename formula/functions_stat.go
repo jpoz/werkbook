@@ -77,6 +77,7 @@ func init() {
 	Register("VAR.S", NoCtx(fnVAR))
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("SKEW", NoCtx(fnSKEW))
+	Register("SKEW.P", NoCtx(fnSkewP))
 	Register("KURT", NoCtx(fnKURT))
 	Register("VARA", NoCtx(fnVARA))
 	Register("VARP", NoCtx(fnVARP))
@@ -2360,6 +2361,47 @@ func fnSKEW(args []Value) (Value, error) {
 	nf := float64(n)
 	skew := (nf / ((nf - 1) * (nf - 2))) * sumCubed
 	return NumberVal(skew), nil
+}
+
+func fnSkewP(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	n := len(nums)
+	if n < 3 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute mean.
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+
+	// Compute population standard deviation (n denominator).
+	ssq := 0.0
+	for _, v := range nums {
+		d := v - mean
+		ssq += d * d
+	}
+	sigma := math.Sqrt(ssq / float64(n))
+	if sigma == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	// Compute population skewness: (1/n) * sum((xi - mean) / sigma)^3
+	sumCubed := 0.0
+	for _, v := range nums {
+		z := (v - mean) / sigma
+		sumCubed += z * z * z
+	}
+	skewP := sumCubed / float64(n)
+	return NumberVal(skewP), nil
 }
 
 func fnKURT(args []Value) (Value, error) {
