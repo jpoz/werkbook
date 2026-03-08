@@ -5574,3 +5574,237 @@ func TestSYD_ErrorPerGreaterThanLife(t *testing.T) {
 	v, _ := fnSYD(numArgs(30000, 7500, 10, 11))
 	assertError(t, "SYD per > life", v)
 }
+
+// === ISPMT ===
+
+func TestISPMT_ExcelDocExample(t *testing.T) {
+	// ISPMT(0.1/12, 1, 36, 8000000) ≈ -64814.81
+	// Monthly payment on 8M loan at 10% annual for 3 years, period 1
+	v, err := fnIspmt(numArgs(0.1/12, 1, 36, 8000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT excel doc", v, -64814.81)
+}
+
+func TestISPMT_FirstPeriod(t *testing.T) {
+	// per=0 (first period): ISPMT = pv * rate * (0/nper - 1) = pv * rate * (-1) = -pv*rate
+	// ISPMT(0.1/12, 0, 36, 8000000) = 8000000 * 0.1/12 * (0/36 - 1) = -66666.67
+	v, err := fnIspmt(numArgs(0.1/12, 0, 36, 8000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT first period", v, -66666.67)
+}
+
+func TestISPMT_LastPeriod(t *testing.T) {
+	// per=35 (last period, 0-based): ISPMT(0.1/12, 35, 36, 8000000)
+	// = 8000000 * (0.1/12) * (35/36 - 1) = 8000000 * 0.008333... * (-0.02778)
+	// = -1851.85
+	v, err := fnIspmt(numArgs(0.1/12, 35, 36, 8000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT last period", v, -1851.85)
+}
+
+func TestISPMT_MiddlePeriod(t *testing.T) {
+	// per=18 (middle): ISPMT(0.1/12, 18, 36, 8000000)
+	// = 8000000 * (0.1/12) * (18/36 - 1) = 8000000 * 0.008333... * (-0.5) = -33333.33
+	v, err := fnIspmt(numArgs(0.1/12, 18, 36, 8000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT middle period", v, -33333.33)
+}
+
+func TestISPMT_ZeroRate(t *testing.T) {
+	// rate=0: ISPMT = pv * 0 * (per/nper - 1) = 0
+	v, err := fnIspmt(numArgs(0, 5, 12, 100000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT zero rate", v, 0)
+}
+
+func TestISPMT_NegativeRate(t *testing.T) {
+	// Negative rate: ISPMT(-0.05/12, 1, 24, 50000)
+	// = 50000 * (-0.05/12) * (1/24 - 1) = 50000 * (-0.004167) * (-0.95833) = 199.65
+	v, err := fnIspmt(numArgs(-0.05/12, 1, 24, 50000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT negative rate", v, 199.65)
+}
+
+func TestISPMT_AnnualPayments(t *testing.T) {
+	// Annual: ISPMT(0.08, 1, 5, 100000)
+	// = 100000 * 0.08 * (1/5 - 1) = 100000 * 0.08 * (-0.8) = -6400
+	v, err := fnIspmt(numArgs(0.08, 1, 5, 100000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT annual", v, -6400)
+}
+
+func TestISPMT_AnnualFirstPeriod(t *testing.T) {
+	// ISPMT(0.08, 0, 5, 100000) = 100000 * 0.08 * (0/5 - 1) = -8000
+	v, err := fnIspmt(numArgs(0.08, 0, 5, 100000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT annual first", v, -8000)
+}
+
+func TestISPMT_AnnualLastPeriod(t *testing.T) {
+	// ISPMT(0.08, 4, 5, 100000) = 100000 * 0.08 * (4/5 - 1) = 100000 * 0.08 * (-0.2) = -1600
+	v, err := fnIspmt(numArgs(0.08, 4, 5, 100000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT annual last", v, -1600)
+}
+
+func TestISPMT_LargeLoanAmount(t *testing.T) {
+	// ISPMT(0.05/12, 6, 360, 500000000)
+	// = 500000000 * (0.05/12) * (6/360 - 1) = 500000000 * 0.004167 * (-0.98333)
+	// = -2048611.11
+	v, err := fnIspmt(numArgs(0.05/12, 6, 360, 500000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT large loan", v, -2048611.11)
+}
+
+func TestISPMT_SmallLoanAmount(t *testing.T) {
+	// ISPMT(0.06/12, 3, 12, 1000)
+	// = 1000 * (0.06/12) * (3/12 - 1) = 1000 * 0.005 * (-0.75) = -3.75
+	v, err := fnIspmt(numArgs(0.06/12, 3, 12, 1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT small loan", v, -3.75)
+}
+
+func TestISPMT_NegativePV(t *testing.T) {
+	// Negative PV (investment): ISPMT(0.1/12, 1, 36, -8000000)
+	// = -8000000 * (0.1/12) * (1/36 - 1) = 64814.81
+	v, err := fnIspmt(numArgs(0.1/12, 1, 36, -8000000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT negative pv", v, 64814.81)
+}
+
+func TestISPMT_NperZero(t *testing.T) {
+	// nper=0 → #DIV/0!
+	v, _ := fnIspmt(numArgs(0.1, 1, 0, 10000))
+	assertError(t, "ISPMT nper zero", v)
+	if v.Err != ErrValDIV0 {
+		t.Errorf("expected #DIV/0!, got err=%v", v.Err)
+	}
+}
+
+func TestISPMT_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Excel doc example
+		{"excel doc example", numArgs(0.1/12, 1, 36, 8000000), -64814.81, false},
+		// First period (per=0)
+		{"per=0", numArgs(0.1/12, 0, 36, 8000000), -66666.67, false},
+		// Last period (per=nper-1)
+		{"per=nper-1", numArgs(0.1/12, 35, 36, 8000000), -1851.85, false},
+		// Middle period
+		{"middle period", numArgs(0.1/12, 18, 36, 8000000), -33333.33, false},
+		// Zero rate
+		{"zero rate", numArgs(0, 5, 12, 100000), 0, false},
+		// Negative rate
+		{"negative rate", numArgs(-0.05/12, 1, 24, 50000), 199.65, false},
+		// Annual payments
+		{"annual 8% per=1", numArgs(0.08, 1, 5, 100000), -6400, false},
+		// Negative PV (investment)
+		{"negative pv", numArgs(0.1/12, 1, 36, -8000000), 64814.81, false},
+		// Small loan
+		{"small loan", numArgs(0.06/12, 3, 12, 1000), -3.75, false},
+		// Very small rate
+		{"very small rate", numArgs(0.001, 0, 10, 50000), -50, false},
+		// Large rate
+		{"large rate", numArgs(1.0, 0, 4, 10000), -10000, false},
+		// nper=1, per=0
+		{"nper=1 per=0", numArgs(0.1, 0, 1, 10000), -1000, false},
+		// Per equals nper (beyond last 0-based period)
+		{"per equals nper", numArgs(0.1, 36, 36, 8000000), 0, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIspmt(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestISPMT_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		// nper=0 → #DIV/0!
+		{"nper zero", numArgs(0.1, 1, 0, 10000)},
+		// Too few args
+		{"too few args 0", []Value{}},
+		{"too few args 1", numArgs(0.1)},
+		{"too few args 2", numArgs(0.1, 1)},
+		{"too few args 3", numArgs(0.1, 1, 36)},
+		// Too many args
+		{"too many args", numArgs(0.1, 1, 36, 8000000, 99)},
+		// Non-numeric string
+		{"non-numeric rate", []Value{StringVal("abc"), NumberVal(1), NumberVal(36), NumberVal(8000000)}},
+		{"non-numeric per", []Value{NumberVal(0.1), StringVal("xyz"), NumberVal(36), NumberVal(8000000)}},
+		{"non-numeric nper", []Value{NumberVal(0.1), NumberVal(1), StringVal("abc"), NumberVal(8000000)}},
+		{"non-numeric pv", []Value{NumberVal(0.1), NumberVal(1), NumberVal(36), StringVal("abc")}},
+		// Error propagation
+		{"error in rate", []Value{ErrorVal(ErrValNUM), NumberVal(1), NumberVal(36), NumberVal(8000000)}},
+		{"error in per", []Value{NumberVal(0.1), ErrorVal(ErrValDIV0), NumberVal(36), NumberVal(8000000)}},
+		{"error in nper", []Value{NumberVal(0.1), NumberVal(1), ErrorVal(ErrValVALUE), NumberVal(8000000)}},
+		{"error in pv", []Value{NumberVal(0.1), NumberVal(1), NumberVal(36), ErrorVal(ErrValNUM)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIspmt(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestISPMT_StringCoercion(t *testing.T) {
+	// Numeric strings should be coerced: ISPMT("0.08", "1", "5", "100000") = -6400
+	v, err := fnIspmt([]Value{StringVal("0.08"), StringVal("1"), StringVal("5"), StringVal("100000")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT string coercion", v, -6400)
+}
+
+func TestISPMT_BoolCoercion(t *testing.T) {
+	// TRUE=1, FALSE=0: ISPMT(TRUE, FALSE, TRUE, TRUE) = ISPMT(1, 0, 1, 1)
+	// = 1 * 1 * (0/1 - 1) = -1
+	v, err := fnIspmt([]Value{boolArg(true), boolArg(false), boolArg(true), boolArg(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "ISPMT bool coercion", v, -1)
+}

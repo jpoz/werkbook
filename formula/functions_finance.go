@@ -33,6 +33,7 @@ func init() {
 	Register("RRI", NoCtx(fnRri))
 	Register("SYD", NoCtx(fnSYD))
 	Register("VDB", NoCtx(fnVdb))
+	Register("ISPMT", NoCtx(fnIspmt))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1494,4 +1495,34 @@ func fnVdb(args []Value) (Value, error) {
 	}
 
 	return NumberVal(totalDep), nil
+}
+
+// fnIspmt implements ISPMT(rate, per, nper, pv).
+// Calculates the interest paid (or received) for the specified period of a
+// loan (or investment) with even principal payments.
+// Formula: pv * rate * (per/nper - 1)
+func fnIspmt(args []Value) (Value, error) {
+	if len(args) != 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rate, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	per, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	nper, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	pv, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	if nper == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	return NumberVal(pv * rate * (per/nper - 1)), nil
 }
