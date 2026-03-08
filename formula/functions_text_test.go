@@ -4339,3 +4339,99 @@ func TestFIXED(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VALUE
+// ---------------------------------------------------------------------------
+
+func TestVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	type want struct {
+		typ ValueType
+		num float64
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Basic integer strings
+		{name: "integer", formula: `VALUE("123")`, want: want{typ: ValueNumber, num: 123}},
+		{name: "zero", formula: `VALUE("0")`, want: want{typ: ValueNumber, num: 0}},
+		{name: "negative_integer", formula: `VALUE("-50")`, want: want{typ: ValueNumber, num: -50}},
+		{name: "large_number", formula: `VALUE("1000000")`, want: want{typ: ValueNumber, num: 1000000}},
+
+		// Decimal strings
+		{name: "decimal", formula: `VALUE("3.14")`, want: want{typ: ValueNumber, num: 3.14}},
+		{name: "negative_decimal", formula: `VALUE("-2.5")`, want: want{typ: ValueNumber, num: -2.5}},
+		{name: "leading_zero_decimal", formula: `VALUE("0.001")`, want: want{typ: ValueNumber, num: 0.001}},
+
+		// Whitespace handling
+		{name: "leading_spaces", formula: `VALUE("  42")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "trailing_spaces", formula: `VALUE("42  ")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "surrounded_spaces", formula: `VALUE("  7.5  ")`, want: want{typ: ValueNumber, num: 7.5}},
+
+		// Currency formatting ($ stripped)
+		{name: "dollar_sign", formula: `VALUE("$100")`, want: want{typ: ValueNumber, num: 100}},
+		{name: "dollar_with_decimals", formula: `VALUE("$19.99")`, want: want{typ: ValueNumber, num: 19.99}},
+		{name: "dollar_with_commas", formula: `VALUE("$1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "dollar_commas_decimals", formula: `VALUE("$1,234.56")`, want: want{typ: ValueNumber, num: 1234.56}},
+
+		// Comma-separated thousands
+		{name: "thousands_comma", formula: `VALUE("1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "millions_comma", formula: `VALUE("1,000,000")`, want: want{typ: ValueNumber, num: 1000000}},
+
+		// Percent handling
+		{name: "percent_integer", formula: `VALUE("50%")`, want: want{typ: ValueNumber, num: 0.5}},
+		{name: "percent_decimal", formula: `VALUE("12.5%")`, want: want{typ: ValueNumber, num: 0.125}},
+		{name: "percent_100", formula: `VALUE("100%")`, want: want{typ: ValueNumber, num: 1}},
+		{name: "percent_zero", formula: `VALUE("0%")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Number argument passed directly (not a string)
+		{name: "number_passthrough", formula: `VALUE(42)`, want: want{typ: ValueNumber, num: 42}},
+		{name: "number_decimal_passthrough", formula: `VALUE(3.14)`, want: want{typ: ValueNumber, num: 3.14}},
+		{name: "number_negative_passthrough", formula: `VALUE(-10)`, want: want{typ: ValueNumber, num: -10}},
+
+		// Non-numeric strings → #VALUE!
+		{name: "alpha_string", formula: `VALUE("abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "mixed_alpha_num", formula: `VALUE("12abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "empty_string", formula: `VALUE("")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Boolean coercion (becomes "TRUE"/"FALSE" strings → not numeric)
+		{name: "bool_true", formula: `VALUE(TRUE)`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "bool_false", formula: `VALUE(FALSE)`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Wrong argument count
+		{name: "no_args", formula: `VALUE()`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "two_args", formula: `VALUE("1","2")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error argument (error value is coerced to string, which is not numeric)
+		{name: "error_arg_div0", formula: `VALUE(1/0)`, want: want{typ: ValueError, err: ErrValVALUE}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
