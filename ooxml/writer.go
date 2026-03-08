@@ -23,6 +23,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		return fmt.Errorf("workbook must have at least one sheet")
 	}
 	tablePlan := buildTableWritePlan(data.Tables)
+	hasCoreProps := len(data.CorePropsRaw) > 0 || hasCorePropertiesData(data.CoreProps)
 
 	// Build shared string table from all string cells.
 	sst := NewSharedStringTable()
@@ -56,13 +57,25 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays); err != nil {
+	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays, hasCoreProps); err != nil {
 		return err
 	}
 
 	// _rels/.rels
-	if err := writeRootRels(zw); err != nil {
+	if err := writeRootRels(zw, hasCoreProps); err != nil {
 		return err
+	}
+
+	// docProps/app.xml
+	if err := writeAppProperties(zw, data); err != nil {
+		return err
+	}
+
+	// docProps/core.xml
+	if hasCoreProps {
+		if err := writeCoreProperties(zw, data); err != nil {
+			return err
+		}
 	}
 
 	// xl/workbook.xml
@@ -113,7 +126,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays bool) error {
+func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays, hasCoreProps bool) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -121,9 +134,16 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDy
 			{Extension: "xml", ContentType: "application/xml"},
 		},
 		Overrides: []xlsxOverride{
+			{PartName: "/docProps/app.xml", ContentType: "application/vnd.openxmlformats-officedocument.extended-properties+xml"},
 			{PartName: "/xl/workbook.xml", ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"},
 			{PartName: "/xl/styles.xml", ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"},
 		},
+	}
+	if hasCoreProps {
+		ct.Overrides = append(ct.Overrides, xlsxOverride{
+			PartName:    "/docProps/core.xml",
+			ContentType: "application/vnd.openxmlformats-package.core-properties+xml",
+		})
 	}
 	for i := range sheetCount {
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
@@ -152,13 +172,27 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDy
 	return writeXML(zw, "[Content_Types].xml", ct)
 }
 
-func writeRootRels(zw *zip.Writer) error {
+func writeRootRels(zw *zip.Writer, hasCoreProps bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
 		Relationships: []xlsxRelationship{
 			{ID: "rId1", Type: RelTypeWorkbook, Target: "xl/workbook.xml"},
 		},
 	}
+	nextID := 2
+	if hasCoreProps {
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     fmt.Sprintf("rId%d", nextID),
+			Type:   RelTypeCoreProps,
+			Target: "docProps/core.xml",
+		})
+		nextID++
+	}
+	rels.Relationships = append(rels.Relationships, xlsxRelationship{
+		ID:     fmt.Sprintf("rId%d", nextID),
+		Type:   RelTypeExtendedApp,
+		Target: "docProps/app.xml",
+	})
 	return writeXML(zw, "_rels/.rels", rels)
 }
 

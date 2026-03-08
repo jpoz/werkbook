@@ -72,6 +72,12 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 	styles := readStyles(files)
 
 	data := &WorkbookData{Styles: styles}
+	if corePropsRaw, err := readFile(files, "docProps/core.xml"); err == nil {
+		data.CorePropsRaw = corePropsRaw
+		if coreProps, err := parseCoreProperties(corePropsRaw); err == nil {
+			data.CoreProps = coreProps
+		}
+	}
 
 	// Check for the 1904 date system.
 	if wb.WorkbookPr != nil {
@@ -514,20 +520,30 @@ func resolveRelativePath(baseDir, target string) string {
 
 func readXML[T any](files map[string]*zip.File, name string) (T, error) {
 	var zero T
-	f, ok := files[name]
-	if !ok {
-		return zero, fmt.Errorf("file %q not found in archive", name)
-	}
-	rc, err := f.Open()
+	data, err := readFile(files, name)
 	if err != nil {
 		return zero, err
 	}
-	defer rc.Close()
-
 	var v T
-	dec := xml.NewDecoder(rc)
-	if err := dec.Decode(&v); err != nil {
-		return zero, fmt.Errorf("decode %s: %w", name, err)
+	if err := xml.Unmarshal(data, &v); err != nil {
+		return zero, fmt.Errorf("unmarshal %s: %w", name, err)
 	}
 	return v, nil
+}
+
+func readFile(files map[string]*zip.File, name string) ([]byte, error) {
+	f, ok := files[name]
+	if !ok {
+		return nil, fmt.Errorf("file %q not found in archive", name)
+	}
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	return data, nil
 }

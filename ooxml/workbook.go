@@ -104,6 +104,8 @@ type DefinedName struct {
 type WorkbookData struct {
 	Date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
 	CalcProps    CalcPropertiesData
+	CoreProps    CorePropertiesData
+	CorePropsRaw []byte
 	Sheets       []SheetData
 	Styles       []StyleData   // index 0 = default (empty)
 	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml

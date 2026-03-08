@@ -13,16 +13,19 @@ import (
 
 // File represents an XLSX workbook.
 type File struct {
-	sheets       []*Sheet
-	sheetNames   []string
-	date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
-	calcProps    CalcProperties
-	calcGen      uint64            // incremented on any cell mutation; starts at 1
-	evaluating   map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
-	deps         *formula.DepGraph // cell dependency graph for incremental recalculation
-	tableDefs    []Table
-	tables       []formula.TableInfo       // table definitions for structured reference expansion
-	definedNames []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
+	sheets         []*Sheet
+	sheetNames     []string
+	date1904       bool // true if the workbook uses the 1904 date system (Mac Excel)
+	calcProps      CalcProperties
+	coreProps      CoreProperties
+	corePropsRaw   []byte
+	corePropsDirty bool
+	calcGen        uint64            // incremented on any cell mutation; starts at 1
+	evaluating     map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
+	deps           *formula.DepGraph // cell dependency graph for incremental recalculation
+	tableDefs      []Table
+	tables         []formula.TableInfo       // table definitions for structured reference expansion
+	definedNames   []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -260,10 +263,12 @@ func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
 
 func fileFromData(data *ooxml.WorkbookData) *File {
 	f := &File{
-		calcGen:   1,
-		date1904:  data.Date1904,
-		calcProps: calcPropsFromData(data.CalcProps),
-		deps:      formula.NewDepGraph(),
+		calcGen:      1,
+		date1904:     data.Date1904,
+		calcProps:    calcPropsFromData(data.CalcProps),
+		coreProps:    corePropsFromData(data.CoreProps),
+		corePropsRaw: append([]byte(nil), data.CorePropsRaw...),
+		deps:         formula.NewDepGraph(),
 	}
 
 	// Convert StyleData slice to *Style slice for assignment.
@@ -417,6 +422,10 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 	data := &ooxml.WorkbookData{
 		Date1904:  f.date1904,
 		CalcProps: f.calcProps.toData(),
+		CoreProps: f.coreProps.toData(),
+	}
+	if !f.corePropsDirty && len(f.corePropsRaw) > 0 {
+		data.CorePropsRaw = append([]byte(nil), f.corePropsRaw...)
 	}
 
 	// Style dedup: index 0 is always the default (empty StyleData).
