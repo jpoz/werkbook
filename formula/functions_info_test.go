@@ -1375,6 +1375,72 @@ func TestISERROR(t *testing.T) {
 	}
 }
 
+func TestISNA(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name     string
+		formula  string
+		wantTyp  ValueType
+		wantBool bool
+		wantErr  ErrorValue
+	}{
+		// #N/A error should return TRUE
+		{"NA_function", `ISNA(NA())`, ValueBool, true, 0},
+		{"NA_literal", `ISNA(#N/A)`, ValueBool, true, 0},
+
+		// Other error types should return FALSE (only #N/A is TRUE)
+		{"DIV0_error", `ISNA(1/0)`, ValueBool, false, 0},
+		{"DIV0_zero_div_zero", `ISNA(0/0)`, ValueBool, false, 0},
+		{"VALUE_error", `ISNA(#VALUE!)`, ValueBool, false, 0},
+		{"REF_error", `ISNA(#REF!)`, ValueBool, false, 0},
+		{"NUM_error", `ISNA(#NUM!)`, ValueBool, false, 0},
+		{"NULL_error", `ISNA(#NULL!)`, ValueBool, false, 0},
+		{"NAME_error", `ISNA(#NAME?)`, ValueBool, false, 0},
+
+		// Numbers should return FALSE
+		{"number_positive", `ISNA(1)`, ValueBool, false, 0},
+		{"number_zero", `ISNA(0)`, ValueBool, false, 0},
+		{"number_negative", `ISNA(-5)`, ValueBool, false, 0},
+		{"number_decimal", `ISNA(3.14)`, ValueBool, false, 0},
+
+		// Text should return FALSE
+		{"text_string", `ISNA("text")`, ValueBool, false, 0},
+		{"empty_string", `ISNA("")`, ValueBool, false, 0},
+
+		// Boolean should return FALSE
+		{"bool_true", `ISNA(TRUE)`, ValueBool, false, 0},
+		{"bool_false", `ISNA(FALSE)`, ValueBool, false, 0},
+
+		// Expressions that do not produce #N/A
+		{"valid_arithmetic", `ISNA(2+3)`, ValueBool, false, 0},
+		{"valid_division", `ISNA(10/2)`, ValueBool, false, 0},
+
+		// Wrong number of arguments returns #VALUE!
+		{"no_args", `ISNA()`, ValueError, false, ErrValVALUE},
+		{"two_args", `ISNA(1,2)`, ValueError, false, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.wantTyp == ValueBool {
+				if got.Type != ValueBool || got.Bool != tt.wantBool {
+					t.Errorf("%s = %v, want bool %v", tt.formula, got, tt.wantBool)
+				}
+			} else {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("%s = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func TestISNUMBER(t *testing.T) {
 	resolver := &mockResolver{}
 
