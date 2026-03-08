@@ -5889,3 +5889,109 @@ func TestFACT(t *testing.T) {
 		})
 	}
 }
+
+func TestEVEN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Basic positive numbers
+		{"pos_1", "EVEN(1)", 2},
+		{"pos_2", "EVEN(2)", 2},
+		{"pos_3", "EVEN(3)", 4},
+		{"pos_5", "EVEN(5)", 6},
+
+		// Already even positive numbers
+		{"already_even_4", "EVEN(4)", 4},
+		{"already_even_10", "EVEN(10)", 10},
+
+		// Zero
+		{"zero", "EVEN(0)", 0},
+
+		// Negative numbers (rounds away from zero)
+		{"neg_1", "EVEN(-1)", -2},
+		{"neg_3", "EVEN(-3)", -4},
+		{"neg_5", "EVEN(-5)", -6},
+
+		// Already even negative numbers
+		{"neg_even_2", "EVEN(-2)", -2},
+		{"neg_even_4", "EVEN(-4)", -4},
+
+		// Positive decimals (rounds up away from zero to nearest even)
+		{"pos_decimal_1_5", "EVEN(1.5)", 2},
+		{"pos_decimal_0_1", "EVEN(0.1)", 2},
+		{"pos_decimal_2_1", "EVEN(2.1)", 4},
+		{"pos_decimal_3_9", "EVEN(3.9)", 4},
+
+		// Negative decimals (rounds away from zero to nearest even)
+		{"neg_decimal_1_5", "EVEN(-1.5)", -2},
+		{"neg_decimal_0_1", "EVEN(-0.1)", -2},
+		{"neg_decimal_2_1", "EVEN(-2.1)", -4},
+
+		// Large numbers
+		{"large_odd", "EVEN(999999)", 1000000},
+		{"large_even", "EVEN(1000000)", 1000000},
+		{"large_neg", "EVEN(-999999)", -1000000},
+
+		// String coercion
+		{"string_pos", `EVEN("3")`, 4},
+		{"string_neg", `EVEN("-1")`, -2},
+
+		// Boolean coercion
+		{"bool_true", "EVEN(TRUE)", 2},
+		{"bool_false", "EVEN(FALSE)", 0},
+
+		// Excel doc examples
+		{"doc_ex1", "EVEN(1.5)", 2},
+		{"doc_ex2", "EVEN(3)", 4},
+		{"doc_ex3", "EVEN(2)", 2},
+		{"doc_ex4", "EVEN(-1)", -2},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.wantNum {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "EVEN()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "EVEN(1,2)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric", `EVEN("abc")`, ErrValVALUE},
+		// Error propagation
+		{"err_div0", "EVEN(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
