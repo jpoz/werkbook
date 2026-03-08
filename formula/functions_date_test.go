@@ -1810,3 +1810,144 @@ func TestISOWEEKNUM(t *testing.T) {
 		})
 	}
 }
+
+func TestYEARFRAC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("values", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// === Excel documentation examples ===
+			// 1/1/2012 to 7/30/2012
+			{"doc_basis0_default", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30))", 0.58055555555555556},
+			{"doc_basis1", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30),1)", 0.57650273224043716},
+			{"doc_basis3", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30),3)", 0.57808219178082187},
+
+			// === Same date returns 0 ===
+			{"same_date_basis0", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),0)", 0},
+			{"same_date_basis1", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),1)", 0},
+			{"same_date_basis2", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),2)", 0},
+			{"same_date_basis3", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),3)", 0},
+			{"same_date_basis4", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),4)", 0},
+
+			// === Full year = 1.0 ===
+			// Basis 0: 30/360 -> 360/360 = 1
+			{"full_year_basis0", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),0)", 1.0},
+			// Basis 1: actual/actual, spans 2023-2024, avg=(365+366)/2=365.5, 365/365.5
+			{"full_year_basis1_nonleap", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),1)", 365.0 / 365.5},
+			// Basis 3: actual/365 -> 365/365 = 1
+			{"full_year_basis3_nonleap", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),3)", 1.0},
+			// Basis 4: European 30/360 -> 360/360 = 1
+			{"full_year_basis4", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),4)", 1.0},
+
+			// === Full year in a leap year ===
+			// Basis 1: actual/actual, spans 2024-2025, avg=(366+365)/2=365.5, 366/365.5
+			{"full_year_basis1_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),1)", 366.0 / 365.5},
+			// Basis 2: actual/360, 366 days -> 366/360
+			{"full_year_basis2_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),2)", 366.0 / 360.0},
+			// Basis 3: actual/365, 366 days -> 366/365
+			{"full_year_basis3_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),3)", 366.0 / 365.0},
+
+			// === Half year ~ 0.5 ===
+			// Basis 0: Jan 1 to Jul 1 -> 180/360 = 0.5
+			{"half_year_basis0", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1),0)", 0.5},
+			// Basis 3: Jan 1 to Jul 3 -> 183/365
+			{"half_year_basis3", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,3),3)", 183.0 / 365.0},
+			// Basis 4: Jan 1 to Jul 1 -> 180/360 = 0.5 (European 30/360)
+			{"half_year_basis4", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1),4)", 0.5},
+
+			// === Reversed dates (end before start) should swap ===
+			{"reversed_dates_basis0", "YEARFRAC(DATE(2024,1,1),DATE(2023,1,1),0)", 1.0},
+			// Reversed, same as full_year_basis1_nonleap after swap: 365/365.5
+			{"reversed_dates_basis1", "YEARFRAC(DATE(2024,1,1),DATE(2023,1,1),1)", 365.0 / 365.5},
+			{"reversed_dates_basis3", "YEARFRAC(DATE(2023,7,3),DATE(2023,1,1),3)", 183.0 / 365.0},
+
+			// === Basis 0 (US 30/360) specific cases ===
+			// 30-day month adjustment: Jan 31 to Feb 28
+			{"basis0_jan31_feb28", "YEARFRAC(DATE(2023,1,31),DATE(2023,2,28),0)", 28.0 / 360.0},
+			// Both end-of-month dates
+			{"basis0_eom_to_eom", "YEARFRAC(DATE(2023,1,31),DATE(2023,3,31),0)", 60.0 / 360.0},
+
+			// === Basis 1 (Actual/actual) specific cases ===
+			// Spanning 2023-2024 boundary: 366 actual days, avg=(365+366)/2=365.5
+			{"basis1_span_leap", "YEARFRAC(DATE(2023,7,1),DATE(2024,7,1),1)", 366.0 / 365.5},
+
+			// === Basis 2 (Actual/360) ===
+			// 90 actual days / 360
+			{"basis2_quarter", "YEARFRAC(DATE(2023,1,1),DATE(2023,4,1),2)", 90.0 / 360.0},
+
+			// === Basis 4 (European 30/360) specific cases ===
+			// Day 31 -> 30 adjustment for both dates
+			{"basis4_31st_to_31st", "YEARFRAC(DATE(2023,1,31),DATE(2023,3,31),4)", 60.0 / 360.0},
+
+			// === Default basis (omitted = 0) ===
+			{"default_basis_omitted", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1))", 0.5},
+
+			// === Multi-year spans ===
+			{"multi_year_basis0", "YEARFRAC(DATE(2020,1,1),DATE(2025,1,1),0)", 5.0},
+			// Years 2020-2025: 2 leap (2020,2024) + 4 non-leap = 2192 days total
+			// avg = 2192/6 = 365.333..., actual days = 1827
+			{"multi_year_basis1", "YEARFRAC(DATE(2020,1,1),DATE(2025,1,1),1)", 1827.0 / (2192.0 / 6.0)},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+				}
+				if math.Abs(got.Num-tc.want) > 1e-9 {
+					t.Errorf("%s = %.15g, want %.15g", tc.formula, got.Num, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			errVal  ErrorValue
+		}{
+			// Too few args
+			{"no_args", "YEARFRAC()", ErrValVALUE},
+			{"one_arg", "YEARFRAC(DATE(2023,1,1))", ErrValVALUE},
+
+			// Too many args
+			{"four_args", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),0,1)", ErrValVALUE},
+
+			// Invalid basis values
+			{"basis_negative", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),-1)", ErrValNUM},
+			{"basis_5", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),5)", ErrValNUM},
+			{"basis_99", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),99)", ErrValNUM},
+
+			// Error propagation
+			{"error_start", "YEARFRAC(1/0,DATE(2024,1,1),0)", ErrValDIV0},
+			{"error_end", "YEARFRAC(DATE(2023,1,1),1/0,0)", ErrValDIV0},
+			{"error_basis", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),1/0)", ErrValDIV0},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueError {
+					t.Fatalf("%s: got type %v (%v), want error", tc.formula, got.Type, got)
+				}
+				if got.Err != tc.errVal {
+					t.Errorf("%s: got error %v, want %v", tc.formula, got.Err, tc.errVal)
+				}
+			})
+		}
+	})
+}

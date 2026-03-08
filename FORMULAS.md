@@ -346,7 +346,7 @@ Werkbook supports **343** Excel formula functions.
 | XNPV | Financial | 18 |
 | XOR | Logical | 34 |
 | YEAR | Date & Time | 26 |
-| YEARFRAC | Date & Time | - |
+| YEARFRAC | Date & Time | 38 |
 
 # Unsupported Formulas
 
