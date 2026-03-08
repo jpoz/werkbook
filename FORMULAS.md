@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **376** Excel formula functions.
+Werkbook supports **379** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -92,6 +92,7 @@ Werkbook supports **376** Excel formula functions.
 | DEGREES | Math & Trig | 25 |
 | DELTA | Engineering | 24 |
 | DEVSQ | Statistical | 23 |
+| DISC | Financial | 3 |
 | DOLLAR | Text | 25 |
 | DOLLARDE | Financial | 18 |
 | DOLLARFR | Financial | 17 |
@@ -177,6 +178,7 @@ Werkbook supports **376** Excel formula functions.
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
 | INTERCEPT | Statistical | 16 |
+| INTRATE | Financial | 3 |
 | IPMT | Financial | 4 |
 | IRR | Financial | 19 |
 | ISBLANK | Information | 23 |
@@ -276,6 +278,7 @@ Werkbook supports **376** Excel formula functions.
 | RANK.AVG | Statistical | 21 |
 | RANK.EQ | Statistical | 7 |
 | RATE | Financial | 6 |
+| RECEIVED | Financial | 3 |
 | REPLACE | Text | 38 |
 | REPT | Text | 26 |
 | RIGHT | Text | 41 |
@@ -383,7 +386,7 @@ Werkbook supports **376** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **94** Excel functions are not yet supported.
+The following **91** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -415,7 +418,6 @@ The following **94** Excel functions are not yet supported.
 | DCOUNT | Database |
 | DCOUNTA | Database |
 | DGET | Database |
-| DISC | Financial |
 | DMAX | Database |
 | DMIN | Database |
 | DPRODUCT | Database |
@@ -440,7 +442,6 @@ The following **94** Excel functions are not yet supported.
 | HYPERLINK | Lookup & Reference |
 | IMSEC | Engineering |
 | INFO | Information |
-| INTRATE | Financial |
 | ISO.CEILING | Math & Trig |
 | ISREF | Information |
 | LAMBDA | Logical |
@@ -464,7 +465,6 @@ The following **94** Excel functions are not yet supported.
 | PRICEDISC | Financial |
 | PRICEMAT | Financial |
 | RANDARRAY | Math & Trig |
-| RECEIVED | Financial |
 | REDUCE | Logical |
 | REPLACEB | Text |
 | RIGHTB | Text |

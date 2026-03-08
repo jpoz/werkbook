@@ -34,7 +34,7 @@ func assertError(t *testing.T, name string, got Value) {
 
 func TestPMT_BasicLoan(t *testing.T) {
 	// 5% annual rate / 12 months, 30 year mortgage, $200,000 loan
-	// Excel: PMT(0.05/12, 360, 200000) = -1073.64
+	// Expected: PMT(0.05/12, 360, 200000) = -1073.64
 	v, err := fnPMT(numArgs(0.05/12, 360, 200000))
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestPMT_ZeroRate(t *testing.T) {
 
 func TestPMT_WithFV(t *testing.T) {
 	// PMT(0.08/12, 120, 0, 100000) — saving for $100k
-	// Excel: -546.61
+	// Expected: -546.61
 	v, err := fnPMT(numArgs(0.08/12, 120, 0, 100000))
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestPMT_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// --- Excel doc examples ---
+		// --- Doc examples ---
 		{
 			name: "Excel doc: monthly payment 8%/12, 10 months, $10000",
 			args: numArgs(0.08/12, 10, 10000),
@@ -274,7 +274,7 @@ func TestPMT_Comprehensive(t *testing.T) {
 
 func TestFV_Savings(t *testing.T) {
 	// FV(0.06/12, 120, -200, -5000) — $200/month, $5000 initial, 6% over 10 years
-	// Excel: 41872.85
+	// Expected: 41872.85
 	v, err := fnFV(numArgs(0.06/12, 120, -200, -5000))
 	if err != nil {
 		t.Fatal(err)
@@ -378,25 +378,25 @@ func TestFV_Comprehensive(t *testing.T) {
 			args: numArgs(0.08/12, 120, -200),
 			want: 36589.21,
 		},
-		// --- Excel doc example 1: FV(0.06/12, 10, -200, -500, 1) = 2581.40 ---
+		// --- Doc example 1: FV(0.06/12, 10, -200, -500, 1) = 2581.40 ---
 		{
 			name: "Excel doc example 1",
 			args: numArgs(0.06/12, 10, -200, -500, 1),
 			want: 2581.40,
 		},
-		// --- Excel doc example 2: FV(0.12/12, 12, -1000) = 12682.50 ---
+		// --- Doc example 2: FV(0.12/12, 12, -1000) = 12682.50 ---
 		{
 			name: "Excel doc example 2",
 			args: numArgs(0.12/12, 12, -1000),
 			want: 12682.50,
 		},
-		// --- Excel doc example 3: FV(0.11/12, 35, -2000, 0, 1) = 82846.25 ---
+		// --- Doc example 3: FV(0.11/12, 35, -2000, 0, 1) = 82846.25 ---
 		{
 			name: "Excel doc example 3",
 			args: numArgs(0.11/12, 35, -2000, 0, 1),
 			want: 82846.25,
 		},
-		// --- Excel doc example 4: FV(0.06/12, 12, -100, -1000, 1) = 2301.40 ---
+		// --- Doc example 4: FV(0.06/12, 12, -100, -1000, 1) = 2301.40 ---
 		{
 			name: "Excel doc example 4",
 			args: numArgs(0.06/12, 12, -100, -1000, 1),
@@ -506,7 +506,7 @@ func TestFV_Errors(t *testing.T) {
 
 func TestPV_Annuity(t *testing.T) {
 	// PV(0.08/12, 240, -500) — 20 years of $500/month payments at 8%
-	// Excel: 59777.15
+	// Expected: 59777.15
 	v, err := fnPV(numArgs(0.08/12, 240, -500))
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +601,7 @@ func TestPV_Comprehensive(t *testing.T) {
 			args: numArgs(0.08/12, 120, -200),
 			want: 16484.30,
 		},
-		// --- Excel doc example: PV(0.08/12, 12*20, 500, , 0) = -59777.15 ---
+		// --- Doc example: PV(0.08/12, 12*20, 500, , 0) = -59777.15 ---
 		// (sign convention: positive pmt = receiving money, so PV is negative)
 		{
 			name: "Excel doc example annuity payout",
@@ -722,7 +722,7 @@ func TestPV_Errors(t *testing.T) {
 
 func TestNPER_Loan(t *testing.T) {
 	// NPER(0.01, -100, 1000) — how many months to pay off $1000 at 1%/month
-	// Excel: 10.58
+	// Expected: 10.58
 	v, err := fnNPER(numArgs(0.01, -100, 1000))
 	if err != nil {
 		t.Fatal(err)
@@ -746,7 +746,7 @@ func TestNPER_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// --- Excel doc examples ---
+		// --- Doc examples ---
 		{
 			name: "Excel doc: type=1, rate=12%/12, pmt=-100, pv=-1000, fv=10000",
 			args: numArgs(0.12/12, -100, -1000, 10000, 1),
@@ -902,7 +902,7 @@ func TestNPER_Comprehensive(t *testing.T) {
 
 func TestRATE_Loan(t *testing.T) {
 	// RATE(360, -1073.64, 200000) — reverse of the PMT example
-	// Excel: ~0.004167 (0.05/12)
+	// Expected: ~0.004167 (0.05/12)
 	v, err := fnRATE(numArgs(360, -1073.64, 200000))
 	if err != nil {
 		t.Fatal(err)
@@ -912,7 +912,7 @@ func TestRATE_Loan(t *testing.T) {
 
 func TestRATE_NoSolution(t *testing.T) {
 	// RATE(60, 0, 50000) — pmt=0, fv=0, pv≠0: no solution exists.
-	// Excel returns #NUM!.
+	// Returns #NUM!.
 	v, err := fnRATE(numArgs(60, 0, 50000))
 	if err != nil {
 		t.Fatal(err)
@@ -936,10 +936,10 @@ func TestRATE_Comprehensive(t *testing.T) {
 			args: numArgs(360, -1073.64, 200000),
 			want: 0.05 / 12,
 		},
-		// --- Excel doc example ---
+		// --- Doc example ---
 		{
 			name: "Excel doc: 4yr loan monthly, RATE(48, -200, 8000)",
-			// Excel says ~1% per month
+			// Expected ~1% per month
 			args: numArgs(48, -200, 8000),
 			want: 0.0077,
 		},
@@ -1102,7 +1102,7 @@ func TestRATE_PMT_RoundTrip(t *testing.T) {
 
 func TestIPMT_FirstPayment(t *testing.T) {
 	// IPMT(0.05/12, 1, 360, 200000) — interest portion of first payment
-	// Excel: -833.33
+	// Expected: -833.33
 	v, err := fnIPMT(numArgs(0.05/12, 1, 360, 200000))
 	if err != nil {
 		t.Fatal(err)
@@ -1165,16 +1165,16 @@ func TestIPMT_Comprehensive(t *testing.T) {
 			want: -76.07,
 		},
 
-		// --- Excel documentation examples ---
+		// --- Documentation examples ---
 		{
 			name: "Excel doc example 1 monthly",
-			// IPMT(0.1/12, 1, 36, 8000) — from Excel docs
+			// IPMT(0.1/12, 1, 36, 8000) — from docs
 			args: numArgs(0.1/12, 1, 36, 8000),
 			want: -66.67,
 		},
 		{
 			name: "Excel doc example 2 annual",
-			// IPMT(0.1, 3, 3, 8000) — from Excel docs, annual payments, last year
+			// IPMT(0.1, 3, 3, 8000) — from docs, annual payments, last year
 			args: numArgs(0.1, 3, 3, 8000),
 			want: -292.45,
 		},
@@ -1264,7 +1264,7 @@ func TestIPMT_Comprehensive(t *testing.T) {
 
 func TestPPMT_FirstPayment(t *testing.T) {
 	// PPMT(0.05/12, 1, 360, 200000) — principal portion of first payment
-	// Excel: -240.31
+	// Expected: -240.31
 	v, err := fnPPMT(numArgs(0.05/12, 1, 360, 200000))
 	if err != nil {
 		t.Fatal(err)
@@ -1347,7 +1347,7 @@ func TestPPMT_Comprehensive(t *testing.T) {
 			want: -795.83,
 		},
 
-		// --- Excel documentation examples ---
+		// --- Documentation examples ---
 		{
 			name: "Excel doc example 1: 10% 2yr loan month 1",
 			// PPMT(0.10/12, 1, 2*12, 2000) = -75.62
@@ -1486,7 +1486,7 @@ func TestIPMT_Plus_PPMT_Equals_PMT_WithFV(t *testing.T) {
 
 func TestNPV_Basic(t *testing.T) {
 	// NPV(0.1, -10000, 3000, 4200, 6800)
-	// Excel: 1188.44
+	// Expected: 1188.44
 	v, err := fnNPV(append(numArgs(0.1), numArgs(-10000, 3000, 4200, 6800)...))
 	if err != nil {
 		t.Fatal(err)
@@ -1676,7 +1676,7 @@ func TestNPV_NonNumericValue(t *testing.T) {
 }
 
 func TestNPV_ExcelExample2(t *testing.T) {
-	// Excel doc example 2: NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000)
+	// Doc example 2: NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000)
 	// = NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
 	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
 	if err != nil {
@@ -1687,7 +1687,7 @@ func TestNPV_ExcelExample2(t *testing.T) {
 }
 
 func TestNPV_ExcelExample2WithLoss(t *testing.T) {
-	// Excel doc example 2 with loss: NPV(0.08, 8000, 9200, 10000, 12000, 14500, -9000) + (-40000)
+	// Doc example 2 with loss: NPV(0.08, 8000, 9200, 10000, 12000, 14500, -9000) + (-40000)
 	// = -3749.47, so NPV alone = -3749.47 + 40000 = 36250.53
 	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500, -9000)...))
 	if err != nil {
@@ -1969,7 +1969,7 @@ func TestIRR_TooManyArgs(t *testing.T) {
 }
 
 func TestIRR_ExcelDocExample1(t *testing.T) {
-	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000}) = -2.1% (-0.021)
+	// Doc: IRR({-70000, 12000, 15000, 18000, 21000}) = -2.1% (-0.021)
 	arr := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -1984,7 +1984,7 @@ func TestIRR_ExcelDocExample1(t *testing.T) {
 }
 
 func TestIRR_ExcelDocExample2(t *testing.T) {
-	// Excel doc: IRR({-70000, 12000, 15000, 18000, 21000, 26000}) = 8.7% (0.087)
+	// Doc: IRR({-70000, 12000, 15000, 18000, 21000, 26000}) = 8.7% (0.087)
 	arr := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -1999,7 +1999,7 @@ func TestIRR_ExcelDocExample2(t *testing.T) {
 }
 
 func TestIRR_ExcelDocExample3(t *testing.T) {
-	// Excel doc: IRR({-70000, 12000, 15000}, -10%) = -44.4% (-0.444)
+	// Doc: IRR({-70000, 12000, 15000}, -10%) = -44.4% (-0.444)
 	arr := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -2051,7 +2051,7 @@ func TestSLN_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Excel documentation example
+		// Documentation example
 		{"excel doc example", numArgs(30000, 7500, 10), 2250, false},
 		// Zero salvage value
 		{"zero salvage", numArgs(30000, 0, 10), 3000, false},
@@ -2148,8 +2148,8 @@ func TestSLN_BoolCoercion(t *testing.T) {
 
 func TestXNPV_Basic(t *testing.T) {
 	// XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, {39448, 39508, 39751, 39859, 39904})
-	// dates as Excel serial numbers: 2008-01-01, 2008-03-01, 2008-10-30, 2009-02-15, 2009-04-01
-	// Excel: ~2086.65
+	// dates as date serial numbers: 2008-01-01, 2008-03-01, 2008-10-30, 2009-02-15, 2009-04-01
+	// Expected: ~2086.65
 	vals := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -2170,7 +2170,7 @@ func TestXNPV_Basic(t *testing.T) {
 }
 
 func TestXNPV_ExcelDocExample(t *testing.T) {
-	// From Excel documentation: XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, dates) = $2,086.65
+	// From documentation: XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, dates) = $2,086.65
 	vals := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -2451,7 +2451,7 @@ func TestXNPV_TooManyArgs(t *testing.T) {
 }
 
 func TestXNPV_DatesNotInOrder(t *testing.T) {
-	// Dates not in chronological order — should still work per Excel spec
+	// Dates not in chronological order — should still work per spec
 	// "All other dates must be later than this date, but they may occur in any order."
 	vals := Value{
 		Type: ValueArray,
@@ -2519,7 +2519,7 @@ func TestXNPV_EmptyArrays(t *testing.T) {
 
 func TestXIRR_Basic(t *testing.T) {
 	// XIRR({-10000, 2750, 4250, 3250, 2750}, {39448, 39508, 39751, 39859, 39904})
-	// Excel: ~0.3734 (37.34%)
+	// Expected: ~0.3734 (37.34%)
 	vals := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -2543,7 +2543,7 @@ func TestXIRR_DateStrings(t *testing.T) {
 	// XIRR with date strings instead of serial numbers (fa.xlsx scenario).
 	// Cash flows: -245000, 8196.57, 18829.92, 27082.48, 19123.73, 51711
 	// Dates: 10/17/2017, 04/29/2022, 08/02/2024, 03/31/2025, 07/14/2025, 03/04/2026
-	// Excel: ~-0.08442739386111497
+	// Expected: ~-0.08442739386111497
 	vals := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -3605,7 +3605,7 @@ func TestEFFECT_NOMINAL_RoundTrip(t *testing.T) {
 // === CUMIPMT ===
 
 func TestCUMIPMT_ExcelDocExample_SecondYear(t *testing.T) {
-	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0) = -11135.23
+	// From docs: CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0) = -11135.23
 	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 13, 24, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -3614,7 +3614,7 @@ func TestCUMIPMT_ExcelDocExample_SecondYear(t *testing.T) {
 }
 
 func TestCUMIPMT_ExcelDocExample_FirstMonth(t *testing.T) {
-	// From Excel docs: CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0) = -937.50
+	// From docs: CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0) = -937.50
 	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 1, 1, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -3642,7 +3642,7 @@ func TestCUMIPMT_FirstYear(t *testing.T) {
 
 func TestCUMIPMT_SinglePeriod(t *testing.T) {
 	// CUMIPMT(0.1/12, 360, 100000, 1, 1, 0) — first month only
-	// Excel: -833.33
+	// Expected: -833.33
 	v, err := fnCumipmt(numArgs(0.1/12, 360, 100000, 1, 1, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -3908,7 +3908,7 @@ func TestXIRR_NegativeRate(t *testing.T) {
 }
 
 func TestXIRR_ExcelDocExample(t *testing.T) {
-	// Excel documentation example: XIRR(A3:A7, B3:B7, 0.1) = 0.373362535
+	// Documentation example: XIRR(A3:A7, B3:B7, 0.1) = 0.373362535
 	// Values: -10000, 2750, 4250, 3250, 2750
 	// Dates: 1-Jan-08, 1-Mar-08, 30-Oct-08, 15-Feb-09, 1-Apr-09
 	vals := Value{
@@ -4287,7 +4287,7 @@ func TestCUMPRINC_FullLife30YrMortgage(t *testing.T) {
 
 func TestCUMPRINC_FirstYear(t *testing.T) {
 	// CUMPRINC(0.1/12, 360, 100000, 1, 12, 0)
-	// Excel: -555.88 (approx)
+	// Expected: -555.88 (approx)
 	v, err := fnCumprinc(numArgs(0.1/12, 360, 100000, 1, 12, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -4572,7 +4572,7 @@ func TestMIRR_ExcelExample(t *testing.T) {
 }
 
 func TestMIRR_AllNegative(t *testing.T) {
-	// Excel returns -1 when all cash flows are negative (FV of positives is 0).
+	// Returns -1 when all cash flows are negative (FV of positives is 0).
 	v, _ := fnMirr([]Value{mirrArray(-1, -2, -3), NumberVal(0.1), NumberVal(0.1)})
 	assertClose(t, "MIRR all negative", v, -1.0)
 }
@@ -5712,7 +5712,7 @@ func TestISPMT_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Excel doc example
+		// Doc example
 		{"excel doc example", numArgs(0.1/12, 1, 36, 8000000), -64814.81, false},
 		// First period (per=0)
 		{"per=0", numArgs(0.1/12, 0, 36, 8000000), -66666.67, false},
@@ -5835,7 +5835,7 @@ func TestTBILLPRICE_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Excel doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9%
+		// Doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9%
 		// DSM=62, price = 100*(1-0.09*62/360) = 98.45
 		{
 			name: "Excel doc example",
@@ -6011,7 +6011,7 @@ func TestTBILLYIELD_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Excel doc example: settlement=3/31/2008, maturity=6/1/2008, pr=$98.45
+		// Doc example: settlement=3/31/2008, maturity=6/1/2008, pr=$98.45
 		// DSM=62, yield = ((100-98.45)/98.45)*(360/62) = 0.09141...
 		{
 			name: "Excel doc example",
@@ -6191,7 +6191,7 @@ func TestTBILLEQ_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Excel doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9.14%
+		// Doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9.14%
 		// DSM=62, TBILLEQ = (365*0.0914)/(360-0.0914*62) = 33.361/(360-5.6668) = 33.361/354.3332 = 0.09415
 		{
 			name: "Excel doc example",
@@ -6268,7 +6268,7 @@ func TestTBILLEQ_Comprehensive(t *testing.T) {
 			args: numArgs(39538, 39600, 0.12),
 			want: 0.12425,
 		},
-		// Fractional dates truncated: same as Excel doc example
+		// Fractional dates truncated: same as doc example
 		{
 			name: "fractional dates truncated",
 			args: numArgs(39538.7, 39600.9, 0.0914),
@@ -6393,4 +6393,743 @@ func TestTBILLEQ_ViaEval(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "TBILLEQ via eval", v, 0.09415)
+}
+
+// === DISC ===
+
+func TestDISC_Comprehensive(t *testing.T) {
+	// Serial numbers for reference dates:
+	// 7/1/2018 = 43282, 1/1/2038 = 50406
+	// 2/15/2008 = 39493, 5/15/2008 = 39583
+	// 1/1/2023 = 44927, 12/31/2023 = 45291
+	// 1/1/2024 = 45292, 7/1/2024 = 45474
+	// 1/31/2023 = 44957
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64 // custom tolerance; 0 means use default 0.01
+	}{
+		// --- Doc example ---
+		// DISC(7/1/2018, 1/1/2038, 97.975, 100, 1) = 0.001038
+		{
+			name: "doc example basis 1",
+			args: numArgs(43282, 50406, 97.975, 100, 1),
+			want: 0.001038,
+			tol:  0.000001,
+		},
+		// --- All 5 basis types with same dates (2/15/2008 to 5/15/2008, pr=97, redemption=100) ---
+		// basis 0: DSM=days360(US)=90, B=360 => DISC=(3/100)*(360/90)=0.12
+		{
+			name: "basis 0 US 30/360",
+			args: numArgs(39493, 39583, 97, 100, 0),
+			want: 0.12,
+		},
+		// basis 1: DSM=90 actual, B=366 (2008 is leap) => DISC=(3/100)*(366/90)=0.12200
+		{
+			name: "basis 1 actual/actual",
+			args: numArgs(39493, 39583, 97, 100, 1),
+			want: 0.12200,
+			tol:  0.001,
+		},
+		// basis 2: DSM=90 actual, B=360 => DISC=(3/100)*(360/90)=0.12
+		{
+			name: "basis 2 actual/360",
+			args: numArgs(39493, 39583, 97, 100, 2),
+			want: 0.12,
+		},
+		// basis 3: DSM=90 actual, B=365 => DISC=(3/100)*(365/90)=0.12167
+		{
+			name: "basis 3 actual/365",
+			args: numArgs(39493, 39583, 97, 100, 3),
+			want: 0.12167,
+			tol:  0.001,
+		},
+		// basis 4: European 30/360: DSM=days360(EU)=90, B=360 => DISC=(3/100)*(360/90)=0.12
+		{
+			name: "basis 4 European 30/360",
+			args: numArgs(39493, 39583, 97, 100, 4),
+			want: 0.12,
+		},
+		// --- Default basis (omitted = 0) ---
+		{
+			name: "default basis omitted",
+			args: numArgs(39493, 39583, 97, 100),
+			want: 0.12,
+		},
+		// --- Various date ranges ---
+		// Short range: 30 days, basis 0
+		// 1/1/2023 to 1/31/2023, pr=99, redemption=100
+		// DSM=30, B=360 => DISC=(1/100)*(360/30)=0.12
+		{
+			name: "short 30 day range",
+			args: numArgs(44927, 44957, 99, 100, 0),
+			want: 0.12,
+		},
+		// Long range: full year, basis 0
+		// 1/1/2023 to 12/31/2023, pr=95, redemption=100
+		// DSM=360 (US 30/360), B=360 => DISC=(5/100)*(360/360)=0.05
+		{
+			name: "full year range",
+			args: numArgs(44927, 45291, 95, 100, 0),
+			want: 0.05,
+		},
+		// Half year, basis 2 (actual/360)
+		// 1/1/2024 to 7/1/2024, pr=98, redemption=100
+		// DSM=182 actual, B=360 => DISC=(2/100)*(360/182)=0.03956
+		{
+			name: "half year basis 2",
+			args: numArgs(45292, 45474, 98, 100, 2),
+			want: 0.03956,
+			tol:  0.001,
+		},
+		// --- Edge cases: very small discount ---
+		// pr=99.999, redemption=100
+		{
+			name: "very small discount",
+			args: numArgs(39493, 39583, 99.999, 100, 0),
+			want: 0.00004,
+			tol:  0.00001,
+		},
+		// --- Edge cases: very large discount ---
+		// pr=1, redemption=100
+		// DSM=90, B=360 => DISC=(99/100)*(360/90)=3.96
+		{
+			name: "very large discount",
+			args: numArgs(39493, 39583, 1, 100, 0),
+			want: 3.96,
+		},
+		// pr > redemption (negative result)
+		// pr=105, redemption=100
+		// DISC=(100-105)/100*(360/90) = -0.2
+		{
+			name: "pr exceeds redemption negative result",
+			args: numArgs(39493, 39583, 105, 100, 0),
+			want: -0.2,
+		},
+		// Fractional dates get truncated
+		{
+			name: "fractional dates truncated",
+			args: numArgs(39493.7, 39583.9, 97, 100, 0),
+			want: 0.12,
+		},
+		// Large redemption value
+		{
+			name: "large redemption",
+			args: numArgs(39493, 39583, 97000, 100000, 0),
+			want: 0.12,
+		},
+		// --- Error cases ---
+		{
+			name:    "pr zero",
+			args:    numArgs(39493, 39583, 0, 100, 0),
+			wantErr: true,
+		},
+		{
+			name:    "pr negative",
+			args:    numArgs(39493, 39583, -10, 100, 0),
+			wantErr: true,
+		},
+		{
+			name:    "redemption zero",
+			args:    numArgs(39493, 39583, 97, 0, 0),
+			wantErr: true,
+		},
+		{
+			name:    "redemption negative",
+			args:    numArgs(39493, 39583, 97, -100, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement equals maturity",
+			args:    numArgs(39493, 39493, 97, 100, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement after maturity",
+			args:    numArgs(39583, 39493, 97, 100, 0),
+			wantErr: true,
+		},
+		{
+			name:    "basis negative",
+			args:    numArgs(39493, 39583, 97, 100, -1),
+			wantErr: true,
+		},
+		{
+			name:    "basis 5",
+			args:    numArgs(39493, 39583, 97, 100, 5),
+			wantErr: true,
+		},
+		{
+			name:    "basis 99",
+			args:    numArgs(39493, 39583, 97, 100, 99),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(39493, 39583, 97),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(39493, 39583, 97, 100, 0, 1),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric settlement",
+			args:    []Value{StringVal("abc"), NumberVal(39583), NumberVal(97), NumberVal(100), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric maturity",
+			args:    []Value{NumberVal(39493), StringVal("xyz"), NumberVal(97), NumberVal(100), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric pr",
+			args:    []Value{NumberVal(39493), NumberVal(39583), StringVal("abc"), NumberVal(100), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric redemption",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(97), StringVal("abc"), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric basis",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(97), NumberVal(100), StringVal("abc")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnDisc(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestDISC_ViaEval(t *testing.T) {
+	// DISC(DATE(2018,7,1), DATE(2038,1,1), 97.975, 100, 1) = 0.001038
+	cf := evalCompile(t, "DISC(DATE(2018,7,1), DATE(2038,1,1), 97.975, 100, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.001038) > 0.000001 {
+		t.Errorf("got %f, want 0.001038", v.Num)
+	}
+}
+
+// === INTRATE ===
+
+func TestINTRATE_Comprehensive(t *testing.T) {
+	// Serial numbers:
+	// 2/15/2008 = 39493, 5/15/2008 = 39583
+	// 1/1/2023 = 44927, 12/31/2023 = 45291
+	// 1/1/2024 = 45292, 7/1/2024 = 45474
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64
+	}{
+		// --- Doc example ---
+		// INTRATE(2/15/2008, 5/15/2008, 1000000, 1014420, 2) = 0.05768
+		{
+			name: "doc example basis 2",
+			args: numArgs(39493, 39583, 1000000, 1014420, 2),
+			want: 0.05768,
+			tol:  0.0001,
+		},
+		// --- All 5 basis types (2/15/2008 to 5/15/2008, inv=1000, red=1010) ---
+		// basis 0: DIM=days360(US)=90, B=360 => INTRATE=(10/1000)*(360/90)=0.04
+		{
+			name: "basis 0 US 30/360",
+			args: numArgs(39493, 39583, 1000, 1010, 0),
+			want: 0.04,
+		},
+		// basis 1: DIM=90 actual, B=366 (2008 is leap) => INTRATE=(10/1000)*(366/90)=0.04067
+		{
+			name: "basis 1 actual/actual",
+			args: numArgs(39493, 39583, 1000, 1010, 1),
+			want: 0.04067,
+			tol:  0.001,
+		},
+		// basis 2: DIM=90 actual, B=360 => INTRATE=(10/1000)*(360/90)=0.04
+		{
+			name: "basis 2 actual/360",
+			args: numArgs(39493, 39583, 1000, 1010, 2),
+			want: 0.04,
+		},
+		// basis 3: DIM=90 actual, B=365 => INTRATE=(10/1000)*(365/90)=0.04056
+		{
+			name: "basis 3 actual/365",
+			args: numArgs(39493, 39583, 1000, 1010, 3),
+			want: 0.04056,
+			tol:  0.001,
+		},
+		// basis 4: DIM=days360(EU)=90, B=360 => INTRATE=(10/1000)*(360/90)=0.04
+		{
+			name: "basis 4 European 30/360",
+			args: numArgs(39493, 39583, 1000, 1010, 4),
+			want: 0.04,
+		},
+		// --- Default basis (omitted = 0) ---
+		{
+			name: "default basis omitted",
+			args: numArgs(39493, 39583, 1000, 1010),
+			want: 0.04,
+		},
+		// --- Various date ranges ---
+		// Short range: 30 days
+		{
+			name: "short 30 day range",
+			args: numArgs(44927, 44957, 10000, 10100, 0),
+			want: 0.12,
+		},
+		// Full year
+		{
+			name: "full year basis 0",
+			args: numArgs(44927, 45291, 10000, 10500, 0),
+			want: 0.05,
+		},
+		// Half year, basis 3
+		// 1/1/2024 to 7/1/2024: DIM=182 actual, B=365
+		// INTRATE=(200/10000)*(365/182)=0.02*2.00549=0.04011
+		{
+			name: "half year basis 3",
+			args: numArgs(45292, 45474, 10000, 10200, 3),
+			want: 0.04011,
+			tol:  0.001,
+		},
+		// --- Edge cases ---
+		// Very small return
+		{
+			name: "very small return",
+			args: numArgs(39493, 39583, 1000000, 1000001, 0),
+			want: 0.000004,
+			tol:  0.000001,
+		},
+		// Very large return
+		{
+			name: "very large return",
+			args: numArgs(39493, 39583, 100, 10000, 0),
+			want: 396.0,
+		},
+		// Negative return (redemption < investment)
+		{
+			name: "negative return",
+			args: numArgs(39493, 39583, 1000, 900, 0),
+			want: -0.4,
+		},
+		// Large investment values
+		{
+			name: "large values",
+			args: numArgs(39493, 39583, 50000000, 51000000, 2),
+			want: 0.08,
+		},
+		// Fractional dates truncated
+		{
+			name: "fractional dates truncated",
+			args: numArgs(39493.8, 39583.2, 1000, 1010, 0),
+			want: 0.04,
+		},
+		// --- Error cases ---
+		{
+			name:    "investment zero",
+			args:    numArgs(39493, 39583, 0, 1010, 0),
+			wantErr: true,
+		},
+		{
+			name:    "investment negative",
+			args:    numArgs(39493, 39583, -1000, 1010, 0),
+			wantErr: true,
+		},
+		{
+			name:    "redemption zero",
+			args:    numArgs(39493, 39583, 1000, 0, 0),
+			wantErr: true,
+		},
+		{
+			name:    "redemption negative",
+			args:    numArgs(39493, 39583, 1000, -1010, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement equals maturity",
+			args:    numArgs(39493, 39493, 1000, 1010, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement after maturity",
+			args:    numArgs(39583, 39493, 1000, 1010, 0),
+			wantErr: true,
+		},
+		{
+			name:    "basis negative",
+			args:    numArgs(39493, 39583, 1000, 1010, -1),
+			wantErr: true,
+		},
+		{
+			name:    "basis 5",
+			args:    numArgs(39493, 39583, 1000, 1010, 5),
+			wantErr: true,
+		},
+		{
+			name:    "basis 99",
+			args:    numArgs(39493, 39583, 1000, 1010, 99),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(39493, 39583, 1000),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(39493, 39583, 1000, 1010, 0, 1),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric settlement",
+			args:    []Value{StringVal("abc"), NumberVal(39583), NumberVal(1000), NumberVal(1010), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric maturity",
+			args:    []Value{NumberVal(39493), StringVal("xyz"), NumberVal(1000), NumberVal(1010), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric investment",
+			args:    []Value{NumberVal(39493), NumberVal(39583), StringVal("abc"), NumberVal(1010), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric redemption",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(1000), StringVal("abc"), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric basis",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(1000), NumberVal(1010), StringVal("abc")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIntrate(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestINTRATE_ViaEval(t *testing.T) {
+	// INTRATE(DATE(2008,2,15), DATE(2008,5,15), 1000000, 1014420, 2) = 0.05768
+	cf := evalCompile(t, "INTRATE(DATE(2008,2,15), DATE(2008,5,15), 1000000, 1014420, 2)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-0.05768) > 0.0001 {
+		t.Errorf("got %f, want 0.05768", v.Num)
+	}
+}
+
+// === RECEIVED ===
+
+func TestRECEIVED_Comprehensive(t *testing.T) {
+	// Serial numbers:
+	// 2/15/2008 = 39493, 5/15/2008 = 39583
+	// 1/1/2023 = 44927, 12/31/2023 = 45291
+	// 1/1/2024 = 45292, 7/1/2024 = 45474
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64
+	}{
+		// --- Doc example ---
+		// RECEIVED(2/15/2008, 5/15/2008, 1000000, 0.0575, 2) = 1014584.65
+		{
+			name: "doc example basis 2",
+			args: numArgs(39493, 39583, 1000000, 0.0575, 2),
+			want: 1014584.65,
+			tol:  1.0,
+		},
+		// --- All 5 basis types (2/15/2008 to 5/15/2008, inv=10000, disc=0.10) ---
+		// basis 0: DIM=days360(US)=90, B=360 => RECEIVED=10000/(1-0.10*90/360)=10000/0.975=10256.41
+		{
+			name: "basis 0 US 30/360",
+			args: numArgs(39493, 39583, 10000, 0.10, 0),
+			want: 10256.41,
+			tol:  1.0,
+		},
+		// basis 1: DIM=90 actual, B=366 (2008 leap) => RECEIVED=10000/(1-0.10*90/366)=10000/0.97541=10252.18
+		{
+			name: "basis 1 actual/actual",
+			args: numArgs(39493, 39583, 10000, 0.10, 1),
+			want: 10252.18,
+			tol:  1.0,
+		},
+		// basis 2: DIM=90 actual, B=360 => RECEIVED=10000/(1-0.10*90/360)=10000/0.975=10256.41
+		{
+			name: "basis 2 actual/360",
+			args: numArgs(39493, 39583, 10000, 0.10, 2),
+			want: 10256.41,
+			tol:  1.0,
+		},
+		// basis 3: DIM=90 actual, B=365 => RECEIVED=10000/(1-0.10*90/365)=10000/0.97534=10252.86
+		{
+			name: "basis 3 actual/365",
+			args: numArgs(39493, 39583, 10000, 0.10, 3),
+			want: 10252.86,
+			tol:  1.0,
+		},
+		// basis 4: DIM=days360(EU)=90, B=360 => RECEIVED=10000/(1-0.10*90/360)=10000/0.975=10256.41
+		{
+			name: "basis 4 European 30/360",
+			args: numArgs(39493, 39583, 10000, 0.10, 4),
+			want: 10256.41,
+			tol:  1.0,
+		},
+		// --- Default basis (omitted = 0) ---
+		{
+			name: "default basis omitted",
+			args: numArgs(39493, 39583, 10000, 0.10),
+			want: 10256.41,
+			tol:  1.0,
+		},
+		// --- Various date ranges ---
+		// Short range: 30 days, basis 0
+		// 1/1/2023 to 1/31/2023: DIM=30 (US 30/360), B=360
+		// RECEIVED=10000/(1-0.05*30/360)=10000/0.99583=10041.84
+		{
+			name: "short 30 day range",
+			args: numArgs(44927, 44957, 10000, 0.05, 0),
+			want: 10041.84,
+			tol:  1.0,
+		},
+		// Full year, basis 0
+		// 1/1/2023 to 12/31/2023: DIM=360 (US 30/360), B=360
+		// RECEIVED=10000/(1-0.05*360/360)=10000/0.95=10526.32
+		{
+			name: "full year basis 0",
+			args: numArgs(44927, 45291, 10000, 0.05, 0),
+			want: 10526.32,
+			tol:  1.0,
+		},
+		// Half year, basis 3
+		// 1/1/2024 to 7/1/2024: DIM=182 actual, B=365
+		// RECEIVED=10000/(1-0.06*182/365)=10000/(1-0.02992)=10000/0.97008=10308.40
+		{
+			name: "half year basis 3",
+			args: numArgs(45292, 45474, 10000, 0.06, 3),
+			want: 10308.40,
+			tol:  1.0,
+		},
+		// --- Edge cases ---
+		// Very small discount
+		{
+			name: "very small discount",
+			args: numArgs(39493, 39583, 10000, 0.0001, 0),
+			want: 10000.25,
+			tol:  1.0,
+		},
+		// Large investment
+		{
+			name: "large investment",
+			args: numArgs(39493, 39583, 50000000, 0.05, 0),
+			want: 50632911.39,
+			tol:  100.0,
+		},
+		// Small investment
+		{
+			name: "small investment",
+			args: numArgs(39493, 39583, 100, 0.08, 0),
+			want: 102.04,
+			tol:  0.1,
+		},
+		// Fractional dates truncated
+		{
+			name: "fractional dates truncated",
+			args: numArgs(39493.7, 39583.9, 10000, 0.10, 0),
+			want: 10256.41,
+			tol:  1.0,
+		},
+		// High discount rate
+		// DIM=90, B=360, discount=0.50 => RECEIVED=10000/(1-0.50*90/360)=10000/0.875=11428.57
+		{
+			name: "high discount rate",
+			args: numArgs(39493, 39583, 10000, 0.50, 0),
+			want: 11428.57,
+			tol:  1.0,
+		},
+		// --- Error cases ---
+		{
+			name:    "investment zero",
+			args:    numArgs(39493, 39583, 0, 0.05, 0),
+			wantErr: true,
+		},
+		{
+			name:    "investment negative",
+			args:    numArgs(39493, 39583, -10000, 0.05, 0),
+			wantErr: true,
+		},
+		{
+			name:    "discount zero",
+			args:    numArgs(39493, 39583, 10000, 0, 0),
+			wantErr: true,
+		},
+		{
+			name:    "discount negative",
+			args:    numArgs(39493, 39583, 10000, -0.05, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement equals maturity",
+			args:    numArgs(39493, 39493, 10000, 0.05, 0),
+			wantErr: true,
+		},
+		{
+			name:    "settlement after maturity",
+			args:    numArgs(39583, 39493, 10000, 0.05, 0),
+			wantErr: true,
+		},
+		{
+			name:    "basis negative",
+			args:    numArgs(39493, 39583, 10000, 0.05, -1),
+			wantErr: true,
+		},
+		{
+			name:    "basis 5",
+			args:    numArgs(39493, 39583, 10000, 0.05, 5),
+			wantErr: true,
+		},
+		{
+			name:    "basis 99",
+			args:    numArgs(39493, 39583, 10000, 0.05, 99),
+			wantErr: true,
+		},
+		{
+			name:    "too few args",
+			args:    numArgs(39493, 39583, 10000),
+			wantErr: true,
+		},
+		{
+			name:    "too many args",
+			args:    numArgs(39493, 39583, 10000, 0.05, 0, 1),
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric settlement",
+			args:    []Value{StringVal("abc"), NumberVal(39583), NumberVal(10000), NumberVal(0.05), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric maturity",
+			args:    []Value{NumberVal(39493), StringVal("xyz"), NumberVal(10000), NumberVal(0.05), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric investment",
+			args:    []Value{NumberVal(39493), NumberVal(39583), StringVal("abc"), NumberVal(0.05), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric discount",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(10000), StringVal("abc"), NumberVal(0)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric basis",
+			args:    []Value{NumberVal(39493), NumberVal(39583), NumberVal(10000), NumberVal(0.05), StringVal("abc")},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnReceived(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestRECEIVED_ViaEval(t *testing.T) {
+	// RECEIVED(DATE(2008,2,15), DATE(2008,5,15), 1000000, 0.0575, 2) = 1014584.65
+	cf := evalCompile(t, "RECEIVED(DATE(2008,2,15), DATE(2008,5,15), 1000000, 0.0575, 2)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-1014584.65) > 1.0 {
+		t.Errorf("got %f, want 1014584.65", v.Num)
+	}
 }

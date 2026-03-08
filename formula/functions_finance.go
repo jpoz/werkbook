@@ -37,6 +37,9 @@ func init() {
 	Register("TBILLPRICE", NoCtx(fnTbillPrice))
 	Register("TBILLYIELD", NoCtx(fnTbillYield))
 	Register("TBILLEQ", NoCtx(fnTbillEq))
+	Register("DISC", NoCtx(fnDisc))
+	Register("INTRATE", NoCtx(fnIntrate))
+	Register("RECEIVED", NoCtx(fnReceived))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1629,7 +1632,7 @@ func fnTbillYield(args []Value) (Value, error) {
 //
 //	TBILLEQ = (365 * discount) / (360 - discount * DSM)
 //
-// For DSM > 182 (more than half-year), Excel uses a semi-annual
+// For DSM > 182 (more than half-year), uses a semi-annual
 // compounding formula derived from the US Treasury's investment rate
 // calculation:
 //
@@ -1664,4 +1667,221 @@ func fnTbillEq(args []Value) (Value, error) {
 	}
 	result := (-2.0*b + 2.0*math.Sqrt(discriminant)) / term
 	return NumberVal(result), nil
+}
+
+// dayCountBasis computes the number of days between two dates (DSM) and the
+// number of days in a year (B) according to the specified day count basis.
+// Both settlement and maturity should be truncated serial numbers.
+// Basis values: 0=US 30/360, 1=Actual/actual, 2=Actual/360, 3=Actual/365, 4=European 30/360.
+func dayCountBasis(settlement, maturity float64, basis int) (dsm, bYear float64) {
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+	sy, sm, sd := st.Year(), int(st.Month()), st.Day()
+	ey, em, ed := mt.Year(), int(mt.Month()), mt.Day()
+
+	switch basis {
+	case 0: // US (NASD) 30/360
+		dsm = days360Calc(sy, sm, sd, ey, em, ed, false)
+		bYear = 360
+	case 1: // Actual/actual
+		dsm = maturity - settlement
+		if sy == ey {
+			bYear = 365
+			if isLeapYear(sy) {
+				bYear = 366
+			}
+		} else {
+			totalYearDays := 0.0
+			for y := sy; y <= ey; y++ {
+				if isLeapYear(y) {
+					totalYearDays += 366
+				} else {
+					totalYearDays += 365
+				}
+			}
+			bYear = totalYearDays / float64(ey-sy+1)
+		}
+	case 2: // Actual/360
+		dsm = maturity - settlement
+		bYear = 360
+	case 3: // Actual/365
+		dsm = maturity - settlement
+		bYear = 365
+	case 4: // European 30/360
+		dsm = days360Calc(sy, sm, sd, ey, em, ed, true)
+		bYear = 360
+	}
+	return dsm, bYear
+}
+
+// fnDisc implements DISC(settlement, maturity, pr, redemption, [basis]).
+// Returns the discount rate for a security.
+// Formula: DISC = (redemption - pr) / redemption * (B / DSM)
+func fnDisc(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	settlementRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	maturityRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	pr, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	redemption, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	basis := 0
+	if len(args) == 5 {
+		b, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		basis = int(b)
+	}
+
+	if basis < 0 || basis > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if pr <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if redemption <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	settlement := math.Trunc(settlementRaw)
+	maturity := math.Trunc(maturityRaw)
+	if settlement >= maturity {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	dsm, bYear := dayCountBasis(settlement, maturity, basis)
+	if dsm == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	disc := (redemption - pr) / redemption * (bYear / dsm)
+	return NumberVal(disc), nil
+}
+
+// fnIntrate implements INTRATE(settlement, maturity, investment, redemption, [basis]).
+// Returns the interest rate for a fully invested security.
+// Formula: INTRATE = (redemption - investment) / investment * (B / DIM)
+func fnIntrate(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	settlementRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	maturityRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	investment, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	redemption, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	basis := 0
+	if len(args) == 5 {
+		b, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		basis = int(b)
+	}
+
+	if basis < 0 || basis > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if investment <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if redemption <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	settlement := math.Trunc(settlementRaw)
+	maturity := math.Trunc(maturityRaw)
+	if settlement >= maturity {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	dim, bYear := dayCountBasis(settlement, maturity, basis)
+	if dim == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	rate := (redemption - investment) / investment * (bYear / dim)
+	return NumberVal(rate), nil
+}
+
+// fnReceived implements RECEIVED(settlement, maturity, investment, discount, [basis]).
+// Returns the amount received at maturity for a fully invested security.
+// Formula: RECEIVED = investment / (1 - discount * DIM / B)
+func fnReceived(args []Value) (Value, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	settlementRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	maturityRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	investment, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	discount, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	basis := 0
+	if len(args) == 5 {
+		b, e := CoerceNum(args[4])
+		if e != nil {
+			return *e, nil
+		}
+		basis = int(b)
+	}
+
+	if basis < 0 || basis > 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if investment <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if discount <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	settlement := math.Trunc(settlementRaw)
+	maturity := math.Trunc(maturityRaw)
+	if settlement >= maturity {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	dim, bYear := dayCountBasis(settlement, maturity, basis)
+	denom := 1.0 - discount*dim/bYear
+	if denom == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	received := investment / denom
+	return NumberVal(received), nil
 }
