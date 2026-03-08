@@ -278,9 +278,9 @@ Werkbook supports **343** Excel formula functions.
 | SQRT | Math & Trig | 29 |
 | SQRTPI | Math & Trig | 25 |
 | STANDARDIZE | Statistical | 16 |
-| STDEV | Statistical | - |
+| STDEV | Statistical | 24 |
 | STDEV.P | Statistical | 15 |
-| STDEV.S | Statistical | - |
+| STDEV.S | Statistical | 1 |
 | STDEVP | Statistical | 4 |
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
