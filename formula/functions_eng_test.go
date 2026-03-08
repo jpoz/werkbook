@@ -5,6 +5,36 @@ import (
 	"testing"
 )
 
+// assertComplexStringClose compares two complex number strings with tolerance.
+// It parses both as complex numbers and checks that the real and imaginary parts
+// are within 1e-12 relative tolerance. This avoids cross-platform floating point
+// formatting differences in the last ULP.
+func assertComplexStringClose(t *testing.T, formula string, got Value, want string) {
+	t.Helper()
+	if got.Type != ValueString {
+		t.Errorf("Eval(%q) = %v (type %d), want string %q", formula, got, got.Type, want)
+		return
+	}
+	if got.Str == want {
+		return // exact match
+	}
+	// Parse both as complex numbers
+	gr, gi, gfail := parseComplex(got.Str)
+	wr, wi, wfail := parseComplex(want)
+	if gfail || wfail {
+		t.Errorf("Eval(%q) = %q, want %q (could not parse as complex)", formula, got.Str, want)
+		return
+	}
+	const tol = 1e-12
+	rdiff := math.Abs(gr - wr)
+	idiff := math.Abs(gi - wi)
+	rmax := math.Max(1, math.Abs(wr))
+	imax := math.Max(1, math.Abs(wi))
+	if rdiff/rmax > tol || idiff/imax > tol {
+		t.Errorf("Eval(%q) = %q, want %q (real diff=%e, imag diff=%e)", formula, got.Str, want, rdiff, idiff)
+	}
+}
+
 func TestBIN2DEC(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -178,9 +208,7 @@ func TestBIN2HEX(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -307,9 +335,7 @@ func TestBIN2OCT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -465,9 +491,7 @@ func TestCOMPLEX(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -669,9 +693,7 @@ func TestDEC2BIN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -797,9 +819,7 @@ func TestDEC2HEX(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -926,9 +946,7 @@ func TestDEC2OCT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -1285,9 +1303,7 @@ func TestHEX2BIN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -1401,9 +1417,7 @@ func TestHEX2OCT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -1514,9 +1528,7 @@ func TestOCT2BIN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -1630,9 +1642,7 @@ func TestOCT2HEX(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -2385,9 +2395,7 @@ func TestIMSUM(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -2509,9 +2517,7 @@ func TestIMSUB(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -2640,9 +2646,7 @@ func TestIMPRODUCT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -2762,9 +2766,7 @@ func TestIMDIV(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3028,9 +3030,7 @@ func TestIMCONJUGATE(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3130,9 +3130,7 @@ func TestIMSQRT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3254,9 +3252,7 @@ func TestIMPOWER(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3373,9 +3369,7 @@ func TestIMEXP(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3481,9 +3475,7 @@ func TestIMLN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3609,9 +3601,7 @@ func TestIMLOG2(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3734,9 +3724,7 @@ func TestIMLOG10(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -3883,9 +3871,7 @@ func TestIMSIN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4001,9 +3987,7 @@ func TestIMCOS(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4113,9 +4097,7 @@ func TestIMTAN(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4222,9 +4204,7 @@ func TestIMSINH(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4331,9 +4311,7 @@ func TestIMCOSH(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4438,9 +4416,7 @@ func TestIMSECH(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4541,9 +4517,7 @@ func TestIMCSC(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4648,9 +4622,7 @@ func TestIMCOT(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
@@ -4755,9 +4727,7 @@ func TestIMCSCH(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Eval(%q): %v", tt.formula, err)
 				}
-				if got.Type != ValueString || got.Str != tt.want {
-					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
-				}
+				assertComplexStringClose(t, tt.formula, got, tt.want)
 			})
 		}
 	})
