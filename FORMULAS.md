@@ -303,7 +303,7 @@ Werkbook supports **343** Excel formula functions.
 | T.INV.2T | Statistical | 20 |
 | TAKE | Lookup & Reference | 30 |
 | TAN | Math & Trig | 23 |
-| TANH | Math & Trig | - |
+| TANH | Math & Trig | 27 |
 | TEXT | Text | 127 |
 | TEXTAFTER | Text | 34 |
 | TEXTBEFORE | Text | 34 |

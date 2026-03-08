@@ -7106,3 +7106,91 @@ func TestTAN(t *testing.T) {
 		})
 	}
 }
+
+func TestTANH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Basic values (from Excel docs)
+		{"tanh_0", "TANH(0)", 0, 0},
+		{"tanh_0.5", "TANH(0.5)", 0.462117157, 1e-8},
+		{"tanh_1", "TANH(1)", 0.761594156, 1e-8},
+		{"tanh_neg2", "TANH(-2)", -0.964027580, 1e-8},
+
+		// Odd function symmetry: TANH(-x) = -TANH(x)
+		{"tanh_neg1", "TANH(-1)", -0.761594156, 1e-8},
+		{"tanh_neg0.5", "TANH(-0.5)", -0.462117157, 1e-8},
+
+		// Small values (close to linear: tanh(x) ≈ x for small x)
+		{"tanh_small_0.001", "TANH(0.001)", math.Tanh(0.001), 1e-12},
+		{"tanh_small_0.0001", "TANH(0.0001)", math.Tanh(0.0001), 1e-14},
+		{"tanh_small_neg", "TANH(-0.001)", math.Tanh(-0.001), 1e-12},
+
+		// Large values approach ±1 asymptotically
+		{"tanh_10", "TANH(10)", 1.0, 1e-8},
+		{"tanh_neg10", "TANH(-10)", -1.0, 1e-8},
+		{"tanh_20", "TANH(20)", 1.0, 1e-15},
+		{"tanh_neg20", "TANH(-20)", -1.0, 1e-15},
+		{"tanh_100", "TANH(100)", 1.0, 0},
+		{"tanh_neg100", "TANH(-100)", -1.0, 0},
+
+		// Moderate values
+		{"tanh_2", "TANH(2)", math.Tanh(2), 1e-10},
+		{"tanh_3", "TANH(3)", math.Tanh(3), 1e-10},
+		{"tanh_5", "TANH(5)", math.Tanh(5), 1e-10},
+
+		// Boolean coercion
+		{"tanh_bool_true", "TANH(TRUE)", math.Tanh(1), 1e-10},
+		{"tanh_bool_false", "TANH(FALSE)", 0, 0},
+
+		// String coercion
+		{"tanh_string_num", `TANH("0.5")`, math.Tanh(0.5), 1e-10},
+		{"tanh_string_zero", `TANH("0")`, 0, 0},
+		{"tanh_string_neg", `TANH("-2")`, math.Tanh(-2), 1e-10},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > tt.tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "TANH()", ErrValVALUE},
+		{"too_many_args", "TANH(1,2)", ErrValVALUE},
+		{"string_non_num", `TANH("abc")`, ErrValVALUE},
+		{"error_prop_div0", "TANH(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
