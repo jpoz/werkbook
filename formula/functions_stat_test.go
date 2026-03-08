@@ -10246,6 +10246,172 @@ func TestMINA(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RANK
+// ---------------------------------------------------------------------------
+
+func TestRANK(t *testing.T) {
+	// Dataset: {7, 3, 5, 3, 9}
+	// Descending sorted: 9(1), 7(2), 5(3), 3(4), 3(4)
+	// Ascending sorted:  3(1), 3(1), 5(3), 7(4), 9(5)
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(7),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 1, Row: 5}: NumberVal(9),
+		},
+	}
+
+	// All same values: {5, 5, 5}
+	allSameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Single element: {10}
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(10),
+		},
+	}
+
+	// Negative values: {-3, -1, -3, 2, 0}
+	// Descending sorted: 2(1), 0(2), -1(3), -3(4), -3(4)
+	// Ascending sorted:  -3(1), -3(1), -1(3), 0(4), 2(5)
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(-3),
+			{Col: 4, Row: 2}: NumberVal(-1),
+			{Col: 4, Row: 3}: NumberVal(-3),
+			{Col: 4, Row: 4}: NumberVal(2),
+			{Col: 4, Row: 5}: NumberVal(0),
+		},
+	}
+
+	// Decimals: {1.5, 2.5, 3.5, 2.5}
+	// Descending: 3.5(1), 2.5(2), 2.5(2), 1.5(4)
+	decResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(1.5),
+			{Col: 5, Row: 2}: NumberVal(2.5),
+			{Col: 5, Row: 3}: NumberVal(3.5),
+			{Col: 5, Row: 4}: NumberVal(2.5),
+		},
+	}
+
+	// Error cell: one cell has an error
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(1),
+			{Col: 6, Row: 2}: ErrorVal(ErrValDIV0),
+			{Col: 6, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Excel doc example: {7, 3.5, 3.5, 1, 2}
+	excelDocResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(7),
+			{Col: 7, Row: 2}: NumberVal(3.5),
+			{Col: 7, Row: 3}: NumberVal(3.5),
+			{Col: 7, Row: 4}: NumberVal(1),
+			{Col: 7, Row: 5}: NumberVal(2),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver CellResolver
+		want     float64
+		isErr    bool
+		wantErr  ErrorValue
+	}{
+		// Basic descending (default, order omitted)
+		{name: "desc_top", formula: "RANK(9,A1:A5)", resolver: resolver, want: 1},
+		{name: "desc_second", formula: "RANK(7,A1:A5)", resolver: resolver, want: 2},
+		{name: "desc_mid", formula: "RANK(5,A1:A5)", resolver: resolver, want: 3},
+
+		// Ties in descending: two 3s both get rank 4 (skip rank 5)
+		{name: "desc_tie", formula: "RANK(3,A1:A5)", resolver: resolver, want: 4},
+
+		// Explicit order=0 means descending (same as omitting)
+		{name: "order_zero_desc", formula: "RANK(9,A1:A5,0)", resolver: resolver, want: 1},
+		{name: "order_zero_tie", formula: "RANK(3,A1:A5,0)", resolver: resolver, want: 4},
+
+		// Ascending order (order=1)
+		{name: "asc_bottom", formula: "RANK(3,A1:A5,1)", resolver: resolver, want: 1},
+		{name: "asc_mid", formula: "RANK(5,A1:A5,1)", resolver: resolver, want: 3},
+		{name: "asc_second", formula: "RANK(7,A1:A5,1)", resolver: resolver, want: 4},
+		{name: "asc_top", formula: "RANK(9,A1:A5,1)", resolver: resolver, want: 5},
+
+		// Any nonzero order means ascending
+		{name: "order_neg1_asc", formula: "RANK(9,A1:A5,-1)", resolver: resolver, want: 5},
+		{name: "order_42_asc", formula: "RANK(3,A1:A5,42)", resolver: resolver, want: 1},
+
+		// Value not found -> #N/A
+		{name: "not_found", formula: "RANK(99,A1:A5)", resolver: resolver, isErr: true, wantErr: ErrValNA},
+		{name: "not_found_zero", formula: "RANK(0,A1:A5)", resolver: resolver, isErr: true, wantErr: ErrValNA},
+
+		// Single element list
+		{name: "single_found", formula: "RANK(10,C1:C1)", resolver: singleResolver, want: 1},
+		{name: "single_not_found", formula: "RANK(5,C1:C1)", resolver: singleResolver, isErr: true, wantErr: ErrValNA},
+
+		// All same values: all get rank 1 (descending and ascending)
+		{name: "all_same_desc", formula: "RANK(5,B1:B3)", resolver: allSameResolver, want: 1},
+		{name: "all_same_asc", formula: "RANK(5,B1:B3,1)", resolver: allSameResolver, want: 1},
+
+		// Negative values
+		{name: "neg_top_desc", formula: "RANK(2,D1:D5)", resolver: negResolver, want: 1},
+		{name: "neg_zero_desc", formula: "RANK(0,D1:D5)", resolver: negResolver, want: 2},
+		{name: "neg_minus1_desc", formula: "RANK(-1,D1:D5)", resolver: negResolver, want: 3},
+		{name: "neg_tie_desc", formula: "RANK(-3,D1:D5)", resolver: negResolver, want: 4},
+		{name: "neg_tie_asc", formula: "RANK(-3,D1:D5,1)", resolver: negResolver, want: 1},
+		{name: "neg_top_asc", formula: "RANK(2,D1:D5,1)", resolver: negResolver, want: 5},
+
+		// Decimal values
+		{name: "dec_top_desc", formula: "RANK(3.5,E1:E4)", resolver: decResolver, want: 1},
+		{name: "dec_tie_desc", formula: "RANK(2.5,E1:E4)", resolver: decResolver, want: 2},
+		{name: "dec_bottom_desc", formula: "RANK(1.5,E1:E4)", resolver: decResolver, want: 4},
+
+		// Error propagation: error in ref range
+		{name: "error_in_ref", formula: "RANK(1,F1:F3)", resolver: errResolver, isErr: true, wantErr: ErrValDIV0},
+
+		// Wrong argument count
+		{name: "too_few_args", formula: "RANK(9)", resolver: resolver, isErr: true, wantErr: ErrValVALUE},
+		{name: "too_many_args", formula: "RANK(9,A1:A5,1,1)", resolver: resolver, isErr: true, wantErr: ErrValVALUE},
+
+		// Excel documentation example: RANK(3.5, {7,3.5,3.5,1,2}, 1) = 3
+		{name: "excel_doc_asc", formula: "RANK(G2,G1:G5,1)", resolver: excelDocResolver, want: 3},
+		// Excel documentation example: RANK(7, {7,3.5,3.5,1,2}, 1) = 5
+		{name: "excel_doc_top_asc", formula: "RANK(G1,G1:G5,1)", resolver: excelDocResolver, want: 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("got %v, want %g", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // RANK.EQ
 // ---------------------------------------------------------------------------
 
