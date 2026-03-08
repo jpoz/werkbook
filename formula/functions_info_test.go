@@ -711,3 +711,294 @@ func TestISERROR(t *testing.T) {
 		})
 	}
 }
+
+func TestISNUMBER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("positive_integer", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(1) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("zero", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(0) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("negative_decimal", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(-5.5)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(-5.5) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("large_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(999999999)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(999999999) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("very_small_decimal", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(0.0001)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(0.0001) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("expression_result", func(t *testing.T) {
+		// Result of arithmetic is a number
+		cf := evalCompile(t, `ISNUMBER(2+3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(2+3) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("negative_integer", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(-100)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(-100) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("text_string", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER("text")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(\"text\") = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("empty_string", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER("")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(\"\") = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("string_looks_like_number", func(t *testing.T) {
+		// Per Excel docs: numeric values in double quotes are treated as text
+		cf := evalCompile(t, `ISNUMBER("123")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(\"123\") = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("string_looks_like_negative_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER("-42.5")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(\"-42.5\") = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("boolean_TRUE_is_not_number", func(t *testing.T) {
+		// Booleans are NOT numbers in Excel
+		cf := evalCompile(t, `ISNUMBER(TRUE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(TRUE) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("boolean_FALSE_is_not_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(FALSE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(FALSE) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("error_DIV0_is_not_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(1/0) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("error_NA_is_not_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(#N/A)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(#N/A) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("error_VALUE_is_not_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(#VALUE!)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(#VALUE!) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("nested_SUM_returns_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(SUM(1,2,3))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(SUM(1,2,3)) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("PI_is_number", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(PI())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(PI()) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("cell_ref_number", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(330.92),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     r,
+		}
+		cf := evalCompile(t, `ISNUMBER(A1)`)
+		got, err := Eval(cf, r, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(A1) with numeric cell = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("cell_ref_text", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello"),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     r,
+		}
+		cf := evalCompile(t, `ISNUMBER(A1)`)
+		got, err := Eval(cf, r, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(A1) with text cell = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("cell_ref_empty", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   2,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     r,
+		}
+		cf := evalCompile(t, `ISNUMBER(A1)`)
+		got, err := Eval(cf, r, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISNUMBER(A1) with empty cell = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("no_args_error", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISNUMBER() = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("too_many_args_error", func(t *testing.T) {
+		cf := evalCompile(t, `ISNUMBER(1,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ISNUMBER(1,2) = %v, want #VALUE!", got)
+		}
+	})
+}
