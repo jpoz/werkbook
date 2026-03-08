@@ -1,14 +1,14 @@
 # Supported Formulas
 
-Werkbook supports **343** Excel formula functions.
+Werkbook supports **372** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
 | ABS | Math & Trig | 26 |
 | ACOS | Math & Trig | 32 |
 | ACOSH | Math & Trig | 32 |
-| ACOT | Math & Trig | 25 |
-| ACOTH | Math & Trig | 31 |
+| ACOT | Math & Trig | 27 |
+| ACOTH | Math & Trig | 32 |
 | ADDRESS | Lookup & Reference | 44 |
 | ANCHORARRAY | Lookup & Reference | 6 |
 | AND | Logical | 29 |
@@ -32,11 +32,11 @@ Werkbook supports **343** Excel formula functions.
 | BIN2OCT | Engineering | 45 |
 | BINOM.DIST | Statistical | 30 |
 | BINOM.INV | Statistical | 33 |
-| BITAND | Math & Trig | 26 |
-| BITLSHIFT | Math & Trig | 26 |
-| BITOR | Math & Trig | 26 |
-| BITRSHIFT | Math & Trig | 26 |
-| BITXOR | Math & Trig | 26 |
+| BITAND | Math & Trig | 28 |
+| BITLSHIFT | Math & Trig | 27 |
+| BITOR | Math & Trig | 27 |
+| BITRSHIFT | Math & Trig | 27 |
+| BITXOR | Math & Trig | 27 |
 | CEILING | Math & Trig | 51 |
 | CEILING.MATH | Math & Trig | 37 |
 | CEILING.PRECISE | Math & Trig | 37 |
@@ -54,6 +54,7 @@ Werkbook supports **343** Excel formula functions.
 | COLUMNS | Information | 30 |
 | COMBIN | Math & Trig | 40 |
 | COMBINA | Math & Trig | 31 |
+| COMPLEX | Engineering | 51 |
 | CONCAT | Text | 33 |
 | CONCATENATE | Text | 38 |
 | CONFIDENCE.NORM | Statistical | 25 |
@@ -99,9 +100,9 @@ Werkbook supports **343** Excel formula functions.
 | EFFECT | Financial | 18 |
 | EOMONTH | Date & Time | 18 |
 | ERF | Math & Trig | 22 |
-| ERF.PRECISE | Math & Trig | 18 |
+| ERF.PRECISE | Math & Trig | 20 |
 | ERFC | Math & Trig | 18 |
-| ERFC.PRECISE | Math & Trig | 18 |
+| ERFC.PRECISE | Math & Trig | 19 |
 | ERROR.TYPE | Information | 17 |
 | EVEN | Math & Trig | 34 |
 | EXACT | Text | 32 |
@@ -145,9 +146,33 @@ Werkbook supports **343** Excel formula functions.
 | HSTACK | Lookup & Reference | 18 |
 | HYPGEOM.DIST | Statistical | 37 |
 | IF | Logical | 23 |
-| IFERROR | Logical | 45 |
+| IFERROR | Logical | 48 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
+| IMABS | Engineering | 38 |
+| IMAGINARY | Engineering | 38 |
+| IMARGUMENT | Engineering | 47 |
+| IMCONJUGATE | Engineering | 47 |
+| IMCOS | Engineering | 30 |
+| IMCOSH | Engineering | 27 |
+| IMCOT | Engineering | 25 |
+| IMCSC | Engineering | 25 |
+| IMCSCH | Engineering | 25 |
+| IMDIV | Engineering | 34 |
+| IMEXP | Engineering | 30 |
+| IMLN | Engineering | 30 |
+| IMLOG10 | Engineering | 30 |
+| IMLOG2 | Engineering | 31 |
+| IMPOWER | Engineering | 39 |
+| IMPRODUCT | Engineering | 36 |
+| IMREAL | Engineering | 38 |
+| IMSECH | Engineering | 25 |
+| IMSIN | Engineering | 30 |
+| IMSINH | Engineering | 27 |
+| IMSQRT | Engineering | 32 |
+| IMSUB | Engineering | 34 |
+| IMSUM | Engineering | 37 |
+| IMTAN | Engineering | 28 |
 | INDEX | Lookup & Reference | 15 |
 | INDIRECT | Lookup & Reference | 17 |
 | INT | Math & Trig | 24 |
@@ -165,6 +190,7 @@ Werkbook supports **343** Excel formula functions.
 | ISNUMBER | Information | 23 |
 | ISODD | Information | 4 |
 | ISOWEEKNUM | Date & Time | 26 |
+| ISPMT | Financial | 17 |
 | ISTEXT | Information | 24 |
 | KURT | Statistical | 22 |
 | LARGE | Statistical | 30 |
@@ -219,7 +245,7 @@ Werkbook supports **343** Excel formula functions.
 | OCT2HEX | Engineering | 36 |
 | ODD | Math & Trig | 40 |
 | OR | Logical | 50 |
-| PDURATION | Financial | 21 |
+| PDURATION | Financial | 23 |
 | PEARSON | Statistical | 23 |
 | PERCENTILE | Statistical | 32 |
 | PERCENTILE.EXC | Statistical | 31 |
@@ -258,7 +284,7 @@ Werkbook supports **343** Excel formula functions.
 | ROUNDUP | Math & Trig | 36 |
 | ROW | Information | 1 |
 | ROWS | Information | 32 |
-| RRI | Financial | 20 |
+| RRI | Financial | 21 |
 | RSQ | Statistical | 23 |
 | SEARCH | Text | 15 |
 | SEC | Math & Trig | 26 |
@@ -270,6 +296,7 @@ Werkbook supports **343** Excel formula functions.
 | SIN | Math & Trig | 33 |
 | SINH | Math & Trig | 23 |
 | SKEW | Statistical | 23 |
+| SKEW.P | Statistical | 27 |
 | SLN | Financial | 6 |
 | SLOPE | Statistical | 16 |
 | SMALL | Statistical | 28 |
@@ -320,6 +347,8 @@ Werkbook supports **343** Excel formula functions.
 | TRUE | Logical | 10 |
 | TRUNC | Math & Trig | 34 |
 | TYPE | Information | 22 |
+| UNICHAR | Text | 37 |
+| UNICODE | Text | 36 |
 | UNIQUE | Lookup & Reference | 29 |
 | UPPER | Text | 23 |
 | VALUE | Text | 31 |
@@ -350,7 +379,7 @@ Werkbook supports **343** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **127** Excel functions are not yet supported.
+The following **98** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -371,7 +400,6 @@ The following **127** Excel functions are not yet supported.
 | BYROW | Logical |
 | CELL | Information |
 | CHISQ.TEST | Statistical |
-| COMPLEX | Engineering |
 | COUPDAYBS | Financial |
 | COUPDAYS | Financial |
 | COUPDAYSNC | Financial |
@@ -406,35 +434,10 @@ The following **127** Excel functions are not yet supported.
 | GETPIVOTDATA | Lookup & Reference |
 | GROWTH | Statistical |
 | HYPERLINK | Lookup & Reference |
-| IMABS | Engineering |
-| IMAGINARY | Engineering |
-| IMARGUMENT | Engineering |
-| IMCONJUGATE | Engineering |
-| IMCOS | Engineering |
-| IMCOSH | Engineering |
-| IMCOT | Engineering |
-| IMCSC | Engineering |
-| IMCSCH | Engineering |
-| IMDIV | Engineering |
-| IMEXP | Engineering |
-| IMLN | Engineering |
-| IMLOG10 | Engineering |
-| IMLOG2 | Engineering |
-| IMPOWER | Engineering |
-| IMPRODUCT | Engineering |
-| IMREAL | Engineering |
 | IMSEC | Engineering |
-| IMSECH | Engineering |
-| IMSIN | Engineering |
-| IMSINH | Engineering |
-| IMSQRT | Engineering |
-| IMSUB | Engineering |
-| IMSUM | Engineering |
-| IMTAN | Engineering |
 | INFO | Information |
 | INTRATE | Financial |
 | ISO.CEILING | Math & Trig |
-| ISPMT | Financial |
 | ISREF | Information |
 | LAMBDA | Logical |
 | LEFTB | Text |
@@ -466,7 +469,6 @@ The following **127** Excel functions are not yet supported.
 | SEARCHB | Text |
 | SHEET | Information |
 | SHEETS | Information |
-| SKEW.P | Statistical |
 | STDEVA | Statistical |
 | STDEVPA | Statistical |
 | T.TEST | Statistical |
@@ -474,8 +476,6 @@ The following **127** Excel functions are not yet supported.
 | TBILLPRICE | Financial |
 | TBILLYIELD | Financial |
 | TREND | Statistical |
-| UNICHAR | Text |
-| UNICODE | Text |
 | WEBSERVICE | Web |
 | YIELD | Financial |
 | YIELDDISC | Financial |

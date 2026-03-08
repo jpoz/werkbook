@@ -11,6 +11,7 @@ func init() {
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("BIN2HEX", NoCtx(fnBin2Hex))
 	Register("BIN2OCT", NoCtx(fnBin2Oct))
+	Register("COMPLEX", NoCtx(fnComplex))
 	Register("CONVERT", NoCtx(fnConvert))
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
@@ -20,6 +21,30 @@ func init() {
 	Register("HEX2BIN", NoCtx(fnHex2Bin))
 	Register("HEX2DEC", NoCtx(fnHex2Dec))
 	Register("HEX2OCT", NoCtx(fnHex2Oct))
+	Register("IMABS", NoCtx(fnImabs))
+	Register("IMAGINARY", NoCtx(fnImaginary))
+	Register("IMARGUMENT", NoCtx(fnImargument))
+	Register("IMCONJUGATE", NoCtx(fnImconjugate))
+	Register("IMCOS", NoCtx(fnImcos))
+	Register("IMDIV", NoCtx(fnImdiv))
+	Register("IMEXP", NoCtx(fnImexp))
+	Register("IMLN", NoCtx(fnImln))
+	Register("IMLOG10", NoCtx(fnImlog10))
+	Register("IMLOG2", NoCtx(fnImlog2))
+	Register("IMPOWER", NoCtx(fnImpower))
+	Register("IMPRODUCT", NoCtx(fnImproduct))
+	Register("IMREAL", NoCtx(fnImreal))
+	Register("IMCOSH", NoCtx(fnImcosh))
+	Register("IMCOT", NoCtx(fnImcot))
+	Register("IMCSC", NoCtx(fnImcsc))
+	Register("IMCSCH", NoCtx(fnImcsch))
+	Register("IMSECH", NoCtx(fnImsech))
+	Register("IMSIN", NoCtx(fnImsin))
+	Register("IMSINH", NoCtx(fnImsinh))
+	Register("IMSQRT", NoCtx(fnImsqrt))
+	Register("IMSUB", NoCtx(fnImsub))
+	Register("IMSUM", NoCtx(fnImsum))
+	Register("IMTAN", NoCtx(fnImtan))
 	Register("OCT2BIN", NoCtx(fnOct2Bin))
 	Register("OCT2DEC", NoCtx(fnOct2Dec))
 	Register("OCT2HEX", NoCtx(fnOct2Hex))
@@ -222,6 +247,87 @@ func fnBin2Oct(args []Value) (Value, error) {
 		}
 		if n >= 0 {
 			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// formatComplexNum formats a float64 for use in COMPLEX output.
+// Integers display without decimals (e.g. 3, not 3.0).
+func formatComplexNum(f float64) string {
+	if f == math.Trunc(f) && !math.IsInf(f, 0) && !math.IsNaN(f) {
+		return strconv.FormatFloat(f, 'f', 0, 64)
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// fnComplex implements the Excel COMPLEX function.
+// COMPLEX(real_num, i_num, [suffix]) — converts real and imaginary
+// coefficients into a complex number string of the form x+yi or x+yj.
+func fnComplex(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	realNum, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	iNum, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	suffix := "i"
+	if len(args) == 3 {
+		// Propagate errors from 3rd arg.
+		if args[2].Type == ValueError {
+			return args[2], nil
+		}
+		switch args[2].Type {
+		case ValueString:
+			suffix = args[2].Str
+		case ValueBool:
+			// Booleans not accepted as suffix.
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+		if suffix != "i" && suffix != "j" {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Both zero: just "0".
+	if realNum == 0 && iNum == 0 {
+		return StringVal("0"), nil
+	}
+
+	var result string
+
+	// Build real part.
+	if realNum != 0 {
+		result = formatComplexNum(realNum)
+	}
+
+	// Build imaginary part.
+	if iNum != 0 {
+		if realNum != 0 {
+			// Need a sign separator.
+			if iNum > 0 {
+				result += "+"
+			}
+			// For iNum < 0, the minus sign comes from formatting.
+		}
+
+		if iNum == 1 {
+			result += suffix
+		} else if iNum == -1 {
+			result += "-" + suffix
+		} else {
+			result += formatComplexNum(iNum) + suffix
 		}
 	}
 
@@ -1224,6 +1330,1552 @@ func fnConvert(args []Value) (Value, error) {
 	// Factor-based conversion.
 	result := num * fromFactor / toFactor
 	return NumberVal(result), nil
+}
+
+// parseComplex parses an Excel-style complex number string (e.g. "3+4i",
+// "-3-4j", "i", "3", "-i") and returns the real and imaginary coefficients.
+// The third return value is true if the string is not a valid complex number.
+func parseComplex(s string) (real, imag float64, fail bool) {
+	if len(s) == 0 {
+		return 0, 0, true
+	}
+
+	// Check for i/j suffix to determine if there's an imaginary part.
+	suffix := s[len(s)-1]
+	if suffix != 'i' && suffix != 'j' {
+		// No imaginary suffix — must be a pure real number.
+		r, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, 0, true
+		}
+		return r, 0, false
+	}
+
+	// Strip the i/j suffix.
+	s = s[:len(s)-1]
+
+	// Bare "i" or "j" → 0+1i.
+	if len(s) == 0 {
+		return 0, 1, false
+	}
+
+	// Just a sign: "-" → 0-1i, "+" → 0+1i.
+	if s == "-" {
+		return 0, -1, false
+	}
+	if s == "+" {
+		return 0, 1, false
+	}
+
+	// Find the last '+' or '-' that separates real and imaginary parts.
+	// We skip index 0 because the first character may be a sign for the
+	// real (or pure-imaginary) part.
+	splitIdx := -1
+	for i := len(s) - 1; i >= 1; i-- {
+		if s[i] == '+' || s[i] == '-' {
+			// Make sure this is not part of an exponent (e.g. "1e+2").
+			if i > 0 && (s[i-1] == 'e' || s[i-1] == 'E') {
+				continue
+			}
+			splitIdx = i
+			break
+		}
+	}
+
+	if splitIdx == -1 {
+		// No separator found — this is a pure imaginary number (e.g. "4i", "-3.5i").
+		imCoeff, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, 0, true
+		}
+		return 0, imCoeff, false
+	}
+
+	// Split into real and imaginary parts.
+	realStr := s[:splitIdx]
+	imagStr := s[splitIdx:] // includes the sign
+
+	r, err := strconv.ParseFloat(realStr, 64)
+	if err != nil {
+		return 0, 0, true
+	}
+
+	// imagStr may be just "+" or "-" meaning coefficient of 1 or -1.
+	var im float64
+	if imagStr == "+" {
+		im = 1
+	} else if imagStr == "-" {
+		im = -1
+	} else {
+		im, err = strconv.ParseFloat(imagStr, 64)
+		if err != nil {
+			return 0, 0, true
+		}
+	}
+
+	return r, im, false
+}
+
+// fnImabs implements the Excel IMABS function.
+// IMABS(inumber) — returns the absolute value (modulus) of a complex number.
+// The modulus is sqrt(real² + imag²).
+func fnImabs(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImabs([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: treat as real number with 0 imaginary part.
+	if args[0].Type == ValueNumber {
+		return NumberVal(math.Abs(args[0].Num)), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0, both are real numbers.
+	if args[0].Type == ValueBool {
+		if args[0].Bool {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	real, imag, fail := parseComplex(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return NumberVal(math.Sqrt(real*real + imag*imag)), nil
+}
+
+// fnImaginary implements the Excel IMAGINARY function.
+// IMAGINARY(inumber) — returns the imaginary coefficient of a complex number.
+func fnImaginary(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImaginary([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: treat as real number with 0 imaginary part.
+	if args[0].Type == ValueNumber {
+		return NumberVal(0), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0, both are real numbers.
+	if args[0].Type == ValueBool {
+		return NumberVal(0), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	_, imag, fail := parseComplex(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return NumberVal(imag), nil
+}
+
+// fnImreal implements the Excel IMREAL function.
+// IMREAL(inumber) — returns the real coefficient of a complex number.
+func fnImreal(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImreal([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: the number itself is the real part.
+	if args[0].Type == ValueNumber {
+		return NumberVal(args[0].Num), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0.
+	if args[0].Type == ValueBool {
+		if args[0].Bool {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	real, _, fail := parseComplex(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return NumberVal(real), nil
+}
+
+// fnImargument implements the Excel IMARGUMENT function.
+// IMARGUMENT(inumber) — returns the argument (theta/angle in radians) of a complex number.
+// The argument of zero is undefined and returns #DIV/0!.
+func fnImargument(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImargument([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: treat as real number with 0 imaginary part.
+	if args[0].Type == ValueNumber {
+		if args[0].Num == 0 {
+			return ErrorVal(ErrValDIV0), nil
+		}
+		return NumberVal(math.Atan2(0, args[0].Num)), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0, both are real numbers.
+	if args[0].Type == ValueBool {
+		if args[0].Bool {
+			return NumberVal(0), nil
+		}
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	real, imag, fail := parseComplex(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	if real == 0 && imag == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+
+	return NumberVal(math.Atan2(imag, real)), nil
+}
+
+// fnImconjugate implements the Excel IMCONJUGATE function.
+// IMCONJUGATE(inumber) — returns the complex conjugate of a complex number.
+// The conjugate of a+bi is a-bi (the imaginary part is negated).
+func fnImconjugate(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImconjugate([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: treat as real number, conjugate is itself.
+	if args[0].Type == ValueNumber {
+		return StringVal(formatComplex(args[0].Num, 0, "i")), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0, both are real numbers.
+	if args[0].Type == ValueBool {
+		if args[0].Bool {
+			return StringVal("1"), nil
+		}
+		return StringVal("0"), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	real, imag, suffix, fail := parseComplexWithSuffix(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return StringVal(formatComplex(real, -imag, suffix)), nil
+}
+
+// parseComplexWithSuffix is like parseComplex but also returns the suffix
+// character ("i", "j", or "" for pure real numbers).
+func parseComplexWithSuffix(s string) (real, imag float64, suffix string, fail bool) {
+	if len(s) == 0 {
+		return 0, 0, "", true
+	}
+
+	// Check for i/j suffix.
+	last := s[len(s)-1]
+	if last != 'i' && last != 'j' {
+		// No imaginary suffix — must be a pure real number.
+		r, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, 0, "", true
+		}
+		return r, 0, "", false
+	}
+
+	suffix = string(last)
+	r, im, bad := parseComplex(s)
+	if bad {
+		return 0, 0, "", true
+	}
+	return r, im, suffix, false
+}
+
+// formatComplex formats a complex number as an Excel-style string
+// using the same formatting rules as the COMPLEX function.
+func formatComplex(real, imag float64, suffix string) string {
+	// Both zero: just "0".
+	if real == 0 && imag == 0 {
+		return "0"
+	}
+
+	var result string
+
+	// Build real part.
+	if real != 0 {
+		result = formatComplexNum(real)
+	}
+
+	// Build imaginary part.
+	if imag != 0 {
+		if real != 0 {
+			if imag > 0 {
+				result += "+"
+			}
+		}
+
+		if imag == 1 {
+			result += suffix
+		} else if imag == -1 {
+			result += "-" + suffix
+		} else {
+			result += formatComplexNum(imag) + suffix
+		}
+	}
+
+	return result
+}
+
+// fnImdiv implements the Excel IMDIV function.
+// IMDIV(inumber1, inumber2) — returns the quotient of two complex numbers.
+// Both arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+// Division by zero (both real and imag of divisor are 0) returns #NUM!.
+func fnImdiv(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	type parsed struct {
+		real, imag float64
+		suffix     string
+	}
+
+	var parts [2]parsed
+	for i := 0; i < 2; i++ {
+		arg := args[i]
+
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		switch arg.Type {
+		case ValueNumber:
+			parts[i].real = arg.Num
+			parts[i].imag = 0
+			parts[i].suffix = ""
+		case ValueString:
+			var fail bool
+			parts[i].real, parts[i].imag, parts[i].suffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Check suffix consistency.
+	suffix := ""
+	suffixSet := false
+	for _, p := range parts {
+		if p.suffix != "" {
+			if !suffixSet {
+				suffix = p.suffix
+				suffixSet = true
+			} else if suffix != p.suffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+	}
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	// Division by zero check.
+	c, d := parts[1].real, parts[1].imag
+	if c == 0 && d == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c²+d²)
+	a, b := parts[0].real, parts[0].imag
+	denom := c*c + d*d
+	realResult := (a*c + b*d) / denom
+	imagResult := (b*c - a*d) / denom
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImproduct implements the Excel IMPRODUCT function.
+// IMPRODUCT(inumber1, [inumber2], ...) — returns the product of 1 to 255 complex numbers.
+// All arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImproduct(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Start with multiplicative identity.
+	totalReal := 1.0
+	totalImag := 0.0
+	suffix := "" // track the resolved suffix across all args
+	suffixSet := false
+
+	for _, arg := range args {
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		var r, im float64
+		var argSuffix string
+
+		switch arg.Type {
+		case ValueNumber:
+			r = arg.Num
+			im = 0
+			argSuffix = ""
+		case ValueString:
+			var fail bool
+			r, im, argSuffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Check suffix consistency.
+		if argSuffix != "" {
+			if !suffixSet {
+				suffix = argSuffix
+				suffixSet = true
+			} else if suffix != argSuffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+
+		// Complex multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+		newReal := totalReal*r - totalImag*im
+		newImag := totalReal*im + totalImag*r
+		totalReal = newReal
+		totalImag = newImag
+	}
+
+	// Default suffix if none was set.
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	return StringVal(formatComplex(totalReal, totalImag, suffix)), nil
+}
+
+// fnImsum implements the Excel IMSUM function.
+// IMSUM(inumber1, [inumber2], ...) — returns the sum of two or more complex numbers.
+// All arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImsum(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	var totalReal, totalImag float64
+	suffix := "" // track the resolved suffix across all args
+	suffixSet := false
+
+	for _, arg := range args {
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		var r, im float64
+		var argSuffix string
+
+		switch arg.Type {
+		case ValueNumber:
+			r = arg.Num
+			im = 0
+			argSuffix = ""
+		case ValueString:
+			var fail bool
+			r, im, argSuffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Check suffix consistency.
+		if argSuffix != "" {
+			if !suffixSet {
+				suffix = argSuffix
+				suffixSet = true
+			} else if suffix != argSuffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+
+		totalReal += r
+		totalImag += im
+	}
+
+	// Default suffix if none was set.
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	return StringVal(formatComplex(totalReal, totalImag, suffix)), nil
+}
+
+// fnImsub implements the Excel IMSUB function.
+// IMSUB(inumber1, inumber2) — returns the difference of two complex numbers.
+// Both arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImsub(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	type parsed struct {
+		real, imag float64
+		suffix     string
+	}
+
+	var parts [2]parsed
+	for i := 0; i < 2; i++ {
+		arg := args[i]
+
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		switch arg.Type {
+		case ValueNumber:
+			parts[i].real = arg.Num
+			parts[i].imag = 0
+			parts[i].suffix = ""
+		case ValueString:
+			var fail bool
+			parts[i].real, parts[i].imag, parts[i].suffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Check suffix consistency.
+	suffix := ""
+	suffixSet := false
+	for _, p := range parts {
+		if p.suffix != "" {
+			if !suffixSet {
+				suffix = p.suffix
+				suffixSet = true
+			} else if suffix != p.suffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+	}
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	realResult := parts[0].real - parts[1].real
+	imagResult := parts[0].imag - parts[1].imag
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// cleanFloat rounds a floating-point value to the nearest integer when it is
+// extremely close (within 1e-12), eliminating polar-form round-trip noise.
+// Values that are not near an integer are returned unchanged.
+func cleanFloat(v float64) float64 {
+	rounded := math.Round(v)
+	if math.Abs(v-rounded) < 1e-12 {
+		return rounded
+	}
+	return v
+}
+
+// fnImsqrt implements the Excel IMSQRT function.
+// IMSQRT(inumber) — returns the square root of a complex number.
+// Uses polar form: r=sqrt(x²+y²), θ=atan2(y,x), result=sqrt(r)*(cos(θ/2)+sin(θ/2)*i).
+func fnImsqrt(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImsqrt([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Special case: zero.
+	if x == 0 && y == 0 {
+		return StringVal("0"), nil
+	}
+
+	// Convert to polar form and compute square root.
+	r := math.Hypot(x, y)
+	theta := math.Atan2(y, x)
+	newR := math.Sqrt(r)
+	newTheta := theta / 2
+
+	realResult := cleanFloat(newR * math.Cos(newTheta))
+	imagResult := cleanFloat(newR * math.Sin(newTheta))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImpower implements the Excel IMPOWER function.
+// IMPOWER(inumber, number) — returns a complex number raised to a power.
+// Uses polar form: r^n * (cos(nθ) + sin(nθ)*i).
+func fnImpower(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	if args[1].Type == ValueError {
+		return args[1], nil
+	}
+
+	// Second arg must be numeric (not a complex string).
+	n, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	r := math.Hypot(x, y)
+
+	// Special cases involving zero base.
+	if r == 0 {
+		if n < 0 {
+			// Division by zero.
+			return ErrorVal(ErrValNUM), nil
+		}
+		if n == 0 {
+			// 0^0 = 1 by convention.
+			return StringVal("1"), nil
+		}
+		// 0^positive = 0.
+		return StringVal("0"), nil
+	}
+
+	// Special case: n=0, any non-zero base → 1.
+	if n == 0 {
+		return StringVal("1"), nil
+	}
+
+	theta := math.Atan2(y, x)
+	newR := math.Pow(r, n)
+	newTheta := n * theta
+
+	realResult := cleanFloat(newR * math.Cos(newTheta))
+	imagResult := cleanFloat(newR * math.Sin(newTheta))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImexp implements the Excel IMEXP function.
+// IMEXP(inumber) — returns the exponential of a complex number.
+// e^(x+yi) = e^x * (cos(y) + sin(y)*i).
+func fnImexp(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImexp([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// e^(x+yi) = e^x * (cos(y) + sin(y)*i)
+	ex := math.Exp(x)
+	realResult := cleanFloat(ex * math.Cos(y))
+	imagResult := cleanFloat(ex * math.Sin(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImln implements the Excel IMLN function.
+// IMLN(inumber) — returns the natural logarithm of a complex number.
+// ln(x+yi) = ln(|z|) + atan2(y,x)*i.
+func fnImln(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImln([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	realResult := cleanFloat(math.Log(r))
+	imagResult := cleanFloat(theta)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImlog2 implements the Excel IMLOG2 function.
+// IMLOG2(inumber) — returns the base-2 logarithm of a complex number.
+// log2(z) = ln(z) / ln(2).
+func fnImlog2(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImlog2([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	ln2 := math.Ln2
+	realResult := cleanFloat(math.Log(r) / ln2)
+	imagResult := cleanFloat(theta / ln2)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImlog10 implements the Excel IMLOG10 function.
+// IMLOG10(inumber) — returns the base-10 logarithm of a complex number.
+// log10(z) = ln(z) / ln(10).
+func fnImlog10(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImlog10([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	ln10 := math.Log(10)
+	realResult := cleanFloat(math.Log(r) / ln10)
+	imagResult := cleanFloat(theta / ln10)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImsin implements the Excel IMSIN function.
+// IMSIN(inumber) — returns the sine of a complex number.
+// sin(x+yi) = sin(x)*cosh(y) + cos(x)*sinh(y)*i.
+func fnImsin(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImsin([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	realResult := cleanFloat(math.Sin(x) * math.Cosh(y))
+	imagResult := cleanFloat(math.Cos(x) * math.Sinh(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImcos implements the Excel IMCOS function.
+// IMCOS(inumber) — returns the cosine of a complex number.
+// cos(x+yi) = cos(x)*cosh(y) - sin(x)*sinh(y)*i.
+func fnImcos(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImcos([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	realResult := cleanFloat(math.Cos(x) * math.Cosh(y))
+	imagResult := cleanFloat(-math.Sin(x) * math.Sinh(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImtan implements the Excel IMTAN function.
+// IMTAN(inumber) — returns the tangent of a complex number.
+// tan(z) = sin(z)/cos(z).
+// real part = sin(2x)/(cos(2x)+cosh(2y))
+// imag part = sinh(2y)/(cos(2x)+cosh(2y))
+func fnImtan(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImtan([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	denom := math.Cos(2*x) + math.Cosh(2*y)
+
+	// Check for overflow or zero denominator (practically impossible for finite inputs
+	// since cosh(2y) >= 1, but guard against overflow with very large values).
+	if denom == 0 || math.IsInf(denom, 0) || math.IsNaN(denom) {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	realResult := cleanFloat(math.Sin(2*x) / denom)
+	imagResult := cleanFloat(math.Sinh(2*y) / denom)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImsinh implements the Excel IMSINH function.
+// IMSINH(inumber) — returns the hyperbolic sine of a complex number.
+// sinh(x+yi) = sinh(x)*cos(y) + cosh(x)*sin(y)*i.
+func fnImsinh(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImsinh([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	realResult := cleanFloat(math.Sinh(x) * math.Cos(y))
+	imagResult := cleanFloat(math.Cosh(x) * math.Sin(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImcosh implements the Excel IMCOSH function.
+// IMCOSH(inumber) — returns the hyperbolic cosine of a complex number.
+// cosh(x+yi) = cosh(x)*cos(y) + sinh(x)*sin(y)*i.
+func fnImcosh(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImcosh([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	realResult := cleanFloat(math.Cosh(x) * math.Cos(y))
+	imagResult := cleanFloat(math.Sinh(x) * math.Sin(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImsech implements the Excel IMSECH function.
+// IMSECH(inumber) — returns the hyperbolic secant of a complex number.
+// sech(z) = 1/cosh(z).
+func fnImsech(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImsech([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// cosh(x+yi) = cosh(x)*cos(y) + sinh(x)*sin(y)*i
+	cr := math.Cosh(x) * math.Cos(y)
+	ci := math.Sinh(x) * math.Sin(y)
+
+	// 1/(cr+ci*i): multiply by conjugate → (cr-ci*i)/(cr²+ci²)
+	denom := cr*cr + ci*ci
+	if denom < 1e-24 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	realResult := cleanFloat(cr / denom)
+	imagResult := cleanFloat(-ci / denom)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImcsc implements the Excel IMCSC function.
+// IMCSC(inumber) — returns the cosecant of a complex number.
+// csc(z) = 1/sin(z).
+func fnImcsc(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImcsc([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// sin(x+yi) = sin(x)*cosh(y) + cos(x)*sinh(y)*i
+	sr := math.Sin(x) * math.Cosh(y)
+	si := math.Cos(x) * math.Sinh(y)
+
+	// 1/(sr+si*i): multiply by conjugate → (sr-si*i)/(sr²+si²)
+	denom := sr*sr + si*si
+	if denom < 1e-24 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	realResult := cleanFloat(sr / denom)
+	imagResult := cleanFloat(-si / denom)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImcot implements the Excel IMCOT function.
+// IMCOT(inumber) — returns the cotangent of a complex number.
+// cot(z) = cos(z)/sin(z).
+func fnImcot(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImcot([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// cos(x+yi) = cos(x)*cosh(y) - sin(x)*sinh(y)*i
+	cr := math.Cos(x) * math.Cosh(y)
+	ci := -math.Sin(x) * math.Sinh(y)
+
+	// sin(x+yi) = sin(x)*cosh(y) + cos(x)*sinh(y)*i
+	sr := math.Sin(x) * math.Cosh(y)
+	si := math.Cos(x) * math.Sinh(y)
+
+	// (cr+ci*i)/(sr+si*i): multiply by conjugate of denominator
+	// = ((cr*sr+ci*si) + (ci*sr-cr*si)*i) / (sr²+si²)
+	denom := sr*sr + si*si
+	if denom < 1e-24 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	realResult := cleanFloat((cr*sr + ci*si) / denom)
+	imagResult := cleanFloat((ci*sr - cr*si) / denom)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImcsch implements the Excel IMCSCH function.
+// IMCSCH(inumber) — returns the hyperbolic cosecant of a complex number.
+// csch(z) = 1/sinh(z).
+func fnImcsch(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImcsch([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// sinh(x+yi) = sinh(x)*cos(y) + cosh(x)*sin(y)*i
+	sr := math.Sinh(x) * math.Cos(y)
+	si := math.Cosh(x) * math.Sin(y)
+
+	// 1/(sr+si*i): multiply by conjugate → (sr-si*i)/(sr²+si²)
+	denom := sr*sr + si*si
+	if denom < 1e-24 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	realResult := cleanFloat(sr / denom)
+	imagResult := cleanFloat(-si / denom)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
 }
 
 // fnGESTEP implements the Excel GESTEP function.

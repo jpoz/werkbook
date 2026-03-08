@@ -40,6 +40,8 @@ func init() {
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TEXTSPLIT", NoCtx(fnTextSplit))
 	Register("TRIM", NoCtx(fnTRIM))
+	Register("UNICHAR", NoCtx(fnUnichar))
+	Register("UNICODE", NoCtx(fnUnicode))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
 	Register("VALUETOTEXT", NoCtx(fnValueToText))
@@ -427,6 +429,52 @@ func fnTRIM(args []Value) (Value, error) {
 	s := ValueToString(args[0])
 	fields := strings.Fields(s)
 	return StringVal(strings.Join(fields, " ")), nil
+}
+
+func fnUnichar(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnUnichar([]Value{v})
+			return r
+		}), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	code := int(n) // truncate to integer like Excel
+	if code < 1 || code > 1114111 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Surrogate code points (U+D800–U+DFFF) are not valid Unicode characters.
+	if code >= 0xD800 && code <= 0xDFFF {
+		return ErrorVal(ErrValNA), nil
+	}
+	return StringVal(string(rune(code))), nil
+}
+
+func fnUnicode(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnUnicode([]Value{v})
+			return r
+		}), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	s := ValueToString(args[0])
+	if len(s) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return NumberVal(float64(r)), nil
 }
 
 func fnUPPER(args []Value) (Value, error) {
