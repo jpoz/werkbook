@@ -23,6 +23,8 @@ func init() {
 	Register("HEX2OCT", NoCtx(fnHex2Oct))
 	Register("IMABS", NoCtx(fnImabs))
 	Register("IMAGINARY", NoCtx(fnImaginary))
+	Register("IMDIV", NoCtx(fnImdiv))
+	Register("IMPRODUCT", NoCtx(fnImproduct))
 	Register("IMREAL", NoCtx(fnImreal))
 	Register("IMSUB", NoCtx(fnImsub))
 	Register("IMSUM", NoCtx(fnImsum))
@@ -1589,6 +1591,144 @@ func formatComplex(real, imag float64, suffix string) string {
 	}
 
 	return result
+}
+
+// fnImdiv implements the Excel IMDIV function.
+// IMDIV(inumber1, inumber2) — returns the quotient of two complex numbers.
+// Both arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+// Division by zero (both real and imag of divisor are 0) returns #NUM!.
+func fnImdiv(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	type parsed struct {
+		real, imag float64
+		suffix     string
+	}
+
+	var parts [2]parsed
+	for i := 0; i < 2; i++ {
+		arg := args[i]
+
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		switch arg.Type {
+		case ValueNumber:
+			parts[i].real = arg.Num
+			parts[i].imag = 0
+			parts[i].suffix = ""
+		case ValueString:
+			var fail bool
+			parts[i].real, parts[i].imag, parts[i].suffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Check suffix consistency.
+	suffix := ""
+	suffixSet := false
+	for _, p := range parts {
+		if p.suffix != "" {
+			if !suffixSet {
+				suffix = p.suffix
+				suffixSet = true
+			} else if suffix != p.suffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+	}
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	// Division by zero check.
+	c, d := parts[1].real, parts[1].imag
+	if c == 0 && d == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c²+d²)
+	a, b := parts[0].real, parts[0].imag
+	denom := c*c + d*d
+	realResult := (a*c + b*d) / denom
+	imagResult := (b*c - a*d) / denom
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImproduct implements the Excel IMPRODUCT function.
+// IMPRODUCT(inumber1, [inumber2], ...) — returns the product of 1 to 255 complex numbers.
+// All arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImproduct(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Start with multiplicative identity.
+	totalReal := 1.0
+	totalImag := 0.0
+	suffix := "" // track the resolved suffix across all args
+	suffixSet := false
+
+	for _, arg := range args {
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		var r, im float64
+		var argSuffix string
+
+		switch arg.Type {
+		case ValueNumber:
+			r = arg.Num
+			im = 0
+			argSuffix = ""
+		case ValueString:
+			var fail bool
+			r, im, argSuffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Check suffix consistency.
+		if argSuffix != "" {
+			if !suffixSet {
+				suffix = argSuffix
+				suffixSet = true
+			} else if suffix != argSuffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+
+		// Complex multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+		newReal := totalReal*r - totalImag*im
+		newImag := totalReal*im + totalImag*r
+		totalReal = newReal
+		totalImag = newImag
+	}
+
+	// Default suffix if none was set.
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	return StringVal(formatComplex(totalReal, totalImag, suffix)), nil
 }
 
 // fnImsum implements the Excel IMSUM function.

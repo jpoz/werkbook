@@ -2575,3 +2575,258 @@ func TestIMSUB(t *testing.T) {
 		}
 	})
 }
+
+func TestIMPRODUCT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic: two complex numbers (3+4i)(5-3i) = 15-9i+20i-12i² = 27+11i
+			{`IMPRODUCT("3+4i","5-3i")`, "27+11i"},
+			// Scalar multiplication: (1+2i)*30 = 30+60i
+			{`IMPRODUCT("1+2i",30)`, "30+60i"},
+			// Complex * real string: (3+4i)*2 = 6+8i
+			{`IMPRODUCT("3+4i","2")`, "6+8i"},
+			// Three args: (1+i)(1+i)(1+i) = (2i)(1+i) = 2i+2i² = -2+2i
+			{`IMPRODUCT("1+i","1+i","1+i")`, "-2+2i"},
+			// Pure imaginary: i*i = i² = -1
+			{`IMPRODUCT("i","i")`, "-1"},
+			// Single arg: identity
+			{`IMPRODUCT("3+4i")`, "3+4i"},
+			// Multiply by zero
+			{`IMPRODUCT("3+4i","0")`, "0"},
+			// j suffix
+			{`IMPRODUCT("1+2j","3+4j")`, "-5+10j"},
+			// Negative: (-1-i)(1+i) = -1-i-i-i² = -1-2i+1 = -2i
+			{`IMPRODUCT("-1-i","1+i")`, "-2i"},
+			// Unit: i*(-i) = -i² = 1
+			{`IMPRODUCT("i","-i")`, "1"},
+			// Real * real
+			{`IMPRODUCT("3","5")`, "15"},
+			// Pure imaginary * pure imaginary: (2i)(3i) = 6i² = -6
+			{`IMPRODUCT("2i","3i")`, "-6"},
+			// Complex conjugate product: (3+4i)(3-4i) = 9+16 = 25
+			{`IMPRODUCT("3+4i","3-4i")`, "25"},
+			// Multiply by 1 (identity)
+			{`IMPRODUCT("3+4i","1")`, "3+4i"},
+			// Multiply by -1
+			{`IMPRODUCT("3+4i","-1")`, "-3-4i"},
+			// Four args: (1+i)(1+i)(1+i)(1+i) = (-2+2i)(1+i) = -2-2i+2i+2i² = -4
+			{`IMPRODUCT("1+i","1+i","1+i","1+i")`, "-4"},
+			// Decimal coefficients: (1.5+2.5i)(2+0i) = 3+5i
+			{`IMPRODUCT("1.5+2.5i","2")`, "3+5i"},
+			// Mixed: plain number and complex
+			{`IMPRODUCT(5,"3+4i")`, "15+20i"},
+			// Two plain numbers
+			{`IMPRODUCT(3,5)`, "15"},
+			// Pure imaginary * real: (3i)(4) = 12i
+			{`IMPRODUCT("3i","4")`, "12i"},
+			// Negative real * complex: (-2)(3+4i) = -6-8i
+			{`IMPRODUCT("-2","3+4i")`, "-6-8i"},
+			// i * (1+i) = i + i² = -1+i
+			{`IMPRODUCT("i","1+i")`, "-1+i"},
+			// Single pure real
+			{`IMPRODUCT("7")`, "7"},
+			// Single pure imaginary
+			{`IMPRODUCT("5i")`, "5i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number string
+			{`IMPRODUCT("invalid")`, ErrValNUM},
+			{`IMPRODUCT("")`, ErrValNUM},
+			{`IMPRODUCT("abc")`, ErrValNUM},
+			{`IMPRODUCT("3+4")`, ErrValNUM},
+			{`IMPRODUCT("3+4k")`, ErrValNUM},
+			// Mixed suffix: i and j → #NUM!
+			{`IMPRODUCT("1+2i","3+4j")`, ErrValNUM},
+			// Second arg invalid
+			{`IMPRODUCT("3+4i","invalid")`, ErrValNUM},
+			// Boolean → #VALUE!
+			{`IMPRODUCT(TRUE)`, ErrValVALUE},
+			{`IMPRODUCT(FALSE)`, ErrValVALUE},
+			{`IMPRODUCT("3+4i",TRUE)`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMPRODUCT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMPRODUCT(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		cf := evalCompile(t, "IMPRODUCT()")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMPRODUCT() = %v, want error", got)
+		}
+	})
+}
+
+func TestIMDIV(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic: (-238+240i)/(10+24i) = 5+12i
+			{`IMDIV("-238+240i","10+24i")`, "5+12i"},
+			// Divide by real: (6+8i)/2 = 3+4i
+			{`IMDIV("6+8i","2")`, "3+4i"},
+			// Divide by imaginary: 4/(2i) = 4*(0-2i)/(0+4) = -2i
+			{`IMDIV("4","2i")`, "-2i"},
+			// Self-division: (3+4i)/(3+4i) = 1
+			{`IMDIV("3+4i","3+4i")`, "1"},
+			// j suffix
+			{`IMDIV("4+6j","2+j")`, "2.8+1.6j"},
+			// Divide complex by plain number
+			{`IMDIV("10+20i",5)`, "2+4i"},
+			// Divide plain number by complex: 5/(1+2i) = 5(1-2i)/(1+4) = (5-10i)/5 = 1-2i
+			{`IMDIV(5,"1+2i")`, "1-2i"},
+			// Pure imaginary / pure imaginary: (6i)/(3i) = 2
+			{`IMDIV("6i","3i")`, "2"},
+			// Real / real
+			{`IMDIV("10","5")`, "2"},
+			// Divide by 1 (identity)
+			{`IMDIV("3+4i","1")`, "3+4i"},
+			// Divide by -1
+			{`IMDIV("3+4i","-1")`, "-3-4i"},
+			// Zero numerator
+			{`IMDIV("0","3+4i")`, "0"},
+			// Complex result: (1+i)/(1-i) = (1+i)²/2 = 2i/2 = i
+			{`IMDIV("1+i","1-i")`, "i"},
+			// Conjugate division: (3-4i)/(3+4i) = (9-16-24i)/(9+16) = (-7-24i)/25
+			{`IMDIV("3-4i","3+4i")`, "-0.28-0.96i"},
+			// Negative numerator and denominator: (-6-8i)/(-2) = 3+4i
+			{`IMDIV("-6-8i","-2")`, "3+4i"},
+			// Two plain numbers
+			{`IMDIV(10,2)`, "5"},
+			// Unit imaginary numerator: i/(1+i) = i(1-i)/2 = (i+1)/2 = 0.5+0.5i
+			{`IMDIV("i","1+i")`, "0.5+0.5i"},
+			// Large numbers: (100+200i)/(10+20i) = (1000+4000+2000i-2000i)/500 = 10
+			{`IMDIV("100+200i","10+20i")`, "10"},
+			// Divide pure imaginary by real: (8i)/4 = 2i
+			{`IMDIV("8i","4")`, "2i"},
+			// Pure imaginary divided by pure imaginary
+			{`IMDIV("4i","2i")`, "2"},
+			// Negative imaginary result: (2)/(i) = -2i
+			{`IMDIV("2","i")`, "-2i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Division by zero: both real and imag of divisor are 0
+			{`IMDIV("3+4i","0")`, ErrValNUM},
+			// Invalid complex number string
+			{`IMDIV("invalid","3+4i")`, ErrValNUM},
+			{`IMDIV("3+4i","invalid")`, ErrValNUM},
+			{`IMDIV("","3+4i")`, ErrValNUM},
+			{`IMDIV("3+4i","")`, ErrValNUM},
+			{`IMDIV("abc","3+4i")`, ErrValNUM},
+			{`IMDIV("3+4k","1+2i")`, ErrValNUM},
+			// Mixed suffix: i and j → #NUM!
+			{`IMDIV("1+2i","3+4j")`, ErrValNUM},
+			{`IMDIV("1+2j","3+4i")`, ErrValNUM},
+			// Boolean → #VALUE!
+			{`IMDIV(TRUE,"3+4i")`, ErrValVALUE},
+			{`IMDIV("3+4i",FALSE)`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMDIV(1/0,"3+4i")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMDIV(1/0,...) = %v, want error", got)
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"IMDIV()", `IMDIV("3+4i")`, `IMDIV("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
