@@ -23,7 +23,7 @@ Werkbook supports **343** Excel formula functions.
 | AVERAGE | Statistical | 28 |
 | AVERAGEA | Statistical | 24 |
 | AVERAGEIF | Statistical | 42 |
-| AVERAGEIFS | Statistical | - |
+| AVERAGEIFS | Statistical | 48 |
 | BASE | Math & Trig | 31 |
 | BETA.DIST | Statistical | 43 |
 | BETA.INV | Statistical | 42 |
