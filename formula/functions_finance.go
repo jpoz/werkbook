@@ -43,6 +43,8 @@ func init() {
 	Register("ACCRINTM", NoCtx(fnAccrintm))
 	Register("PRICEDISC", NoCtx(fnPricedisc))
 	Register("YIELDDISC", NoCtx(fnYielddisc))
+	Register("PRICEMAT", NoCtx(fnPricemat))
+	Register("YIELDMAT", NoCtx(fnYieldmat))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -1688,12 +1690,20 @@ func dayCountBasis(settlement, maturity float64, basis int) (dsm, bYear float64)
 		bYear = 360
 	case 1: // Actual/actual
 		dsm = maturity - settlement
-		if sy == ey {
+		if ey-sy <= 1 {
+			// Period within same year or adjacent years: check for Feb 29.
 			bYear = 365
-			if isLeapYear(sy) {
-				bYear = 366
+			for y := sy; y <= ey; y++ {
+				if isLeapYear(y) {
+					feb29 := TimeToExcelSerial(time.Date(y, 2, 29, 0, 0, 0, 0, time.UTC))
+					if feb29 >= settlement && feb29 <= maturity {
+						bYear = 366
+						break
+					}
+				}
 			}
 		} else {
+			// Multi-year period: average days per year across the full range.
 			totalYearDays := 0.0
 			for y := sy; y <= ey; y++ {
 				if isLeapYear(y) {
