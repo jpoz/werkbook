@@ -2318,3 +2318,260 @@ func TestIMREAL(t *testing.T) {
 		}
 	})
 }
+
+func TestIMSUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic: two complex numbers
+			{`IMSUM("3+6i","5-2i")`, "8+4i"},
+			// Three arguments
+			{`IMSUM("1+i","2+2i","3+3i")`, "6+6i"},
+			// Four arguments
+			{`IMSUM("1+i","2+2i","3+3i","4+4i")`, "10+10i"},
+			// Pure real addition
+			{`IMSUM("3","5")`, "8"},
+			// Pure imaginary addition
+			{`IMSUM("3i","4i")`, "7i"},
+			// Mixed: complex + plain number
+			{`IMSUM("3+4i",5)`, "8+4i"},
+			// Mixed: plain number + complex
+			{`IMSUM(5,"3+4i")`, "8+4i"},
+			// Cancellation to zero
+			{`IMSUM("3+4i","-3-4i")`, "0"},
+			// Single argument
+			{`IMSUM("3+4i")`, "3+4i"},
+			// Single pure real
+			{`IMSUM("7")`, "7"},
+			// Single pure imaginary
+			{`IMSUM("5i")`, "5i"},
+			// j suffix
+			{`IMSUM("1+2j","3+4j")`, "4+6j"},
+			// Unit imaginary result
+			{`IMSUM("3+i","2")`, "5+i"},
+			// Negative result
+			{`IMSUM("1+i","-3-2i")`, "-2-i"},
+			// Result with negative imaginary
+			{`IMSUM("3+2i","1-5i")`, "4-3i"},
+			// Only real part cancels
+			{`IMSUM("3+4i","-3+2i")`, "6i"},
+			// Only imaginary part cancels
+			{`IMSUM("3+4i","2-4i")`, "5"},
+			// Decimal coefficients
+			{`IMSUM("1.5+2.5i","0.5+0.5i")`, "2+3i"},
+			// Large number of args
+			{`IMSUM("1+i","1+i","1+i","1+i","1+i")`, "5+5i"},
+			// Two plain numbers (no suffix in input)
+			{`IMSUM(3,5)`, "8"},
+			// Zero + complex
+			{`IMSUM("0","3+4i")`, "3+4i"},
+			// Negative real result, positive imaginary
+			{`IMSUM("-5+2i","1+3i")`, "-4+5i"},
+			// Unit imaginary inputs
+			{`IMSUM("i","i")`, "2i"},
+			// Negative unit imaginary
+			{`IMSUM("-i","-i")`, "-2i"},
+			// Mixed: j suffix with pure real
+			{`IMSUM("3","2j")`, "3+2j"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number string
+			{`IMSUM("invalid")`, ErrValNUM},
+			{`IMSUM("")`, ErrValNUM},
+			{`IMSUM("abc")`, ErrValNUM},
+			{`IMSUM("3+4")`, ErrValNUM},
+			{`IMSUM("3+4k")`, ErrValNUM},
+			// Mixed suffix: i and j → #NUM!
+			{`IMSUM("1+2i","3+4j")`, ErrValNUM},
+			// Second arg invalid
+			{`IMSUM("3+4i","invalid")`, ErrValNUM},
+			// Boolean → #VALUE!
+			{`IMSUM(TRUE)`, ErrValVALUE},
+			{`IMSUM(FALSE)`, ErrValVALUE},
+			{`IMSUM("3+4i",TRUE)`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMSUM(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMSUM(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		cf := evalCompile(t, "IMSUM()")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMSUM() = %v, want error", got)
+		}
+	})
+}
+
+func TestIMSUB(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic subtraction
+			{`IMSUB("13+4i","5+3i")`, "8+i"},
+			// Result is zero
+			{`IMSUB("3+4i","3+4i")`, "0"},
+			// Pure real subtraction
+			{`IMSUB("10","3")`, "7"},
+			// Pure imaginary subtraction
+			{`IMSUB("5i","2i")`, "3i"},
+			// Negative result
+			{`IMSUB("1+i","3+4i")`, "-2-3i"},
+			// j suffix
+			{`IMSUB("5+3j","2+j")`, "3+2j"},
+			// Mixed: complex minus number
+			{`IMSUB("3+4i",5)`, "-2+4i"},
+			// Mixed: number minus complex
+			{`IMSUB(5,"3+4i")`, "2-4i"},
+			// Both plain numbers
+			{`IMSUB(10,3)`, "7"},
+			// Subtract to get negative imaginary
+			{`IMSUB("3+2i","1+5i")`, "2-3i"},
+			// Unit imaginary result (positive)
+			{`IMSUB("3+2i","3+i")`, "i"},
+			// Unit imaginary result (negative)
+			{`IMSUB("3+i","3+2i")`, "-i"},
+			// Subtract zero
+			{`IMSUB("3+4i","0")`, "3+4i"},
+			// Subtract from zero
+			{`IMSUB("0","3+4i")`, "-3-4i"},
+			// Decimal coefficients
+			{`IMSUB("5.5+3.5i","2.5+1.5i")`, "3+2i"},
+			// Result with only real part
+			{`IMSUB("3+4i","1+4i")`, "2"},
+			// Result with only imaginary part
+			{`IMSUB("3+4i","3+2i")`, "2i"},
+			// Large numbers
+			{`IMSUB("100+200i","50+100i")`, "50+100i"},
+			// Negative inputs
+			{`IMSUB("-3-4i","-1-2i")`, "-2-2i"},
+			// Subtracting negative (should add)
+			{`IMSUB("3+4i","-1-2i")`, "4+6i"},
+			// j suffix with pure real
+			{`IMSUB("3+2j","3")`, "2j"},
+			// Pure number minus pure number (no suffix)
+			{`IMSUB("8","3")`, "5"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number string
+			{`IMSUB("invalid","3+4i")`, ErrValNUM},
+			{`IMSUB("3+4i","invalid")`, ErrValNUM},
+			{`IMSUB("","3+4i")`, ErrValNUM},
+			{`IMSUB("3+4i","")`, ErrValNUM},
+			{`IMSUB("abc","3+4i")`, ErrValNUM},
+			{`IMSUB("3+4k","1+2i")`, ErrValNUM},
+			// Mixed suffix: i and j → #NUM!
+			{`IMSUB("1+2i","3+4j")`, ErrValNUM},
+			{`IMSUB("1+2j","3+4i")`, ErrValNUM},
+			// Boolean → #VALUE!
+			{`IMSUB(TRUE,"3+4i")`, ErrValVALUE},
+			{`IMSUB("3+4i",FALSE)`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMSUB(1/0,"3+4i")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMSUB(1/0,...) = %v, want error", got)
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"IMSUB()", `IMSUB("3+4i")`, `IMSUB("1","2","3")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}

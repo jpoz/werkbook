@@ -24,6 +24,8 @@ func init() {
 	Register("IMABS", NoCtx(fnImabs))
 	Register("IMAGINARY", NoCtx(fnImaginary))
 	Register("IMREAL", NoCtx(fnImreal))
+	Register("IMSUB", NoCtx(fnImsub))
+	Register("IMSUM", NoCtx(fnImsum))
 	Register("OCT2BIN", NoCtx(fnOct2Bin))
 	Register("OCT2DEC", NoCtx(fnOct2Dec))
 	Register("OCT2HEX", NoCtx(fnOct2Hex))
@@ -1526,6 +1528,190 @@ func fnImreal(args []Value) (Value, error) {
 	}
 
 	return NumberVal(real), nil
+}
+
+// parseComplexWithSuffix is like parseComplex but also returns the suffix
+// character ("i", "j", or "" for pure real numbers).
+func parseComplexWithSuffix(s string) (real, imag float64, suffix string, fail bool) {
+	if len(s) == 0 {
+		return 0, 0, "", true
+	}
+
+	// Check for i/j suffix.
+	last := s[len(s)-1]
+	if last != 'i' && last != 'j' {
+		// No imaginary suffix — must be a pure real number.
+		r, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, 0, "", true
+		}
+		return r, 0, "", false
+	}
+
+	suffix = string(last)
+	r, im, bad := parseComplex(s)
+	if bad {
+		return 0, 0, "", true
+	}
+	return r, im, suffix, false
+}
+
+// formatComplex formats a complex number as an Excel-style string
+// using the same formatting rules as the COMPLEX function.
+func formatComplex(real, imag float64, suffix string) string {
+	// Both zero: just "0".
+	if real == 0 && imag == 0 {
+		return "0"
+	}
+
+	var result string
+
+	// Build real part.
+	if real != 0 {
+		result = formatComplexNum(real)
+	}
+
+	// Build imaginary part.
+	if imag != 0 {
+		if real != 0 {
+			if imag > 0 {
+				result += "+"
+			}
+		}
+
+		if imag == 1 {
+			result += suffix
+		} else if imag == -1 {
+			result += "-" + suffix
+		} else {
+			result += formatComplexNum(imag) + suffix
+		}
+	}
+
+	return result
+}
+
+// fnImsum implements the Excel IMSUM function.
+// IMSUM(inumber1, [inumber2], ...) — returns the sum of two or more complex numbers.
+// All arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImsum(args []Value) (Value, error) {
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	var totalReal, totalImag float64
+	suffix := "" // track the resolved suffix across all args
+	suffixSet := false
+
+	for _, arg := range args {
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		var r, im float64
+		var argSuffix string
+
+		switch arg.Type {
+		case ValueNumber:
+			r = arg.Num
+			im = 0
+			argSuffix = ""
+		case ValueString:
+			var fail bool
+			r, im, argSuffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+
+		// Check suffix consistency.
+		if argSuffix != "" {
+			if !suffixSet {
+				suffix = argSuffix
+				suffixSet = true
+			} else if suffix != argSuffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+
+		totalReal += r
+		totalImag += im
+	}
+
+	// Default suffix if none was set.
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	return StringVal(formatComplex(totalReal, totalImag, suffix)), nil
+}
+
+// fnImsub implements the Excel IMSUB function.
+// IMSUB(inumber1, inumber2) — returns the difference of two complex numbers.
+// Both arguments must use the same suffix (i or j). Returns #NUM! for invalid inputs.
+func fnImsub(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	type parsed struct {
+		real, imag float64
+		suffix     string
+	}
+
+	var parts [2]parsed
+	for i := 0; i < 2; i++ {
+		arg := args[i]
+
+		// Propagate errors.
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+
+		switch arg.Type {
+		case ValueNumber:
+			parts[i].real = arg.Num
+			parts[i].imag = 0
+			parts[i].suffix = ""
+		case ValueString:
+			var fail bool
+			parts[i].real, parts[i].imag, parts[i].suffix, fail = parseComplexWithSuffix(arg.Str)
+			if fail {
+				return ErrorVal(ErrValNUM), nil
+			}
+		case ValueBool:
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Check suffix consistency.
+	suffix := ""
+	suffixSet := false
+	for _, p := range parts {
+		if p.suffix != "" {
+			if !suffixSet {
+				suffix = p.suffix
+				suffixSet = true
+			} else if suffix != p.suffix {
+				return ErrorVal(ErrValNUM), nil
+			}
+		}
+	}
+	if !suffixSet {
+		suffix = "i"
+	}
+
+	realResult := parts[0].real - parts[1].real
+	imagResult := parts[0].imag - parts[1].imag
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
 }
 
 // fnGESTEP implements the Excel GESTEP function.
