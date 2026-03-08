@@ -5959,14 +5959,39 @@ func TestATANH(t *testing.T) {
 		want    float64
 		tol     float64
 	}{
+		// Identity: ATANH(0) = 0
 		{"atanh_0", "ATANH(0)", 0, 0},
-		{"atanh_0.5", "ATANH(0.5)", math.Atanh(0.5), 1e-10},
-		{"atanh_neg0.5", "ATANH(-0.5)", math.Atanh(-0.5), 1e-10},
+
+		// Fundamental values
+		{"atanh_0.5", "ATANH(0.5)", 0.5493061443340549, 1e-10},
+		{"atanh_neg0.5", "ATANH(-0.5)", -0.5493061443340549, 1e-10},
+
+		// Excel doc examples
+		{"doc_ex1", "ATANH(0.76159416)", 1.00000001, 1e-8},
+		{"doc_ex2", "ATANH(-0.1)", -0.100335348, 1e-9},
+
+		// Values near domain boundaries
 		{"atanh_0.99", "ATANH(0.99)", math.Atanh(0.99), 1e-10},
 		{"atanh_neg0.99", "ATANH(-0.99)", math.Atanh(-0.99), 1e-10},
+		{"atanh_0.999", "ATANH(0.999)", math.Atanh(0.999), 1e-10},
+		{"atanh_neg0.999", "ATANH(-0.999)", math.Atanh(-0.999), 1e-10},
+		{"atanh_0.9999999", "ATANH(0.9999999)", math.Atanh(0.9999999), 1e-10},
+
+		// Small values near zero (ATANH(x) ~ x for small x)
 		{"atanh_small", "ATANH(0.001)", math.Atanh(0.001), 1e-10},
-		{"atanh_bool_false", "ATANH(FALSE)", 0, 0},
-		{"atanh_string_num", `ATANH("0.5")`, math.Atanh(0.5), 1e-10},
+		{"atanh_tiny", "ATANH(0.0000001)", math.Atanh(0.0000001), 1e-15},
+		{"atanh_neg_small", "ATANH(-0.001)", math.Atanh(-0.001), 1e-10},
+
+		// Boolean coercion: FALSE=0 => ATANH(0)=0
+		{"bool_false", "ATANH(FALSE)", 0, 0},
+
+		// String coercion with valid numeric strings
+		{"string_0.5", `ATANH("0.5")`, math.Atanh(0.5), 1e-10},
+		{"string_0", `ATANH("0")`, 0, 0},
+		{"string_neg0.5", `ATANH("-0.5")`, math.Atanh(-0.5), 1e-10},
+
+		// Expression argument
+		{"expr_add", "ATANH(0.25+0.25)", math.Atanh(0.5), 1e-10},
 	}
 
 	for _, tt := range numTests {
@@ -5990,14 +6015,34 @@ func TestATANH(t *testing.T) {
 		formula string
 		wantErr ErrorValue
 	}{
+		// Domain boundary: ATANH(1) and ATANH(-1) are undefined => #NUM!
 		{"at_1", "ATANH(1)", ErrValNUM},
 		{"at_neg1", "ATANH(-1)", ErrValNUM},
+
+		// Outside domain: |x| > 1 => #NUM!
 		{"above_1", "ATANH(1.5)", ErrValNUM},
 		{"below_neg1", "ATANH(-1.5)", ErrValNUM},
+		{"far_above", "ATANH(100)", ErrValNUM},
+		{"far_below", "ATANH(-100)", ErrValNUM},
+
+		// Boolean coercion: TRUE=1 => #NUM! (at domain boundary)
 		{"bool_true", "ATANH(TRUE)", ErrValNUM},
+
+		// String that coerces to out-of-domain value
+		{"string_1", `ATANH("1")`, ErrValNUM},
+		{"string_neg1", `ATANH("-1")`, ErrValNUM},
+
+		// No arguments
 		{"no_args", "ATANH()", ErrValVALUE},
-		{"too_many_args", "ATANH(1,2)", ErrValVALUE},
+
+		// Too many arguments
+		{"too_many_args", "ATANH(0.5,0.5)", ErrValVALUE},
+
+		// Non-numeric string
 		{"string_non_num", `ATANH("abc")`, ErrValVALUE},
+
+		// Error propagation
+		{"err_div0", "ATANH(1/0)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {

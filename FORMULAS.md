@@ -18,7 +18,7 @@ Werkbook supports **343** Excel formula functions.
 | ASINH | Math & Trig | 26 |
 | ATAN | Math & Trig | 25 |
 | ATAN2 | Math & Trig | 30 |
-| ATANH | Math & Trig | 16 |
+| ATANH | Math & Trig | 31 |
 | AVEDEV | Statistical | - |
 | AVERAGE | Statistical | 28 |
 | AVERAGEA | Statistical | 24 |
