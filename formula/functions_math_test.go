@@ -7466,3 +7466,97 @@ func TestSINH(t *testing.T) {
 		})
 	}
 }
+
+func TestCOTH(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Standard values
+		{"coth_1", "COTH(1)", 1.3130352854993315, 1e-10},
+		{"coth_2", "COTH(2)", 1.0373147207275481, 1e-10},
+		{"coth_3", "COTH(3)", 1.0049698233136892, 1e-10},
+		{"coth_0_5", "COTH(0.5)", 2.163953413738653, 1e-10},
+
+		// Odd function: COTH(-x) = -COTH(x)
+		{"odd_neg1", "COTH(-1)", -1.3130352854993315, 1e-10},
+		{"odd_neg2", "COTH(-2)", -1.0373147207275481, 1e-10},
+		{"odd_neg0_5", "COTH(-0.5)", -2.163953413738653, 1e-10},
+		{"odd_neg3", "COTH(-3)", -1.0049698233136892, 1e-10},
+
+		// Large values approaching ±1
+		{"large_10", "COTH(10)", 1.0000000041223073, 1e-12},
+		{"large_20", "COTH(20)", 1.0, 1e-8},
+		{"large_neg10", "COTH(-10)", -1.0000000041223073, 1e-12},
+		{"large_neg20", "COTH(-20)", -1.0, 1e-8},
+
+		// Small values (large magnitude result)
+		{"small_0_1", "COTH(0.1)", 1 / math.Tanh(0.1), 1e-10},
+		{"small_0_01", "COTH(0.01)", 1 / math.Tanh(0.01), 1e-8},
+
+		// Boolean coercion: TRUE=1, FALSE handled in error tests (=0 -> DIV/0)
+		{"bool_true", "COTH(TRUE)", 1.3130352854993315, 1e-10},
+
+		// String coercion
+		{"str_1", `COTH("1")`, 1.3130352854993315, 1e-10},
+		{"str_neg1", `COTH("-1")`, -1.3130352854993315, 1e-10},
+		{"str_2", `COTH("2")`, 1.0373147207275481, 1e-10},
+
+		// Expression input
+		{"expr_add", "COTH(1+1)", 1 / math.Tanh(2), 1e-10},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > tt.tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "COTH()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "COTH(1,2)", ErrValVALUE},
+		// COTH(0) is undefined (division by zero)
+		{"zero", "COTH(0)", ErrValDIV0},
+		// Boolean FALSE coerces to 0 -> DIV/0
+		{"bool_false", "COTH(FALSE)", ErrValDIV0},
+		// String "0" coerces to 0 -> DIV/0
+		{"str_zero", `COTH("0")`, ErrValDIV0},
+		// Non-numeric string
+		{"non_numeric", `COTH("abc")`, ErrValVALUE},
+		// Error propagation
+		{"err_div0", "COTH(1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
