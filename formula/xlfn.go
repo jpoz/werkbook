@@ -114,6 +114,7 @@ var xlfnPrefix = map[string]string{
 	"TOCOL":           "_xlfn.",
 	"TOROW":           "_xlfn.",
 	"UNICHAR":         "_xlfn.",
+	"UNICODE":         "_xlfn.",
 	"UNIQUE":          "_xlfn.",
 	"VAR.P":           "_xlfn.",
 	"VAR.S":           "_xlfn.",

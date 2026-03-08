@@ -41,6 +41,7 @@ func init() {
 	Register("TEXTSPLIT", NoCtx(fnTextSplit))
 	Register("TRIM", NoCtx(fnTRIM))
 	Register("UNICHAR", NoCtx(fnUnichar))
+	Register("UNICODE", NoCtx(fnUnicode))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
 	Register("VALUETOTEXT", NoCtx(fnValueToText))
@@ -453,6 +454,27 @@ func fnUnichar(args []Value) (Value, error) {
 		return ErrorVal(ErrValNA), nil
 	}
 	return StringVal(string(rune(code))), nil
+}
+
+func fnUnicode(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnUnicode([]Value{v})
+			return r
+		}), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	s := ValueToString(args[0])
+	if len(s) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return NumberVal(float64(r)), nil
 }
 
 func fnUPPER(args []Value) (Value, error) {
