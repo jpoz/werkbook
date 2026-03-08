@@ -213,7 +213,7 @@ Werkbook supports **343** Excel formula functions.
 | NOW | Date & Time | 2 |
 | NPER | Financial | 3 |
 | NPV | Financial | 25 |
-| NUMBERVALUE | Text | - |
+| NUMBERVALUE | Text | 27 |
 | OCT2BIN | Engineering | 38 |
 | OCT2DEC | Engineering | 43 |
 | OCT2HEX | Engineering | 36 |
@@ -245,7 +245,7 @@ Werkbook supports **343** Excel formula functions.
 | RADIANS | Math & Trig | 30 |
 | RAND | Math & Trig | 1 |
 | RANDBETWEEN | Math & Trig | 1 |
-| RANK | Statistical | - |
+| RANK | Statistical | 32 |
 | RANK.AVG | Statistical | 21 |
 | RANK.EQ | Statistical | 7 |
 | RATE | Financial | 6 |

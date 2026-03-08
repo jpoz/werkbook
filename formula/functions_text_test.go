@@ -4435,3 +4435,95 @@ func TestVALUE(t *testing.T) {
 		})
 	}
 }
+
+func TestNUMBERVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	type want struct {
+		typ ValueType
+		num float64
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Excel documentation example: European format
+		{name: "european_format", formula: `NUMBERVALUE("2.500,27",",",".")`, want: want{typ: ValueNumber, num: 2500.27}},
+
+		// Excel documentation example: simple decimal
+		{name: "simple_decimal_explicit_seps", formula: `NUMBERVALUE("3.5",".",",")`, want: want{typ: ValueNumber, num: 3.5}},
+
+		// Simple number, no separators needed
+		{name: "simple_integer", formula: `NUMBERVALUE("123")`, want: want{typ: ValueNumber, num: 123}},
+		{name: "simple_zero", formula: `NUMBERVALUE("0")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Percent suffix
+		{name: "percent_single", formula: `NUMBERVALUE("3.5%")`, want: want{typ: ValueNumber, num: 0.035}},
+		{name: "percent_double", formula: `NUMBERVALUE("9%%")`, want: want{typ: ValueNumber, num: 0.0009}},
+		{name: "percent_integer", formula: `NUMBERVALUE("50%")`, want: want{typ: ValueNumber, num: 0.5}},
+		{name: "percent_100", formula: `NUMBERVALUE("100%")`, want: want{typ: ValueNumber, num: 1}},
+
+		// Default separators (decimal_separator=".", group_separator=",")
+		{name: "default_group_separator", formula: `NUMBERVALUE("1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "default_millions", formula: `NUMBERVALUE("1,000,000.50")`, want: want{typ: ValueNumber, num: 1000000.50}},
+		{name: "default_with_decimals", formula: `NUMBERVALUE("1,234.56")`, want: want{typ: ValueNumber, num: 1234.56}},
+
+		// Negative numbers
+		{name: "negative_integer", formula: `NUMBERVALUE("-42")`, want: want{typ: ValueNumber, num: -42}},
+		{name: "negative_decimal", formula: `NUMBERVALUE("-3.14")`, want: want{typ: ValueNumber, num: -3.14}},
+		{name: "negative_with_groups", formula: `NUMBERVALUE("-1,000.5")`, want: want{typ: ValueNumber, num: -1000.5}},
+
+		// Leading/trailing spaces are stripped
+		{name: "leading_spaces", formula: `NUMBERVALUE("  42")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "trailing_spaces", formula: `NUMBERVALUE("42  ")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "surrounded_spaces", formula: `NUMBERVALUE("  7.5  ")`, want: want{typ: ValueNumber, num: 7.5}},
+		{name: "spaces_in_middle", formula: `NUMBERVALUE(" 3 000 ", ".", " ")`, want: want{typ: ValueNumber, num: 3000}},
+
+		// Empty string returns 0
+		{name: "empty_string", formula: `NUMBERVALUE("")`, want: want{typ: ValueNumber, num: 0}},
+		{name: "only_spaces", formula: `NUMBERVALUE("   ")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Custom separators
+		{name: "semicolon_group_sep", formula: `NUMBERVALUE("1;000.5",".",";")`, want: want{typ: ValueNumber, num: 1000.5}},
+
+		// Error: group separator after decimal separator
+		{name: "err_group_after_decimal", formula: `NUMBERVALUE("1.000,5",".",",")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: multiple decimal separators
+		{name: "err_multiple_decimals", formula: `NUMBERVALUE("1.2.3")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: invalid characters
+		{name: "err_alpha_string", formula: `NUMBERVALUE("abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "err_mixed_alpha_num", formula: `NUMBERVALUE("12abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: wrong argument count
+		{name: "err_no_args", formula: `NUMBERVALUE()`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "err_too_many_args", formula: `NUMBERVALUE("1",".",",","x")`, want: want{typ: ValueError, err: ErrValVALUE}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
