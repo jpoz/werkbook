@@ -1023,6 +1023,121 @@ func TestMOD(t *testing.T) {
 	}
 }
 
+func TestMROUND(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		tol     float64
+	}{
+		// Excel documentation examples
+		{"doc_ex1", "MROUND(10,3)", 9, 0},
+		{"doc_ex2", "MROUND(-10,-3)", -9, 0},
+		{"doc_ex3", "MROUND(1.3,0.2)", 1.4, 1e-10},
+
+		// Multiple of zero returns 0
+		{"multiple_zero", "MROUND(5,0)", 0, 0},
+		{"multiple_zero_neg", "MROUND(-5,0)", 0, 0},
+		{"zero_multiple_zero", "MROUND(0,0)", 0, 0},
+
+		// Number is zero
+		{"zero_number", "MROUND(0,3)", 0, 0},
+		{"zero_number_neg", "MROUND(0,-3)", 0, 0},
+
+		// Positive rounding - rounds to nearest multiple
+		{"pos_round_down", "MROUND(7,5)", 5, 0},
+		{"pos_round_up", "MROUND(8,5)", 10, 0},
+		{"pos_exact", "MROUND(10,5)", 10, 0},
+		{"pos_round_nearest", "MROUND(13,5)", 15, 0},
+		{"pos_round_mid_away", "MROUND(7.5,5)", 10, 0},     // midpoint rounds away from zero
+
+		// Negative rounding - both signs negative
+		{"neg_round_down", "MROUND(-7,-5)", -5, 0},
+		{"neg_round_up", "MROUND(-8,-5)", -10, 0},
+		{"neg_exact", "MROUND(-10,-5)", -10, 0},
+		{"neg_round_nearest", "MROUND(-13,-5)", -15, 0},
+		{"neg_round_mid_away", "MROUND(-7.5,-5)", -10, 0},  // midpoint rounds away from zero
+
+		// Decimal multiples
+		{"decimal_mult_1", "MROUND(1.05,0.1)", 1.1, 1e-10},  // midpoint with decimal multiple: direction undefined per Excel docs
+		{"decimal_mult_2", "MROUND(1.15,0.1)", 1.1, 1e-10},  // midpoint with decimal multiple: direction undefined per Excel docs
+		{"decimal_mult_3", "MROUND(0.5,0.25)", 0.5, 1e-10},
+		{"decimal_mult_4", "MROUND(0.6,0.25)", 0.5, 1e-10},
+		{"decimal_mult_5", "MROUND(0.63,0.25)", 0.75, 1e-10},
+
+		// String coercion
+		{"string_number", "MROUND(\"10\",3)", 9, 0},
+		{"string_multiple", "MROUND(10,\"3\")", 9, 0},
+		{"string_both", "MROUND(\"10\",\"3\")", 9, 0},
+
+		// Boolean coercion
+		{"bool_true_number", "MROUND(TRUE,1)", 1, 0},
+		{"bool_false_number", "MROUND(FALSE,1)", 0, 0},
+		{"bool_true_multiple", "MROUND(5,TRUE)", 5, 0},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if tt.tol == 0 {
+				if got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+				}
+			} else {
+				if math.Abs(got.Num-tt.wantNum) > tt.tol {
+					t.Errorf("Eval(%q) = %g, want %g (tol %g)", tt.formula, got.Num, tt.wantNum, tt.tol)
+				}
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Signs must match: positive number with negative multiple
+		{"pos_neg_mismatch", "MROUND(5,-2)", ErrValNUM},
+		// Signs must match: negative number with positive multiple
+		{"neg_pos_mismatch", "MROUND(-5,2)", ErrValNUM},
+
+		// Wrong argument count
+		{"no_args", "MROUND()", ErrValVALUE},
+		{"one_arg", "MROUND(10)", ErrValVALUE},
+		{"three_args", "MROUND(10,3,1)", ErrValVALUE},
+
+		// Non-numeric string
+		{"non_numeric_number", "MROUND(\"abc\",3)", ErrValVALUE},
+		{"non_numeric_multiple", "MROUND(10,\"abc\")", ErrValVALUE},
+
+		// Error propagation
+		{"err_div0_number", "MROUND(1/0,3)", ErrValDIV0},
+		{"err_div0_multiple", "MROUND(10,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestROUND(t *testing.T) {
 	resolver := &mockResolver{}
 

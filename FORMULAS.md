@@ -196,7 +196,7 @@ Werkbook supports **343** Excel formula functions.
 | MODE | Statistical | - |
 | MODE.SNGL | Statistical | - |
 | MONTH | Date & Time | 5 |
-| MROUND | Math & Trig | - |
+| MROUND | Math & Trig | 38 |
 | MULTINOMIAL | Math & Trig | - |
 | MUNIT | Math & Trig | 38 |
 | N | Information | - |
