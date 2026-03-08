@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **396** Excel formula functions.
+Werkbook supports **397** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -139,6 +139,7 @@ Werkbook supports **396** Excel formula functions.
 | FORMULATEXT | Information | 7 |
 | FREQUENCY | Statistical | 25 |
 | FV | Financial | 4 |
+| FVSCHEDULE | Financial | 1 |
 | GAMMA | Math & Trig | 31 |
 | GAMMA.DIST | Statistical | 41 |
 | GAMMA.INV | Statistical | 34 |
@@ -403,7 +404,7 @@ Werkbook supports **396** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **74** Excel functions are not yet supported.
+The following **73** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -443,7 +444,6 @@ The following **74** Excel functions are not yet supported.
 | FORECAST.ETS.CONFINT | Statistical |
 | FORECAST.ETS.SEASONALITY | Statistical |
 | FORECAST.ETS.STAT | Statistical |
-| FVSCHEDULE | Financial |
 | GETPIVOTDATA | Lookup & Reference |
 | GROWTH | Statistical |
 | HYPERLINK | Lookup & Reference |

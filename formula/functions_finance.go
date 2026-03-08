@@ -56,6 +56,7 @@ func init() {
 	Register("MDURATION", NoCtx(fnMduration))
 	Register("PRICE", NoCtx(fnPrice))
 	Register("YIELD", NoCtx(fnYield))
+	Register("FVSCHEDULE", NoCtx(fnFVSchedule))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -3199,4 +3200,37 @@ func fnYield(args []Value) (Value, error) {
 	}
 
 	return ErrorVal(ErrValNUM), nil
+}
+
+// fnFVSchedule implements FVSCHEDULE(principal, schedule).
+// Returns the future value of an initial principal after applying a series of
+// compound interest rates: principal * (1+rate1) * (1+rate2) * ... * (1+rateN).
+func fnFVSchedule(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	principal, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	rates := flattenValues(args[1])
+	for _, v := range rates {
+		switch v.Type {
+		case ValueEmpty:
+			// Blank cells are treated as zero (no interest), so multiply by 1.
+			continue
+		case ValueNumber:
+			principal *= 1 + v.Num
+		case ValueBool:
+			// Booleans coerce: TRUE=1, FALSE=0.
+			if v.Bool {
+				principal *= 2 // 1 + 1
+			}
+			// FALSE: multiply by 1+0 = 1, no change.
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+	return NumberVal(principal), nil
 }

@@ -9745,3 +9745,227 @@ func TestPRICE_YIELD_RoundTrip(t *testing.T) {
 		})
 	}
 }
+
+// === FVSCHEDULE ===
+
+func TestFVSchedule_Comprehensive(t *testing.T) {
+	mkArr := func(vals ...Value) Value {
+		return Value{Type: ValueArray, Array: [][]Value{vals}}
+	}
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Basic usage — Excel documentation example
+		{
+			name: "Excel doc example: FVSCHEDULE(1,{0.09,0.11,0.1})",
+			args: []Value{NumberVal(1), mkArr(NumberVal(0.09), NumberVal(0.11), NumberVal(0.1))},
+			want: 1.33089,
+		},
+		// Single rate
+		{
+			name: "single rate 10%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.10))},
+			want: 1100.0,
+		},
+		// Multiple rates
+		{
+			name: "multiple rates 5%, 10%, 15%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05), NumberVal(0.10), NumberVal(0.15))},
+			want: 1000 * 1.05 * 1.10 * 1.15,
+		},
+		// Zero rates
+		{
+			name: "all zero rates",
+			args: []Value{NumberVal(500), mkArr(NumberVal(0), NumberVal(0), NumberVal(0))},
+			want: 500.0,
+		},
+		// Negative rates
+		{
+			name: "negative rate -10%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(-0.10))},
+			want: 900.0,
+		},
+		{
+			name: "negative rate -50%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(-0.50))},
+			want: 500.0,
+		},
+		// Principal of 0
+		{
+			name: "principal zero",
+			args: []Value{NumberVal(0), mkArr(NumberVal(0.1), NumberVal(0.2))},
+			want: 0.0,
+		},
+		// Negative principal
+		{
+			name: "negative principal",
+			args: []Value{NumberVal(-1000), mkArr(NumberVal(0.10))},
+			want: -1100.0,
+		},
+		// Large principal
+		{
+			name: "large principal",
+			args: []Value{NumberVal(1e9), mkArr(NumberVal(0.05), NumberVal(0.03))},
+			want: 1e9 * 1.05 * 1.03,
+		},
+		// Empty cells in schedule treated as 0
+		{
+			name: "empty cell in schedule treated as zero",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.10), EmptyVal(), NumberVal(0.05))},
+			want: 1000 * 1.10 * 1.0 * 1.05,
+		},
+		{
+			name: "all empty cells in schedule",
+			args: []Value{NumberVal(1000), mkArr(EmptyVal(), EmptyVal())},
+			want: 1000.0,
+		},
+		// Single element array
+		{
+			name: "single element array",
+			args: []Value{NumberVal(100), mkArr(NumberVal(0.5))},
+			want: 150.0,
+		},
+		// Mixed positive and negative rates
+		{
+			name: "mixed positive and negative rates",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.10), NumberVal(-0.05), NumberVal(0.20))},
+			want: 1000 * 1.10 * 0.95 * 1.20,
+		},
+		// Very small rates
+		{
+			name: "very small rate 0.001%",
+			args: []Value{NumberVal(10000), mkArr(NumberVal(0.00001))},
+			want: 10000 * 1.00001,
+		},
+		// Very large rate
+		{
+			name: "very large rate 1000%",
+			args: []Value{NumberVal(1), mkArr(NumberVal(10.0))},
+			want: 11.0,
+		},
+		// Multiple periods with same rate
+		{
+			name: "three periods same rate 5%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05), NumberVal(0.05), NumberVal(0.05))},
+			want: 1000 * 1.05 * 1.05 * 1.05,
+		},
+		// Rate of -100% (complete loss)
+		{
+			name: "rate of -100% (complete loss)",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(-1.0))},
+			want: 0.0,
+		},
+		// Boolean FALSE in schedule treated as 0
+		{
+			name: "boolean FALSE in schedule treated as 0",
+			args: []Value{NumberVal(1000), mkArr(BoolVal(false), NumberVal(0.10))},
+			want: 1000 * 1.0 * 1.10,
+		},
+		// Boolean TRUE in schedule treated as 1
+		{
+			name: "boolean TRUE in schedule treated as 1",
+			args: []Value{NumberVal(1000), mkArr(BoolVal(true))},
+			want: 2000.0,
+		},
+		// Fractional principal
+		{
+			name: "fractional principal 0.5",
+			args: []Value{NumberVal(0.5), mkArr(NumberVal(0.10), NumberVal(0.20))},
+			want: 0.5 * 1.10 * 1.20,
+		},
+		// Many rates
+		{
+			name: "five rates",
+			args: []Value{NumberVal(100), mkArr(NumberVal(0.01), NumberVal(0.02), NumberVal(0.03), NumberVal(0.04), NumberVal(0.05))},
+			want: 100 * 1.01 * 1.02 * 1.03 * 1.04 * 1.05,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := fnFVSchedule(tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr {
+				assertError(t, tt.name, v)
+				return
+			}
+			assertClose(t, tt.name, v, tt.want)
+		})
+	}
+}
+
+func TestFVSchedule_ErrorCases(t *testing.T) {
+	mkArr := func(vals ...Value) Value {
+		return Value{Type: ValueArray, Array: [][]Value{vals}}
+	}
+
+	t.Run("wrong number of args: too few", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{NumberVal(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "too few args", v)
+	})
+
+	t.Run("wrong number of args: too many", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{NumberVal(1), mkArr(NumberVal(0.1)), NumberVal(2)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "too many args", v)
+	})
+
+	t.Run("wrong number of args: zero", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "zero args", v)
+	})
+
+	t.Run("non-numeric principal string", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{StringVal("abc"), mkArr(NumberVal(0.1))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "string principal", v)
+	})
+
+	t.Run("string value in schedule", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{NumberVal(1000), mkArr(NumberVal(0.1), StringVal("abc"))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "string in schedule", v)
+	})
+
+	t.Run("error value in principal", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{ErrorVal(ErrValNUM), mkArr(NumberVal(0.1))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "error principal", v)
+	})
+
+	t.Run("error value in schedule", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{NumberVal(1000), mkArr(NumberVal(0.1), ErrorVal(ErrValDIV0))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "error in schedule", v)
+	})
+
+	t.Run("empty string in schedule is VALUE error", func(t *testing.T) {
+		v, err := fnFVSchedule([]Value{NumberVal(1000), mkArr(StringVal(""))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "empty string in schedule", v)
+	})
+}
