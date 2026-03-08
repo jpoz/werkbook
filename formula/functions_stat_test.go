@@ -21872,3 +21872,464 @@ func TestAVERAGEIFS_WildcardMatchAll(t *testing.T) {
 		t.Errorf("AVERAGEIFS wildcard match all: got %v, want 20", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PROB
+// ---------------------------------------------------------------------------
+
+func TestPROB(t *testing.T) {
+	const tol = 1e-12
+
+	// Standard resolver: x={0,1,2,3} in A1:A4, prob={0.2,0.3,0.1,0.4} in B1:B4
+	stdResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0),
+			{Col: 1, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(2),
+			{Col: 1, Row: 4}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(0.2),
+			{Col: 2, Row: 2}: NumberVal(0.3),
+			{Col: 2, Row: 3}: NumberVal(0.1),
+			{Col: 2, Row: 4}: NumberVal(0.4),
+		},
+	}
+
+	t.Run("exact match single value", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,2) = 0.1
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,2)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.1) > tol {
+			t.Errorf("got %v, want 0.1", got)
+		}
+	})
+
+	t.Run("range match lower to upper", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,1,3) = 0.3+0.1+0.4 = 0.8
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,1,3)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.8) > tol {
+			t.Errorf("got %v, want 0.8", got)
+		}
+	})
+
+	t.Run("all values match", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,0,3) = 1.0
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,0,3)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-1.0) > tol {
+			t.Errorf("got %v, want 1.0", got)
+		}
+	})
+
+	t.Run("no values match", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,5) = 0
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,5)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("no values in range", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,10,20) = 0
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,10,20)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("lower equals upper single value match", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,1,1) = 0.3
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,1,1)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.3) > tol {
+			t.Errorf("got %v, want 0.3", got)
+		}
+	})
+
+	t.Run("lower equals upper no match", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,1.5,1.5) = 0
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,1.5,1.5)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("single element range match", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 2, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A1,B1:B1,5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-1.0) > tol {
+			t.Errorf("got %v, want 1.0", got)
+		}
+	})
+
+	t.Run("single element range no match", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 2, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A1,B1:B1,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("partial range match", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,0,1) = 0.2+0.3 = 0.5
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,0,1)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.5) > tol {
+			t.Errorf("got %v, want 0.5", got)
+		}
+	})
+
+	t.Run("exact match first value", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,0) = 0.2
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,0)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.2) > tol {
+			t.Errorf("got %v, want 0.2", got)
+		}
+	})
+
+	t.Run("exact match last value", func(t *testing.T) {
+		// PROB(A1:A4,B1:B4,3) = 0.4
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,3)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.4) > tol {
+			t.Errorf("got %v, want 0.4", got)
+		}
+	})
+
+	t.Run("negative x values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-2),
+				{Col: 1, Row: 2}: NumberVal(-1),
+				{Col: 1, Row: 3}: NumberVal(0),
+				{Col: 2, Row: 1}: NumberVal(0.25),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+				{Col: 2, Row: 3}: NumberVal(0.25),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A3,B1:B3,-2,-1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.75) > tol {
+			t.Errorf("got %v, want 0.75", got)
+		}
+	})
+
+	t.Run("fractional x values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(0.5),
+				{Col: 1, Row: 2}: NumberVal(1.5),
+				{Col: 1, Row: 3}: NumberVal(2.5),
+				{Col: 2, Row: 1}: NumberVal(0.3),
+				{Col: 2, Row: 2}: NumberVal(0.3),
+				{Col: 2, Row: 3}: NumberVal(0.4),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A3,B1:B3,0.5,1.5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.6) > tol {
+			t.Errorf("got %v, want 0.6", got)
+		}
+	})
+
+	// --- Error cases ---
+
+	t.Run("error prob value zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(0),   // prob <= 0
+				{Col: 2, Row: 2}: NumberVal(1.0),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got %v", got)
+		}
+	})
+
+	t.Run("error prob value negative", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(-0.5),
+				{Col: 2, Row: 2}: NumberVal(1.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got %v", got)
+		}
+	})
+
+	t.Run("error prob value greater than 1", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(1.5),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got %v", got)
+		}
+	})
+
+	t.Run("error prob sum not 1", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(0.3),
+				{Col: 2, Row: 2}: NumberVal(0.3), // sum = 0.6 != 1
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got %v", got)
+		}
+	})
+
+	t.Run("error different length arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A3,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("expected #N/A, got %v", got)
+		}
+	})
+
+	t.Run("error too few args", func(t *testing.T) {
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	t.Run("error too many args", func(t *testing.T) {
+		cf := evalCompile(t, "PROB(A1:A4,B1:B4,1,3,5)")
+		got, err := Eval(cf, stdResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	t.Run("error non-numeric x value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("abc"),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error for non-numeric x, got %v", got)
+		}
+	})
+
+	t.Run("error non-numeric prob value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: StringVal("abc"),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error for non-numeric prob, got %v", got)
+		}
+	})
+
+	t.Run("error propagation from x range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("expected #N/A from error propagation, got %v", got)
+		}
+	})
+
+	t.Run("error propagation from prob range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: ErrorVal(ErrValDIV0),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("expected #DIV/0! from error propagation, got %v", got)
+		}
+	})
+
+	t.Run("prob sum exactly 1 with many values", func(t *testing.T) {
+		// Five values, probabilities sum to 1.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: NumberVal(0.1),
+				{Col: 2, Row: 2}: NumberVal(0.2),
+				{Col: 2, Row: 3}: NumberVal(0.3),
+				{Col: 2, Row: 4}: NumberVal(0.25),
+				{Col: 2, Row: 5}: NumberVal(0.15),
+			},
+		}
+		// PROB(A1:A5,B1:B5,20,40) = 0.2+0.3+0.25 = 0.75
+		cf := evalCompile(t, "PROB(A1:A5,B1:B5,20,40)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-0.75) > tol {
+			t.Errorf("got %v, want 0.75", got)
+		}
+	})
+
+	t.Run("non-numeric lower limit", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(0.5),
+				{Col: 2, Row: 2}: NumberVal(0.5),
+				{Col: 3, Row: 1}: StringVal("abc"),
+			},
+		}
+		cf := evalCompile(t, "PROB(A1:A2,B1:B2,C1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error for non-numeric lower_limit, got %v", got)
+		}
+	})
+}

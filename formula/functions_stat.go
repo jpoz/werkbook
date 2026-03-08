@@ -115,6 +115,7 @@ func init() {
 	Register("HYPGEOM.DIST", NoCtx(fnHypgeomDist))
 	Register("NEGBINOM.DIST", NoCtx(fnNegbinomDist))
 	Register("PHI", NoCtx(fnPhi))
+	Register("PROB", NoCtx(fnPROB))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -4848,4 +4849,85 @@ func negbinomPMF(f, r int, p float64) float64 {
 	logC := lgFR - lgR - lgF1
 	logProb := logC + float64(r)*math.Log(p) + float64(f)*math.Log(1-p)
 	return math.Exp(logProb)
+}
+
+// fnPROB implements the Excel PROB function.
+// PROB(x_range, prob_range, lower_limit, [upper_limit])
+// Returns the probability that values in x_range fall between lower_limit and
+// upper_limit (inclusive). If upper_limit is omitted, returns the probability
+// of being exactly equal to lower_limit.
+func fnPROB(args []Value) (Value, error) {
+	if len(args) < 3 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Flatten x_range and prob_range into 1-D slices.
+	flatX := flattenValuesGeneric(args[0])
+	flatP := flattenValuesGeneric(args[1])
+
+	// x_range and prob_range must have the same number of data points.
+	if len(flatX) != len(flatP) {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Both ranges must be non-empty.
+	if len(flatX) == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Extract numeric values, propagating errors.
+	xs := make([]float64, 0, len(flatX))
+	ps := make([]float64, 0, len(flatP))
+	probSum := 0.0
+	for i := range flatX {
+		xv, yv := flatX[i], flatP[i]
+		if xv.Type == ValueError {
+			return xv, nil
+		}
+		if yv.Type == ValueError {
+			return yv, nil
+		}
+		// Both must be numeric.
+		if xv.Type != ValueNumber || yv.Type != ValueNumber {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		// Each probability must be > 0 and <= 1.
+		if yv.Num <= 0 || yv.Num > 1 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		xs = append(xs, xv.Num)
+		ps = append(ps, yv.Num)
+		probSum += yv.Num
+	}
+
+	// Sum of probabilities must equal 1 (with floating-point tolerance).
+	if math.Abs(probSum-1.0) > 1e-10 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Parse lower_limit.
+	lower, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Parse optional upper_limit; if omitted, match exactly lower_limit.
+	upper := lower
+	if len(args) == 4 {
+		u, e2 := CoerceNum(args[3])
+		if e2 != nil {
+			return *e2, nil
+		}
+		upper = u
+	}
+
+	// Sum probabilities for x values in [lower, upper].
+	result := 0.0
+	for i, x := range xs {
+		if x >= lower && x <= upper {
+			result += ps[i]
+		}
+	}
+
+	return NumberVal(result), nil
 }
