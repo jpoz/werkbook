@@ -26,6 +26,10 @@ func init() {
 	Register("IMARGUMENT", NoCtx(fnImargument))
 	Register("IMCONJUGATE", NoCtx(fnImconjugate))
 	Register("IMDIV", NoCtx(fnImdiv))
+	Register("IMEXP", NoCtx(fnImexp))
+	Register("IMLN", NoCtx(fnImln))
+	Register("IMLOG10", NoCtx(fnImlog10))
+	Register("IMLOG2", NoCtx(fnImlog2))
 	Register("IMPOWER", NoCtx(fnImpower))
 	Register("IMPRODUCT", NoCtx(fnImproduct))
 	Register("IMREAL", NoCtx(fnImreal))
@@ -2105,6 +2109,239 @@ func fnImpower(args []Value) (Value, error) {
 
 	realResult := cleanFloat(newR * math.Cos(newTheta))
 	imagResult := cleanFloat(newR * math.Sin(newTheta))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImexp implements the Excel IMEXP function.
+// IMEXP(inumber) — returns the exponential of a complex number.
+// e^(x+yi) = e^x * (cos(y) + sin(y)*i).
+func fnImexp(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImexp([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// e^(x+yi) = e^x * (cos(y) + sin(y)*i)
+	ex := math.Exp(x)
+	realResult := cleanFloat(ex * math.Cos(y))
+	imagResult := cleanFloat(ex * math.Sin(y))
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImln implements the Excel IMLN function.
+// IMLN(inumber) — returns the natural logarithm of a complex number.
+// ln(x+yi) = ln(|z|) + atan2(y,x)*i.
+func fnImln(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImln([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	realResult := cleanFloat(math.Log(r))
+	imagResult := cleanFloat(theta)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImlog2 implements the Excel IMLOG2 function.
+// IMLOG2(inumber) — returns the base-2 logarithm of a complex number.
+// log2(z) = ln(z) / ln(2).
+func fnImlog2(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImlog2([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	ln2 := math.Ln2
+	realResult := cleanFloat(math.Log(r) / ln2)
+	imagResult := cleanFloat(theta / ln2)
+
+	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
+}
+
+// fnImlog10 implements the Excel IMLOG10 function.
+// IMLOG10(inumber) — returns the base-10 logarithm of a complex number.
+// log10(z) = ln(z) / ln(10).
+func fnImlog10(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImlog10([]Value{v})
+			return r
+		}), nil
+	}
+
+	var x, y float64
+	var suffix string
+
+	switch args[0].Type {
+	case ValueNumber:
+		x = args[0].Num
+		y = 0
+		suffix = ""
+	case ValueString:
+		var fail bool
+		x, y, suffix, fail = parseComplexWithSuffix(args[0].Str)
+		if fail {
+			return ErrorVal(ErrValNUM), nil
+		}
+	case ValueBool:
+		return ErrorVal(ErrValVALUE), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Default suffix if none was set.
+	if suffix == "" {
+		suffix = "i"
+	}
+
+	// Log of zero is undefined → #NUM!
+	r := math.Hypot(x, y)
+	if r == 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	theta := math.Atan2(y, x)
+	ln10 := math.Log(10)
+	realResult := cleanFloat(math.Log(r) / ln10)
+	imagResult := cleanFloat(theta / ln10)
 
 	return StringVal(formatComplex(realResult, imagResult, suffix)), nil
 }

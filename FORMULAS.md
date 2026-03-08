@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **359** Excel formula functions.
+Werkbook supports **363** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -146,7 +146,7 @@ Werkbook supports **359** Excel formula functions.
 | HSTACK | Lookup & Reference | 18 |
 | HYPGEOM.DIST | Statistical | 37 |
 | IF | Logical | 23 |
-| IFERROR | Logical | 45 |
+| IFERROR | Logical | 48 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | IMABS | Engineering | 38 |
@@ -154,6 +154,10 @@ Werkbook supports **359** Excel formula functions.
 | IMARGUMENT | Engineering | 47 |
 | IMCONJUGATE | Engineering | 47 |
 | IMDIV | Engineering | 34 |
+| IMEXP | Engineering | 30 |
+| IMLN | Engineering | 30 |
+| IMLOG10 | Engineering | 30 |
+| IMLOG2 | Engineering | 31 |
 | IMPOWER | Engineering | 39 |
 | IMPRODUCT | Engineering | 36 |
 | IMREAL | Engineering | 38 |
@@ -366,7 +370,7 @@ Werkbook supports **359** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **111** Excel functions are not yet supported.
+The following **107** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -426,10 +430,6 @@ The following **111** Excel functions are not yet supported.
 | IMCOT | Engineering |
 | IMCSC | Engineering |
 | IMCSCH | Engineering |
-| IMEXP | Engineering |
-| IMLN | Engineering |
-| IMLOG10 | Engineering |
-| IMLOG2 | Engineering |
 | IMSEC | Engineering |
 | IMSECH | Engineering |
 | IMSIN | Engineering |

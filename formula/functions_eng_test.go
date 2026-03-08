@@ -3322,3 +3322,499 @@ func TestIMPOWER(t *testing.T) {
 		}
 	})
 }
+
+func TestIMEXP(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Zero → e^0 = 1
+			{`IMEXP("0")`, "1"},
+			{`IMEXP(0)`, "1"},
+
+			// Pure real positive
+			{`IMEXP("1")`, "2.718281828459045"},
+			{`IMEXP(1)`, "2.718281828459045"},
+			{`IMEXP("2")`, "7.38905609893065"},
+			{`IMEXP("0.5")`, "1.6487212707001282"},
+
+			// Pure real negative
+			{`IMEXP("-1")`, "0.36787944117144233"},
+			{`IMEXP("-2")`, "0.1353352832366127"},
+
+			// Pure imaginary: e^(i) = cos(1)+sin(1)*i
+			{`IMEXP("i")`, "0.5403023058681398+0.8414709848078965i"},
+			{`IMEXP("-i")`, "0.5403023058681398-0.8414709848078965i"},
+			{`IMEXP("2i")`, "-0.4161468365471424+0.9092974268256816i"},
+
+			// Complex: e^(1+i) = e*(cos(1)+sin(1)*i)
+			{`IMEXP("1+i")`, "1.4686939399158851+2.2873552871788423i"},
+			{`IMEXP("1-i")`, "1.4686939399158851-2.2873552871788423i"},
+
+			// Euler's formula: e^(πi) ≈ -1
+			{`IMEXP("3.14159265358979i")`, "-1"},
+
+			// j suffix
+			{`IMEXP("j")`, "0.5403023058681398+0.8414709848078965j"},
+			{`IMEXP("1+j")`, "1.4686939399158851+2.2873552871788423j"},
+
+			// COMPLEX composition
+			{`IMEXP(COMPLEX(0,0))`, "1"},
+			{`IMEXP(COMPLEX(1,0))`, "2.718281828459045"},
+			{`IMEXP(COMPLEX(0,1))`, "0.5403023058681398+0.8414709848078965i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number strings
+			{`IMEXP("invalid")`, ErrValNUM},
+			{`IMEXP("")`, ErrValNUM},
+			{`IMEXP("abc")`, ErrValNUM},
+			{`IMEXP("3+4")`, ErrValNUM},
+			{`IMEXP("3+4k")`, ErrValNUM},
+			{`IMEXP("+")`, ErrValNUM},
+
+			// Boolean → #VALUE!
+			{`IMEXP(TRUE)`, ErrValVALUE},
+			{`IMEXP(FALSE)`, ErrValVALUE},
+
+			// Wrong arg count
+			{`IMEXP()`, ErrValVALUE},
+			{`IMEXP("1","2")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMEXP(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMEXP(1/0) = %v, want error", got)
+		}
+	})
+}
+
+func TestIMLN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// ln(1) = 0
+			{`IMLN("1")`, "0"},
+			{`IMLN(1)`, "0"},
+
+			// ln(e) = 1
+			{`IMLN("2.718281828459045")`, "1"},
+
+			// ln(-1) = πi
+			{`IMLN("-1")`, "3.141592653589793i"},
+
+			// ln(i) = (π/2)i
+			{`IMLN("i")`, "1.5707963267948966i"},
+
+			// ln(-i) = -(π/2)i
+			{`IMLN("-i")`, "-1.5707963267948966i"},
+
+			// ln(3+4i) = ln(5) + atan2(4,3)*i
+			{`IMLN("3+4i")`, "1.6094379124341003+0.9272952180016122i"},
+
+			// Pure real
+			{`IMLN("2")`, "0.6931471805599453"},
+			{`IMLN("5")`, "1.6094379124341003"},
+			{`IMLN("10")`, "2.302585092994046"},
+
+			// Negative real
+			{`IMLN("-2")`, "0.6931471805599453+3.141592653589793i"},
+
+			// Complex
+			{`IMLN("1+i")`, "0.3465735902799727+0.7853981633974483i"},
+			{`IMLN("-1-i")`, "0.3465735902799727-2.356194490192345i"},
+
+			// j suffix
+			{`IMLN("j")`, "1.5707963267948966j"},
+			{`IMLN("3+4j")`, "1.6094379124341003+0.9272952180016122j"},
+
+			// COMPLEX composition
+			{`IMLN(COMPLEX(1,0))`, "0"},
+			{`IMLN(COMPLEX(3,4))`, "1.6094379124341003+0.9272952180016122i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("log of zero", func(t *testing.T) {
+		// IMLN(0) → #NUM!
+		cf := evalCompile(t, `IMLN("0")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLN(\"0\") = %v, want #NUM!", got)
+		}
+
+		// Also test with numeric 0
+		cf = evalCompile(t, `IMLN(0)`)
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLN(0) = %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("IFERROR wraps log of zero", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(IMLN("0"),"err")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "err" {
+			t.Errorf(`IFERROR(IMLN("0"),"err") = %v, want "err"`, got)
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number strings
+			{`IMLN("invalid")`, ErrValNUM},
+			{`IMLN("")`, ErrValNUM},
+			{`IMLN("abc")`, ErrValNUM},
+			{`IMLN("3+4")`, ErrValNUM},
+			{`IMLN("3+4k")`, ErrValNUM},
+			{`IMLN("+")`, ErrValNUM},
+
+			// Boolean → #VALUE!
+			{`IMLN(TRUE)`, ErrValVALUE},
+			{`IMLN(FALSE)`, ErrValVALUE},
+
+			// Wrong arg count
+			{`IMLN()`, ErrValVALUE},
+			{`IMLN("1","2")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMLN(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMLN(1/0) = %v, want error", got)
+		}
+	})
+}
+
+func TestIMLOG2(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Powers of 2
+			{`IMLOG2("1")`, "0"},
+			{`IMLOG2("2")`, "1"},
+			{`IMLOG2("4")`, "2"},
+			{`IMLOG2("8")`, "3"},
+			{`IMLOG2("16")`, "4"},
+			{`IMLOG2("32")`, "5"},
+			{`IMLOG2("0.5")`, "-1"},
+			{`IMLOG2(1)`, "0"},
+			{`IMLOG2(4)`, "2"},
+			{`IMLOG2(8)`, "3"},
+
+			// Complex
+			{`IMLOG2("3+4i")`, "2.321928094887362+1.3378042124509761i"},
+			{`IMLOG2("i")`, "2.266180070913597i"},
+			{`IMLOG2("-1")`, "4.532360141827194i"},
+			{`IMLOG2("1+i")`, "0.5000000000000001+1.1330900354567985i"},
+
+			// j suffix
+			{`IMLOG2("j")`, "2.266180070913597j"},
+			{`IMLOG2("3+4j")`, "2.321928094887362+1.3378042124509761j"},
+
+			// COMPLEX composition
+			{`IMLOG2(COMPLEX(4,0))`, "2"},
+			{`IMLOG2(COMPLEX(3,4))`, "2.321928094887362+1.3378042124509761i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("log of zero", func(t *testing.T) {
+		cf := evalCompile(t, `IMLOG2("0")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLOG2(\"0\") = %v, want #NUM!", got)
+		}
+
+		cf = evalCompile(t, `IMLOG2(0)`)
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLOG2(0) = %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("IFERROR wraps log of zero", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(IMLOG2("0"),"err")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "err" {
+			t.Errorf(`IFERROR(IMLOG2("0"),"err") = %v, want "err"`, got)
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number strings
+			{`IMLOG2("invalid")`, ErrValNUM},
+			{`IMLOG2("")`, ErrValNUM},
+			{`IMLOG2("abc")`, ErrValNUM},
+			{`IMLOG2("3+4")`, ErrValNUM},
+			{`IMLOG2("3+4k")`, ErrValNUM},
+			{`IMLOG2("+")`, ErrValNUM},
+
+			// Boolean → #VALUE!
+			{`IMLOG2(TRUE)`, ErrValVALUE},
+			{`IMLOG2(FALSE)`, ErrValVALUE},
+
+			// Wrong arg count
+			{`IMLOG2()`, ErrValVALUE},
+			{`IMLOG2("1","2")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMLOG2(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMLOG2(1/0) = %v, want error", got)
+		}
+	})
+}
+
+func TestIMLOG10(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Powers of 10
+			{`IMLOG10("1")`, "0"},
+			{`IMLOG10("10")`, "1"},
+			{`IMLOG10("100")`, "2"},
+			{`IMLOG10("1000")`, "3"},
+			{`IMLOG10("0.1")`, "-1"},
+			{`IMLOG10("0.01")`, "-2"},
+			{`IMLOG10(1)`, "0"},
+			{`IMLOG10(10)`, "1"},
+			{`IMLOG10(100)`, "2"},
+
+			// Complex
+			{`IMLOG10("3+4i")`, "0.6989700043360187+0.4027191962733731i"},
+			{`IMLOG10("i")`, "0.6821881769209206i"},
+			{`IMLOG10("-1")`, "1.3643763538418412i"},
+			{`IMLOG10("1+i")`, "0.1505149978319906+0.3410940884604603i"},
+
+			// j suffix
+			{`IMLOG10("j")`, "0.6821881769209206j"},
+			{`IMLOG10("3+4j")`, "0.6989700043360187+0.4027191962733731j"},
+
+			// COMPLEX composition
+			{`IMLOG10(COMPLEX(10,0))`, "1"},
+			{`IMLOG10(COMPLEX(3,4))`, "0.6989700043360187+0.4027191962733731i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("log of zero", func(t *testing.T) {
+		cf := evalCompile(t, `IMLOG10("0")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLOG10(\"0\") = %v, want #NUM!", got)
+		}
+
+		cf = evalCompile(t, `IMLOG10(0)`)
+		got, err = Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("IMLOG10(0) = %v, want #NUM!", got)
+		}
+	})
+
+	t.Run("IFERROR wraps log of zero", func(t *testing.T) {
+		cf := evalCompile(t, `IFERROR(IMLOG10("0"),"err")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "err" {
+			t.Errorf(`IFERROR(IMLOG10("0"),"err") = %v, want "err"`, got)
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number strings
+			{`IMLOG10("invalid")`, ErrValNUM},
+			{`IMLOG10("")`, ErrValNUM},
+			{`IMLOG10("abc")`, ErrValNUM},
+			{`IMLOG10("3+4")`, ErrValNUM},
+			{`IMLOG10("3+4k")`, ErrValNUM},
+			{`IMLOG10("+")`, ErrValNUM},
+
+			// Boolean → #VALUE!
+			{`IMLOG10(TRUE)`, ErrValVALUE},
+			{`IMLOG10(FALSE)`, ErrValVALUE},
+
+			// Wrong arg count
+			{`IMLOG10()`, ErrValVALUE},
+			{`IMLOG10("1","2")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMLOG10(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMLOG10(1/0) = %v, want error", got)
+		}
+	})
+}
