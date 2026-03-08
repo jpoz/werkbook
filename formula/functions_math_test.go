@@ -9632,3 +9632,98 @@ func TestBASE(t *testing.T) {
 	}
 }
 
+
+func TestMULTINOMIAL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Excel doc example
+		{"doc_example_2_3_4", "MULTINOMIAL(2,3,4)", 1260},
+		// Basic multinomial identities
+		{"two_ones", "MULTINOMIAL(1,1)", 2},
+		{"three_ones", "MULTINOMIAL(1,1,1)", 6},
+		{"four_ones", "MULTINOMIAL(1,1,1,1)", 24},
+		// Single argument: MULTINOMIAL(n) = n!/n! = 1
+		{"single_5", "MULTINOMIAL(5)", 1},
+		{"single_1", "MULTINOMIAL(1)", 1},
+		{"single_0", "MULTINOMIAL(0)", 1},
+		{"single_10", "MULTINOMIAL(10)", 1},
+		// Zeros: MULTINOMIAL(0,0) = 0!/(0!*0!) = 1
+		{"zero_zero", "MULTINOMIAL(0,0)", 1},
+		{"zero_zero_zero", "MULTINOMIAL(0,0,0)", 1},
+		{"zero_and_val", "MULTINOMIAL(0,5)", 1},
+		{"val_and_zero", "MULTINOMIAL(3,0)", 1},
+		// Known combinatorial values
+		{"2_2", "MULTINOMIAL(2,2)", 6},
+		{"3_3", "MULTINOMIAL(3,3)", 20},
+		{"2_2_2", "MULTINOMIAL(2,2,2)", 90},
+		{"1_2_3", "MULTINOMIAL(1,2,3)", 60},
+		{"5_3", "MULTINOMIAL(5,3)", 56},
+		// Decimal truncation — arguments are truncated to integers
+		{"decimal_2_9", "MULTINOMIAL(2.9,3,4)", 1260},
+		{"decimal_3_7", "MULTINOMIAL(2,3.7,4)", 1260},
+		{"decimal_all", "MULTINOMIAL(2.1,3.9,4.5)", 1260},
+		// String coercion
+		{"string_first", `MULTINOMIAL("2",3,4)`, 1260},
+		{"string_second", `MULTINOMIAL(2,"3",4)`, 1260},
+		{"string_all", `MULTINOMIAL("2","3","4")`, 1260},
+		// Boolean coercion: TRUE=1, FALSE=0
+		{"bool_true", "MULTINOMIAL(TRUE,1)", 2},
+		{"bool_false", "MULTINOMIAL(FALSE,5)", 1},
+		{"bool_true_true", "MULTINOMIAL(TRUE,TRUE,TRUE)", 6},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// No arguments → #VALUE!
+		{"no_args", "MULTINOMIAL()", ErrValVALUE},
+		// Negative values → #NUM!
+		{"negative_single", "MULTINOMIAL(-1)", ErrValNUM},
+		{"negative_first", "MULTINOMIAL(-1,2,3)", ErrValNUM},
+		{"negative_second", "MULTINOMIAL(2,-3,4)", ErrValNUM},
+		{"negative_last", "MULTINOMIAL(2,3,-4)", ErrValNUM},
+		{"negative_decimal_trunc", "MULTINOMIAL(-1.5,3)", ErrValNUM},
+		// Non-numeric string → #VALUE!
+		{"non_numeric", `MULTINOMIAL("abc")`, ErrValVALUE},
+		{"non_numeric_second", `MULTINOMIAL(2,"xyz",4)`, ErrValVALUE},
+		// Error propagation
+		{"error_div0", "MULTINOMIAL(1/0,2)", ErrValDIV0},
+		{"error_div0_second", "MULTINOMIAL(2,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}

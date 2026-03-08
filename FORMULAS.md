@@ -197,7 +197,7 @@ Werkbook supports **343** Excel formula functions.
 | MODE.SNGL | Statistical | - |
 | MONTH | Date & Time | 5 |
 | MROUND | Math & Trig | 38 |
-| MULTINOMIAL | Math & Trig | - |
+| MULTINOMIAL | Math & Trig | 36 |
 | MUNIT | Math & Trig | 38 |
 | N | Information | 18 |
 | NA | Information | 4 |
@@ -322,7 +322,7 @@ Werkbook supports **343** Excel formula functions.
 | TYPE | Information | 22 |
 | UNIQUE | Lookup & Reference | 29 |
 | UPPER | Text | 23 |
-| VALUE | Text | - |
+| VALUE | Text | 31 |
 | VALUETOTEXT | Text | 26 |
 | VAR | Statistical | 24 |
 | VAR.P | Statistical | 22 |
