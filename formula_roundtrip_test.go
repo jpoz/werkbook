@@ -192,6 +192,75 @@ func TestOfficeEraFormulaPrefixesInXML(t *testing.T) {
 	}
 }
 
+func TestOfficeEraFormulaPrefixesRestoredOnResave(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	formulas := map[string]string{
+		"A1":  "ACOT(0)",
+		"A2":  "ACOTH(2)",
+		"A3":  "BITAND(1,5)",
+		"A4":  "BITLSHIFT(1,1)",
+		"A5":  "BITOR(1,5)",
+		"A6":  "BITRSHIFT(8,1)",
+		"A7":  "BITXOR(1,5)",
+		"A8":  "ERF.PRECISE(0.5)",
+		"A9":  "ERFC.PRECISE(0.5)",
+		"A10": "PDURATION(0.025,2000,2200)",
+		"A11": "RRI(96,10000,11000)",
+	}
+	for cell, formula := range formulas {
+		s.SetFormula(cell, formula)
+	}
+
+	dir := t.TempDir()
+	prefixedPath := filepath.Join(dir, "prefixed.xlsx")
+	if err := f.SaveAs(prefixedPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	legacyPath := filepath.Join(dir, "legacy.xlsx")
+	rewriteZipEntry(t, prefixedPath, legacyPath, "xl/worksheets/sheet1.xml", func(data []byte) []byte {
+		xml := string(data)
+		xml = strings.ReplaceAll(xml, "_xlfn._xlws.", "")
+		xml = strings.ReplaceAll(xml, "_xlfn.", "")
+		return []byte(xml)
+	})
+
+	legacyXML := string(readSheetXML(t, legacyPath, "xl/worksheets/sheet1.xml"))
+	if strings.Contains(legacyXML, "_xlfn.") {
+		t.Fatalf("legacy test fixture still contains _xlfn prefix: %s", legacyXML)
+	}
+
+	f2, err := werkbook.Open(legacyPath)
+	if err != nil {
+		t.Fatalf("Open legacy workbook: %v", err)
+	}
+	s2 := f2.Sheet("Sheet1")
+	for cell, want := range formulas {
+		got, err := s2.GetFormula(cell)
+		if err != nil {
+			t.Fatalf("GetFormula(%s): %v", cell, err)
+		}
+		if got != want {
+			t.Fatalf("GetFormula(%s) = %q, want %q", cell, got, want)
+		}
+	}
+
+	resavedPath := filepath.Join(dir, "resaved.xlsx")
+	if err := f2.SaveAs(resavedPath); err != nil {
+		t.Fatalf("SaveAs resaved workbook: %v", err)
+	}
+
+	resavedXML := string(readSheetXML(t, resavedPath, "xl/worksheets/sheet1.xml"))
+	for _, formula := range formulas {
+		want := "<f>_xlfn." + formula + "</f>"
+		if !strings.Contains(resavedXML, want) {
+			t.Fatalf("resaved formula XML missing expected prefix\nwant: %s\nxml: %s", want, resavedXML)
+		}
+	}
+}
+
 func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
 	f := werkbook.New(werkbook.FirstSheet("Out - Ledger Summary"))
 	s := f.Sheet("Out - Ledger Summary")
@@ -384,4 +453,51 @@ func readSheetXML(t *testing.T, xlsxPath, entryName string) []byte {
 	}
 	t.Fatalf("%s not found in zip", entryName)
 	return nil
+}
+
+func rewriteZipEntry(t *testing.T, srcPath, dstPath, entryName string, rewrite func([]byte) []byte) {
+	t.Helper()
+
+	zr, err := zip.OpenReader(srcPath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer zr.Close()
+
+	out, err := os.Create(dstPath)
+	if err != nil {
+		t.Fatalf("create output zip: %v", err)
+	}
+	defer out.Close()
+
+	zw := zip.NewWriter(out)
+	defer zw.Close()
+
+	for _, zf := range zr.File {
+		rc, err := zf.Open()
+		if err != nil {
+			t.Fatalf("open %s: %v", zf.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %v", zf.Name, err)
+		}
+		if zf.Name == entryName {
+			data = rewrite(data)
+		}
+
+		hdr := zf.FileHeader
+		w, err := zw.CreateHeader(&hdr)
+		if err != nil {
+			t.Fatalf("create %s: %v", zf.Name, err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatalf("write %s: %v", zf.Name, err)
+		}
+	}
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip writer: %v", err)
+	}
 }
