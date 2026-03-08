@@ -18616,3 +18616,286 @@ func TestVAR_P(t *testing.T) {
 	_ = numResolver
 	_ = valResolver
 }
+
+// ---------------------------------------------------------------------------
+// MODE / MODE.SNGL
+// ---------------------------------------------------------------------------
+
+func TestMODE(t *testing.T) {
+	numResolver := func(nums ...float64) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, n := range nums {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = NumberVal(n)
+		}
+		return m
+	}
+
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	// Both MODE and MODE.SNGL share the same implementation, so we test both.
+	for _, fn := range []string{"MODE", "MODE.SNGL"} {
+		t.Run(fn, func(t *testing.T) {
+			t.Run("basic most frequent value", func(t *testing.T) {
+				resolver := numResolver(1, 2, 2, 3)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A4)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 2 {
+					t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+				}
+			})
+
+			t.Run("multiple modes returns the first encountered", func(t *testing.T) {
+				// 1 appears twice, 3 appears twice; 1 is encountered first
+				resolver := numResolver(1, 1, 3, 3, 5)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A5)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 1 {
+					t.Errorf("got %v (%g), want 1", got.Type, got.Num)
+				}
+			})
+
+			t.Run("all unique values returns NA", func(t *testing.T) {
+				resolver := numResolver(1, 2, 3, 4, 5)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A5)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValNA {
+					t.Errorf("got %v, want #N/A", got)
+				}
+			})
+
+			t.Run("single value returns NA", func(t *testing.T) {
+				cf := evalCompile(t, fmt.Sprintf("%s(42)", fn))
+				got, err := Eval(cf, &mockResolver{}, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValNA {
+					t.Errorf("got %v, want #N/A", got)
+				}
+			})
+
+			t.Run("two identical values", func(t *testing.T) {
+				cf := evalCompile(t, fmt.Sprintf("%s(7,7)", fn))
+				got, err := Eval(cf, &mockResolver{}, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 7 {
+					t.Errorf("got %v (%g), want 7", got.Type, got.Num)
+				}
+			})
+
+			t.Run("decimal values", func(t *testing.T) {
+				resolver := numResolver(1.5, 2.5, 2.5, 3.5)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A4)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 2.5 {
+					t.Errorf("got %v (%g), want 2.5", got.Type, got.Num)
+				}
+			})
+
+			t.Run("negative values", func(t *testing.T) {
+				resolver := numResolver(-3, -3, -1, 0, 1)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A5)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != -3 {
+					t.Errorf("got %v (%g), want -3", got.Type, got.Num)
+				}
+			})
+
+			t.Run("zeros", func(t *testing.T) {
+				resolver := numResolver(0, 0, 1, 2)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A4)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 0 {
+					t.Errorf("got %v (%g), want 0", got.Type, got.Num)
+				}
+			})
+
+			t.Run("ignores text in range", func(t *testing.T) {
+				resolver := valResolver(
+					NumberVal(5),
+					StringVal("hello"),
+					NumberVal(5),
+					StringVal("world"),
+					NumberVal(3),
+				)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A5)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 5 {
+					t.Errorf("got %v (%g), want 5", got.Type, got.Num)
+				}
+			})
+
+			t.Run("ignores booleans in range", func(t *testing.T) {
+				resolver := valResolver(
+					NumberVal(4),
+					BoolVal(true),
+					NumberVal(4),
+					BoolVal(false),
+					NumberVal(2),
+				)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A5)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 4 {
+					t.Errorf("got %v (%g), want 4", got.Type, got.Num)
+				}
+			})
+
+			t.Run("text and booleans ignored leaves no repeated numbers", func(t *testing.T) {
+				resolver := valResolver(
+					NumberVal(1),
+					StringVal("hello"),
+					BoolVal(true),
+					NumberVal(2),
+				)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A4)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValNA {
+					t.Errorf("got %v, want #N/A", got)
+				}
+			})
+
+			t.Run("error propagation DIV0", func(t *testing.T) {
+				resolver := valResolver(
+					NumberVal(1),
+					ErrorVal(ErrValDIV0),
+					NumberVal(1),
+				)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A3)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValDIV0 {
+					t.Errorf("got %v, want #DIV/0!", got)
+				}
+			})
+
+			t.Run("error propagation REF", func(t *testing.T) {
+				resolver := valResolver(
+					NumberVal(2),
+					NumberVal(2),
+					ErrorVal(ErrValREF),
+				)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A3)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValREF {
+					t.Errorf("got %v, want #REF!", got)
+				}
+			})
+
+			t.Run("no args returns VALUE error", func(t *testing.T) {
+				cf := evalCompile(t, fmt.Sprintf("%s()", fn))
+				got, err := Eval(cf, &mockResolver{}, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("got %v, want #VALUE!", got)
+				}
+			})
+
+			t.Run("empty range returns NA", func(t *testing.T) {
+				resolver := &mockResolver{cells: map[CellAddr]Value{}}
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A3)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValNA {
+					t.Errorf("got %v, want #N/A", got)
+				}
+			})
+
+			t.Run("large frequency wins", func(t *testing.T) {
+				// 9 appears 4 times, 1 appears 2 times, 5 appears 3 times
+				resolver := numResolver(9, 1, 5, 9, 5, 1, 9, 5, 9)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A9)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 9 {
+					t.Errorf("got %v (%g), want 9", got.Type, got.Num)
+				}
+			})
+
+			t.Run("multiple scalar args", func(t *testing.T) {
+				cf := evalCompile(t, fmt.Sprintf("%s(3,1,4,1,5,9,2,6,5,3,5)", fn))
+				got, err := Eval(cf, &mockResolver{}, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				// 5 appears 3 times, most frequent
+				if got.Type != ValueNumber || got.Num != 5 {
+					t.Errorf("got %v (%g), want 5", got.Type, got.Num)
+				}
+			})
+
+			t.Run("mixed range and scalar", func(t *testing.T) {
+				resolver := numResolver(10, 20, 30)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A3,20)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 20 {
+					t.Errorf("got %v (%g), want 20", got.Type, got.Num)
+				}
+			})
+
+			t.Run("very large repeated value", func(t *testing.T) {
+				big := 1e15
+				resolver := numResolver(big, big, 1, 2)
+				cf := evalCompile(t, fmt.Sprintf("%s(A1:A4)", fn))
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != big {
+					t.Errorf("got %v (%g), want %g", got.Type, got.Num, big)
+				}
+			})
+		})
+	}
+
+	_ = numResolver
+	_ = valResolver
+}
