@@ -257,7 +257,7 @@ Werkbook supports **343** Excel formula functions.
 | ROUNDDOWN | Math & Trig | 36 |
 | ROUNDUP | Math & Trig | 36 |
 | ROW | Information | 1 |
-| ROWS | Information | - |
+| ROWS | Information | 32 |
 | RRI | Financial | 20 |
 | RSQ | Statistical | 23 |
 | SEARCH | Text | 15 |

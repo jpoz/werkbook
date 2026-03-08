@@ -1415,6 +1415,200 @@ func TestCOLUMNS(t *testing.T) {
 	})
 }
 
+func TestROWS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),  // A1
+			{Col: 2, Row: 1}: NumberVal(20),  // B1
+			{Col: 3, Row: 1}: NumberVal(30),  // C1
+			{Col: 1, Row: 2}: NumberVal(100), // A2
+			{Col: 2, Row: 2}: NumberVal(200), // B2
+			{Col: 3, Row: 2}: NumberVal(300), // C2
+			{Col: 1, Row: 3}: NumberVal(1),   // A3
+			{Col: 2, Row: 3}: NumberVal(2),   // B3
+			{Col: 3, Row: 3}: NumberVal(3),   // C3
+			{Col: 1, Row: 4}: NumberVal(4),   // A4
+			{Col: 1, Row: 5}: NumberVal(5),   // A5
+		},
+	}
+	ctx := &EvalContext{
+		CurrentCol:   1,
+		CurrentRow:   1,
+		CurrentSheet: "",
+		Resolver:     resolver,
+	}
+
+	t.Run("range_references", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// Basic range references
+			{"five_rows_A1_A5", `ROWS(A1:A5)`, 5},
+			{"three_rows_A1_C3", `ROWS(A1:C3)`, 3},
+			{"single_row_A1_A1", `ROWS(A1:A1)`, 1},
+			{"single_row_A1_C1", `ROWS(A1:C1)`, 1},
+			{"two_rows_A1_C2", `ROWS(A1:C2)`, 2},
+			{"four_rows_A1_A4", `ROWS(A1:A4)`, 4},
+
+			// Multi-column ranges (row count based on rows, not columns)
+			{"three_rows_A1_B3", `ROWS(A1:B3)`, 3},
+			{"two_rows_B1_C2", `ROWS(B1:C2)`, 2},
+
+			// Range starting from non-row-1
+			{"two_rows_A2_A3", `ROWS(A2:A3)`, 2},
+			{"three_rows_B2_C4", `ROWS(B2:C4)`, 3},
+
+			// Excel documentation example: ROWS(C1:E4) = 4
+			{"excel_doc_example", `ROWS(C1:E4)`, 4},
+
+			// Large range
+			{"hundred_rows_A1_A100", `ROWS(A1:A100)`, 100},
+			{"thousand_rows_A1_B1000", `ROWS(A1:B1000)`, 1000},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("single_cell_reference", func(t *testing.T) {
+		// A single cell reference resolves to a scalar, so ROWS returns 1.
+		tests := []struct {
+			name    string
+			formula string
+		}{
+			{"A1", `ROWS(A1)`},
+			{"B2", `ROWS(B2)`},
+			{"C3", `ROWS(C3)`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 1 {
+					t.Errorf("%s = %v, want 1", tt.formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("non_array_arguments", func(t *testing.T) {
+		// Non-array values (numbers, strings, booleans) should return 1.
+		tests := []struct {
+			name    string
+			formula string
+		}{
+			{"number", `ROWS(42)`},
+			{"string", `ROWS("hello")`},
+			{"boolean_true", `ROWS(TRUE)`},
+			{"boolean_false", `ROWS(FALSE)`},
+			{"zero", `ROWS(0)`},
+			{"negative", `ROWS(-1)`},
+			{"decimal", `ROWS(3.14)`},
+			{"empty_string", `ROWS("")`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != 1 {
+					t.Errorf("%s = %v, want 1", tt.formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong_arg_count", func(t *testing.T) {
+		// ROWS requires exactly 1 argument.
+		tests := []struct {
+			name    string
+			formula string
+		}{
+			{"no_args", `ROWS()`},
+			{"two_args", `ROWS(A1,B1)`},
+			{"three_args", `ROWS(A1,B1,C1)`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("%s = %v, want #VALUE!", tt.formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("nil_context", func(t *testing.T) {
+		// ROWS with a scalar should work with nil context
+		// because fnROWS is a NoCtx function.
+		cf := evalCompile(t, `ROWS(42)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("ROWS(42) with nil ctx = %v, want 1", got)
+		}
+	})
+
+	t.Run("absolute_refs", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			{"absolute_range", `ROWS($A$1:$A$3)`, 3},
+			{"mixed_absolute", `ROWS($A1:C$3)`, 3},
+			{"absolute_row", `ROWS(A$1:A$5)`, 5},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("expression_result", func(t *testing.T) {
+		// When ROWS receives a result from another function that
+		// produces a scalar, it should return 1.
+		cf := evalCompile(t, `ROWS(SUM(A1:C1))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("ROWS(SUM(A1:C1)) = %v, want 1", got)
+		}
+	})
+}
+
 func TestIFNA(t *testing.T) {
 	resolver := &mockResolver{}
 
