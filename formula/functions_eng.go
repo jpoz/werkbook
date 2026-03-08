@@ -21,6 +21,7 @@ func init() {
 	Register("HEX2BIN", NoCtx(fnHex2Bin))
 	Register("HEX2DEC", NoCtx(fnHex2Dec))
 	Register("HEX2OCT", NoCtx(fnHex2Oct))
+	Register("IMABS", NoCtx(fnImabs))
 	Register("IMAGINARY", NoCtx(fnImaginary))
 	Register("IMREAL", NoCtx(fnImreal))
 	Register("OCT2BIN", NoCtx(fnOct2Bin))
@@ -1392,6 +1393,52 @@ func parseComplex(s string) (real, imag float64, fail bool) {
 	}
 
 	return r, im, false
+}
+
+// fnImabs implements the Excel IMABS function.
+// IMABS(inumber) — returns the absolute value (modulus) of a complex number.
+// The modulus is sqrt(real² + imag²).
+func fnImabs(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// Propagate errors.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+
+	// Handle arrays.
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnImabs([]Value{v})
+			return r
+		}), nil
+	}
+
+	// Numeric input: treat as real number with 0 imaginary part.
+	if args[0].Type == ValueNumber {
+		return NumberVal(math.Abs(args[0].Num)), nil
+	}
+
+	// Boolean: TRUE=1, FALSE=0, both are real numbers.
+	if args[0].Type == ValueBool {
+		if args[0].Bool {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	if args[0].Type != ValueString {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	real, imag, fail := parseComplex(args[0].Str)
+	if fail {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	return NumberVal(math.Sqrt(real*real + imag*imag)), nil
 }
 
 // fnImaginary implements the Excel IMAGINARY function.

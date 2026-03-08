@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **350** Excel formula functions.
+Werkbook supports **351** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -149,6 +149,7 @@ Werkbook supports **350** Excel formula functions.
 | IFERROR | Logical | 45 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
+| IMABS | Engineering | 38 |
 | IMAGINARY | Engineering | 38 |
 | IMREAL | Engineering | 38 |
 | INDEX | Lookup & Reference | 15 |
@@ -357,7 +358,7 @@ Werkbook supports **350** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **120** Excel functions are not yet supported.
+The following **119** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -412,7 +413,6 @@ The following **120** Excel functions are not yet supported.
 | GETPIVOTDATA | Lookup & Reference |
 | GROWTH | Statistical |
 | HYPERLINK | Lookup & Reference |
-| IMABS | Engineering |
 | IMARGUMENT | Engineering |
 | IMCONJUGATE | Engineering |
 | IMCOS | Engineering |

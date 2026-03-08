@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"math"
 	"testing"
 )
 
@@ -2050,6 +2051,136 @@ func TestIMAGINARY(t *testing.T) {
 
 	t.Run("wrong arg count", func(t *testing.T) {
 		for _, formula := range []string{"IMAGINARY()", `IMAGINARY("3+4i","extra")`} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
+func TestIMABS(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+		}{
+			// Pythagorean triples
+			{`IMABS("3+4i")`, 5},
+			{`IMABS("5+12i")`, 13},
+			{`IMABS("8+15i")`, 17},
+
+			// Pure real (positive and negative)
+			{`IMABS("3")`, 3},
+			{`IMABS("-3")`, 3},
+			{`IMABS("-5")`, 5},
+			{`IMABS("0")`, 0},
+
+			// Plain number (not a string)
+			{"IMABS(4)", 4},
+			{"IMABS(-7)", 7},
+			{"IMABS(0)", 0},
+
+			// Pure imaginary
+			{`IMABS("4i")`, 4},
+			{`IMABS("-3i")`, 3},
+			{`IMABS("i")`, 1},
+			{`IMABS("-i")`, 1},
+
+			// Both parts negative
+			{`IMABS("-3-4i")`, 5},
+
+			// j suffix
+			{`IMABS("3+4j")`, 5},
+			{`IMABS("j")`, 1},
+			{`IMABS("-j")`, 1},
+
+			// Decimal coefficients: sqrt(1.5² + 2²) = sqrt(2.25+4) = sqrt(6.25) = 2.5
+			{`IMABS("1.5+2i")`, 2.5},
+
+			// Large numbers: sqrt(300² + 400²) = sqrt(250000) = 500
+			{`IMABS("300+400i")`, 500},
+
+			// Unit imaginary with real part: sqrt(1² + 1²) = sqrt(2)
+			{`IMABS("1+i")`, math.Sqrt(2)},
+			{`IMABS("1-i")`, math.Sqrt(2)},
+
+			// Boolean: TRUE=1, FALSE=0
+			{"IMABS(TRUE)", 1},
+			{"IMABS(FALSE)", 0},
+
+			// Combined with COMPLEX
+			{`IMABS(COMPLEX(3,4))`, 5},
+			{`IMABS(COMPLEX(0,0))`, 0},
+			{`IMABS(COMPLEX(5,12))`, 13},
+			{`IMABS(COMPLEX(0,1))`, 1},
+
+			// Explicit zero parts
+			{`IMABS("0+4i")`, 4},
+			{`IMABS("3+0i")`, 3},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid complex number strings
+			{`IMABS("invalid")`, ErrValNUM},
+			{`IMABS("")`, ErrValNUM},
+			{`IMABS("abc")`, ErrValNUM},
+			{`IMABS("3+4")`, ErrValNUM},
+			{`IMABS("3+4k")`, ErrValNUM},
+			{`IMABS("+")`, ErrValNUM},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		cf := evalCompile(t, `IMABS(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("IMABS(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"IMABS()", `IMABS("3+4i","extra")`} {
 			t.Run(formula, func(t *testing.T) {
 				cf := evalCompile(t, formula)
 				got, err := Eval(cf, resolver, nil)
