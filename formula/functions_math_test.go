@@ -6496,3 +6496,106 @@ func TestCOMBINA(t *testing.T) {
 		})
 	}
 }
+
+func TestCOMBIN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Excel doc example
+		{"doc_example", "COMBIN(8,2)", 28},
+		// Basic combinations
+		{"5_choose_2", "COMBIN(5,2)", 10},
+		{"10_choose_3", "COMBIN(10,3)", 120},
+		{"6_choose_3", "COMBIN(6,3)", 20},
+		// COMBIN(n,0) = 1 for any n
+		{"4_choose_0", "COMBIN(4,0)", 1},
+		{"0_choose_0", "COMBIN(0,0)", 1},
+		{"10_choose_0", "COMBIN(10,0)", 1},
+		// COMBIN(n,n) = 1 for any n
+		{"4_choose_4", "COMBIN(4,4)", 1},
+		{"1_choose_1", "COMBIN(1,1)", 1},
+		{"7_choose_7", "COMBIN(7,7)", 1},
+		// COMBIN(n,1) = n
+		{"5_choose_1", "COMBIN(5,1)", 5},
+		{"12_choose_1", "COMBIN(12,1)", 12},
+		// Larger values
+		{"20_choose_10", "COMBIN(20,10)", 184756},
+		{"15_choose_5", "COMBIN(15,5)", 3003},
+		{"100_choose_2", "COMBIN(100,2)", 4950},
+		{"52_choose_5", "COMBIN(52,5)", 2598960},
+		// Decimal truncation — arguments are truncated to integers
+		{"decimal_n", "COMBIN(5.9,2)", 10},
+		{"decimal_k", "COMBIN(5,2.7)", 10},
+		{"decimal_both", "COMBIN(8.9,2.1)", 28},
+		// String coercion
+		{"string_n", `COMBIN("10",3)`, 120},
+		{"string_k", `COMBIN(10,"3")`, 120},
+		{"string_both", `COMBIN("5","2")`, 10},
+		// Boolean coercion
+		{"bool_true_n", "COMBIN(TRUE,0)", 1},
+		{"bool_true_k", "COMBIN(5,TRUE)", 5},
+		{"bool_false_k", "COMBIN(5,FALSE)", 1},
+		{"bool_true_both", "COMBIN(TRUE,TRUE)", 1},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		// n < k → #NUM!
+		{"n_less_than_k", "COMBIN(3,5)", ErrValNUM},
+		{"n_less_than_k_2", "COMBIN(2,10)", ErrValNUM},
+		// Negative n → #NUM!
+		{"negative_n", "COMBIN(-1,2)", ErrValNUM},
+		{"negative_n_large", "COMBIN(-5,3)", ErrValNUM},
+		// Negative k → #NUM!
+		{"negative_k", "COMBIN(5,-1)", ErrValNUM},
+		{"negative_k_large", "COMBIN(10,-3)", ErrValNUM},
+		// Both negative → #NUM!
+		{"both_negative", "COMBIN(-3,-1)", ErrValNUM},
+		// Wrong number of arguments → #VALUE!
+		{"no_args", "COMBIN()", ErrValVALUE},
+		{"one_arg", "COMBIN(5)", ErrValVALUE},
+		{"three_args", "COMBIN(5,2,1)", ErrValVALUE},
+		// Non-numeric string → #VALUE!
+		{"non_numeric_n", `COMBIN("abc",2)`, ErrValVALUE},
+		{"non_numeric_k", `COMBIN(5,"xyz")`, ErrValVALUE},
+		// Error propagation
+		{"error_div0_n", "COMBIN(1/0,2)", ErrValDIV0},
+		{"error_div0_k", "COMBIN(5,1/0)", ErrValDIV0},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.errVal {
+				t.Errorf("Eval(%q) = type=%v err=%v, want %v", tt.formula, got.Type, got.Err, tt.errVal)
+			}
+		})
+	}
+}

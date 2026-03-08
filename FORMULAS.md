@@ -52,7 +52,7 @@ Werkbook supports **343** Excel formula functions.
 | CODE | Text | 12 |
 | COLUMN | Information | 23 |
 | COLUMNS | Information | - |
-| COMBIN | Math & Trig | - |
+| COMBIN | Math & Trig | 40 |
 | COMBINA | Math & Trig | 31 |
 | CONCAT | Text | 33 |
 | CONCATENATE | Text | 38 |
