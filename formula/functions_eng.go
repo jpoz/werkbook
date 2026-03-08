@@ -11,6 +11,7 @@ func init() {
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("BIN2HEX", NoCtx(fnBin2Hex))
 	Register("BIN2OCT", NoCtx(fnBin2Oct))
+	Register("COMPLEX", NoCtx(fnComplex))
 	Register("CONVERT", NoCtx(fnConvert))
 	Register("DELTA", NoCtx(fnDELTA))
 	Register("DEC2BIN", NoCtx(fnDec2Bin))
@@ -222,6 +223,87 @@ func fnBin2Oct(args []Value) (Value, error) {
 		}
 		if n >= 0 {
 			result = strings.Repeat("0", p-len(result)) + result
+		}
+	}
+
+	return StringVal(result), nil
+}
+
+// formatComplexNum formats a float64 for use in COMPLEX output.
+// Integers display without decimals (e.g. 3, not 3.0).
+func formatComplexNum(f float64) string {
+	if f == math.Trunc(f) && !math.IsInf(f, 0) && !math.IsNaN(f) {
+		return strconv.FormatFloat(f, 'f', 0, 64)
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// fnComplex implements the Excel COMPLEX function.
+// COMPLEX(real_num, i_num, [suffix]) — converts real and imaginary
+// coefficients into a complex number string of the form x+yi or x+yj.
+func fnComplex(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	realNum, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	iNum, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	suffix := "i"
+	if len(args) == 3 {
+		// Propagate errors from 3rd arg.
+		if args[2].Type == ValueError {
+			return args[2], nil
+		}
+		switch args[2].Type {
+		case ValueString:
+			suffix = args[2].Str
+		case ValueBool:
+			// Booleans not accepted as suffix.
+			return ErrorVal(ErrValVALUE), nil
+		default:
+			return ErrorVal(ErrValVALUE), nil
+		}
+		if suffix != "i" && suffix != "j" {
+			return ErrorVal(ErrValVALUE), nil
+		}
+	}
+
+	// Both zero: just "0".
+	if realNum == 0 && iNum == 0 {
+		return StringVal("0"), nil
+	}
+
+	var result string
+
+	// Build real part.
+	if realNum != 0 {
+		result = formatComplexNum(realNum)
+	}
+
+	// Build imaginary part.
+	if iNum != 0 {
+		if realNum != 0 {
+			// Need a sign separator.
+			if iNum > 0 {
+				result += "+"
+			}
+			// For iNum < 0, the minus sign comes from formatting.
+		}
+
+		if iNum == 1 {
+			result += suffix
+		} else if iNum == -1 {
+			result += "-" + suffix
+		} else {
+			result += formatComplexNum(iNum) + suffix
 		}
 	}
 

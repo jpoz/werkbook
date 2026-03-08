@@ -380,6 +380,151 @@ func TestBIN2OCT(t *testing.T) {
 	})
 }
 
+func TestCOMPLEX(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns string", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Basic: positive real and imaginary
+			{`COMPLEX(3,4)`, "3+4i"},
+			{`COMPLEX(3,4,"j")`, "3+4j"},
+
+			// Zero imaginary: no imaginary part
+			{`COMPLEX(5,0)`, "5"},
+			{`COMPLEX(-3,0)`, "-3"},
+			{`COMPLEX(1,0)`, "1"},
+			{`COMPLEX(0.5,0)`, "0.5"},
+
+			// Zero real: no real part
+			{`COMPLEX(0,4)`, "4i"},
+			{`COMPLEX(0,-4)`, "-4i"},
+			{`COMPLEX(0,2)`, "2i"},
+			{`COMPLEX(0,-2)`, "-2i"},
+
+			// Both zero
+			{`COMPLEX(0,0)`, "0"},
+
+			// Unit imaginary (coefficient 1 or -1)
+			{`COMPLEX(0,1)`, "i"},
+			{`COMPLEX(0,-1)`, "-i"},
+			{`COMPLEX(3,1)`, "3+i"},
+			{`COMPLEX(3,-1)`, "3-i"},
+			{`COMPLEX(-3,1)`, "-3+i"},
+			{`COMPLEX(-3,-1)`, "-3-i"},
+
+			// Negative real
+			{`COMPLEX(-3,4)`, "-3+4i"},
+			{`COMPLEX(-3,-4)`, "-3-4i"},
+			{`COMPLEX(-1,0)`, "-1"},
+			{`COMPLEX(-5,2)`, "-5+2i"},
+
+			// Decimal values
+			{`COMPLEX(1.5,2.5)`, "1.5+2.5i"},
+			{`COMPLEX(0.1,0.2)`, "0.1+0.2i"},
+			{`COMPLEX(-1.5,2.5)`, "-1.5+2.5i"},
+			{`COMPLEX(1.5,-2.5)`, "1.5-2.5i"},
+
+			// Large numbers
+			{`COMPLEX(1000000,2000000)`, "1000000+2000000i"},
+
+			// Small decimals
+			{`COMPLEX(0.001,0.002)`, "0.001+0.002i"},
+
+			// j suffix variations
+			{`COMPLEX(3,4,"j")`, "3+4j"},
+			{`COMPLEX(0,1,"j")`, "j"},
+			{`COMPLEX(0,-1,"j")`, "-j"},
+			{`COMPLEX(3,1,"j")`, "3+j"},
+			{`COMPLEX(3,-1,"j")`, "3-j"},
+			{`COMPLEX(0,0,"j")`, "0"},
+			{`COMPLEX(5,0,"j")`, "5"},
+
+			// String coercion for numeric args
+			{`COMPLEX("3","4")`, "3+4i"},
+			{`COMPLEX("1.5","2.5")`, "1.5+2.5i"},
+
+			// Boolean coercion (TRUE=1, FALSE=0)
+			{"COMPLEX(TRUE,FALSE)", "1"},
+			{"COMPLEX(FALSE,TRUE)", "i"},
+			{"COMPLEX(TRUE,TRUE)", "1+i"},
+
+			// i suffix explicit
+			{`COMPLEX(3,4,"i")`, "3+4i"},
+
+			// Integer formatting (no trailing .0)
+			{`COMPLEX(3.0,4.0)`, "3+4i"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v, want %q", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// Invalid suffix: uppercase
+			{`COMPLEX(3,4,"I")`, ErrValVALUE},
+			{`COMPLEX(3,4,"J")`, ErrValVALUE},
+
+			// Invalid suffix: other strings
+			{`COMPLEX(3,4,"k")`, ErrValVALUE},
+			{`COMPLEX(3,4,"x")`, ErrValVALUE},
+			{`COMPLEX(3,4,"ij")`, ErrValVALUE},
+			{`COMPLEX(3,4,"")`, ErrValVALUE},
+
+			// Non-numeric real_num
+			{`COMPLEX("abc",4)`, ErrValVALUE},
+
+			// Non-numeric i_num
+			{`COMPLEX(3,"abc")`, ErrValVALUE},
+
+			// Both non-numeric
+			{`COMPLEX("abc","def")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"COMPLEX(1)", "COMPLEX(1,2,3,4)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("%s = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}
+
 func TestDELTA(t *testing.T) {
 	resolver := &mockResolver{}
 

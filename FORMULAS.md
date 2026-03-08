@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **347** Excel formula functions.
+Werkbook supports **348** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -54,6 +54,7 @@ Werkbook supports **347** Excel formula functions.
 | COLUMNS | Information | 30 |
 | COMBIN | Math & Trig | 40 |
 | COMBINA | Math & Trig | 31 |
+| COMPLEX | Engineering | 51 |
 | CONCAT | Text | 33 |
 | CONCATENATE | Text | 38 |
 | CONFIDENCE.NORM | Statistical | 25 |
@@ -354,7 +355,7 @@ Werkbook supports **347** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **123** Excel functions are not yet supported.
+The following **122** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -375,7 +376,6 @@ The following **123** Excel functions are not yet supported.
 | BYROW | Logical |
 | CELL | Information |
 | CHISQ.TEST | Statistical |
-| COMPLEX | Engineering |
 | COUPDAYBS | Financial |
 | COUPDAYS | Financial |
 | COUPDAYSNC | Financial |
