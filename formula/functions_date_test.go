@@ -1627,3 +1627,332 @@ func TestNETWORKDAYS_INTL(t *testing.T) {
 		})
 	}
 }
+
+func TestWEEKNUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Excel doc examples: Mar 9, 2012
+		{"doc_example_default", "WEEKNUM(DATE(2012,3,9))", 10, false, 0},
+		{"doc_example_rt2", "WEEKNUM(DATE(2012,3,9),2)", 11, false, 0},
+
+		// Default return_type (1 = Sunday start)
+		{"jan1_2023_default", "WEEKNUM(DATE(2023,1,1))", 1, false, 0},             // Jan 1, 2023 (Sunday)
+		{"jan1_2024_default", "WEEKNUM(DATE(2024,1,1))", 1, false, 0},             // Jan 1, 2024 (Monday)
+		{"dec31_2023_default", "WEEKNUM(DATE(2023,12,31))", 53, false, 0},         // Dec 31, 2023 (Sunday)
+		{"dec31_2024_default", "WEEKNUM(DATE(2024,12,31))", 53, false, 0},         // Dec 31, 2024 (Tuesday)
+		{"jun15_2023_default", "WEEKNUM(DATE(2023,6,15))", 24, false, 0},          // Jun 15, 2023 (Thursday)
+		{"jan7_2023_sat_default", "WEEKNUM(DATE(2023,1,7))", 1, false, 0},         // Jan 7, 2023 (Saturday) - last day of week 1
+		{"jan8_2023_sun_default", "WEEKNUM(DATE(2023,1,8))", 2, false, 0},         // Jan 8, 2023 (Sunday) - first day of week 2
+
+		// return_type 2 (Monday start)
+		{"jan1_2023_rt2", "WEEKNUM(DATE(2023,1,1),2)", 1, false, 0},              // Jan 1, 2023 (Sunday)
+		{"jan2_2023_rt2", "WEEKNUM(DATE(2023,1,2),2)", 2, false, 0},              // Jan 2, 2023 (Monday) - new week
+		{"jun15_2023_rt2", "WEEKNUM(DATE(2023,6,15),2)", 25, false, 0},           // Jun 15, 2023 (Thursday)
+		{"jul4_2023_rt2", "WEEKNUM(DATE(2023,7,4),2)", 28, false, 0},             // Jul 4, 2023 (Tuesday)
+
+		// return_type 21 (ISO week, Monday start, System 2)
+		{"jan1_2023_iso", "WEEKNUM(DATE(2023,1,1),21)", 52, false, 0},            // Jan 1, 2023 (Sun) -> ISO week 52 of 2022
+		{"jan1_2024_iso", "WEEKNUM(DATE(2024,1,1),21)", 1, false, 0},             // Jan 1, 2024 (Mon) -> ISO week 1
+		{"dec31_2023_iso", "WEEKNUM(DATE(2023,12,31),21)", 52, false, 0},         // Dec 31, 2023 -> ISO week 52
+		{"dec31_2024_iso", "WEEKNUM(DATE(2024,12,31),21)", 1, false, 0},          // Dec 31, 2024 (Tue) -> ISO week 1 of 2025
+		{"jan1_2021_iso", "WEEKNUM(DATE(2021,1,1),21)", 53, false, 0},            // Jan 1, 2021 (Fri) -> ISO week 53 of 2020
+
+		// Various return_type values (other week start days) - Mar 1, 2023 (Wednesday)
+		{"mar1_2023_rt11", "WEEKNUM(DATE(2023,3,1),11)", 10, false, 0},           // rt 11 = Monday start
+		{"mar1_2023_rt12", "WEEKNUM(DATE(2023,3,1),12)", 10, false, 0},           // rt 12 = Tuesday start
+		{"mar1_2023_rt13", "WEEKNUM(DATE(2023,3,1),13)", 10, false, 0},           // rt 13 = Wednesday start
+		{"mar1_2023_rt14", "WEEKNUM(DATE(2023,3,1),14)", 9, false, 0},            // rt 14 = Thursday start
+		{"mar1_2023_rt15", "WEEKNUM(DATE(2023,3,1),15)", 9, false, 0},            // rt 15 = Friday start
+		{"mar1_2023_rt16", "WEEKNUM(DATE(2023,3,1),16)", 9, false, 0},            // rt 16 = Saturday start
+		{"mar1_2023_rt17", "WEEKNUM(DATE(2023,3,1),17)", 9, false, 0},            // rt 17 = Sunday start (same as 1)
+
+		// Leap year date
+		{"leap_day_2024", "WEEKNUM(DATE(2024,2,29))", 9, false, 0},               // Feb 29, 2024 (Thursday)
+
+		// Dec 31 / year boundary edge cases
+		{"dec31_2020_default", "WEEKNUM(DATE(2020,12,31))", 53, false, 0},        // Dec 31, 2020 (Thursday)
+		{"dec31_2020_rt14", "WEEKNUM(DATE(2020,12,31),14)", 54, false, 0},        // rt 14 = Thursday start -> week 54
+		{"jan1_2025_default", "WEEKNUM(DATE(2025,1,1))", 1, false, 0},            // Jan 1, 2025 (Wednesday)
+
+		// Error cases: wrong argument count
+		{"no_args", "WEEKNUM()", 0, true, ErrValVALUE},
+		{"too_many_args", "WEEKNUM(44927,1,1)", 0, true, ErrValVALUE},
+
+		// Error cases: invalid return_type
+		{"invalid_rt_0", "WEEKNUM(44927,0)", 0, true, ErrValNUM},
+		{"invalid_rt_3", "WEEKNUM(44927,3)", 0, true, ErrValNUM},
+		{"invalid_rt_10", "WEEKNUM(44927,10)", 0, true, ErrValNUM},
+		{"invalid_rt_18", "WEEKNUM(44927,18)", 0, true, ErrValNUM},
+		{"invalid_rt_20", "WEEKNUM(44927,20)", 0, true, ErrValNUM},
+		{"invalid_rt_22", "WEEKNUM(44927,22)", 0, true, ErrValNUM},
+
+		// Error propagation
+		{"error_in_serial", `WEEKNUM("abc")`, 0, true, ErrValVALUE},
+		{"error_in_rt", `WEEKNUM(44927,"abc")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestISOWEEKNUM(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
+	}{
+		// Excel documentation example: March 9, 2012 = ISO week 10
+		{"excel_doc_mar_9_2012", "ISOWEEKNUM(40977)", 10, false, 0},
+		// Using DATE() to construct the same date
+		{"excel_doc_via_date", "ISOWEEKNUM(DATE(2012,3,9))", 10, false, 0},
+
+		// Jan 1 that falls in ISO week 1 (Thu Jan 1, 2015)
+		{"jan1_week1_2015", "ISOWEEKNUM(42005)", 1, false, 0},
+		// Jan 1 that falls in ISO week 1 (Wed Jan 1, 2014)
+		{"jan1_week1_2014", "ISOWEEKNUM(41640)", 1, false, 0},
+		// Jan 1 that belongs to previous year's last week (Fri Jan 1, 2016 = week 53 of 2015)
+		{"jan1_prev_year_2016", "ISOWEEKNUM(42370)", 53, false, 0},
+		// Jan 1 that belongs to previous year's last week (Sun Jan 1, 2017 = week 52 of 2016)
+		{"jan1_prev_year_2017", "ISOWEEKNUM(42736)", 52, false, 0},
+		// Jan 1 that belongs to previous year's last week (Fri Jan 1, 2010 = week 53 of 2009)
+		{"jan1_prev_year_2010", "ISOWEEKNUM(40179)", 53, false, 0},
+		// Jan 1, 2021 (Fri) = week 53 of 2020
+		{"jan1_prev_year_2021", "ISOWEEKNUM(44197)", 53, false, 0},
+
+		// Dec 31 in a year with 53 ISO weeks (Thu Dec 31, 2015)
+		{"dec31_week53_2015", "ISOWEEKNUM(42369)", 53, false, 0},
+		// Dec 31 that falls in ISO week 1 of the next year (Wed Dec 31, 2014)
+		{"dec31_week1_next_2014", "ISOWEEKNUM(42004)", 1, false, 0},
+		// Dec 31 in a year with 53 ISO weeks (Thu Dec 31, 2009)
+		{"dec31_week53_2009", "ISOWEEKNUM(40178)", 53, false, 0},
+		// Dec 31 that falls in ISO week 1 of the next year (Mon Dec 31, 2012)
+		{"dec31_week1_next_2012", "ISOWEEKNUM(41274)", 1, false, 0},
+		// Dec 31, 2020 (Thu) = week 53
+		{"dec31_week53_2020", "ISOWEEKNUM(44196)", 53, false, 0},
+
+		// Mid-year dates
+		{"mid_year_jun_15_2023", "ISOWEEKNUM(45092)", 24, false, 0},
+		{"mid_year_jul_4_2023", "ISOWEEKNUM(45111)", 27, false, 0},
+		{"mid_year_sep_1_2023", "ISOWEEKNUM(45170)", 35, false, 0},
+
+		// Leap year date: Feb 29, 2024 = week 9
+		{"leap_year_feb29_2024", "ISOWEEKNUM(45351)", 9, false, 0},
+
+		// Early serial numbers
+		// Serial 1 = Jan 1, 1900 (Monday) = ISO week 1
+		{"serial_1_jan1_1900", "ISOWEEKNUM(1)", 1, false, 0},
+		// Serial 7 = Jan 7, 1900 (Sunday) = ISO week 1
+		{"serial_7_jan7_1900", "ISOWEEKNUM(7)", 1, false, 0},
+		// Serial 0 = Excel's "Jan 0, 1900" mapped to Dec 31, 1899 = ISO week 52
+		{"serial_0", "ISOWEEKNUM(0)", 52, false, 0},
+
+		// Fractional serial: should use the date portion only
+		{"fractional_serial", "ISOWEEKNUM(40977.75)", 10, false, 0},
+
+		// Boolean TRUE coerced to 1 = Jan 1, 1900 = week 1
+		{"bool_true", "ISOWEEKNUM(TRUE)", 1, false, 0},
+
+		// Error cases
+		// No arguments
+		{"no_args", "ISOWEEKNUM()", 0, true, ErrValVALUE},
+		// Too many arguments
+		{"too_many_args", "ISOWEEKNUM(1,2)", 0, true, ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric_string", `ISOWEEKNUM("abc")`, 0, true, ErrValVALUE},
+		// Error propagation
+		{"error_propagation", `ISOWEEKNUM("hello")`, 0, true, ErrValVALUE},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestYEARFRAC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("values", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// === Excel documentation examples ===
+			// 1/1/2012 to 7/30/2012
+			{"doc_basis0_default", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30))", 0.58055555555555556},
+			{"doc_basis1", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30),1)", 0.57650273224043716},
+			{"doc_basis3", "YEARFRAC(DATE(2012,1,1),DATE(2012,7,30),3)", 0.57808219178082187},
+
+			// === Same date returns 0 ===
+			{"same_date_basis0", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),0)", 0},
+			{"same_date_basis1", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),1)", 0},
+			{"same_date_basis2", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),2)", 0},
+			{"same_date_basis3", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),3)", 0},
+			{"same_date_basis4", "YEARFRAC(DATE(2023,6,15),DATE(2023,6,15),4)", 0},
+
+			// === Full year = 1.0 ===
+			// Basis 0: 30/360 -> 360/360 = 1
+			{"full_year_basis0", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),0)", 1.0},
+			// Basis 1: actual/actual, spans 2023-2024, avg=(365+366)/2=365.5, 365/365.5
+			{"full_year_basis1_nonleap", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),1)", 365.0 / 365.5},
+			// Basis 3: actual/365 -> 365/365 = 1
+			{"full_year_basis3_nonleap", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),3)", 1.0},
+			// Basis 4: European 30/360 -> 360/360 = 1
+			{"full_year_basis4", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),4)", 1.0},
+
+			// === Full year in a leap year ===
+			// Basis 1: actual/actual, spans 2024-2025, avg=(366+365)/2=365.5, 366/365.5
+			{"full_year_basis1_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),1)", 366.0 / 365.5},
+			// Basis 2: actual/360, 366 days -> 366/360
+			{"full_year_basis2_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),2)", 366.0 / 360.0},
+			// Basis 3: actual/365, 366 days -> 366/365
+			{"full_year_basis3_leap", "YEARFRAC(DATE(2024,1,1),DATE(2025,1,1),3)", 366.0 / 365.0},
+
+			// === Half year ~ 0.5 ===
+			// Basis 0: Jan 1 to Jul 1 -> 180/360 = 0.5
+			{"half_year_basis0", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1),0)", 0.5},
+			// Basis 3: Jan 1 to Jul 3 -> 183/365
+			{"half_year_basis3", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,3),3)", 183.0 / 365.0},
+			// Basis 4: Jan 1 to Jul 1 -> 180/360 = 0.5 (European 30/360)
+			{"half_year_basis4", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1),4)", 0.5},
+
+			// === Reversed dates (end before start) should swap ===
+			{"reversed_dates_basis0", "YEARFRAC(DATE(2024,1,1),DATE(2023,1,1),0)", 1.0},
+			// Reversed, same as full_year_basis1_nonleap after swap: 365/365.5
+			{"reversed_dates_basis1", "YEARFRAC(DATE(2024,1,1),DATE(2023,1,1),1)", 365.0 / 365.5},
+			{"reversed_dates_basis3", "YEARFRAC(DATE(2023,7,3),DATE(2023,1,1),3)", 183.0 / 365.0},
+
+			// === Basis 0 (US 30/360) specific cases ===
+			// 30-day month adjustment: Jan 31 to Feb 28
+			{"basis0_jan31_feb28", "YEARFRAC(DATE(2023,1,31),DATE(2023,2,28),0)", 28.0 / 360.0},
+			// Both end-of-month dates
+			{"basis0_eom_to_eom", "YEARFRAC(DATE(2023,1,31),DATE(2023,3,31),0)", 60.0 / 360.0},
+
+			// === Basis 1 (Actual/actual) specific cases ===
+			// Spanning 2023-2024 boundary: 366 actual days, avg=(365+366)/2=365.5
+			{"basis1_span_leap", "YEARFRAC(DATE(2023,7,1),DATE(2024,7,1),1)", 366.0 / 365.5},
+
+			// === Basis 2 (Actual/360) ===
+			// 90 actual days / 360
+			{"basis2_quarter", "YEARFRAC(DATE(2023,1,1),DATE(2023,4,1),2)", 90.0 / 360.0},
+
+			// === Basis 4 (European 30/360) specific cases ===
+			// Day 31 -> 30 adjustment for both dates
+			{"basis4_31st_to_31st", "YEARFRAC(DATE(2023,1,31),DATE(2023,3,31),4)", 60.0 / 360.0},
+
+			// === Default basis (omitted = 0) ===
+			{"default_basis_omitted", "YEARFRAC(DATE(2023,1,1),DATE(2023,7,1))", 0.5},
+
+			// === Multi-year spans ===
+			{"multi_year_basis0", "YEARFRAC(DATE(2020,1,1),DATE(2025,1,1),0)", 5.0},
+			// Years 2020-2025: 2 leap (2020,2024) + 4 non-leap = 2192 days total
+			// avg = 2192/6 = 365.333..., actual days = 1827
+			{"multi_year_basis1", "YEARFRAC(DATE(2020,1,1),DATE(2025,1,1),1)", 1827.0 / (2192.0 / 6.0)},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+				}
+				if math.Abs(got.Num-tc.want) > 1e-9 {
+					t.Errorf("%s = %.15g, want %.15g", tc.formula, got.Num, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			errVal  ErrorValue
+		}{
+			// Too few args
+			{"no_args", "YEARFRAC()", ErrValVALUE},
+			{"one_arg", "YEARFRAC(DATE(2023,1,1))", ErrValVALUE},
+
+			// Too many args
+			{"four_args", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),0,1)", ErrValVALUE},
+
+			// Invalid basis values
+			{"basis_negative", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),-1)", ErrValNUM},
+			{"basis_5", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),5)", ErrValNUM},
+			{"basis_99", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),99)", ErrValNUM},
+
+			// Error propagation
+			{"error_start", "YEARFRAC(1/0,DATE(2024,1,1),0)", ErrValDIV0},
+			{"error_end", "YEARFRAC(DATE(2023,1,1),1/0,0)", ErrValDIV0},
+			{"error_basis", "YEARFRAC(DATE(2023,1,1),DATE(2024,1,1),1/0)", ErrValDIV0},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueError {
+					t.Fatalf("%s: got type %v (%v), want error", tc.formula, got.Type, got)
+				}
+				if got.Err != tc.errVal {
+					t.Errorf("%s: got error %v, want %v", tc.formula, got.Err, tc.errVal)
+				}
+			})
+		}
+	})
+}

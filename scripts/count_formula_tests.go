@@ -126,6 +126,11 @@ func countTests(supported map[string]funcInfo) map[string]int {
 	// Strategy 2: TestFUNC_Name test function names
 	countTestFunctions(counts, supported)
 
+	// Strategy 3: count t.Run sub-tests inside TestFUNCNAME functions for
+	// functions not yet counted (e.g. TRUE, FALSE, MODE — which are either
+	// skipped by strategy 1 or use dynamic formula construction).
+	countSubTests(counts, supported)
+
 	return counts
 }
 
@@ -207,6 +212,180 @@ func countTestFunctions(counts map[string]int, supported map[string]funcInfo) {
 		}
 		f.Close()
 	}
+}
+
+// countSubTests finds TestFUNCNAME functions (no underscore suffix) and counts
+// test cases inside them. This catches functions skipped by strategy 1
+// (TRUE, FALSE) and functions that build formula strings dynamically (MODE).
+// Only adds counts for functions that have zero tests from earlier strategies.
+//
+// It counts test cases by looking for:
+//   - Table-driven test entries: lines starting with { that contain a string literal
+//   - Named t.Run calls with string-literal names that directly test (not containers)
+//
+// A t.Run is considered a "container" (not counted) if its body includes a
+// []struct test table or a for-range loop. Only leaf t.Run calls count.
+//
+// For functions tested together (e.g. MODE and MODE.SNGL in a single TestMODE),
+// it also detects for-loop multipliers like: for _, fn := range []string{"MODE", "MODE.SNGL"}
+func countSubTests(counts map[string]int, supported map[string]funcInfo) {
+	reFunc := regexp.MustCompile(`^func\s+Test([A-Z][A-Z0-9]*)\s*\(`)
+	// Matches for loops that iterate over function names to test multiple aliases
+	reFuncLoop := regexp.MustCompile(`for\s+.+range\s+\[\]string\{([^}]+)\}`)
+
+	testFiles, _ := filepath.Glob("formula/*_test.go")
+	for _, path := range testFiles {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+
+		for i := 0; i < len(lines); i++ {
+			m := reFunc.FindStringSubmatch(lines[i])
+			if m == nil {
+				continue
+			}
+			testName := m[1]
+
+			// Resolve to a supported function name
+			funcName := ""
+			if isSupported(testName, supported) {
+				funcName = testName
+			} else {
+				dotted := strings.ReplaceAll(testName, "_", ".")
+				if isSupported(dotted, supported) {
+					funcName = dotted
+				}
+			}
+			if funcName == "" {
+				continue
+			}
+
+			// Only fill in if strategy 1+2 found nothing
+			if counts[funcName] > 0 {
+				continue
+			}
+
+			// Find the end of the function body using brace depth
+			depth := 0
+			started := false
+			endLine := len(lines) - 1
+			for j := i; j < len(lines); j++ {
+				line := lines[j]
+				depth += strings.Count(line, "{") - strings.Count(line, "}")
+				if !started && depth > 0 {
+					started = true
+				}
+				if started && depth <= 0 {
+					endLine = j
+					break
+				}
+			}
+
+			body := lines[i : endLine+1]
+			bodyStr := strings.Join(body, "\n")
+
+			// Check if there's a function-name loop multiplier
+			extraFuncs := []string{}
+			if lm := reFuncLoop.FindStringSubmatch(bodyStr); lm != nil {
+				names := strings.Split(lm[1], ",")
+				for _, n := range names {
+					n = strings.TrimSpace(n)
+					n = strings.Trim(n, `"`)
+					n = strings.Trim(n, "`")
+					if n != "" && n != funcName {
+						extraFuncs = append(extraFuncs, n)
+					}
+				}
+			}
+
+			total := countTestCasesInBody(body)
+			if total > 0 {
+				counts[funcName] += total
+				for _, extra := range extraFuncs {
+					if isSupported(extra, supported) && counts[extra] == 0 {
+						counts[extra] += total
+					}
+				}
+			}
+		}
+	}
+}
+
+// countTestCasesInBody counts test cases in a function body by walking through
+// t.Run calls and test table entries. It distinguishes between:
+//   - Container t.Run calls (those wrapping a test table + for loop): not counted,
+//     but their table entries ARE counted
+//   - Leaf t.Run calls (those containing direct test logic): counted as 1 each
+//   - Table entries ({...} lines inside a []struct literal): counted as 1 each
+func countTestCasesInBody(lines []string) int {
+	reNamedRun := regexp.MustCompile(`t\.Run\(["\x60]`)
+	reTableEntry := regexp.MustCompile(`^\s*\{["\x60]`)
+	reStructDecl := regexp.MustCompile(`\[\]struct`)
+
+	total := 0
+
+	for idx := 0; idx < len(lines); idx++ {
+		trimmed := strings.TrimSpace(lines[idx])
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+
+		// When we find a t.Run with a string literal name, check if it's
+		// a container (has a []struct inside) or a leaf test.
+		if reNamedRun.MatchString(trimmed) {
+			// Find the extent of this t.Run block
+			blockStart := idx
+			depth := 0
+			blockStarted := false
+			blockEnd := idx
+
+			for j := blockStart; j < len(lines); j++ {
+				line := lines[j]
+				depth += strings.Count(line, "{") - strings.Count(line, "}")
+				if !blockStarted && depth > 0 {
+					blockStarted = true
+				}
+				if blockStarted && depth <= 0 {
+					blockEnd = j
+					break
+				}
+			}
+
+			// Check if this block contains a []struct (table-driven test container)
+			blockLines := lines[blockStart : blockEnd+1]
+			isContainer := false
+			for _, bl := range blockLines {
+				if reStructDecl.MatchString(bl) {
+					isContainer = true
+					break
+				}
+			}
+
+			if isContainer {
+				// Count table entries inside this container
+				for _, bl := range blockLines {
+					bt := strings.TrimSpace(bl)
+					if strings.HasPrefix(bt, "//") {
+						continue
+					}
+					if reTableEntry.MatchString(bt) {
+						total++
+					}
+				}
+			} else {
+				// Leaf t.Run — counts as one test case
+				total++
+			}
+
+			// Skip past this block
+			idx = blockEnd
+			continue
+		}
+	}
+
+	return total
 }
 
 func isSupported(name string, supported map[string]funcInfo) bool {

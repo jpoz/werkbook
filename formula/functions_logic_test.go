@@ -5,44 +5,114 @@ import (
 	"testing"
 )
 
-func TestTRUEFALSE(t *testing.T) {
+func TestTRUE(t *testing.T) {
 	resolver := &mockResolver{}
 
-	tests := []struct {
-		formula string
-		want    Value
-	}{
-		{"TRUE()", BoolVal(true)},
-		{"FALSE()", BoolVal(false)},
-		{"IF(TRUE(),1,0)", NumberVal(1)},
-		{"IF(FALSE(),1,0)", NumberVal(0)},
-	}
+	t.Run("value tests", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			// Basic: TRUE() returns boolean TRUE
+			{"TRUE()", BoolVal(true)},
+			// Numeric coercion: TRUE()+0 = 1
+			{"TRUE()+0", NumberVal(1)},
+			// Arithmetic with TRUE: TRUE()*5 = 5
+			{"TRUE()*5", NumberVal(5)},
+			// TRUE used in IF condition
+			{"IF(TRUE(),\"yes\",\"no\")", StringVal("yes")},
+			// TRUE combined with AND
+			{"AND(TRUE(),TRUE())", BoolVal(true)},
+			// NOT(TRUE()) = FALSE
+			{"NOT(TRUE())", BoolVal(false)},
+			// TRUE in OR
+			{"OR(TRUE(),FALSE())", BoolVal(true)},
+			// XOR with TRUE
+			{"XOR(TRUE(),FALSE())", BoolVal(true)},
+			// TRUE + TRUE = 2 (numeric coercion in arithmetic)
+			{"TRUE()+TRUE()", NumberVal(2)},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.formula, func(t *testing.T) {
-			cf := evalCompile(t, tt.formula)
-			got, err := Eval(cf, resolver, nil)
-			if err != nil {
-				t.Fatalf("Eval(%q): %v", tt.formula, err)
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
-			}
-		})
-	}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
 
-	for _, formula := range []string{"TRUE(1)", "FALSE(1)"} {
-		t.Run(formula, func(t *testing.T) {
-			cf := evalCompile(t, formula)
-			got, err := Eval(cf, resolver, nil)
-			if err != nil {
-				t.Fatalf("Eval(%q): %v", formula, err)
-			}
-			if got.Type != ValueError || got.Err != ErrValVALUE {
-				t.Fatalf("Eval(%q) = %#v, want #VALUE!", formula, got)
-			}
-		})
-	}
+	t.Run("error: argument provided", func(t *testing.T) {
+		cf := evalCompile(t, "TRUE(1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(TRUE(1)): %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("Eval(TRUE(1)) = %#v, want #VALUE!", got)
+		}
+	})
+}
+
+func TestFALSE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("value tests", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			// Basic: FALSE() returns boolean FALSE
+			{"FALSE()", BoolVal(false)},
+			// Numeric coercion: FALSE()+0 = 0
+			{"FALSE()+0", NumberVal(0)},
+			// Arithmetic with FALSE: FALSE()*5 = 0
+			{"FALSE()*5", NumberVal(0)},
+			// FALSE used in IF condition
+			{"IF(FALSE(),\"yes\",\"no\")", StringVal("no")},
+			// AND with FALSE
+			{"AND(TRUE(),FALSE())", BoolVal(false)},
+			// OR with all FALSE
+			{"OR(FALSE(),FALSE())", BoolVal(false)},
+			// NOT(FALSE()) = TRUE
+			{"NOT(FALSE())", BoolVal(true)},
+			// XOR with two FALSE values
+			{"XOR(FALSE(),FALSE())", BoolVal(false)},
+			// FALSE + FALSE = 0 (numeric coercion in arithmetic)
+			{"FALSE()+FALSE()", NumberVal(0)},
+			// TRUE + FALSE = 1
+			{"TRUE()+FALSE()", NumberVal(1)},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("error: argument provided", func(t *testing.T) {
+		cf := evalCompile(t, "FALSE(1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(FALSE(1)): %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("Eval(FALSE(1)) = %#v, want #VALUE!", got)
+		}
+	})
 }
 
 func TestAND(t *testing.T) {

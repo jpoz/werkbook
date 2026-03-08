@@ -5,26 +5,26 @@ Werkbook supports **343** Excel formula functions.
 | Function | Category | Tests |
 |----------|----------|------:|
 | ABS | Math & Trig | 26 |
-| ACOS | Math & Trig | - |
-| ACOSH | Math & Trig | - |
+| ACOS | Math & Trig | 32 |
+| ACOSH | Math & Trig | 32 |
 | ACOT | Math & Trig | 25 |
 | ACOTH | Math & Trig | 31 |
-| ADDRESS | Lookup & Reference | - |
+| ADDRESS | Lookup & Reference | 44 |
 | ANCHORARRAY | Lookup & Reference | 6 |
-| AND | Logical | 27 |
-| ARABIC | Math & Trig | - |
+| AND | Logical | 29 |
+| ARABIC | Math & Trig | 38 |
 | ARRAYTOTEXT | Text | 24 |
-| ASIN | Math & Trig | - |
-| ASINH | Math & Trig | - |
-| ATAN | Math & Trig | - |
-| ATAN2 | Math & Trig | - |
-| ATANH | Math & Trig | - |
-| AVEDEV | Statistical | - |
+| ASIN | Math & Trig | 30 |
+| ASINH | Math & Trig | 26 |
+| ATAN | Math & Trig | 25 |
+| ATAN2 | Math & Trig | 30 |
+| ATANH | Math & Trig | 31 |
+| AVEDEV | Statistical | 22 |
 | AVERAGE | Statistical | 28 |
 | AVERAGEA | Statistical | 24 |
 | AVERAGEIF | Statistical | 42 |
-| AVERAGEIFS | Statistical | - |
-| BASE | Math & Trig | - |
+| AVERAGEIFS | Statistical | 48 |
+| BASE | Math & Trig | 31 |
 | BETA.DIST | Statistical | 43 |
 | BETA.INV | Statistical | 42 |
 | BIN2DEC | Engineering | 38 |
@@ -48,32 +48,32 @@ Werkbook supports **343** Excel formula functions.
 | CHOOSE | Text | 24 |
 | CHOOSECOLS | Lookup & Reference | 7 |
 | CHOOSEROWS | Lookup & Reference | 7 |
-| CLEAN | Text | - |
+| CLEAN | Text | 25 |
 | CODE | Text | 12 |
-| COLUMN | Information | - |
-| COLUMNS | Information | - |
-| COMBIN | Math & Trig | - |
-| COMBINA | Math & Trig | - |
+| COLUMN | Information | 23 |
+| COLUMNS | Information | 30 |
+| COMBIN | Math & Trig | 40 |
+| COMBINA | Math & Trig | 31 |
 | CONCAT | Text | 33 |
 | CONCATENATE | Text | 38 |
 | CONFIDENCE.NORM | Statistical | 25 |
 | CONFIDENCE.T | Statistical | 29 |
 | CONVERT | Engineering | 57 |
 | CORREL | Statistical | 20 |
-| COS | Math & Trig | - |
-| COSH | Math & Trig | - |
-| COT | Math & Trig | - |
-| COTH | Math & Trig | - |
+| COS | Math & Trig | 28 |
+| COSH | Math & Trig | 26 |
+| COT | Math & Trig | 26 |
+| COTH | Math & Trig | 26 |
 | COUNT | Statistical | 26 |
 | COUNTA | Statistical | 18 |
 | COUNTBLANK | Statistical | 15 |
 | COUNTIF | Statistical | 17 |
 | COUNTIFS | Statistical | 47 |
-| COVAR | Statistical | - |
-| COVARIANCE.P | Statistical | - |
-| COVARIANCE.S | Statistical | - |
-| CSC | Math & Trig | - |
-| CSCH | Math & Trig | - |
+| COVAR | Statistical | 5 |
+| COVARIANCE.P | Statistical | 20 |
+| COVARIANCE.S | Statistical | 3 |
+| CSC | Math & Trig | 27 |
+| CSCH | Math & Trig | 28 |
 | CUMIPMT | Financial | 33 |
 | CUMPRINC | Financial | 29 |
 | DATE | Date & Time | 50 |
@@ -87,10 +87,10 @@ Werkbook supports **343** Excel formula functions.
 | DEC2BIN | Engineering | 37 |
 | DEC2HEX | Engineering | 45 |
 | DEC2OCT | Engineering | 45 |
-| DECIMAL | Math & Trig | - |
-| DEGREES | Math & Trig | - |
+| DECIMAL | Math & Trig | 38 |
+| DEGREES | Math & Trig | 25 |
 | DELTA | Engineering | 24 |
-| DEVSQ | Statistical | - |
+| DEVSQ | Statistical | 23 |
 | DOLLAR | Text | 25 |
 | DOLLARDE | Financial | 18 |
 | DOLLARFR | Financial | 17 |
@@ -102,23 +102,23 @@ Werkbook supports **343** Excel formula functions.
 | ERF.PRECISE | Math & Trig | 18 |
 | ERFC | Math & Trig | 18 |
 | ERFC.PRECISE | Math & Trig | 18 |
-| ERROR.TYPE | Information | - |
-| EVEN | Math & Trig | - |
-| EXACT | Text | - |
-| EXP | Math & Trig | - |
+| ERROR.TYPE | Information | 17 |
+| EVEN | Math & Trig | 34 |
+| EXACT | Text | 32 |
+| EXP | Math & Trig | 29 |
 | EXPON.DIST | Statistical | 28 |
 | F.DIST | Statistical | 42 |
 | F.DIST.RT | Statistical | 19 |
 | F.INV | Statistical | 36 |
 | F.INV.RT | Statistical | 21 |
-| FACT | Math & Trig | - |
-| FACTDOUBLE | Math & Trig | - |
-| FALSE | Logical | - |
+| FACT | Math & Trig | 28 |
+| FACTDOUBLE | Math & Trig | 30 |
+| FALSE | Logical | 11 |
 | FILTER | Lookup & Reference | 31 |
 | FIND | Text | 7 |
 | FISHER | Statistical | 15 |
 | FISHERINV | Statistical | 15 |
-| FIXED | Text | - |
+| FIXED | Text | 32 |
 | FLOOR | Math & Trig | 50 |
 | FLOOR.MATH | Math & Trig | 37 |
 | FLOOR.PRECISE | Math & Trig | 36 |
@@ -133,7 +133,7 @@ Werkbook supports **343** Excel formula functions.
 | GAMMALN | Statistical | 23 |
 | GAMMALN.PRECISE | Statistical | 6 |
 | GAUSS | Statistical | 9 |
-| GCD | Math & Trig | - |
+| GCD | Math & Trig | 37 |
 | GEOMEAN | Statistical | 24 |
 | GESTEP | Engineering | 29 |
 | HARMEAN | Statistical | 21 |
@@ -154,29 +154,29 @@ Werkbook supports **343** Excel formula functions.
 | INTERCEPT | Statistical | 16 |
 | IPMT | Financial | 4 |
 | IRR | Financial | 19 |
-| ISBLANK | Information | - |
-| ISERR | Information | - |
-| ISERROR | Information | - |
+| ISBLANK | Information | 23 |
+| ISERR | Information | 21 |
+| ISERROR | Information | 22 |
 | ISEVEN | Information | 4 |
 | ISFORMULA | Information | 7 |
-| ISLOGICAL | Information | - |
-| ISNA | Information | - |
-| ISNONTEXT | Information | - |
-| ISNUMBER | Information | - |
+| ISLOGICAL | Information | 27 |
+| ISNA | Information | 22 |
+| ISNONTEXT | Information | 26 |
+| ISNUMBER | Information | 23 |
 | ISODD | Information | 4 |
-| ISOWEEKNUM | Date & Time | - |
-| ISTEXT | Information | - |
+| ISOWEEKNUM | Date & Time | 26 |
+| ISTEXT | Information | 24 |
 | KURT | Statistical | 22 |
 | LARGE | Statistical | 30 |
-| LCM | Math & Trig | - |
+| LCM | Math & Trig | 39 |
 | LEFT | Text | 42 |
 | LEN | Text | 29 |
-| LN | Math & Trig | - |
+| LN | Math & Trig | 32 |
 | LOG | Math & Trig | 35 |
-| LOG10 | Math & Trig | - |
+| LOG10 | Math & Trig | 31 |
 | LOGNORM.DIST | Statistical | 31 |
 | LOGNORM.INV | Statistical | 31 |
-| LOOKUP | Lookup & Reference | - |
+| LOOKUP | Lookup & Reference | 24 |
 | LOWER | Text | 23 |
 | MATCH | Lookup & Reference | 16 |
 | MAX | Statistical | 31 |
@@ -187,20 +187,20 @@ Werkbook supports **343** Excel formula functions.
 | MID | Text | 50 |
 | MIN | Statistical | 30 |
 | MINA | Statistical | 16 |
-| MINIFS | Statistical | - |
+| MINIFS | Statistical | 49 |
 | MINUTE | Date & Time | 16 |
 | MINVERSE | Math & Trig | 33 |
 | MIRR | Financial | 24 |
 | MMULT | Math & Trig | 38 |
 | MOD | Math & Trig | 16 |
-| MODE | Statistical | - |
-| MODE.SNGL | Statistical | - |
+| MODE | Statistical | 19 |
+| MODE.SNGL | Statistical | 19 |
 | MONTH | Date & Time | 5 |
-| MROUND | Math & Trig | - |
-| MULTINOMIAL | Math & Trig | - |
+| MROUND | Math & Trig | 38 |
+| MULTINOMIAL | Math & Trig | 36 |
 | MUNIT | Math & Trig | 38 |
-| N | Information | - |
-| NA | Information | - |
+| N | Information | 18 |
+| NA | Information | 4 |
 | NEGBINOM.DIST | Statistical | 30 |
 | NETWORKDAYS | Date & Time | 26 |
 | NETWORKDAYS.INTL | Date & Time | 44 |
@@ -209,16 +209,16 @@ Werkbook supports **343** Excel formula functions.
 | NORM.INV | Statistical | 28 |
 | NORM.S.DIST | Statistical | 27 |
 | NORM.S.INV | Statistical | 27 |
-| NOT | Logical | 8 |
+| NOT | Logical | 10 |
 | NOW | Date & Time | 2 |
 | NPER | Financial | 3 |
 | NPV | Financial | 25 |
-| NUMBERVALUE | Text | - |
+| NUMBERVALUE | Text | 27 |
 | OCT2BIN | Engineering | 38 |
 | OCT2DEC | Engineering | 43 |
 | OCT2HEX | Engineering | 36 |
-| ODD | Math & Trig | - |
-| OR | Logical | 48 |
+| ODD | Math & Trig | 40 |
+| OR | Logical | 50 |
 | PDURATION | Financial | 21 |
 | PEARSON | Statistical | 23 |
 | PERCENTILE | Statistical | 32 |
@@ -227,48 +227,48 @@ Werkbook supports **343** Excel formula functions.
 | PERCENTRANK | Statistical | 26 |
 | PERCENTRANK.EXC | Statistical | 29 |
 | PERCENTRANK.INC | Statistical | 3 |
-| PERMUT | Math & Trig | - |
+| PERMUT | Math & Trig | 39 |
 | PERMUTATIONA | Statistical | 17 |
 | PHI | Statistical | 11 |
-| PI | Math & Trig | - |
+| PI | Math & Trig | 13 |
 | PMT | Financial | 5 |
 | POISSON.DIST | Statistical | 26 |
-| POWER | Math & Trig | 48 |
+| POWER | Math & Trig | 49 |
 | PPMT | Financial | 2 |
-| PRODUCT | Math & Trig | - |
-| PROPER | Text | - |
+| PRODUCT | Math & Trig | 36 |
+| PROPER | Text | 25 |
 | PV | Financial | 3 |
 | QUARTILE | Statistical | 36 |
 | QUARTILE.EXC | Statistical | 27 |
 | QUARTILE.INC | Statistical | 5 |
-| QUOTIENT | Math & Trig | - |
-| RADIANS | Math & Trig | - |
+| QUOTIENT | Math & Trig | 43 |
+| RADIANS | Math & Trig | 30 |
 | RAND | Math & Trig | 1 |
 | RANDBETWEEN | Math & Trig | 1 |
-| RANK | Statistical | - |
+| RANK | Statistical | 32 |
 | RANK.AVG | Statistical | 21 |
 | RANK.EQ | Statistical | 7 |
 | RATE | Financial | 6 |
-| REPLACE | Text | - |
-| REPT | Text | - |
+| REPLACE | Text | 38 |
+| REPT | Text | 26 |
 | RIGHT | Text | 41 |
 | ROMAN | Text | 38 |
 | ROUND | Math & Trig | 39 |
 | ROUNDDOWN | Math & Trig | 36 |
 | ROUNDUP | Math & Trig | 36 |
 | ROW | Information | 1 |
-| ROWS | Information | - |
+| ROWS | Information | 32 |
 | RRI | Financial | 20 |
 | RSQ | Statistical | 23 |
 | SEARCH | Text | 15 |
-| SEC | Math & Trig | - |
-| SECH | Math & Trig | - |
+| SEC | Math & Trig | 26 |
+| SECH | Math & Trig | 28 |
 | SECOND | Date & Time | 16 |
 | SEQUENCE | Math & Trig | 46 |
 | SERIESSUM | Math & Trig | 27 |
-| SIGN | Math & Trig | - |
-| SIN | Math & Trig | - |
-| SINH | Math & Trig | - |
+| SIGN | Math & Trig | 30 |
+| SIN | Math & Trig | 33 |
+| SINH | Math & Trig | 23 |
 | SKEW | Statistical | 23 |
 | SLN | Financial | 6 |
 | SLOPE | Statistical | 16 |
@@ -276,20 +276,20 @@ Werkbook supports **343** Excel formula functions.
 | SORT | Logical | 25 |
 | SORTBY | Logical | 2 |
 | SQRT | Math & Trig | 29 |
-| SQRTPI | Math & Trig | - |
+| SQRTPI | Math & Trig | 25 |
 | STANDARDIZE | Statistical | 16 |
-| STDEV | Statistical | - |
-| STDEV.P | Statistical | - |
-| STDEV.S | Statistical | - |
-| STDEVP | Statistical | - |
+| STDEV | Statistical | 24 |
+| STDEV.P | Statistical | 15 |
+| STDEV.S | Statistical | 1 |
+| STDEVP | Statistical | 4 |
 | STEYX | Statistical | 25 |
 | SUBSTITUTE | Text | 23 |
-| SUBTOTAL | Math & Trig | - |
+| SUBTOTAL | Math & Trig | 32 |
 | SUM | Statistical | 36 |
 | SUMIF | Statistical | 37 |
 | SUMIFS | Statistical | 42 |
 | SUMPRODUCT | Statistical | 22 |
-| SUMSQ | Statistical | - |
+| SUMSQ | Statistical | 30 |
 | SUMX2MY2 | Math & Trig | 31 |
 | SUMX2PY2 | Math & Trig | 31 |
 | SUMXMY2 | Math & Trig | 31 |
@@ -302,8 +302,8 @@ Werkbook supports **343** Excel formula functions.
 | T.INV | Statistical | 33 |
 | T.INV.2T | Statistical | 20 |
 | TAKE | Lookup & Reference | 30 |
-| TAN | Math & Trig | - |
-| TANH | Math & Trig | - |
+| TAN | Math & Trig | 23 |
+| TANH | Math & Trig | 27 |
 | TEXT | Text | 127 |
 | TEXTAFTER | Text | 34 |
 | TEXTBEFORE | Text | 34 |
@@ -317,24 +317,24 @@ Werkbook supports **343** Excel formula functions.
 | TRANSPOSE | Lookup & Reference | 35 |
 | TRIM | Text | 18 |
 | TRIMMEAN | Statistical | 23 |
-| TRUE | Logical | - |
-| TRUNC | Math & Trig | - |
-| TYPE | Information | - |
+| TRUE | Logical | 10 |
+| TRUNC | Math & Trig | 34 |
+| TYPE | Information | 22 |
 | UNIQUE | Lookup & Reference | 29 |
 | UPPER | Text | 23 |
-| VALUE | Text | - |
+| VALUE | Text | 31 |
 | VALUETOTEXT | Text | 26 |
-| VAR | Statistical | - |
-| VAR.P | Statistical | - |
-| VAR.S | Statistical | - |
+| VAR | Statistical | 24 |
+| VAR.P | Statistical | 22 |
+| VAR.S | Statistical | 4 |
 | VARA | Statistical | 22 |
-| VARP | Statistical | - |
+| VARP | Statistical | 4 |
 | VARPA | Statistical | 22 |
 | VDB | Financial | 33 |
 | VLOOKUP | Lookup & Reference | 15 |
 | VSTACK | Lookup & Reference | 18 |
 | WEEKDAY | Date & Time | 1 |
-| WEEKNUM | Date & Time | - |
+| WEEKNUM | Date & Time | 39 |
 | WEIBULL.DIST | Statistical | 33 |
 | WORKDAY | Date & Time | 23 |
 | WORKDAY.INTL | Date & Time | 34 |
@@ -344,9 +344,9 @@ Werkbook supports **343** Excel formula functions.
 | XLOOKUP | Lookup & Reference | 22 |
 | XMATCH | Lookup & Reference | 35 |
 | XNPV | Financial | 18 |
-| XOR | Logical | 32 |
+| XOR | Logical | 34 |
 | YEAR | Date & Time | 26 |
-| YEARFRAC | Date & Time | - |
+| YEARFRAC | Date & Time | 38 |
 
 # Unsupported Formulas
 
