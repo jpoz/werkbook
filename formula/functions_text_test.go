@@ -4128,3 +4128,108 @@ func TestPROPER(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// EXACT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestEXACT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// Identical strings
+		{name: "same_lowercase", formula: `EXACT("hello","hello")`, want: true},
+		{name: "same_uppercase", formula: `EXACT("HELLO","HELLO")`, want: true},
+		{name: "same_mixed_case", formula: `EXACT("AbCd","AbCd")`, want: true},
+		// Case sensitivity — EXACT is case-sensitive unlike =
+		{name: "case_differs_first_char", formula: `EXACT("Hello","hello")`, want: false},
+		{name: "case_differs_all_caps", formula: `EXACT("ABC","abc")`, want: false},
+		{name: "case_differs_last_char", formula: `EXACT("hellO","hello")`, want: false},
+		// Empty strings
+		{name: "both_empty", formula: `EXACT("","")`, want: true},
+		{name: "first_empty", formula: `EXACT("","a")`, want: false},
+		{name: "second_empty", formula: `EXACT("a","")`, want: false},
+		// Different strings of same length
+		{name: "different_same_len", formula: `EXACT("a","b")`, want: false},
+		// Substrings (different lengths)
+		{name: "substring_prefix", formula: `EXACT("hello","hell")`, want: false},
+		{name: "substring_reversed", formula: `EXACT("hell","hello")`, want: false},
+		// Whitespace matters
+		{name: "leading_space", formula: `EXACT(" hello","hello")`, want: false},
+		{name: "trailing_space", formula: `EXACT("hello ","hello")`, want: false},
+		{name: "both_with_spaces", formula: `EXACT(" hello "," hello ")`, want: true},
+		// Number coercion — numbers are converted to their string form
+		{name: "same_integers", formula: `EXACT(1,1)`, want: true},
+		{name: "number_vs_string", formula: `EXACT(1,"1")`, want: true},
+		{name: "string_vs_number", formula: `EXACT("1",1)`, want: true},
+		{name: "different_numbers", formula: `EXACT(1,2)`, want: false},
+		{name: "decimal_match", formula: `EXACT(1.5,"1.5")`, want: true},
+		{name: "integer_vs_decimal_string", formula: `EXACT(1,"1.0")`, want: false},
+		{name: "zero_vs_zero", formula: `EXACT(0,0)`, want: true},
+		// Boolean coercion — TRUE→"TRUE", FALSE→"FALSE"
+		{name: "bool_true_vs_string_TRUE", formula: `EXACT(TRUE,"TRUE")`, want: true},
+		{name: "bool_false_vs_string_FALSE", formula: `EXACT(FALSE,"FALSE")`, want: true},
+		{name: "bool_true_vs_lowercase_true", formula: `EXACT(TRUE,"true")`, want: false},
+		{name: "bool_false_vs_lowercase_false", formula: `EXACT(FALSE,"false")`, want: false},
+		{name: "both_true", formula: `EXACT(TRUE,TRUE)`, want: true},
+		{name: "both_false", formula: `EXACT(FALSE,FALSE)`, want: true},
+		{name: "true_vs_false", formula: `EXACT(TRUE,FALSE)`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEXACTErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No arguments → #VALUE!
+	t.Run("no_args", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT()): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT() = %v, want #VALUE!", got)
+		}
+	})
+
+	// One argument → #VALUE!
+	t.Run("one_arg", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT("hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT(hello)): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT(hello) = %v, want #VALUE!", got)
+		}
+	})
+
+	// Three arguments → #VALUE!
+	t.Run("three_args", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT("a","b","c")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT(a,b,c)): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT(a,b,c) = %v, want #VALUE!", got)
+		}
+	})
+}
