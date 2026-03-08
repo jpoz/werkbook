@@ -7822,3 +7822,96 @@ func TestCSC(t *testing.T) {
 		})
 	}
 }
+
+func TestSEC(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+	}{
+		// Excel doc examples (angles in radians)
+		{"doc_sec_45", "SEC(45)", 1.0 / math.Cos(45), 1e-5},
+		{"doc_sec_30", "SEC(30)", 1.0 / math.Cos(30), 1e-5},
+
+		// Key angles: SEC(x) = 1/COS(x)
+		{"sec_0", "SEC(0)", 1, 0},
+		{"sec_pi_6", "SEC(PI()/6)", 2 / math.Sqrt(3), 1e-10},
+		{"sec_pi_4", "SEC(PI()/4)", math.Sqrt(2), 1e-10},
+		{"sec_pi_3", "SEC(PI()/3)", 2, 1e-10},
+		{"sec_pi", "SEC(PI())", -1, 1e-10},
+
+		// Negative angles: SEC(-x) = SEC(x) (even function)
+		{"sec_neg_pi_6", "SEC(-PI()/6)", 2 / math.Sqrt(3), 1e-10},
+		{"sec_neg_pi_4", "SEC(-PI()/4)", math.Sqrt(2), 1e-10},
+		{"sec_neg_pi_3", "SEC(-PI()/3)", 2, 1e-10},
+		{"sec_neg_pi", "SEC(-PI())", -1, 1e-10},
+		{"sec_neg_1", "SEC(-1)", 1.0 / math.Cos(-1), 1e-10},
+
+		// Multiples of PI
+		{"sec_2pi", "SEC(2*PI())", 1, 1e-10},
+		{"sec_4pi", "SEC(4*PI())", 1, 1e-10},
+
+		// Large angles
+		{"sec_100", "SEC(100)", 1.0 / math.Cos(100), 1e-10},
+		{"sec_1000", "SEC(1000)", 1.0 / math.Cos(1000), 1e-10},
+
+		// Boolean coercion: TRUE=1, FALSE=0
+		{"bool_true", "SEC(TRUE)", 1.0 / math.Cos(1), 1e-10},
+		{"bool_false", "SEC(FALSE)", 1, 0},
+
+		// String coercion
+		{"str_zero", `SEC("0")`, 1, 0},
+		{"str_1", `SEC("1")`, 1.0 / math.Cos(1), 1e-10},
+
+		// Degree conversion via expression (60 degrees -> PI/3 radians)
+		{"degrees_60", "SEC(60*PI()/180)", 2, 1e-10},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q): got type %v, want number", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.want) > tt.tol {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// No args
+		{"no_args", "SEC()", ErrValVALUE},
+		// Too many args
+		{"too_many_args", "SEC(1,2)", ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric", `SEC("abc")`, ErrValVALUE},
+		// Error propagation
+		{"err_div0", "SEC(1/0)", ErrValDIV0},
+		{"err_na", "SEC(NA())", ErrValNA},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}

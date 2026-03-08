@@ -261,7 +261,7 @@ Werkbook supports **343** Excel formula functions.
 | RRI | Financial | 20 |
 | RSQ | Statistical | 23 |
 | SEARCH | Text | 15 |
-| SEC | Math & Trig | - |
+| SEC | Math & Trig | 26 |
 | SECH | Math & Trig | - |
 | SECOND | Date & Time | 16 |
 | SEQUENCE | Math & Trig | 46 |
