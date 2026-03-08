@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **384** Excel formula functions.
+Werkbook supports **390** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -71,6 +71,12 @@ Werkbook supports **384** Excel formula functions.
 | COUNTBLANK | Statistical | 15 |
 | COUNTIF | Statistical | 17 |
 | COUNTIFS | Statistical | 47 |
+| COUPDAYBS | Financial | 2 |
+| COUPDAYS | Financial | 2 |
+| COUPDAYSNC | Financial | 2 |
+| COUPNCD | Financial | 2 |
+| COUPNUM | Financial | 2 |
+| COUPPCD | Financial | 2 |
 | COVAR | Statistical | 5 |
 | COVARIANCE.P | Statistical | 20 |
 | COVARIANCE.S | Statistical | 3 |
@@ -391,7 +397,7 @@ Werkbook supports **384** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **86** Excel functions are not yet supported.
+The following **80** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -411,12 +417,6 @@ The following **86** Excel functions are not yet supported.
 | BYROW | Logical |
 | CELL | Information |
 | CHISQ.TEST | Statistical |
-| COUPDAYBS | Financial |
-| COUPDAYS | Financial |
-| COUPDAYSNC | Financial |
-| COUPNCD | Financial |
-| COUPNUM | Financial |
-| COUPPCD | Financial |
 | DAVERAGE | Database |
 | DBCS | Text |
 | DCOUNT | Database |

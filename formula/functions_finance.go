@@ -45,6 +45,12 @@ func init() {
 	Register("YIELDDISC", NoCtx(fnYielddisc))
 	Register("PRICEMAT", NoCtx(fnPricemat))
 	Register("YIELDMAT", NoCtx(fnYieldmat))
+	Register("COUPDAYBS", NoCtx(fnCoupdaybs))
+	Register("COUPDAYS", NoCtx(fnCoupdays))
+	Register("COUPDAYSNC", NoCtx(fnCoupdaysnc))
+	Register("COUPNCD", NoCtx(fnCoupncd))
+	Register("COUPNUM", NoCtx(fnCoupnum))
+	Register("COUPPCD", NoCtx(fnCouppcd))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -2216,4 +2222,270 @@ func fnYieldmat(args []Value) (Value, error) {
 
 	yield := ((1+dim/bYear*rate)/denom - 1) * (bYear / dsm)
 	return NumberVal(yield), nil
+}
+
+// ---------------------------------------------------------------------------
+// Coupon period functions: COUPDAYBS, COUPDAYS, COUPDAYSNC, COUPNCD, COUPNUM, COUPPCD
+// ---------------------------------------------------------------------------
+
+// coupValidate parses and validates the common arguments shared by all COUP* functions.
+// Signature: FUNC(settlement, maturity, frequency, [basis])
+// Returns settlement serial, maturity serial, frequency, basis, and an optional error Value.
+func coupValidate(args []Value) (float64, float64, int, int, *Value) {
+	if len(args) < 3 || len(args) > 4 {
+		ev := ErrorVal(ErrValVALUE)
+		return 0, 0, 0, 0, &ev
+	}
+	settlementRaw, e := CoerceNum(args[0])
+	if e != nil {
+		return 0, 0, 0, 0, e
+	}
+	maturityRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return 0, 0, 0, 0, e
+	}
+	freqRaw, e := CoerceNum(args[2])
+	if e != nil {
+		return 0, 0, 0, 0, e
+	}
+	basis := 0
+	if len(args) == 4 {
+		b, e := CoerceNum(args[3])
+		if e != nil {
+			return 0, 0, 0, 0, e
+		}
+		basis = int(b)
+	}
+
+	settlement := math.Trunc(settlementRaw)
+	maturity := math.Trunc(maturityRaw)
+	freq := int(math.Trunc(freqRaw))
+
+	if settlement >= maturity {
+		ev := ErrorVal(ErrValNUM)
+		return 0, 0, 0, 0, &ev
+	}
+	if freq != 1 && freq != 2 && freq != 4 {
+		ev := ErrorVal(ErrValNUM)
+		return 0, 0, 0, 0, &ev
+	}
+	if basis < 0 || basis > 4 {
+		ev := ErrorVal(ErrValNUM)
+		return 0, 0, 0, 0, &ev
+	}
+
+	return settlement, maturity, freq, basis, nil
+}
+
+// couppcd computes the previous coupon date on or before settlement.
+// Coupon dates form a schedule based on the maturity date's month and day,
+// stepping backwards by 12/freq months at a time.
+func couppcd(settlement, maturity time.Time, freq int) time.Time {
+	monthStep := 12 / freq
+	matY, matM, matD := maturity.Year(), int(maturity.Month()), maturity.Day()
+
+	// Estimate how many periods back from maturity to reach settlement.
+	settY, settM := settlement.Year(), int(settlement.Month())
+
+	totalMonthsDiff := (matY-settY)*12 + (matM - settM)
+	periodsBack := totalMonthsDiff / monthStep
+	if periodsBack < 0 {
+		periodsBack = 0
+	}
+
+	// Start from an estimated position and adjust.
+	candidate := coupDateAtOffset(matY, matM, matD, -periodsBack*monthStep)
+
+	// If candidate is after settlement, step back more.
+	for candidate.After(settlement) {
+		periodsBack++
+		candidate = coupDateAtOffset(matY, matM, matD, -periodsBack*monthStep)
+	}
+	// If we can step forward and still be <= settlement, do so.
+	for {
+		next := coupDateAtOffset(matY, matM, matD, -(periodsBack-1)*monthStep)
+		if next.After(settlement) {
+			break
+		}
+		periodsBack--
+		candidate = next
+	}
+	return candidate
+}
+
+// coupncd computes the next coupon date strictly after settlement.
+func coupncd(settlement, maturity time.Time, freq int) time.Time {
+	pcd := couppcd(settlement, maturity, freq)
+	monthStep := 12 / freq
+	matD := maturity.Day()
+
+	// NCD is one period after PCD, clamped to the maturity day.
+	ncdMonth := int(pcd.Month()) + monthStep
+	ncdYear := pcd.Year()
+	for ncdMonth > 12 {
+		ncdMonth -= 12
+		ncdYear++
+	}
+	ncd := clampDate(ncdYear, ncdMonth, matD)
+	return ncd
+}
+
+// coupDateAtOffset returns a coupon date that is offsetMonths months from
+// the maturity's year/month, using the maturity day clamped to the target month's length.
+func coupDateAtOffset(matY, matM, matD, offsetMonths int) time.Time {
+	totalMonths := (matY-1)*12 + (matM - 1) + offsetMonths
+	year := totalMonths/12 + 1
+	month := totalMonths%12 + 1
+	if month <= 0 {
+		month += 12
+		year--
+	}
+	return clampDate(year, month, matD)
+}
+
+// clampDate creates a date with the given year, month, and day, clamping the
+// day to the last day of the month if it exceeds the month's length.
+func clampDate(year, month, day int) time.Time {
+	// Find the last day of the target month.
+	lastDay := daysInMonth(year, month)
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+}
+
+// daysInMonth returns the number of days in the given month.
+func daysInMonth(year, month int) int {
+	// Use time.Date to go to the first of the next month, then subtract a day.
+	return time.Date(year, time.Month(month+1), 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// fnCOUPPCD implements COUPPCD(settlement, maturity, frequency, [basis]).
+// Returns the previous coupon date before settlement as a serial date number.
+func fnCouppcd(args []Value) (Value, error) {
+	settlement, maturity, freq, _, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+	pcd := couppcd(st, mt, freq)
+	return NumberVal(TimeToExcelSerial(pcd)), nil
+}
+
+// fnCOUPNCD implements COUPNCD(settlement, maturity, frequency, [basis]).
+// Returns the next coupon date after settlement as a serial date number.
+func fnCoupncd(args []Value) (Value, error) {
+	settlement, maturity, freq, _, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+	ncd := coupncd(st, mt, freq)
+	return NumberVal(TimeToExcelSerial(ncd)), nil
+}
+
+// fnCOUPNUM implements COUPNUM(settlement, maturity, frequency, [basis]).
+// Returns the number of coupon dates between settlement and maturity.
+func fnCoupnum(args []Value) (Value, error) {
+	settlement, maturity, freq, _, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+
+	// Count coupon dates strictly after settlement and <= maturity.
+	count := 0
+	ncd := coupncd(st, mt, freq)
+	for !ncd.After(mt) {
+		count++
+		monthStep := 12 / freq
+		nextMonth := int(ncd.Month()) + monthStep
+		nextYear := ncd.Year()
+		for nextMonth > 12 {
+			nextMonth -= 12
+			nextYear++
+		}
+		ncd = clampDate(nextYear, nextMonth, mt.Day())
+	}
+	return NumberVal(float64(count)), nil
+}
+
+// fnCOUPDAYBS implements COUPDAYBS(settlement, maturity, frequency, [basis]).
+// Returns the number of days from the beginning of the coupon period to settlement.
+func fnCoupdaybs(args []Value) (Value, error) {
+	settlement, maturity, freq, basis, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+	pcd := couppcd(st, mt, freq)
+
+	switch basis {
+	case 0, 4: // 30/360 day count
+		sy, sm, sd := pcd.Year(), int(pcd.Month()), pcd.Day()
+		ey, em, ed := st.Year(), int(st.Month()), st.Day()
+		european := basis == 4
+		return NumberVal(days360Calc(sy, sm, sd, ey, em, ed, european)), nil
+	default: // basis 1, 2, 3: actual days
+		pcdSerial := TimeToExcelSerial(pcd)
+		return NumberVal(settlement - pcdSerial), nil
+	}
+}
+
+// fnCOUPDAYS implements COUPDAYS(settlement, maturity, frequency, [basis]).
+// Returns the number of days in the coupon period containing settlement.
+func fnCoupdays(args []Value) (Value, error) {
+	settlement, maturity, freq, basis, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+
+	switch basis {
+	case 0, 4: // 30/360
+		return NumberVal(360.0 / float64(freq)), nil
+	case 1: // actual/actual
+		st := ExcelSerialToTime(settlement)
+		mt := ExcelSerialToTime(maturity)
+		pcd := couppcd(st, mt, freq)
+		ncd := coupncd(st, mt, freq)
+		pcdSerial := TimeToExcelSerial(pcd)
+		ncdSerial := TimeToExcelSerial(ncd)
+		return NumberVal(ncdSerial - pcdSerial), nil
+	case 2: // actual/360
+		return NumberVal(360.0 / float64(freq)), nil
+	case 3: // actual/365
+		return NumberVal(365.0 / float64(freq)), nil
+	}
+	// unreachable (basis validated)
+	return ErrorVal(ErrValNUM), nil
+}
+
+// fnCOUPDAYSNC implements COUPDAYSNC(settlement, maturity, frequency, [basis]).
+// Returns the number of days from settlement to the next coupon date.
+func fnCoupdaysnc(args []Value) (Value, error) {
+	settlement, maturity, freq, basis, ev := coupValidate(args)
+	if ev != nil {
+		return *ev, nil
+	}
+	st := ExcelSerialToTime(settlement)
+	mt := ExcelSerialToTime(maturity)
+	ncd := coupncd(st, mt, freq)
+
+	switch basis {
+	case 0, 4: // 30/360: COUPDAYS - COUPDAYBS
+		pcd := couppcd(st, mt, freq)
+		sy, sm, sd := pcd.Year(), int(pcd.Month()), pcd.Day()
+		ey, em, ed := st.Year(), int(st.Month()), st.Day()
+		european := basis == 4
+		daybs := days360Calc(sy, sm, sd, ey, em, ed, european)
+		cdays := 360.0 / float64(freq)
+		return NumberVal(cdays - daybs), nil
+	default: // basis 1, 2, 3: actual days
+		ncdSerial := TimeToExcelSerial(ncd)
+		return NumberVal(ncdSerial - settlement), nil
+	}
 }

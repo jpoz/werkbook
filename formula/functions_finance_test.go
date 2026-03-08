@@ -8445,3 +8445,485 @@ func TestYIELDMAT_ViaEval(t *testing.T) {
 		t.Errorf("got %f, want 0.060954", v.Num)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// COUPPCD tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPPCD(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2, basis=1 => Nov 15 2010 (40497)
+		{name: "doc example", args: numArgs(40568, 40862, 2, 1), want: 40497},
+		// Semiannual: settlement=Jan 25 2007, maturity=Nov 15 2008, freq=2, basis=0
+		// Coupon schedule: ...May 15 2006, Nov 15 2006, May 15 2007, Nov 15 2007, May 15 2008, Nov 15 2008
+		// PCD for Jan 25 2007 = Nov 15 2006
+		{name: "semiannual 2007", args: numArgs(39107, 39767, 2, 0), want: 39036},
+		// Annual: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=1, basis=0
+		// Coupon schedule: ...Nov 15 2009, Nov 15 2010, Nov 15 2011
+		// PCD = Nov 15 2010
+		{name: "annual", args: numArgs(40568, 40862, 1, 0), want: 40497},
+		// Quarterly: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=4, basis=0
+		// Coupon schedule: ...Aug 15 2010, Nov 15 2010, Feb 15 2011, May 15 2011, Aug 15 2011, Nov 15 2011
+		// PCD for Jan 25 2011 = Nov 15 2010
+		{name: "quarterly", args: numArgs(40568, 40862, 4, 0), want: 40497},
+		// Settlement on a coupon date: settlement=Nov 15 2010, maturity=Nov 15 2011, freq=2
+		// PCD = Nov 15 2010 (the settlement date itself)
+		{name: "settlement on coupon date", args: numArgs(40497, 40862, 2, 0), want: 40497},
+		// Settlement one day after coupon date: settlement=Nov 16 2010, maturity=Nov 15 2011, freq=2
+		// PCD = Nov 15 2010
+		{name: "one day after coupon", args: numArgs(40498, 40862, 2, 0), want: 40497},
+		// Settlement one day before maturity: settlement=Nov 14 2011, maturity=Nov 15 2011, freq=2
+		// PCD = May 15 2011
+		{name: "one day before maturity", args: numArgs(40861, 40862, 2, 0), want: 40678},
+		// Basis=2
+		{name: "basis 2", args: numArgs(40568, 40862, 2, 2), want: 40497},
+		// Basis=3
+		{name: "basis 3", args: numArgs(40568, 40862, 2, 3), want: 40497},
+		// Basis=4
+		{name: "basis 4", args: numArgs(40568, 40862, 2, 4), want: 40497},
+		// Long-term bond: settlement=Jan 25 2007, maturity=Nov 15 2011, freq=2
+		{name: "long-term bond", args: numArgs(39107, 40862, 2, 0), want: 39036},
+		// End-of-month maturity: maturity=Aug 31 2012, freq=2
+		// Coupon schedule includes Feb 29 2012 (leap year), Aug 31 2011, Feb 28 2011
+		// Settlement=Jan 25 2012: PCD = Aug 31 2011
+		{name: "EOM maturity Aug 31", args: numArgs(40933, 41152, 2, 0), want: 40786},
+		// End-of-month maturity: maturity=Feb 29 2012, freq=2 (leap year)
+		// Coupon schedule: ...Aug 29 2011, Feb 29 2012
+		// Settlement=Jan 25 2012: PCD = Aug 29 2011
+		{name: "EOM maturity Feb 29 leap", args: numArgs(40933, 40968, 2, 0), want: 40784},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(40568, 40862), wantErr: true},
+		{name: "too many args", args: numArgs(40568, 40862, 2, 1, 99), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(40862, 40568, 2, 0), wantErr: true},
+		{name: "settlement == maturity", args: numArgs(40862, 40862, 2, 0), wantErr: true},
+		{name: "bad frequency 3", args: numArgs(40568, 40862, 3, 0), wantErr: true},
+		{name: "bad frequency 0", args: numArgs(40568, 40862, 0, 0), wantErr: true},
+		{name: "bad basis -1", args: numArgs(40568, 40862, 2, -1), wantErr: true},
+		{name: "bad basis 5", args: numArgs(40568, 40862, 2, 5), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCouppcd(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPPCD_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPPCD(DATE(2011,1,25), DATE(2011,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	// Nov 15 2010 = serial 40497
+	if math.Abs(v.Num-40497) > 1 {
+		t.Errorf("got %f, want 40497", v.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUPNCD tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPNCD(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2, basis=1 => May 15 2011 (40678)
+		{name: "doc example", args: numArgs(40568, 40862, 2, 1), want: 40678},
+		// Semiannual: settlement=Jan 25 2007, maturity=Nov 15 2008, freq=2
+		// NCD = May 15 2007 (39217)
+		{name: "semiannual 2007", args: numArgs(39107, 39767, 2, 0), want: 39217},
+		// Annual: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=1
+		// NCD = Nov 15 2011 (maturity itself)
+		{name: "annual", args: numArgs(40568, 40862, 1, 0), want: 40862},
+		// Quarterly: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=4
+		// NCD = Feb 15 2011 (40589)
+		{name: "quarterly", args: numArgs(40568, 40862, 4, 0), want: 40589},
+		// Settlement on a coupon date: settlement=Nov 15 2010, maturity=Nov 15 2011, freq=2
+		// NCD = May 15 2011 (40678)
+		{name: "settlement on coupon date", args: numArgs(40497, 40862, 2, 0), want: 40678},
+		// Settlement one day after coupon date: settlement=Nov 16 2010, maturity=Nov 15 2011, freq=2
+		// NCD = May 15 2011 (40678)
+		{name: "one day after coupon", args: numArgs(40498, 40862, 2, 0), want: 40678},
+		// Settlement one day before maturity: settlement=Nov 14 2011, maturity=Nov 15 2011, freq=2
+		// NCD = Nov 15 2011 (40862)
+		{name: "one day before maturity", args: numArgs(40861, 40862, 2, 0), want: 40862},
+		// All basis values give same coupon dates
+		{name: "basis 0", args: numArgs(40568, 40862, 2, 0), want: 40678},
+		{name: "basis 2", args: numArgs(40568, 40862, 2, 2), want: 40678},
+		{name: "basis 3", args: numArgs(40568, 40862, 2, 3), want: 40678},
+		{name: "basis 4", args: numArgs(40568, 40862, 2, 4), want: 40678},
+		// Long-term bond: settlement=Jan 25 2007, maturity=Nov 15 2011, freq=2
+		// NCD = May 15 2007
+		{name: "long-term bond", args: numArgs(39107, 40862, 2, 0), want: 39217},
+		// End-of-month maturity: maturity=Aug 31 2012, freq=2
+		// Settlement=Jan 25 2012: PCD=Aug 31 2011, NCD=Feb 29 2012 (leap year)
+		{name: "EOM maturity Aug 31 NCD", args: numArgs(40933, 41152, 2, 0), want: 40968},
+		// End-of-month maturity: maturity=Feb 29 2012, freq=2
+		// Settlement=Jan 25 2012: NCD = Feb 29 2012
+		{name: "EOM maturity Feb 29 NCD", args: numArgs(40933, 40968, 2, 0), want: 40968},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(40568, 40862), wantErr: true},
+		{name: "too many args", args: numArgs(40568, 40862, 2, 1, 99), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(40862, 40568, 2, 0), wantErr: true},
+		{name: "bad frequency 5", args: numArgs(40568, 40862, 5, 0), wantErr: true},
+		{name: "bad basis 6", args: numArgs(40568, 40862, 2, 6), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCoupncd(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPNCD_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPNCD(DATE(2011,1,25), DATE(2011,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	// May 15 2011 = serial 40678
+	if math.Abs(v.Num-40678) > 1 {
+		t.Errorf("got %f, want 40678", v.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUPNUM tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPNUM(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2007, maturity=Nov 15 2008, freq=2, basis=1 => 4
+		{name: "doc example", args: numArgs(39107, 39767, 2, 1), want: 4},
+		// Semiannual: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2 => 2
+		// Coupons after settlement: May 15 2011, Nov 15 2011
+		{name: "semiannual 2 periods", args: numArgs(40568, 40862, 2, 0), want: 2},
+		// Annual: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=1 => 1
+		{name: "annual 1 period", args: numArgs(40568, 40862, 1, 0), want: 1},
+		// Quarterly: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=4 => 4
+		// Coupons after settlement: Feb 15, May 15, Aug 15, Nov 15
+		{name: "quarterly 4 periods", args: numArgs(40568, 40862, 4, 0), want: 4},
+		// Settlement on coupon date: settlement=May 15 2011, maturity=Nov 15 2011, freq=2 => 1
+		// Only Nov 15 2011 is strictly after settlement
+		{name: "settlement on coupon", args: numArgs(40678, 40862, 2, 0), want: 1},
+		// Settlement one day after coupon: settlement=May 16 2011, maturity=Nov 15 2011, freq=2 => 1
+		{name: "one day after coupon", args: numArgs(40679, 40862, 2, 0), want: 1},
+		// Settlement one day before maturity: settlement=Nov 14 2011, maturity=Nov 15 2011, freq=2 => 1
+		{name: "one day before maturity", args: numArgs(40861, 40862, 2, 0), want: 1},
+		// Long-term: settlement=Jan 25 2007, maturity=Nov 15 2011, freq=2 => 10
+		{name: "long-term 10 periods", args: numArgs(39107, 40862, 2, 0), want: 10},
+		// Long-term annual: settlement=Jan 25 2007, maturity=Nov 15 2011, freq=1 => 5
+		{name: "long-term annual 5 periods", args: numArgs(39107, 40862, 1, 0), want: 5},
+		// Long-term quarterly: settlement=Jan 25 2007, maturity=Nov 15 2008, freq=4 => 8
+		{name: "quarterly 8 periods", args: numArgs(39107, 39767, 4, 0), want: 8},
+		// Different basis values should not affect count
+		{name: "basis 1", args: numArgs(39107, 39767, 2, 1), want: 4},
+		{name: "basis 2", args: numArgs(39107, 39767, 2, 2), want: 4},
+		{name: "basis 3", args: numArgs(39107, 39767, 2, 3), want: 4},
+		{name: "basis 4", args: numArgs(39107, 39767, 2, 4), want: 4},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(39107, 39767), wantErr: true},
+		{name: "too many args", args: numArgs(39107, 39767, 2, 1, 1), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(39767, 39107, 2, 0), wantErr: true},
+		{name: "bad frequency", args: numArgs(39107, 39767, 6, 0), wantErr: true},
+		{name: "bad basis", args: numArgs(39107, 39767, 2, 7), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCoupnum(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPNUM_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPNUM(DATE(2007,1,25), DATE(2008,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-4) > 0.01 {
+		t.Errorf("got %f, want 4", v.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUPDAYBS tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPDAYBS(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2, basis=1 => 71
+		// PCD = Nov 15 2010. Actual days Nov 15 2010 to Jan 25 2011 = 71
+		{name: "doc example basis 1", args: numArgs(40568, 40862, 2, 1), want: 71},
+		// Basis 0 (30/360): Nov 15 2010 to Jan 25 2011
+		// 30/360: (2011-2010)*360 + (1-11)*30 + (25-15) = 360 - 300 + 10 = 70
+		{name: "basis 0", args: numArgs(40568, 40862, 2, 0), want: 70},
+		// Basis 2 (actual/360): same actual days as basis 1 = 71
+		{name: "basis 2", args: numArgs(40568, 40862, 2, 2), want: 71},
+		// Basis 3 (actual/365): same actual days as basis 1 = 71
+		{name: "basis 3", args: numArgs(40568, 40862, 2, 3), want: 71},
+		// Basis 4 (European 30/360): same as US for these dates = 70
+		{name: "basis 4", args: numArgs(40568, 40862, 2, 4), want: 70},
+		// Annual: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=1, basis=1
+		// PCD = Nov 15 2010. Same = 71 actual days
+		{name: "annual basis 1", args: numArgs(40568, 40862, 1, 1), want: 71},
+		// Quarterly: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=4, basis=1
+		// PCD = Nov 15 2010. Same = 71 actual days
+		{name: "quarterly basis 1", args: numArgs(40568, 40862, 4, 1), want: 71},
+		// Settlement on coupon date: COUPDAYBS = 0
+		{name: "settlement on coupon", args: numArgs(40497, 40862, 2, 1), want: 0},
+		// Settlement one day after coupon: COUPDAYBS = 1
+		{name: "one day after coupon", args: numArgs(40498, 40862, 2, 1), want: 1},
+		// Settlement one day before maturity: PCD = May 15 2011 (40678)
+		// Actual days from May 15 to Nov 14 = 183
+		{name: "one day before maturity basis 1", args: numArgs(40861, 40862, 2, 1), want: 183},
+		// Long-term: settlement=Jan 25 2007, maturity=Nov 15 2008, freq=2, basis=1
+		// PCD = Nov 15 2006 (serial 39036). Actual days Nov 15 2006 to Jan 25 2007 = 71
+		{name: "long-term basis 1", args: numArgs(39107, 39767, 2, 1), want: 71},
+		// Long-term basis 0: 30/360 = 70
+		{name: "long-term basis 0", args: numArgs(39107, 39767, 2, 0), want: 70},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(40568, 40862), wantErr: true},
+		{name: "too many args", args: numArgs(40568, 40862, 2, 1, 1), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(40862, 40568, 2, 0), wantErr: true},
+		{name: "bad frequency", args: numArgs(40568, 40862, 3, 0), wantErr: true},
+		{name: "bad basis", args: numArgs(40568, 40862, 2, -1), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCoupdaybs(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPDAYBS_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPDAYBS(DATE(2011,1,25), DATE(2011,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-71) > 0.01 {
+		t.Errorf("got %f, want 71", v.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUPDAYS tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPDAYS(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2, basis=1 => 181
+		// PCD = Nov 15 2010, NCD = May 15 2011. Actual days = 181
+		{name: "doc example basis 1", args: numArgs(40568, 40862, 2, 1), want: 181},
+		// Basis 0 (30/360): 360/2 = 180
+		{name: "basis 0 semiannual", args: numArgs(40568, 40862, 2, 0), want: 180},
+		// Basis 2 (actual/360): 360/2 = 180
+		{name: "basis 2 semiannual", args: numArgs(40568, 40862, 2, 2), want: 180},
+		// Basis 3 (actual/365): 365/2 = 182.5
+		{name: "basis 3 semiannual", args: numArgs(40568, 40862, 2, 3), want: 182.5},
+		// Basis 4 (European 30/360): 360/2 = 180
+		{name: "basis 4 semiannual", args: numArgs(40568, 40862, 2, 4), want: 180},
+		// Annual basis 0: 360/1 = 360
+		{name: "annual basis 0", args: numArgs(40568, 40862, 1, 0), want: 360},
+		// Quarterly basis 0: 360/4 = 90
+		{name: "quarterly basis 0", args: numArgs(40568, 40862, 4, 0), want: 90},
+		// Annual basis 3: 365/1 = 365
+		{name: "annual basis 3", args: numArgs(40568, 40862, 1, 3), want: 365},
+		// Quarterly basis 3: 365/4 = 91.25
+		{name: "quarterly basis 3", args: numArgs(40568, 40862, 4, 3), want: 91.25},
+		// Basis 1 (actual/actual) with different coupon period:
+		// settlement=May 16 2011, maturity=Nov 15 2011, freq=2
+		// PCD = May 15 2011, NCD = Nov 15 2011. Actual days = 184
+		{name: "basis 1 May-Nov period", args: numArgs(40679, 40862, 2, 1), want: 184},
+		// Settlement on coupon: PCD=Nov 15 2010, NCD=May 15 2011 = 181
+		{name: "settlement on coupon basis 1", args: numArgs(40497, 40862, 2, 1), want: 181},
+		// Long-term bond: PCD=Nov 15 2006, NCD=May 15 2007 = 181 actual days
+		{name: "long-term basis 1", args: numArgs(39107, 39767, 2, 1), want: 181},
+		// Long-term basis 0: always 180 for semiannual
+		{name: "long-term basis 0", args: numArgs(39107, 39767, 2, 0), want: 180},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(40568, 40862), wantErr: true},
+		{name: "too many args", args: numArgs(40568, 40862, 2, 1, 1), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(40862, 40568, 2, 0), wantErr: true},
+		{name: "bad frequency", args: numArgs(40568, 40862, 7, 0), wantErr: true},
+		{name: "bad basis", args: numArgs(40568, 40862, 2, 5), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCoupdays(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPDAYS_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPDAYS(DATE(2011,1,25), DATE(2011,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-181) > 0.01 {
+		t.Errorf("got %f, want 181", v.Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COUPDAYSNC tests
+// ---------------------------------------------------------------------------
+
+func TestCOUPDAYSNC(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// Doc example: settlement=Jan 25 2011, maturity=Nov 15 2011, freq=2, basis=1 => 110
+		// NCD = May 15 2011. Actual days Jan 25 to May 15 = 110
+		{name: "doc example basis 1", args: numArgs(40568, 40862, 2, 1), want: 110},
+		// Basis 0 (30/360): COUPDAYS(180) - COUPDAYBS(70) = 110
+		{name: "basis 0", args: numArgs(40568, 40862, 2, 0), want: 110},
+		// Basis 2 (actual/360): actual days = 110
+		{name: "basis 2", args: numArgs(40568, 40862, 2, 2), want: 110},
+		// Basis 3 (actual/365): actual days = 110
+		{name: "basis 3", args: numArgs(40568, 40862, 2, 3), want: 110},
+		// Basis 4 (European 30/360): COUPDAYS(180) - COUPDAYBS(70) = 110
+		{name: "basis 4", args: numArgs(40568, 40862, 2, 4), want: 110},
+		// Annual: NCD = Nov 15 2011. Actual days Jan 25 to Nov 15 = 294
+		{name: "annual basis 1", args: numArgs(40568, 40862, 1, 1), want: 294},
+		// Quarterly: NCD = Feb 15 2011. Actual days Jan 25 to Feb 15 = 21
+		{name: "quarterly basis 1", args: numArgs(40568, 40862, 4, 1), want: 21},
+		// Settlement on coupon: days to next coupon
+		// Settlement=Nov 15 2010, NCD=May 15 2011 = 181 actual days
+		{name: "settlement on coupon basis 1", args: numArgs(40497, 40862, 2, 1), want: 181},
+		// Settlement one day after coupon: NCD=May 15 2011, days from Nov 16 = 180
+		{name: "one day after coupon basis 1", args: numArgs(40498, 40862, 2, 1), want: 180},
+		// Settlement one day before maturity: NCD=Nov 15 2011, days = 1
+		{name: "one day before maturity", args: numArgs(40861, 40862, 2, 1), want: 1},
+		// Long-term: settlement=Jan 25 2007, NCD=May 15 2007
+		// Actual days Jan 25 to May 15 = 110
+		{name: "long-term basis 1", args: numArgs(39107, 39767, 2, 1), want: 110},
+		// Long-term basis 0: 180 - 70 = 110
+		{name: "long-term basis 0", args: numArgs(39107, 39767, 2, 0), want: 110},
+		// Settlement on coupon basis 0: 180 - 0 = 180
+		{name: "settlement on coupon basis 0", args: numArgs(40497, 40862, 2, 0), want: 180},
+		// --- Error cases ---
+		{name: "too few args", args: numArgs(40568, 40862), wantErr: true},
+		{name: "too many args", args: numArgs(40568, 40862, 2, 1, 1), wantErr: true},
+		{name: "settlement >= maturity", args: numArgs(40862, 40568, 2, 0), wantErr: true},
+		{name: "bad frequency", args: numArgs(40568, 40862, 8, 0), wantErr: true},
+		{name: "bad basis", args: numArgs(40568, 40862, 2, 9), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnCoupdaysnc(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestCOUPDAYSNC_ViaEval(t *testing.T) {
+	cf := evalCompile(t, "COUPDAYSNC(DATE(2011,1,25), DATE(2011,11,15), 2, 1)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-110) > 0.01 {
+		t.Errorf("got %f, want 110", v.Num)
+	}
+}
