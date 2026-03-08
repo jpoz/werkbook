@@ -42,6 +42,17 @@ func run(args []string) int {
 		return exitCode
 	}
 
+	if hasHelpFlag(remaining.args) {
+		// Strip --help/-h and treat remaining as help topic.
+		var topic []string
+		for _, a := range remaining.args {
+			if a != "--help" && a != "-h" {
+				topic = append(topic, a)
+			}
+		}
+		return writeHelpTopic(topic, globals)
+	}
+
 	if len(remaining.args) == 0 {
 		if globals.mode == modeAgent {
 			writeError("", errUsage("command required"), globals)
@@ -51,12 +62,34 @@ func run(args []string) int {
 		return ExitUsage
 	}
 
-	root, state := newRootCommand(globals)
-	root.SetArgs(remaining.args)
-	if err := root.Execute(); err != nil {
-		return handleCLIError(err, globals)
+	cmd := remaining.args[0]
+	cmdArgs := remaining.args[1:]
+
+	switch cmd {
+	case "info":
+		return cmdInfo(cmdArgs, globals)
+	case "read":
+		return cmdRead(cmdArgs, globals)
+	case "edit":
+		return cmdEdit(cmdArgs, globals)
+	case "create":
+		return cmdCreate(cmdArgs, globals)
+	case "calc":
+		return cmdCalc(cmdArgs, globals)
+	case "dep":
+		return cmdDep(cmdArgs, globals)
+	case "formula":
+		return cmdFormula(cmdArgs, globals)
+	case "capabilities":
+		return cmdCapabilities(cmdArgs, globals)
+	case "version":
+		return cmdVersion(cmdArgs, globals)
+	case "help":
+		return cmdHelp(cmdArgs, globals)
+	default:
+		writeError("", errUsage(fmt.Sprintf("unknown command %q", cmd)), globals)
+		return ExitUsage
 	}
-	return state.exitCode
 }
 
 type extractedGlobals struct {
