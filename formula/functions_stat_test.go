@@ -27279,10 +27279,9 @@ func TestLOGEST(t *testing.T) {
 		}
 	})
 
-	t.Run("stats_row2_se_exponentiated", func(t *testing.T) {
-		// For perfect exponential fit with enough df, se values in row 2 should be
-		// exponentiated. For noisy data we can verify they're > 1 (since exp(anything) > 0
-		// and for reasonable se > 0, exp(se) > 1).
+	t.Run("stats_row2_se_raw", func(t *testing.T) {
+		// SE values in LOGEST row 2 are raw (NOT exponentiated) from the ln(y) regression,
+		// matching Excel behavior. For noisy data they should be > 0.
 		// Use slightly noisy data: y = {2, 4.1, 7.9, 16.2, 31.8}
 		v, err := fnLOGEST([]Value{
 			rowArray(2, 4.1, 7.9, 16.2, 31.8),
@@ -27293,13 +27292,13 @@ func TestLOGEST(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
-		// se_slope (row 2, col 0) should be exp(something positive) > 1
-		if v.Array[1][0].Type != ValueNumber || v.Array[1][0].Num <= 1 {
-			t.Errorf("se_slope: expected > 1 (exponentiated), got %v", v.Array[1][0])
+		// se_slope (row 2, col 0) should be > 0 (raw SE from ln(y) regression)
+		if v.Array[1][0].Type != ValueNumber || v.Array[1][0].Num <= 0 {
+			t.Errorf("se_slope: expected > 0 (raw SE), got %v", v.Array[1][0])
 		}
-		// se_intercept (row 2, col 1) should also be > 1
-		if v.Array[1][1].Type != ValueNumber || v.Array[1][1].Num <= 1 {
-			t.Errorf("se_intercept: expected > 1 (exponentiated), got %v", v.Array[1][1])
+		// se_intercept (row 2, col 1) should also be > 0
+		if v.Array[1][1].Type != ValueNumber || v.Array[1][1].Num <= 0 {
+			t.Errorf("se_intercept: expected > 0 (raw SE), got %v", v.Array[1][1])
 		}
 	})
 

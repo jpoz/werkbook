@@ -6381,19 +6381,19 @@ func fnLOGEST(args []Value) (Value, error) {
 		seYVal := math.Sqrt(ssResid / df)
 		seY = NumberVal(seYVal)
 
-		// se_slope — exponentiated
+		// se_slope — raw from ln(y) regression (NOT exponentiated)
 		if ssqX == 0 {
 			seSlope = ErrorVal(ErrValNA)
 		} else {
-			seSlope = NumberVal(math.Exp(seYVal / math.Sqrt(ssqX)))
+			seSlope = NumberVal(seYVal / math.Sqrt(ssqX))
 		}
 
-		// se_intercept — exponentiated
+		// se_intercept — raw from ln(y) regression (NOT exponentiated)
 		if useConst {
 			if ssqX == 0 {
 				seIntercept = ErrorVal(ErrValNA)
 			} else {
-				seIntercept = NumberVal(math.Exp(seYVal * math.Sqrt(sumXX/(nf*ssqX))))
+				seIntercept = NumberVal(seYVal * math.Sqrt(sumXX/(nf*ssqX)))
 			}
 		} else {
 			seIntercept = ErrorVal(ErrValNA)
@@ -6413,7 +6413,7 @@ func fnLOGEST(args []Value) (Value, error) {
 
 	// Row 1: {m, b} = {exp(slope), exp(intercept)}
 	row1 := []Value{NumberVal(m), NumberVal(b)}
-	// Row 2: {exp(se_slope), exp(se_intercept)} — standard errors exponentiated
+	// Row 2: {se_slope, se_intercept} — raw standard errors from ln(y) regression
 	row2 := []Value{seSlope, seIntercept}
 	// Row 3: {r², se_y} — from ln(y) regression, as-is
 	row3 := []Value{r2, seY}
