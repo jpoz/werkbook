@@ -1009,30 +1009,151 @@ func TestDAYS360(t *testing.T) {
 		name    string
 		formula string
 		want    float64
+		isErr   bool
+		errVal  ErrorValue
 	}{
+		// ── Existing tests (basic US method) ───────────────────────────
 		// Basic US method: Jan 1 to Feb 1 = 30 days
-		{"us_jan1_feb1", "DAYS360(DATE(2025,1,1),DATE(2025,2,1),FALSE)", 30},
+		{"us_jan1_feb1", "DAYS360(DATE(2025,1,1),DATE(2025,2,1),FALSE)", 30, false, 0},
 		// US method: Feb 28 (last day of Feb, non-leap) to Mar 31
 		// Feb 28 → D1=30 (last-of-Feb rule), Mar 31 → D2=30 (D2==31 && D1>=30)
-		// Result: (3-2)*30 + (30-30) = 30
-		{"us_feb28_mar31", "DAYS360(45716,45747,FALSE)", 30},
+		{"us_feb28_mar31", "DAYS360(45716,45747,FALSE)", 30, false, 0},
 		// US method: Jan 31 to Mar 31
 		// Jan 31 → D1=30, Mar 31 → D2=30 (D2==31 && D1>=30)
-		// Result: (3-1)*30 + (30-30) = 60
-		{"us_jan31_mar31", "DAYS360(DATE(2025,1,31),DATE(2025,3,31),FALSE)", 60},
+		{"us_jan31_mar31", "DAYS360(DATE(2025,1,31),DATE(2025,3,31),FALSE)", 60, false, 0},
 		// US method: both dates last day of Feb (leap year 2024)
 		// Feb 29 2024 → D1=30, Feb 29 2024 → D2=30 (both last-of-Feb)
-		// Result: 0
-		{"us_both_feb_leap", "DAYS360(DATE(2024,2,29),DATE(2024,2,29),FALSE)", 0},
+		{"us_both_feb_leap", "DAYS360(DATE(2024,2,29),DATE(2024,2,29),FALSE)", 0, false, 0},
 		// US method: Feb 29 (leap) to Mar 31
 		// Feb 29 → D1=30, Mar 31 → D2=30
-		// Result: (3-2)*30 + (30-30) = 30
-		{"us_feb29_mar31_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,31),FALSE)", 30},
+		{"us_feb29_mar31_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,31),FALSE)", 30, false, 0},
 		// European method: same dates
 		// European: D1=28, D2=31→30. (3-2)*30 + (30-28) = 32
-		{"eu_feb28_mar31", "DAYS360(45716,45747,TRUE)", 32},
+		{"eu_feb28_mar31", "DAYS360(45716,45747,TRUE)", 32, false, 0},
 		// US method: regular dates, no adjustments needed
-		{"us_jan15_mar15", "DAYS360(DATE(2025,1,15),DATE(2025,3,15),FALSE)", 60},
+		{"us_jan15_mar15", "DAYS360(DATE(2025,1,15),DATE(2025,3,15),FALSE)", 60, false, 0},
+
+		// ── Same date → 0 ──────────────────────────────────────────────
+		{"same_date_us", "DAYS360(DATE(2025,6,15),DATE(2025,6,15))", 0, false, 0},
+		{"same_date_eu", "DAYS360(DATE(2025,6,15),DATE(2025,6,15),TRUE)", 0, false, 0},
+
+		// ── Same month dates ───────────────────────────────────────────
+		{"us_same_month", "DAYS360(DATE(2025,3,5),DATE(2025,3,20))", 15, false, 0},
+		{"eu_same_month", "DAYS360(DATE(2025,3,5),DATE(2025,3,20),TRUE)", 15, false, 0},
+
+		// ── Cross-month dates ──────────────────────────────────────────
+		{"us_cross_month", "DAYS360(DATE(2025,1,20),DATE(2025,2,15))", 25, false, 0},
+
+		// ── Cross-year dates ───────────────────────────────────────────
+		{"us_cross_year", "DAYS360(DATE(2024,12,1),DATE(2025,1,15))", 44, false, 0},
+		{"eu_cross_year", "DAYS360(DATE(2024,12,1),DATE(2025,1,15),TRUE)", 44, false, 0},
+
+		// ── Start after end → negative result ──────────────────────────
+		{"us_negative_result", "DAYS360(DATE(2025,3,15),DATE(2025,1,15),FALSE)", -60, false, 0},
+		{"eu_negative_result", "DAYS360(DATE(2025,3,15),DATE(2025,1,15),TRUE)", -60, false, 0},
+
+		// ── US method default (omitted method parameter) ───────────────
+		{"us_default_no_method", "DAYS360(DATE(2025,1,1),DATE(2025,2,1))", 30, false, 0},
+
+		// ── Full year: Jan 1 to Dec 31 ─────────────────────────────────
+		// US: Jan 1 to Dec 31. D1=1, D2=31→stays 31 (D1<30). (12-1)*30+(31-1) = 360
+		{"us_full_year", "DAYS360(DATE(2025,1,1),DATE(2025,12,31),FALSE)", 360, false, 0},
+		// EU: Jan 1 to Dec 31. D1=1, D2=31→30. (12-1)*30+(30-1) = 359
+		{"eu_full_year", "DAYS360(DATE(2025,1,1),DATE(2025,12,31),TRUE)", 359, false, 0},
+
+		// ── Exactly 360 days: Jan 1 to Dec 30 ─────────────────────────
+		{"us_exactly_360", "DAYS360(DATE(2025,1,1),DATE(2025,12,30),FALSE)", 359, false, 0},
+		// Jan 30 to Jan 30 next year = 360
+		{"us_jan30_to_jan30", "DAYS360(DATE(2025,1,30),DATE(2026,1,30),FALSE)", 360, false, 0},
+
+		// ── US vs European method differences ──────────────────────────
+		// Jan 31 to Apr 30: US: D1=31→30, D2=30. (4-1)*30+(30-30)=90
+		// EU: D1=31→30, D2=30. Same result = 90
+		{"us_jan31_apr30", "DAYS360(DATE(2025,1,31),DATE(2025,4,30),FALSE)", 90, false, 0},
+		{"eu_jan31_apr30", "DAYS360(DATE(2025,1,31),DATE(2025,4,30),TRUE)", 90, false, 0},
+		// Jan 30 to Mar 31: US: D1=30, D2=31→30 (D1>=30). (3-1)*30+(30-30)=60
+		// EU: D1=30, D2=31→30. (3-1)*30+(30-30)=60
+		{"us_jan30_mar31", "DAYS360(DATE(2025,1,30),DATE(2025,3,31),FALSE)", 60, false, 0},
+		{"eu_jan30_mar31", "DAYS360(DATE(2025,1,30),DATE(2025,3,31),TRUE)", 60, false, 0},
+		// Jan 15 to Mar 31: US: D1=15, D2=31 stays (D1<30). (3-1)*30+(31-15)=76
+		// EU: D1=15, D2=31→30. (3-1)*30+(30-15)=75
+		{"us_jan15_mar31", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),FALSE)", 76, false, 0},
+		{"eu_jan15_mar31", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),TRUE)", 75, false, 0},
+
+		// ── End of month handling ──────────────────────────────────────
+		// Feb 28 non-leap to Feb 28: same date = 0
+		{"us_feb28_to_feb28", "DAYS360(DATE(2025,2,28),DATE(2025,2,28),FALSE)", 0, false, 0},
+		// Feb 28 in non-leap year to Mar 31
+		// US: Feb 28 is last of Feb → D1=30. Mar 31 → D2=30. (3-2)*30+(30-30)=30
+		{"us_feb28_mar31_nonleap", "DAYS360(DATE(2025,2,28),DATE(2025,3,31),FALSE)", 30, false, 0},
+		// EU: Feb 28 → D1=28 (no adjustment). Mar 31 → D2=30. (3-2)*30+(30-28)=32
+		{"eu_feb28_mar31_nonleap", "DAYS360(DATE(2025,2,28),DATE(2025,3,31),TRUE)", 32, false, 0},
+
+		// ── Leap year: Feb 29 ──────────────────────────────────────────
+		// Feb 29 to Mar 1 in leap year
+		// US: Feb 29 is last of Feb → D1=30. Mar 1 → D2=1. (3-2)*30+(1-30)=1
+		{"us_feb29_mar1_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,1),FALSE)", 1, false, 0},
+		// EU: D1=29, D2=1. (3-2)*30+(1-29)=2
+		{"eu_feb29_mar1_leap", "DAYS360(DATE(2024,2,29),DATE(2024,3,1),TRUE)", 2, false, 0},
+		// Both Feb 29 in same leap year, European
+		{"eu_both_feb29_leap", "DAYS360(DATE(2024,2,29),DATE(2024,2,29),TRUE)", 0, false, 0},
+
+		// ── Jan 30 to Feb 28 (non-leap) ────────────────────────────────
+		// US: D1=30, Feb 28 is last of Feb so both-last-of-Feb check fails (Jan 30 not last of Feb).
+		//   D1=30, Feb 28 not last-of-Feb-D1 case. D2=28, D1=30. D2<31 so no adj.
+		//   Actually: isLastDayOfFeb(sy=2025,sm=1,sd=30) is false. So no US Feb rules apply.
+		//   D2=28, D1=30. (2-1)*30+(28-30)=28
+		{"us_jan30_feb28", "DAYS360(DATE(2025,1,30),DATE(2025,2,28),FALSE)", 28, false, 0},
+		// EU: same, no 31-day adjustments. (2-1)*30+(28-30)=28
+		{"eu_jan30_feb28", "DAYS360(DATE(2025,1,30),DATE(2025,2,28),TRUE)", 28, false, 0},
+
+		// ── Month-end to month-end ─────────────────────────────────────
+		// Mar 31 to May 31: US: D1=31→30, D2=31→30 (D1>=30). (5-3)*30+(30-30)=60
+		{"us_mar31_may31", "DAYS360(DATE(2025,3,31),DATE(2025,5,31),FALSE)", 60, false, 0},
+		// EU: D1=31→30, D2=31→30. Same result = 60
+		{"eu_mar31_may31", "DAYS360(DATE(2025,3,31),DATE(2025,5,31),TRUE)", 60, false, 0},
+		// Apr 30 to Jun 30: no 31-adjustments needed. (6-4)*30+(30-30)=60
+		{"us_apr30_jun30", "DAYS360(DATE(2025,4,30),DATE(2025,6,30),FALSE)", 60, false, 0},
+
+		// ── Large date spans (multiple years) ──────────────────────────
+		// 2020-Jan-1 to 2025-Jan-1 = 5*360 = 1800
+		{"us_five_years", "DAYS360(DATE(2020,1,1),DATE(2025,1,1),FALSE)", 1800, false, 0},
+		{"eu_five_years", "DAYS360(DATE(2020,1,1),DATE(2025,1,1),TRUE)", 1800, false, 0},
+		// 10-year span
+		{"us_ten_years", "DAYS360(DATE(2015,6,15),DATE(2025,6,15),FALSE)", 3600, false, 0},
+
+		// ── Serial number inputs ───────────────────────────────────────
+		// Serial 1 = Jan 1, 1900; Serial 31 = Jan 31, 1900. Difference = 30
+		{"serial_numbers", "DAYS360(1,31,FALSE)", 30, false, 0},
+
+		// ── Boolean coercion for method parameter ──────────────────────
+		// TRUE = European, FALSE = US
+		{"method_true_bool", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),TRUE)", 75, false, 0},
+		{"method_false_bool", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),FALSE)", 76, false, 0},
+		// Numeric: 0 = US (FALSE), 1 = European (TRUE)
+		{"method_zero_is_us", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),0)", 76, false, 0},
+		{"method_one_is_eu", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),1)", 75, false, 0},
+		// Any non-zero number is European
+		{"method_nonzero_is_eu", "DAYS360(DATE(2025,1,15),DATE(2025,3,31),5)", 75, false, 0},
+
+		// ── US both last-day-of-Feb across different years ─────────────
+		// Feb 28 2025 (non-leap, last of Feb) to Feb 29 2024 (leap, last of Feb)
+		// start > end so negative. Both are last-of-Feb. D1=30,D2=30.
+		// (2024-2025)*360+(2-2)*30+(30-30) = -360
+		{"us_feb28_to_feb29_diff_years", "DAYS360(DATE(2025,2,28),DATE(2024,2,29),FALSE)", -360, false, 0},
+
+		// ── Error handling ─────────────────────────────────────────────
+		{"no_args", "DAYS360()", 0, true, ErrValVALUE},
+		{"one_arg", "DAYS360(1)", 0, true, ErrValVALUE},
+		{"too_many_args", "DAYS360(1,2,3,4)", 0, true, ErrValVALUE},
+		{"non_numeric_start", `DAYS360("abc",1)`, 0, true, ErrValVALUE},
+		{"non_numeric_end", `DAYS360(1,"abc")`, 0, true, ErrValVALUE},
+		{"non_numeric_method", `DAYS360(1,2,"abc")`, 0, true, ErrValVALUE},
+
+		// ── Error propagation ──────────────────────────────────────────
+		{"error_prop_start", "DAYS360(1/0,1)", 0, true, ErrValDIV0},
+		{"error_prop_end", "DAYS360(1,1/0)", 0, true, ErrValDIV0},
+		{"error_prop_method", "DAYS360(1,2,1/0)", 0, true, ErrValDIV0},
 	}
 
 	for _, tc := range tests {
@@ -1042,8 +1163,14 @@ func TestDAYS360(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Eval(%s): %v", tc.formula, err)
 			}
+			if tc.isErr {
+				if got.Type != ValueError || got.Err != tc.errVal {
+					t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
+				}
+				return
+			}
 			if got.Type != ValueNumber {
-				t.Fatalf("%s: got type %v, want number", tc.formula, got.Type)
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
 			}
 			if got.Num != tc.want {
 				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)

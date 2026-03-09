@@ -100,7 +100,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | DAVERAGE | Returns the average of matching records in a database range. | Db | 1 |
 | DAY | Returns the day of the month from a date. | Date & Time | 6 |
 | DAYS | Returns the number of days between two dates. | Date & Time | 17 |
-| DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 7 |
+| DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 57 |
 | DB | Returns depreciation using the fixed-declining balance method. | Financial | 29 |
 | DCOUNT | Counts numeric values in matching records of a database range. | Db | 1 |
 | DCOUNTA | Counts non-empty values in matching records of a database range. | Db | 1 |
