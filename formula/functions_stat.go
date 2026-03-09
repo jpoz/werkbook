@@ -128,6 +128,7 @@ func init() {
 	Register("AGGREGATE", NoCtx(fnAggregate))
 	Register("TREND", NoCtx(fnTREND))
 	Register("LINEST", NoCtx(fnLINEST))
+	Register("LOGEST", NoCtx(fnLOGEST))
 }
 
 func fnSUM(args []Value) (Value, error) {
@@ -6157,6 +6158,268 @@ func fnLINEST(args []Value) (Value, error) {
 	// Row 4: {F, df}
 	row4 := []Value{fStat, NumberVal(df)}
 	// Row 5: {ss_reg, ss_resid}
+	row5 := []Value{NumberVal(ssReg), NumberVal(ssResid)}
+
+	return Value{Type: ValueArray, Array: [][]Value{row1, row2, row3, row4, row5}}, nil
+}
+
+// fnLOGEST implements LOGEST(known_y's, [known_x's], [const], [stats]).
+// It fits an exponential curve y = b * m^x to the data by performing
+// linear regression on ln(y) vs x (i.e., it is the exponential counterpart
+// of LINEST).
+func fnLOGEST(args []Value) (Value, error) {
+	if len(args) < 1 || len(args) > 4 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// ---- Helper: extract a flat slice of float64 from a Value (array or scalar). ----
+	flattenNums := func(v Value) ([]float64, *Value) {
+		if v.Type == ValueArray {
+			var nums []float64
+			for _, row := range v.Array {
+				for _, cell := range row {
+					if cell.Type == ValueError {
+						return nil, &cell
+					}
+					n, e := CoerceNum(cell)
+					if e != nil {
+						return nil, e
+					}
+					nums = append(nums, n)
+				}
+			}
+			return nums, nil
+		}
+		if v.Type == ValueError {
+			return nil, &v
+		}
+		n, e := CoerceNum(v)
+		if e != nil {
+			return nil, e
+		}
+		return []float64{n}, nil
+	}
+
+	// ---- 1. known_y's ----
+	knownY, ev := flattenNums(args[0])
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(knownY)
+	if n == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	// All known_y must be > 0 (since we take ln).
+	for _, y := range knownY {
+		if y <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+	}
+
+	// ---- 2. known_x's ----
+	var knownX []float64
+	if len(args) >= 2 && args[1].Type != ValueEmpty {
+		knownX, ev = flattenNums(args[1])
+		if ev != nil {
+			return *ev, nil
+		}
+		if len(knownX) != n {
+			return ErrorVal(ErrValREF), nil
+		}
+	} else {
+		knownX = make([]float64, n)
+		for i := range knownX {
+			knownX[i] = float64(i + 1)
+		}
+	}
+
+	// ---- 3. const ----
+	useConst := true
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
+		cv, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		useConst = cv != 0
+	}
+
+	// ---- 4. stats ----
+	wantStats := false
+	if len(args) >= 4 && args[3].Type != ValueEmpty {
+		sv, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		wantStats = sv != 0
+	}
+
+	// ---- 5. Compute ln(y) ----
+	lnY := make([]float64, n)
+	for i, y := range knownY {
+		lnY[i] = math.Log(y)
+	}
+
+	// ---- 6. Compute regression on ln(y) vs x (same as LINEST) ----
+	nf := float64(n)
+	var slope, intercept float64
+	var ssResid, ssTotal, ssReg float64
+	var df float64
+	var sumXX float64 // Σ(xi²) — used for se_intercept
+	var ssqX float64  // Σ(xi-x̄)² or Σ(xi²) for const=FALSE
+
+	if useConst {
+		// Compute means.
+		sumX, sumLnY := 0.0, 0.0
+		for i := 0; i < n; i++ {
+			sumX += knownX[i]
+			sumLnY += lnY[i]
+		}
+		meanX := sumX / nf
+		meanLnY := sumLnY / nf
+
+		// Compute slope and intercept.
+		cov := 0.0
+		ssqX = 0.0
+		sumXX = 0.0
+		for i := 0; i < n; i++ {
+			dx := knownX[i] - meanX
+			cov += dx * (lnY[i] - meanLnY)
+			ssqX += dx * dx
+			sumXX += knownX[i] * knownX[i]
+		}
+
+		if ssqX == 0 {
+			slope = 0
+			intercept = meanLnY
+		} else {
+			slope = cov / ssqX
+			intercept = meanLnY - slope*meanX
+		}
+
+		// ss_total = Σ(lnYi - mean(lnY))²
+		for i := 0; i < n; i++ {
+			dy := lnY[i] - meanLnY
+			ssTotal += dy * dy
+		}
+		// ss_resid = Σ(lnYi - predicted)²
+		for i := 0; i < n; i++ {
+			pred := slope*knownX[i] + intercept
+			r := lnY[i] - pred
+			ssResid += r * r
+		}
+		ssReg = ssTotal - ssResid
+		df = nf - 2 // n - k - 1, k=1
+	} else {
+		// const=FALSE: force intercept=0, so lnY = slope*x.
+		// slope = Σ(xi*lnYi) / Σ(xi²)
+		sumXLnY := 0.0
+		sumXX = 0.0
+		for i := 0; i < n; i++ {
+			sumXLnY += knownX[i] * lnY[i]
+			sumXX += knownX[i] * knownX[i]
+		}
+		if sumXX == 0 {
+			return ErrorVal(ErrValDIV0), nil
+		}
+		slope = sumXLnY / sumXX
+		intercept = 0
+		ssqX = sumXX
+
+		// ss_total = Σ(lnYi²) (not centered)
+		for i := 0; i < n; i++ {
+			ssTotal += lnY[i] * lnY[i]
+		}
+		// ss_resid = Σ(lnYi - slope*xi)²
+		for i := 0; i < n; i++ {
+			pred := slope * knownX[i]
+			r := lnY[i] - pred
+			ssResid += r * r
+		}
+		ssReg = ssTotal - ssResid
+		df = nf - 1 // n - k, k=1
+	}
+
+	// ---- 7. Build result ----
+	// Row 1: {exp(slope), exp(intercept)} = {m, b} where y = b*m^x
+	m := math.Exp(slope)
+	b := math.Exp(intercept)
+
+	if !wantStats {
+		// Return 1×2 array: {m, b}
+		row := []Value{NumberVal(m), NumberVal(b)}
+		return Value{Type: ValueArray, Array: [][]Value{row}}, nil
+	}
+
+	// stats=TRUE: build 5×2 array
+	var r2, seY, seSlope, seIntercept Value
+	var fStat Value
+
+	if df <= 0 {
+		// Not enough degrees of freedom.
+		seY = ErrorVal(ErrValNA)
+		seSlope = ErrorVal(ErrValNA)
+		seIntercept = ErrorVal(ErrValNA)
+		fStat = ErrorVal(ErrValNA)
+		if ssResid == 0 {
+			r2 = NumberVal(1) // perfect fit trivially
+		} else {
+			r2 = ErrorVal(ErrValNA)
+		}
+	} else {
+		// r²
+		if ssTotal == 0 {
+			if ssResid == 0 {
+				r2 = NumberVal(1)
+			} else {
+				r2 = NumberVal(0)
+			}
+		} else {
+			r2 = NumberVal(ssReg / ssTotal)
+		}
+
+		// se_y = sqrt(ss_resid / df) — from the ln(y) regression, as-is
+		seYVal := math.Sqrt(ssResid / df)
+		seY = NumberVal(seYVal)
+
+		// se_slope — exponentiated
+		if ssqX == 0 {
+			seSlope = ErrorVal(ErrValNA)
+		} else {
+			seSlope = NumberVal(math.Exp(seYVal / math.Sqrt(ssqX)))
+		}
+
+		// se_intercept — exponentiated
+		if useConst {
+			if ssqX == 0 {
+				seIntercept = ErrorVal(ErrValNA)
+			} else {
+				seIntercept = NumberVal(math.Exp(seYVal * math.Sqrt(sumXX/(nf*ssqX))))
+			}
+		} else {
+			seIntercept = ErrorVal(ErrValNA)
+		}
+
+		// F-statistic = (ss_reg / k) / (ss_resid / df) — from ln(y) regression, as-is
+		if ssResid == 0 {
+			if ssReg == 0 {
+				fStat = ErrorVal(ErrValNA)
+			} else {
+				fStat = ErrorVal(ErrValNUM) // infinite F → Excel returns #NUM!
+			}
+		} else {
+			fStat = NumberVal((ssReg / 1) / (ssResid / df))
+		}
+	}
+
+	// Row 1: {m, b} = {exp(slope), exp(intercept)}
+	row1 := []Value{NumberVal(m), NumberVal(b)}
+	// Row 2: {exp(se_slope), exp(se_intercept)} — standard errors exponentiated
+	row2 := []Value{seSlope, seIntercept}
+	// Row 3: {r², se_y} — from ln(y) regression, as-is
+	row3 := []Value{r2, seY}
+	// Row 4: {F, df} — from ln(y) regression, as-is
+	row4 := []Value{fStat, NumberVal(df)}
+	// Row 5: {ss_reg, ss_resid} — from ln(y) regression, as-is
 	row5 := []Value{NumberVal(ssReg), NumberVal(ssResid)}
 
 	return Value{Type: ValueArray, Array: [][]Value{row1, row2, row3, row4, row5}}, nil
