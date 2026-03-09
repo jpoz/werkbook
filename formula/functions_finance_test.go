@@ -253,6 +253,205 @@ func TestPMT_Comprehensive(t *testing.T) {
 			args:    []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), ErrorVal(ErrValREF)},
 			wantErr: true,
 		},
+		{
+			name:    "error propagation in nper",
+			args:    []Value{NumberVal(0.05), ErrorVal(ErrValNA), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in pv",
+			args:    []Value{NumberVal(0.05), NumberVal(12), ErrorVal(ErrValDIV0)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in type",
+			args:    []Value{NumberVal(0.05), NumberVal(12), NumberVal(1000), NumberVal(0), ErrorVal(ErrValVALUE)},
+			wantErr: true,
+		},
+
+		// --- Error: empty string (not coercible to number) ---
+		{
+			name:    "error: empty string rate",
+			args:    []Value{StringVal(""), NumberVal(12), NumberVal(1000)},
+			wantErr: true,
+		},
+
+		// --- Boolean coercion ---
+		{
+			name: "bool coercion: TRUE=1 for all args",
+			args: []Value{BoolVal(true), BoolVal(true), BoolVal(true)},
+			want: -2.00,
+		},
+		{
+			name: "bool coercion: FALSE=0 for rate",
+			args: []Value{BoolVal(false), NumberVal(10), NumberVal(1000)},
+			want: -100,
+		},
+		{
+			name: "bool coercion: TRUE for type (beginning of period)",
+			args: []Value{NumberVal(0.10 / 12), NumberVal(120), NumberVal(50000), NumberVal(0), BoolVal(true)},
+			want: -655.29,
+		},
+		{
+			name: "bool coercion: FALSE for type (end of period)",
+			args: []Value{NumberVal(0.10 / 12), NumberVal(120), NumberVal(50000), NumberVal(0), BoolVal(false)},
+			want: -660.75,
+		},
+
+		// --- Empty cell references (coerce to 0) ---
+		{
+			name: "empty val for rate (coerces to 0)",
+			args: []Value{EmptyVal(), NumberVal(10), NumberVal(1000)},
+			want: -100,
+		},
+		{
+			name: "empty val for fv (coerces to 0)",
+			args: []Value{NumberVal(0.05 / 12), NumberVal(60), NumberVal(10000), EmptyVal()},
+			want: -188.71,
+		},
+		{
+			name: "empty val for type (coerces to 0, end of period)",
+			args: []Value{NumberVal(0.10 / 12), NumberVal(120), NumberVal(50000), NumberVal(0), EmptyVal()},
+			want: -660.75,
+		},
+
+		// --- Negative interest rate ---
+		{
+			name: "negative rate (deflation scenario)",
+			args: numArgs(-0.05/12, 60, 10000),
+			want: -146.35,
+		},
+
+		// --- Single period ---
+		{
+			name: "single period nper=1",
+			args: numArgs(0.10, 1, 1000),
+			want: -1100.00,
+		},
+
+		// --- Very high interest rate ---
+		{
+			name: "very high rate 100% per period",
+			args: numArgs(1.0, 12, 10000),
+			want: -10002.44,
+		},
+
+		// --- Fractional nper ---
+		{
+			name: "fractional nper 30.5 months",
+			args: numArgs(0.05/12, 30.5, 10000),
+			want: -349.82,
+		},
+
+		// --- Negative fv (you owe money at end) ---
+		{
+			name: "negative fv gives positive payment",
+			args: numArgs(0.06/12, 60, 0, -10000),
+			want: 143.33,
+		},
+
+		// --- Both pv and fv negative ---
+		{
+			name: "both pv and fv negative (receiving money)",
+			args: numArgs(0.05/12, 60, -10000, -5000),
+			want: 262.24,
+		},
+
+		// --- Negative nper ---
+		{
+			name: "negative nper",
+			args: numArgs(0.05/12, -60, 10000),
+			want: 147.05,
+		},
+
+		// --- Very large present value ---
+		{
+			name: "large pv $10M mortgage",
+			args: numArgs(0.04/12, 360, 10000000),
+			want: -47741.53,
+		},
+
+		// --- Small nper (2 periods) ---
+		{
+			name: "small nper 2 periods",
+			args: numArgs(0.10, 2, 1000),
+			want: -576.19,
+		},
+
+		// --- Zero result: pv=0, fv=0, rate != 0 ---
+		{
+			name: "zero result: pv and fv both zero",
+			args: numArgs(0.05, 12, 0),
+			want: 0,
+		},
+
+		// --- Negative pv with fv and type=1 ---
+		{
+			name: "negative pv with fv and type=1 (investment receiving payments)",
+			args: numArgs(0.06/12, 60, -10000, 5000, 1),
+			want: 121.06,
+		},
+
+		// --- Annual payments (doc consistency remark) ---
+		{
+			name: "annual payments 12% over 4 years",
+			args: numArgs(0.12, 4, 10000),
+			want: -3292.34,
+		},
+
+		// --- Quarterly payments ---
+		{
+			name: "quarterly payments 8% annual",
+			args: numArgs(0.08/4, 4, 5000),
+			want: -1313.12,
+		},
+
+		// --- Very small rate ---
+		{
+			name: "very small rate 0.01% annual",
+			args: numArgs(0.0001/12, 360, 200000),
+			want: -556.39,
+		},
+
+		// --- type=0 explicit with fv ---
+		{
+			name: "explicit type=0 with pv and fv",
+			args: numArgs(0.07/12, 84, 30000, 5000, 0),
+			want: -499.08,
+		},
+
+		// --- type=1 with both pv and fv ---
+		{
+			name: "type=1 with pv and fv",
+			args: numArgs(0.07/12, 84, 30000, 5000, 1),
+			want: -496.18,
+		},
+
+		// --- Zero rate ignores type (no interest = timing irrelevant) ---
+		{
+			name: "zero rate with type=1",
+			args: numArgs(0, 12, 6000, 0, 1),
+			want: -500.00,
+		},
+
+		// --- type=5 treated as type=1 (any non-zero) ---
+		{
+			name: "type=5 treated as beginning of period",
+			args: numArgs(0.10/12, 120, 50000, 0, 5),
+			want: -655.29,
+		},
+		{
+			name: "type=-1 treated as beginning of period",
+			args: numArgs(0.10/12, 120, 50000, 0, -1),
+			want: -655.29,
+		},
+
+		// --- One arg only (too few) ---
+		{
+			name:    "error: too few args (1)",
+			args:    numArgs(0.05),
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
