@@ -1132,6 +1132,14 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 				if cell.Type == ValueError {
 					return cell, nil
 				}
+				// Excel treats text and boolean cell values as 0 in
+				// SUMPRODUCT.  Computed booleans (e.g. from A1:A5>3)
+				// will already have been coerced to numbers by the
+				// arithmetic operators before reaching this function.
+				if cell.Type == ValueString || cell.Type == ValueBool {
+					product = 0
+					continue
+				}
 				n, e := CoerceNum(cell)
 				if e != nil {
 					n = 0

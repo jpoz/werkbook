@@ -862,7 +862,7 @@ func TestSUMPRODUCT_Comprehensive(t *testing.T) {
 		}
 	})
 
-	t.Run("boolean TRUE treated as 1 in array", func(t *testing.T) {
+	t.Run("boolean in cell range treated as 0", func(t *testing.T) {
 		resolver := &mockResolver{
 			cells: map[CellAddr]Value{
 				{Col: 1, Row: 1}: BoolVal(true),
@@ -871,14 +871,15 @@ func TestSUMPRODUCT_Comprehensive(t *testing.T) {
 				{Col: 2, Row: 2}: NumberVal(20),
 			},
 		}
-		// 1*10 + 0*20 = 10
+		// Excel treats boolean cell values as 0 in SUMPRODUCT:
+		// 0*10 + 0*20 = 0
 		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueNumber || got.Num != 10 {
-			t.Errorf("got %v, want 10", got)
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
 		}
 	})
 
@@ -1203,7 +1204,7 @@ func TestSUMPRODUCT_Extended(t *testing.T) {
 		}
 	})
 
-	t.Run("all boolean array", func(t *testing.T) {
+	t.Run("all boolean array treated as zero", func(t *testing.T) {
 		resolver := &mockResolver{
 			cells: map[CellAddr]Value{
 				{Col: 1, Row: 1}: BoolVal(true),
@@ -1212,14 +1213,14 @@ func TestSUMPRODUCT_Extended(t *testing.T) {
 				{Col: 1, Row: 4}: BoolVal(true),
 			},
 		}
-		// TRUE=1, FALSE=0, sum = 1+0+1+1 = 3
+		// Excel treats boolean cell values as 0 in SUMPRODUCT
 		cf := evalCompile(t, "SUMPRODUCT(A1:A4)")
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueNumber || got.Num != 3 {
-			t.Errorf("got %v, want 3", got)
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
 		}
 	})
 
@@ -1234,19 +1235,20 @@ func TestSUMPRODUCT_Extended(t *testing.T) {
 				{Col: 2, Row: 3}: NumberVal(30),
 			},
 		}
-		// 1*10 + 0*20 + 1*30 = 40
+		// Excel treats boolean cell values as 0:
+		// 0*10 + 0*20 + 0*30 = 0
 		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueNumber || got.Num != 40 {
-			t.Errorf("got %v, want 40", got)
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
 		}
 	})
 
 	t.Run("numeric string in array treated as zero", func(t *testing.T) {
-		// In Excel, SUMPRODUCT treats text cells (even "5") as 0.
+		// Excel treats all text (including numeric strings like "5") as 0
 		resolver := &mockResolver{
 			cells: map[CellAddr]Value{
 				{Col: 1, Row: 1}: StringVal("5"),
@@ -1255,19 +1257,15 @@ func TestSUMPRODUCT_Extended(t *testing.T) {
 				{Col: 2, Row: 2}: NumberVal(3),
 			},
 		}
-		// Excel: "5"→0, "10"→0 => 0*2 + 0*3 = 0
+		// "5"→0, "10"→0 => 0*2 + 0*3 = 0
 		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		// Note: Excel treats text (including numeric strings) as 0 in SUMPRODUCT.
-		// Our implementation uses CoerceNum which parses "5" → 5.
-		// Recording the current behavior: "5"*2 + "10"*3 = 10+30 = 40
-		if got.Type != ValueNumber {
-			t.Errorf("got type %v, want number", got.Type)
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
 		}
-		t.Logf("SUMPRODUCT with numeric strings: got %g (Excel would give 0)", got.Num)
 	})
 
 	t.Run("negative numbers in all positions", func(t *testing.T) {
