@@ -1609,24 +1609,117 @@ func TestROWS(t *testing.T) {
 }
 
 func TestIFNA(t *testing.T) {
-	resolver := &mockResolver{}
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// A1:A3 — lookup range for MATCH tests
+			{Col: 1, Row: 1}: StringVal("apple"),
+			{Col: 1, Row: 2}: StringVal("banana"),
+			{Col: 1, Row: 3}: StringVal("cherry"),
+			// B1:B3 — result range for VLOOKUP tests
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
 
-	cf := evalCompile(t, `IFNA(#N/A,"default")`)
-	got, err := Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
-	}
-	if got.Type != ValueString || got.Str != "default" {
-		t.Errorf("IFNA(#N/A) = %v, want default", got)
+	type want struct {
+		typ  ValueType
+		num  float64
+		str  string
+		bool bool
+		err  ErrorValue
 	}
 
-	cf = evalCompile(t, `IFNA(42,"default")`)
-	got, err = Eval(cf, resolver, nil)
-	if err != nil {
-		t.Fatalf("Eval: %v", err)
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// --- Existing basic tests (preserved) ---
+		{"na_returns_fallback", `IFNA(#N/A,"default")`, want{typ: ValueString, str: "default"}},
+		{"number_returns_value", `IFNA(42,"default")`, want{typ: ValueNumber, num: 42}},
+
+		// --- #N/A caught ---
+		{"na_literal_string_fallback", `IFNA(#N/A,"not available")`, want{typ: ValueString, str: "not available"}},
+		{"na_function_caught", `IFNA(NA(),"caught")`, want{typ: ValueString, str: "caught"}},
+		{"na_fallback_number", `IFNA(#N/A,99)`, want{typ: ValueNumber, num: 99}},
+		{"na_fallback_bool_true", `IFNA(#N/A,TRUE)`, want{typ: ValueBool, bool: true}},
+		{"na_fallback_bool_false", `IFNA(#N/A,FALSE)`, want{typ: ValueBool, bool: false}},
+		{"na_fallback_zero", `IFNA(#N/A,0)`, want{typ: ValueNumber, num: 0}},
+		{"na_fallback_empty_string", `IFNA(#N/A,"")`, want{typ: ValueString, str: ""}},
+		{"na_fallback_is_na", `IFNA(#N/A,#N/A)`, want{typ: ValueError, err: ErrValNA}},
+		{"na_fallback_is_error", `IFNA(#N/A,#VALUE!)`, want{typ: ValueError, err: ErrValVALUE}},
+		{"both_args_na", `IFNA(#N/A,NA())`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- Other errors pass through (NOT caught by IFNA) ---
+		{"value_error_passthrough", `IFNA(#VALUE!,"fallback")`, want{typ: ValueError, err: ErrValVALUE}},
+		{"div0_error_passthrough", `IFNA(1/0,"fallback")`, want{typ: ValueError, err: ErrValDIV0}},
+		{"ref_error_passthrough", `IFNA(#REF!,"fallback")`, want{typ: ValueError, err: ErrValREF}},
+		{"num_error_passthrough", `IFNA(#NUM!,"fallback")`, want{typ: ValueError, err: ErrValNUM}},
+		{"name_error_passthrough", `IFNA(#NAME?,"fallback")`, want{typ: ValueError, err: ErrValNAME}},
+		{"null_error_passthrough", `IFNA(#NULL!,"fallback")`, want{typ: ValueError, err: ErrValNULL}},
+
+		// --- Value is not #N/A — returns value ---
+		{"positive_number", `IFNA(100,"x")`, want{typ: ValueNumber, num: 100}},
+		{"negative_number", `IFNA(-7,"x")`, want{typ: ValueNumber, num: -7}},
+		{"decimal_number", `IFNA(3.14,"x")`, want{typ: ValueNumber, num: 3.14}},
+		{"zero_value", `IFNA(0,"x")`, want{typ: ValueNumber, num: 0}},
+		{"string_value", `IFNA("hello","x")`, want{typ: ValueString, str: "hello"}},
+		{"empty_string_value", `IFNA("","x")`, want{typ: ValueString, str: ""}},
+		{"bool_true_value", `IFNA(TRUE,"x")`, want{typ: ValueBool, bool: true}},
+		{"bool_false_value", `IFNA(FALSE,"x")`, want{typ: ValueBool, bool: false}},
+
+		// --- Nested IFNA ---
+		{"nested_inner_catches", `IFNA(IFNA(#N/A,#N/A),"caught")`, want{typ: ValueString, str: "caught"}},
+		{"nested_inner_ok", `IFNA(IFNA(5,#N/A),"caught")`, want{typ: ValueNumber, num: 5}},
+		{"nested_outer_catches", `IFNA(IFNA(#N/A,"ok"),99)`, want{typ: ValueString, str: "ok"}},
+
+		// --- With MATCH that returns #N/A (not found) ---
+		{"match_not_found", `IFNA(MATCH("grape",A1:A3,0),"not found")`, want{typ: ValueString, str: "not found"}},
+		{"match_found", `IFNA(MATCH("banana",A1:A3,0),"not found")`, want{typ: ValueNumber, num: 2}},
+
+		// --- Arithmetic expressions as value ---
+		{"arithmetic_ok", `IFNA(2+3,"x")`, want{typ: ValueNumber, num: 5}},
+		{"arithmetic_div0", `IFNA(0/0,"x")`, want{typ: ValueError, err: ErrValDIV0}},
+
+		// --- Wrong argument count ---
+		{"no_args", `IFNA()`, want{typ: ValueError, err: ErrValVALUE}},
+		{"one_arg", `IFNA(1)`, want{typ: ValueError, err: ErrValVALUE}},
+		{"three_args", `IFNA(1,2,3)`, want{typ: ValueError, err: ErrValVALUE}},
 	}
-	if got.Type != ValueNumber || got.Num != 42 {
-		t.Errorf("IFNA(42) = %v, want 42", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Type != ValueNumber || got.Num != tt.want.num {
+					t.Errorf("%s = %v (num %g), want number %g", tt.formula, got.Type, got.Num, tt.want.num)
+				}
+			case ValueString:
+				if got.Type != ValueString || got.Str != tt.want.str {
+					t.Errorf("%s = %v (str %q), want string %q", tt.formula, got.Type, got.Str, tt.want.str)
+				}
+			case ValueBool:
+				if got.Type != ValueBool || got.Bool != tt.want.bool {
+					t.Errorf("%s = %v (bool %v), want bool %v", tt.formula, got.Type, got.Bool, tt.want.bool)
+				}
+			case ValueError:
+				if got.Type != ValueError || got.Err != tt.want.err {
+					t.Errorf("%s = %v (err %v), want error %v", tt.formula, got.Type, got.Err, tt.want.err)
+				}
+			case ValueEmpty:
+				if got.Type != ValueEmpty {
+					t.Errorf("%s = %v, want empty", tt.formula, got.Type)
+				}
+			default:
+				t.Fatalf("unexpected want type %v", tt.want.typ)
+			}
+		})
 	}
 }
 

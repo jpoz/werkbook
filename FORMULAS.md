@@ -184,7 +184,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 23 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 53 |
-| IFNA | Returns a fallback value when a formula returns #N/A. | Information | 5 |
+| IFNA | Returns a fallback value when a formula returns #N/A. | Information | 39 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
 | IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
 | IMAGINARY | Returns the imaginary coefficient of a complex number. | Engineering | 38 |
