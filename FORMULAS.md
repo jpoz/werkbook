@@ -2,490 +2,490 @@
 
 Werkbook supports **437** spreadsheet formula functions.
 
-| Function | Category | Tests |
-|----------|----------|------:|
-| ABS | Math & Trig | 26 |
-| ACCRINT | Financial | 3 |
-| ACCRINTM | Financial | 3 |
-| ACOS | Math & Trig | 32 |
-| ACOSH | Math & Trig | 32 |
-| ACOT | Math & Trig | 27 |
-| ACOTH | Math & Trig | 32 |
-| ADDRESS | Lookup & Reference | 44 |
-| AGGREGATE | Statistical | 49 |
-| AMORDEGRC | Financial | 3 |
-| AMORLINC | Financial | 5 |
-| ANCHORARRAY | Lookup & Reference | 6 |
-| AND | Logical | 29 |
-| ARABIC | Math & Trig | 38 |
-| ARRAYTOTEXT | Text | 24 |
-| ASIN | Math & Trig | 30 |
-| ASINH | Math & Trig | 26 |
-| ATAN | Math & Trig | 25 |
-| ATAN2 | Math & Trig | 30 |
-| ATANH | Math & Trig | 31 |
-| AVEDEV | Statistical | 22 |
-| AVERAGE | Statistical | 28 |
-| AVERAGEA | Statistical | 24 |
-| AVERAGEIF | Statistical | 42 |
-| AVERAGEIFS | Statistical | 48 |
-| BASE | Math & Trig | 31 |
-| BESSELI | Engineering | 29 |
-| BESSELJ | Engineering | 30 |
-| BESSELK | Engineering | 32 |
-| BESSELY | Engineering | 33 |
-| BETA.DIST | Statistical | 43 |
-| BETA.INV | Statistical | 42 |
-| BIN2DEC | Engineering | 38 |
-| BIN2HEX | Engineering | 49 |
-| BIN2OCT | Engineering | 45 |
-| BINOM.DIST | Statistical | 30 |
-| BINOM.DIST.RANGE | Statistical | 39 |
-| BINOM.INV | Statistical | 33 |
-| BITAND | Math & Trig | 28 |
-| BITLSHIFT | Math & Trig | 27 |
-| BITOR | Math & Trig | 27 |
-| BITRSHIFT | Math & Trig | 27 |
-| BITXOR | Math & Trig | 27 |
-| CEILING | Math & Trig | 51 |
-| CEILING.MATH | Math & Trig | 37 |
-| CEILING.PRECISE | Math & Trig | 37 |
-| CHAR | Text | 8 |
-| CHISQ.DIST | Statistical | 39 |
-| CHISQ.DIST.RT | Statistical | 19 |
-| CHISQ.INV | Statistical | 36 |
-| CHISQ.INV.RT | Statistical | 20 |
-| CHISQ.TEST | Statistical | 23 |
-| CHOOSE | Text | 24 |
-| CHOOSECOLS | Lookup & Reference | 7 |
-| CHOOSEROWS | Lookup & Reference | 7 |
-| CLEAN | Text | 25 |
-| CODE | Text | 12 |
-| COLUMN | Information | 23 |
-| COLUMNS | Information | 30 |
-| COMBIN | Math & Trig | 40 |
-| COMBINA | Math & Trig | 31 |
-| COMPLEX | Engineering | 51 |
-| CONCAT | Text | 33 |
-| CONCATENATE | Text | 38 |
-| CONFIDENCE.NORM | Statistical | 25 |
-| CONFIDENCE.T | Statistical | 29 |
-| CONVERT | Engineering | 57 |
-| CORREL | Statistical | 20 |
-| COS | Math & Trig | 28 |
-| COSH | Math & Trig | 26 |
-| COT | Math & Trig | 26 |
-| COTH | Math & Trig | 26 |
-| COUNT | Statistical | 26 |
-| COUNTA | Statistical | 18 |
-| COUNTBLANK | Statistical | 15 |
-| COUNTIF | Statistical | 17 |
-| COUNTIFS | Statistical | 47 |
-| COUPDAYBS | Financial | 2 |
-| COUPDAYS | Financial | 2 |
-| COUPDAYSNC | Financial | 2 |
-| COUPNCD | Financial | 2 |
-| COUPNUM | Financial | 2 |
-| COUPPCD | Financial | 2 |
-| COVAR | Statistical | 5 |
-| COVARIANCE.P | Statistical | 20 |
-| COVARIANCE.S | Statistical | 3 |
-| CSC | Math & Trig | 27 |
-| CSCH | Math & Trig | 28 |
-| CUMIPMT | Financial | 33 |
-| CUMPRINC | Financial | 29 |
-| DATE | Date & Time | 50 |
-| DATEDIF | Date & Time | 18 |
-| DATEVALUE | Date & Time | 39 |
-| DAVERAGE | Db | 1 |
-| DAY | Date & Time | 6 |
-| DAYS | Date & Time | 17 |
-| DAYS360 | Date & Time | 7 |
-| DB | Financial | 29 |
-| DCOUNT | Db | 1 |
-| DCOUNTA | Db | 1 |
-| DDB | Financial | 27 |
-| DEC2BIN | Engineering | 37 |
-| DEC2HEX | Engineering | 45 |
-| DEC2OCT | Engineering | 45 |
-| DECIMAL | Math & Trig | 38 |
-| DEGREES | Math & Trig | 25 |
-| DELTA | Engineering | 24 |
-| DEVSQ | Statistical | 23 |
-| DGET | Db | 1 |
-| DISC | Financial | 3 |
-| DMAX | Db | 1 |
-| DMIN | Db | 1 |
-| DOLLAR | Text | 25 |
-| DOLLARDE | Financial | 18 |
-| DOLLARFR | Financial | 17 |
-| DPRODUCT | Db | 1 |
-| DROP | Lookup & Reference | 26 |
-| DSTDEV | Db | 1 |
-| DSTDEVP | Db | 1 |
-| DSUM | Db | 7 |
-| DURATION | Financial | 2 |
-| DVAR | Db | 1 |
-| DVARP | Db | 1 |
-| EDATE | Date & Time | 19 |
-| EFFECT | Financial | 18 |
-| ENCODEURL | Text | 44 |
-| EOMONTH | Date & Time | 18 |
-| ERF | Math & Trig | 22 |
-| ERF.PRECISE | Math & Trig | 20 |
-| ERFC | Math & Trig | 18 |
-| ERFC.PRECISE | Math & Trig | 19 |
-| ERROR.TYPE | Information | 17 |
-| EVEN | Math & Trig | 34 |
-| EXACT | Text | 32 |
-| EXP | Math & Trig | 29 |
-| EXPAND | Lookup & Reference | 27 |
-| EXPON.DIST | Statistical | 28 |
-| F.DIST | Statistical | 42 |
-| F.DIST.RT | Statistical | 19 |
-| F.INV | Statistical | 36 |
-| F.INV.RT | Statistical | 21 |
-| F.TEST | Statistical | 26 |
-| FACT | Math & Trig | 28 |
-| FACTDOUBLE | Math & Trig | 30 |
-| FALSE | Logical | 11 |
-| FILTER | Lookup & Reference | 31 |
-| FIND | Text | 7 |
-| FISHER | Statistical | 15 |
-| FISHERINV | Statistical | 15 |
-| FIXED | Text | 32 |
-| FLOOR | Math & Trig | 50 |
-| FLOOR.MATH | Math & Trig | 37 |
-| FLOOR.PRECISE | Math & Trig | 36 |
-| FORECAST | Statistical | 20 |
-| FORECAST.LINEAR | Statistical | 22 |
-| FORMULATEXT | Information | 7 |
-| FREQUENCY | Statistical | 25 |
-| FV | Financial | 4 |
-| FVSCHEDULE | Financial | 1 |
-| GAMMA | Math & Trig | 31 |
-| GAMMA.DIST | Statistical | 41 |
-| GAMMA.INV | Statistical | 34 |
-| GAMMALN | Statistical | 23 |
-| GAMMALN.PRECISE | Statistical | 6 |
-| GAUSS | Statistical | 9 |
-| GCD | Math & Trig | 37 |
-| GEOMEAN | Statistical | 24 |
-| GESTEP | Engineering | 29 |
-| GROWTH | Statistical | 13 |
-| HARMEAN | Statistical | 21 |
-| HEX2BIN | Engineering | 38 |
-| HEX2DEC | Engineering | 39 |
-| HEX2OCT | Engineering | 35 |
-| HLOOKUP | Lookup & Reference | 22 |
-| HOUR | Date & Time | 16 |
-| HSTACK | Lookup & Reference | 18 |
-| HYPERLINK | Lookup & Reference | 23 |
-| HYPGEOM.DIST | Statistical | 37 |
-| IF | Logical | 23 |
-| IFERROR | Logical | 51 |
-| IFNA | Information | 5 |
-| IFS | Logical | 32 |
-| IMABS | Engineering | 38 |
-| IMAGINARY | Engineering | 38 |
-| IMARGUMENT | Engineering | 47 |
-| IMCONJUGATE | Engineering | 47 |
-| IMCOS | Engineering | 30 |
-| IMCOSH | Engineering | 27 |
-| IMCOT | Engineering | 25 |
-| IMCSC | Engineering | 25 |
-| IMCSCH | Engineering | 25 |
-| IMDIV | Engineering | 34 |
-| IMEXP | Engineering | 30 |
-| IMLN | Engineering | 30 |
-| IMLOG10 | Engineering | 30 |
-| IMLOG2 | Engineering | 31 |
-| IMPOWER | Engineering | 39 |
-| IMPRODUCT | Engineering | 36 |
-| IMREAL | Engineering | 38 |
-| IMSEC | Engineering | 29 |
-| IMSECH | Engineering | 25 |
-| IMSIN | Engineering | 30 |
-| IMSINH | Engineering | 27 |
-| IMSQRT | Engineering | 32 |
-| IMSUB | Engineering | 34 |
-| IMSUM | Engineering | 37 |
-| IMTAN | Engineering | 28 |
-| INDEX | Lookup & Reference | 19 |
-| INDIRECT | Lookup & Reference | 17 |
-| INT | Math & Trig | 24 |
-| INTERCEPT | Statistical | 16 |
-| INTRATE | Financial | 3 |
-| IPMT | Financial | 4 |
-| IRR | Financial | 19 |
-| ISBLANK | Information | 23 |
-| ISERR | Information | 21 |
-| ISERROR | Information | 22 |
-| ISEVEN | Information | 4 |
-| ISFORMULA | Information | 7 |
-| ISLOGICAL | Information | 27 |
-| ISNA | Information | 22 |
-| ISNONTEXT | Information | 26 |
-| ISNUMBER | Information | 23 |
-| ISO.CEILING | Math & Trig | 48 |
-| ISODD | Information | 4 |
-| ISOWEEKNUM | Date & Time | 26 |
-| ISPMT | Financial | 17 |
-| ISREF | Information | 24 |
-| ISTEXT | Information | 24 |
-| KURT | Statistical | 22 |
-| LAMBDA | Logical | 6 |
-| LARGE | Statistical | 30 |
-| LCM | Math & Trig | 39 |
-| LEFT | Text | 42 |
-| LEN | Text | 29 |
-| LET | Logical | 33 |
-| LINEST | Statistical | 2 |
-| LN | Math & Trig | 32 |
-| LOG | Math & Trig | 35 |
-| LOG10 | Math & Trig | 31 |
-| LOGEST | Statistical | 2 |
-| LOGNORM.DIST | Statistical | 31 |
-| LOGNORM.INV | Statistical | 31 |
-| LOOKUP | Lookup & Reference | 24 |
-| LOWER | Text | 23 |
-| MATCH | Lookup & Reference | 16 |
-| MAX | Statistical | 31 |
-| MAXA | Statistical | 16 |
-| MAXIFS | Statistical | 45 |
-| MDETERM | Math & Trig | 31 |
-| MDURATION | Financial | 2 |
-| MEDIAN | Statistical | 27 |
-| MID | Text | 50 |
-| MIN | Statistical | 30 |
-| MINA | Statistical | 16 |
-| MINIFS | Statistical | 49 |
-| MINUTE | Date & Time | 16 |
-| MINVERSE | Math & Trig | 33 |
-| MIRR | Financial | 24 |
-| MMULT | Math & Trig | 38 |
-| MOD | Math & Trig | 16 |
-| MODE | Statistical | 19 |
-| MODE.MULT | Statistical | 22 |
-| MODE.SNGL | Statistical | 19 |
-| MONTH | Date & Time | 5 |
-| MROUND | Math & Trig | 38 |
-| MULTINOMIAL | Math & Trig | 36 |
-| MUNIT | Math & Trig | 38 |
-| N | Information | 18 |
-| NA | Information | 4 |
-| NEGBINOM.DIST | Statistical | 30 |
-| NETWORKDAYS | Date & Time | 26 |
-| NETWORKDAYS.INTL | Date & Time | 44 |
-| NOMINAL | Financial | 17 |
-| NORM.DIST | Statistical | 29 |
-| NORM.INV | Statistical | 28 |
-| NORM.S.DIST | Statistical | 27 |
-| NORM.S.INV | Statistical | 27 |
-| NOT | Logical | 10 |
-| NOW | Date & Time | 2 |
-| NPER | Financial | 3 |
-| NPV | Financial | 25 |
-| NUMBERVALUE | Text | 27 |
-| OCT2BIN | Engineering | 38 |
-| OCT2DEC | Engineering | 43 |
-| OCT2HEX | Engineering | 36 |
-| ODD | Math & Trig | 40 |
-| OFFSET | Lookup & Reference | 25 |
-| OR | Logical | 50 |
-| PDURATION | Financial | 23 |
-| PEARSON | Statistical | 23 |
-| PERCENTILE | Statistical | 32 |
-| PERCENTILE.EXC | Statistical | 31 |
-| PERCENTILE.INC | Statistical | 4 |
-| PERCENTRANK | Statistical | 26 |
-| PERCENTRANK.EXC | Statistical | 29 |
-| PERCENTRANK.INC | Statistical | 3 |
-| PERMUT | Math & Trig | 39 |
-| PERMUTATIONA | Statistical | 17 |
-| PHI | Statistical | 11 |
-| PI | Math & Trig | 13 |
-| PMT | Financial | 5 |
-| POISSON.DIST | Statistical | 26 |
-| POWER | Math & Trig | 49 |
-| PPMT | Financial | 2 |
-| PRICE | Financial | 3 |
-| PRICEDISC | Financial | 3 |
-| PRICEMAT | Financial | 3 |
-| PROB | Statistical | 27 |
-| PRODUCT | Math & Trig | 36 |
-| PROPER | Text | 25 |
-| PV | Financial | 3 |
-| QUARTILE | Statistical | 36 |
-| QUARTILE.EXC | Statistical | 27 |
-| QUARTILE.INC | Statistical | 5 |
-| QUOTIENT | Math & Trig | 43 |
-| RADIANS | Math & Trig | 30 |
-| RAND | Math & Trig | 1 |
-| RANDARRAY | Math & Trig | 50 |
-| RANDBETWEEN | Math & Trig | 1 |
-| RANK | Statistical | 32 |
-| RANK.AVG | Statistical | 21 |
-| RANK.EQ | Statistical | 7 |
-| RATE | Financial | 6 |
-| RECEIVED | Financial | 3 |
-| REPLACE | Text | 38 |
-| REPT | Text | 26 |
-| RIGHT | Text | 41 |
-| ROMAN | Text | 38 |
-| ROUND | Math & Trig | 39 |
-| ROUNDDOWN | Math & Trig | 36 |
-| ROUNDUP | Math & Trig | 36 |
-| ROW | Information | 1 |
-| ROWS | Information | 32 |
-| RRI | Financial | 21 |
-| RSQ | Statistical | 23 |
-| SEARCH | Text | 15 |
-| SEC | Math & Trig | 26 |
-| SECH | Math & Trig | 28 |
-| SECOND | Date & Time | 16 |
-| SEQUENCE | Math & Trig | 46 |
-| SERIESSUM | Math & Trig | 27 |
-| SIGN | Math & Trig | 30 |
-| SIN | Math & Trig | 33 |
-| SINH | Math & Trig | 23 |
-| SKEW | Statistical | 23 |
-| SKEW.P | Statistical | 27 |
-| SLN | Financial | 6 |
-| SLOPE | Statistical | 16 |
-| SMALL | Statistical | 28 |
-| SORT | Logical | 25 |
-| SORTBY | Logical | 2 |
-| SQRT | Math & Trig | 29 |
-| SQRTPI | Math & Trig | 25 |
-| STANDARDIZE | Statistical | 16 |
-| STDEV | Statistical | 24 |
-| STDEV.P | Statistical | 15 |
-| STDEV.S | Statistical | 1 |
-| STDEVA | Statistical | 28 |
-| STDEVP | Statistical | 4 |
-| STDEVPA | Statistical | 29 |
-| STEYX | Statistical | 25 |
-| SUBSTITUTE | Text | 23 |
-| SUBTOTAL | Math & Trig | 32 |
-| SUM | Statistical | 44 |
-| SUMIF | Statistical | 37 |
-| SUMIFS | Statistical | 42 |
-| SUMPRODUCT | Statistical | 22 |
-| SUMSQ | Statistical | 30 |
-| SUMX2MY2 | Math & Trig | 31 |
-| SUMX2PY2 | Math & Trig | 31 |
-| SUMXMY2 | Math & Trig | 31 |
-| SWITCH | Logical | 28 |
-| SYD | Financial | 23 |
-| T | Text | 17 |
-| T.DIST | Statistical | 41 |
-| T.DIST.2T | Statistical | 19 |
-| T.DIST.RT | Statistical | 18 |
-| T.INV | Statistical | 33 |
-| T.INV.2T | Statistical | 20 |
-| T.TEST | Statistical | 34 |
-| TAKE | Lookup & Reference | 30 |
-| TAN | Math & Trig | 23 |
-| TANH | Math & Trig | 27 |
-| TBILLEQ | Financial | 3 |
-| TBILLPRICE | Financial | 3 |
-| TBILLYIELD | Financial | 3 |
-| TEXT | Text | 127 |
-| TEXTAFTER | Text | 34 |
-| TEXTBEFORE | Text | 34 |
-| TEXTJOIN | Text | 26 |
-| TEXTSPLIT | Text | 50 |
-| TIME | Date & Time | 42 |
-| TIMEVALUE | Date & Time | 7 |
-| TOCOL | Lookup & Reference | 22 |
-| TODAY | Date & Time | 2 |
-| TOROW | Lookup & Reference | 20 |
-| TRANSPOSE | Lookup & Reference | 35 |
-| TREND | Statistical | 10 |
-| TRIM | Text | 18 |
-| TRIMMEAN | Statistical | 23 |
-| TRUE | Logical | 10 |
-| TRUNC | Math & Trig | 34 |
-| TYPE | Information | 22 |
-| UNICHAR | Text | 37 |
-| UNICODE | Text | 36 |
-| UNIQUE | Lookup & Reference | 29 |
-| UPPER | Text | 23 |
-| VALUE | Text | 31 |
-| VALUETOTEXT | Text | 26 |
-| VAR | Statistical | 24 |
-| VAR.P | Statistical | 22 |
-| VAR.S | Statistical | 4 |
-| VARA | Statistical | 22 |
-| VARP | Statistical | 4 |
-| VARPA | Statistical | 22 |
-| VDB | Financial | 33 |
-| VLOOKUP | Lookup & Reference | 15 |
-| VSTACK | Lookup & Reference | 18 |
-| WEEKDAY | Date & Time | 1 |
-| WEEKNUM | Date & Time | 39 |
-| WEIBULL.DIST | Statistical | 33 |
-| WORKDAY | Date & Time | 23 |
-| WORKDAY.INTL | Date & Time | 34 |
-| WRAPCOLS | Lookup & Reference | 20 |
-| WRAPROWS | Lookup & Reference | 19 |
-| XIRR | Financial | 19 |
-| XLOOKUP | Lookup & Reference | 22 |
-| XMATCH | Lookup & Reference | 35 |
-| XNPV | Financial | 18 |
-| XOR | Logical | 34 |
-| YEAR | Date & Time | 26 |
-| YEARFRAC | Date & Time | 38 |
-| YIELD | Financial | 2 |
-| YIELDDISC | Financial | 3 |
-| YIELDMAT | Financial | 3 |
-| Z.TEST | Statistical | 22 |
+| Function | Description | Category | Tests |
+|----------|-------------|----------|------:|
+| ABS | Returns the absolute value of a number. | Math & Trig | 26 |
+| ACCRINT | Returns accrued interest for a security that pays periodic interest. | Financial | 3 |
+| ACCRINTM | Returns accrued interest for a security that pays interest at maturity. | Financial | 3 |
+| ACOS | Returns the arccosine of a number. | Math & Trig | 32 |
+| ACOSH | Returns the inverse hyperbolic cosine of a number. | Math & Trig | 32 |
+| ACOT | Returns the arccotangent of a number. | Math & Trig | 27 |
+| ACOTH | Returns the inverse hyperbolic cotangent of a number. | Math & Trig | 32 |
+| ADDRESS | Builds a cell reference from row and column numbers. | Lookup & Reference | 44 |
+| AGGREGATE | Applies an aggregate calculation with options to ignore selected values. | Statistical | 49 |
+| AMORDEGRC | Returns depreciation for each accounting period using a French declining balance method. | Financial | 3 |
+| AMORLINC | Returns depreciation for each accounting period using a linear method. | Financial | 5 |
+| ANCHORARRAY | Returns the full spilled array produced by a dynamic array formula. | Lookup & Reference | 6 |
+| AND | Returns TRUE when every supplied condition is TRUE. | Logical | 29 |
+| ARABIC | Converts Roman numeral text to an Arabic number. | Math & Trig | 38 |
+| ARRAYTOTEXT | Converts an array into a text representation. | Text | 24 |
+| ASIN | Returns the arcsine of a number. | Math & Trig | 30 |
+| ASINH | Returns the inverse hyperbolic sine of a number. | Math & Trig | 26 |
+| ATAN | Returns the arctangent of a number. | Math & Trig | 25 |
+| ATAN2 | Returns the arctangent from x and y coordinates. | Math & Trig | 30 |
+| ATANH | Returns the inverse hyperbolic tangent of a number. | Math & Trig | 31 |
+| AVEDEV | Returns the average absolute deviation from the mean. | Statistical | 22 |
+| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 28 |
+| AVERAGEA | Returns the average of supplied values, including logical values and text coercions. | Statistical | 24 |
+| AVERAGEIF | Returns the average of values that match one condition. | Statistical | 42 |
+| AVERAGEIFS | Returns the average of values that match all supplied conditions. | Statistical | 48 |
+| BASE | Converts a number to text in the requested base. | Math & Trig | 31 |
+| BESSELI | Returns the modified Bessel function I_n(x). | Engineering | 29 |
+| BESSELJ | Returns the Bessel function J_n(x). | Engineering | 30 |
+| BESSELK | Returns the modified Bessel function K_n(x). | Engineering | 32 |
+| BESSELY | Returns the Bessel function Y_n(x). | Engineering | 33 |
+| BETA.DIST | Returns the beta distribution. | Statistical | 43 |
+| BETA.INV | Returns the inverse of the beta cumulative distribution. | Statistical | 42 |
+| BIN2DEC | Converts a binary number to decimal. | Engineering | 38 |
+| BIN2HEX | Converts a binary number to hexadecimal. | Engineering | 49 |
+| BIN2OCT | Converts a binary number to octal. | Engineering | 45 |
+| BINOM.DIST | Returns the binomial distribution. | Statistical | 30 |
+| BINOM.DIST.RANGE | Returns the probability that a binomial result falls within a range. | Statistical | 39 |
+| BINOM.INV | Returns the smallest value whose binomial cumulative distribution meets a criterion. | Statistical | 33 |
+| BITAND | Returns the bitwise AND of two integers. | Math & Trig | 28 |
+| BITLSHIFT | Returns a number shifted left by a requested number of bits. | Math & Trig | 27 |
+| BITOR | Returns the bitwise OR of two integers. | Math & Trig | 27 |
+| BITRSHIFT | Returns a number shifted right by a requested number of bits. | Math & Trig | 27 |
+| BITXOR | Returns the bitwise XOR of two integers. | Math & Trig | 27 |
+| CEILING | Rounds a number up to the nearest multiple of a significance. | Math & Trig | 51 |
+| CEILING.MATH | Rounds a number up using Excel's CEILING.MATH rules. | Math & Trig | 37 |
+| CEILING.PRECISE | Rounds a number up to the nearest significance, ignoring the sign of the significance. | Math & Trig | 37 |
+| CHAR | Returns the character for a numeric code. | Text | 8 |
+| CHISQ.DIST | Returns the chi-square distribution. | Statistical | 39 |
+| CHISQ.DIST.RT | Returns the right-tailed chi-square probability. | Statistical | 19 |
+| CHISQ.INV | Returns the inverse of the chi-square cumulative distribution. | Statistical | 36 |
+| CHISQ.INV.RT | Returns the inverse of the right-tailed chi-square distribution. | Statistical | 20 |
+| CHISQ.TEST | Returns the result of a chi-square test. | Statistical | 23 |
+| CHOOSE | Returns the value at a position from a supplied list of choices. | Text | 24 |
+| CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 7 |
+| CHOOSEROWS | Returns selected rows from an array. | Lookup & Reference | 7 |
+| CLEAN | Removes non-printing characters from text. | Text | 25 |
+| CODE | Returns the numeric code for the first character in text. | Text | 12 |
+| COLUMN | Returns the column number of a reference. | Information | 23 |
+| COLUMNS | Returns the number of columns in a reference or array. | Information | 30 |
+| COMBIN | Returns the number of combinations for a given number of items. | Math & Trig | 40 |
+| COMBINA | Returns the number of combinations with repetitions. | Math & Trig | 31 |
+| COMPLEX | Builds a complex number from real and imaginary parts. | Engineering | 51 |
+| CONCAT | Joins text from multiple values or ranges. | Text | 33 |
+| CONCATENATE | Joins multiple text values into one string. | Text | 38 |
+| CONFIDENCE.NORM | Returns a normal-distribution confidence interval half-width. | Statistical | 25 |
+| CONFIDENCE.T | Returns a Student's t-distribution confidence interval half-width. | Statistical | 29 |
+| CONVERT | Converts a number from one measurement system to another. | Engineering | 57 |
+| CORREL | Returns the correlation coefficient between two data sets. | Statistical | 20 |
+| COS | Returns the cosine of an angle. | Math & Trig | 28 |
+| COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
+| COT | Returns the cotangent of an angle. | Math & Trig | 26 |
+| COTH | Returns the hyperbolic cotangent of a number. | Math & Trig | 26 |
+| COUNT | Counts numeric values. | Statistical | 26 |
+| COUNTA | Counts non-empty values. | Statistical | 18 |
+| COUNTBLANK | Counts blank cells in a range. | Statistical | 15 |
+| COUNTIF | Counts values that match one condition. | Statistical | 17 |
+| COUNTIFS | Counts values that match all supplied conditions. | Statistical | 47 |
+| COUPDAYBS | Returns the number of days from the coupon period start to settlement. | Financial | 2 |
+| COUPDAYS | Returns the number of days in the coupon period containing settlement. | Financial | 2 |
+| COUPDAYSNC | Returns the number of days from settlement to the next coupon date. | Financial | 2 |
+| COUPNCD | Returns the next coupon date after settlement. | Financial | 2 |
+| COUPNUM | Returns the number of coupons payable between settlement and maturity. | Financial | 2 |
+| COUPPCD | Returns the previous coupon date before settlement. | Financial | 2 |
+| COVAR | Returns the population covariance of two data sets. | Statistical | 5 |
+| COVARIANCE.P | Returns the population covariance of two data sets. | Statistical | 20 |
+| COVARIANCE.S | Returns the sample covariance of two data sets. | Statistical | 3 |
+| CSC | Returns the cosecant of an angle. | Math & Trig | 27 |
+| CSCH | Returns the hyperbolic cosecant of a number. | Math & Trig | 28 |
+| CUMIPMT | Returns cumulative interest paid over a span of payment periods. | Financial | 33 |
+| CUMPRINC | Returns cumulative principal paid over a span of payment periods. | Financial | 29 |
+| DATE | Builds a date from year, month, and day numbers. | Date & Time | 50 |
+| DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 18 |
+| DATEVALUE | Converts date text to a serial date number. | Date & Time | 39 |
+| DAVERAGE | Returns the average of matching records in a database range. | Db | 1 |
+| DAY | Returns the day of the month from a date. | Date & Time | 6 |
+| DAYS | Returns the number of days between two dates. | Date & Time | 17 |
+| DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 7 |
+| DB | Returns depreciation using the fixed-declining balance method. | Financial | 29 |
+| DCOUNT | Counts numeric values in matching records of a database range. | Db | 1 |
+| DCOUNTA | Counts non-empty values in matching records of a database range. | Db | 1 |
+| DDB | Returns depreciation using the double-declining balance method or another factor. | Financial | 27 |
+| DEC2BIN | Converts a decimal number to binary. | Engineering | 37 |
+| DEC2HEX | Converts a decimal number to hexadecimal. | Engineering | 45 |
+| DEC2OCT | Converts a decimal number to octal. | Engineering | 45 |
+| DECIMAL | Converts a number in a given base to decimal. | Math & Trig | 38 |
+| DEGREES | Converts radians to degrees. | Math & Trig | 25 |
+| DELTA | Tests whether two numbers are equal and returns 1 or 0. | Engineering | 24 |
+| DEVSQ | Returns the sum of squared deviations from the sample mean. | Statistical | 23 |
+| DGET | Returns a single value from matching records in a database range. | Db | 1 |
+| DISC | Returns the discount rate for a security. | Financial | 3 |
+| DMAX | Returns the maximum value from matching records in a database range. | Db | 1 |
+| DMIN | Returns the minimum value from matching records in a database range. | Db | 1 |
+| DOLLAR | Formats a number as currency text. | Text | 25 |
+| DOLLARDE | Converts a fractional dollar price to a decimal price. | Financial | 18 |
+| DOLLARFR | Converts a decimal dollar price to a fractional price. | Financial | 17 |
+| DPRODUCT | Returns the product of matching records in a database range. | Db | 1 |
+| DROP | Drops rows or columns from the start or end of an array. | Lookup & Reference | 26 |
+| DSTDEV | Returns the sample standard deviation of matching database records. | Db | 1 |
+| DSTDEVP | Returns the population standard deviation of matching database records. | Db | 1 |
+| DSUM | Returns the sum of matching records in a database range. | Db | 7 |
+| DURATION | Returns the Macauley duration of a security. | Financial | 2 |
+| DVAR | Returns the sample variance of matching database records. | Db | 1 |
+| DVARP | Returns the population variance of matching database records. | Db | 1 |
+| EDATE | Shifts a date by a number of whole months. | Date & Time | 19 |
+| EFFECT | Returns the effective annual interest rate for a nominal rate. | Financial | 18 |
+| ENCODEURL | Encodes text so it can be safely used in a URL. | Text | 44 |
+| EOMONTH | Returns the last day of a month offset from a start date. | Date & Time | 18 |
+| ERF | Returns the error function. | Math & Trig | 22 |
+| ERF.PRECISE | Returns the error function integrated from 0 to a limit. | Math & Trig | 20 |
+| ERFC | Returns the complementary error function. | Math & Trig | 18 |
+| ERFC.PRECISE | Returns the complementary error function integrated from a limit to infinity. | Math & Trig | 19 |
+| ERROR.TYPE | Returns a number identifying an error value. | Information | 17 |
+| EVEN | Rounds a number away from zero to the nearest even integer. | Math & Trig | 34 |
+| EXACT | Returns TRUE when two text values match exactly. | Text | 32 |
+| EXP | Returns e raised to a power. | Math & Trig | 29 |
+| EXPAND | Pads an array to a larger size with a fill value. | Lookup & Reference | 27 |
+| EXPON.DIST | Returns the exponential distribution. | Statistical | 28 |
+| F.DIST | Returns the F probability distribution. | Statistical | 42 |
+| F.DIST.RT | Returns the right-tailed F probability distribution. | Statistical | 19 |
+| F.INV | Returns the inverse of the F cumulative distribution. | Statistical | 36 |
+| F.INV.RT | Returns the inverse of the right-tailed F distribution. | Statistical | 21 |
+| F.TEST | Returns the result of an F-test for two arrays. | Statistical | 26 |
+| FACT | Returns the factorial of a number. | Math & Trig | 28 |
+| FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
+| FALSE | Returns the logical value FALSE. | Logical | 11 |
+| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 31 |
+| FIND | Returns the position of one text value inside another, case-sensitive. | Text | 7 |
+| FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
+| FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
+| FIXED | Formats a number as text with a fixed number of decimals. | Text | 32 |
+| FLOOR | Rounds a number down to the nearest multiple of a significance. | Math & Trig | 50 |
+| FLOOR.MATH | Rounds a number down using Excel's FLOOR.MATH rules. | Math & Trig | 37 |
+| FLOOR.PRECISE | Rounds a number down to the nearest significance, ignoring the sign of the significance. | Math & Trig | 36 |
+| FORECAST | Predicts a future value using linear regression. | Statistical | 20 |
+| FORECAST.LINEAR | Predicts a future value using linear regression. | Statistical | 22 |
+| FORMULATEXT | Returns the formula text from a referenced cell. | Information | 7 |
+| FREQUENCY | Returns a frequency distribution for numeric bins. | Statistical | 25 |
+| FV | Returns the future value of an investment or annuity. | Financial | 4 |
+| FVSCHEDULE | Returns a future value after applying a schedule of interest rates. | Financial | 1 |
+| GAMMA | Returns the gamma function value. | Math & Trig | 31 |
+| GAMMA.DIST | Returns the gamma distribution. | Statistical | 41 |
+| GAMMA.INV | Returns the inverse of the gamma cumulative distribution. | Statistical | 34 |
+| GAMMALN | Returns the natural logarithm of the gamma function. | Statistical | 23 |
+| GAMMALN.PRECISE | Returns the natural logarithm of the gamma function using the precise definition. | Statistical | 6 |
+| GAUSS | Returns the probability that a standard normal variable lies between the mean and a value. | Statistical | 9 |
+| GCD | Returns the greatest common divisor. | Math & Trig | 37 |
+| GEOMEAN | Returns the geometric mean of positive values. | Statistical | 24 |
+| GESTEP | Returns 1 when a number meets or exceeds a threshold, otherwise 0. | Engineering | 29 |
+| GROWTH | Fits or projects values along an exponential trend. | Statistical | 13 |
+| HARMEAN | Returns the harmonic mean of positive values. | Statistical | 21 |
+| HEX2BIN | Converts a hexadecimal number to binary. | Engineering | 38 |
+| HEX2DEC | Converts a hexadecimal number to decimal. | Engineering | 39 |
+| HEX2OCT | Converts a hexadecimal number to octal. | Engineering | 35 |
+| HLOOKUP | Looks up a value across the top row of a table and returns a value from a specified row. | Lookup & Reference | 22 |
+| HOUR | Returns the hour from a time or datetime value. | Date & Time | 16 |
+| HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
+| HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
+| HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 23 |
+| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 51 |
+| IFNA | Returns a fallback value when a formula returns #N/A. | Information | 5 |
+| IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
+| IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
+| IMAGINARY | Returns the imaginary coefficient of a complex number. | Engineering | 38 |
+| IMARGUMENT | Returns the argument of a complex number. | Engineering | 47 |
+| IMCONJUGATE | Returns the complex conjugate of a complex number. | Engineering | 47 |
+| IMCOS | Returns the cosine of a complex number. | Engineering | 30 |
+| IMCOSH | Returns the hyperbolic cosine of a complex number. | Engineering | 27 |
+| IMCOT | Returns the cotangent of a complex number. | Engineering | 25 |
+| IMCSC | Returns the cosecant of a complex number. | Engineering | 25 |
+| IMCSCH | Returns the hyperbolic cosecant of a complex number. | Engineering | 25 |
+| IMDIV | Returns the quotient of two complex numbers. | Engineering | 34 |
+| IMEXP | Returns e raised to a complex power. | Engineering | 30 |
+| IMLN | Returns the natural logarithm of a complex number. | Engineering | 30 |
+| IMLOG10 | Returns the base-10 logarithm of a complex number. | Engineering | 30 |
+| IMLOG2 | Returns the base-2 logarithm of a complex number. | Engineering | 31 |
+| IMPOWER | Raises a complex number to a power. | Engineering | 39 |
+| IMPRODUCT | Returns the product of complex numbers. | Engineering | 36 |
+| IMREAL | Returns the real coefficient of a complex number. | Engineering | 38 |
+| IMSEC | Returns the secant of a complex number. | Engineering | 29 |
+| IMSECH | Returns the hyperbolic secant of a complex number. | Engineering | 25 |
+| IMSIN | Returns the sine of a complex number. | Engineering | 30 |
+| IMSINH | Returns the hyperbolic sine of a complex number. | Engineering | 27 |
+| IMSQRT | Returns the square root of a complex number. | Engineering | 32 |
+| IMSUB | Subtracts one complex number from another. | Engineering | 34 |
+| IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
+| IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 19 |
+| INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
+| INT | Rounds a number down to the nearest integer. | Math & Trig | 24 |
+| INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
+| INTRATE | Returns the interest rate for a fully invested security. | Financial | 3 |
+| IPMT | Returns the interest portion of a payment for a given period. | Financial | 4 |
+| IRR | Returns the internal rate of return for periodic cash flows. | Financial | 19 |
+| ISBLANK | Returns TRUE when a value is blank. | Information | 23 |
+| ISERR | Returns TRUE for any error except #N/A. | Information | 21 |
+| ISERROR | Returns TRUE for any error value. | Information | 22 |
+| ISEVEN | Returns TRUE when a number is even. | Information | 4 |
+| ISFORMULA | Returns TRUE when a referenced cell contains a formula. | Information | 7 |
+| ISLOGICAL | Returns TRUE when a value is logical. | Information | 27 |
+| ISNA | Returns TRUE when a value is #N/A. | Information | 22 |
+| ISNONTEXT | Returns TRUE when a value is not text. | Information | 26 |
+| ISNUMBER | Returns TRUE when a value is numeric. | Information | 23 |
+| ISO.CEILING | Rounds a number up using ISO.CEILING rules. | Math & Trig | 48 |
+| ISODD | Returns TRUE when a number is odd. | Information | 4 |
+| ISOWEEKNUM | Returns the ISO week number for a date. | Date & Time | 26 |
+| ISPMT | Returns the interest paid during a period for straight-line amortization. | Financial | 17 |
+| ISREF | Returns TRUE when a value is a reference. | Information | 24 |
+| ISTEXT | Returns TRUE when a value is text. | Information | 24 |
+| KURT | Returns the kurtosis of a data set. | Statistical | 22 |
+| LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 6 |
+| LARGE | Returns the k-th largest value in a data set. | Statistical | 30 |
+| LCM | Returns the least common multiple. | Math & Trig | 39 |
+| LEFT | Returns characters from the left side of a text value. | Text | 42 |
+| LEN | Returns the number of characters in text. | Text | 29 |
+| LET | Assigns names to intermediate values within a formula. | Logical | 33 |
+| LINEST | Returns linear regression statistics. | Statistical | 2 |
+| LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
+| LOG | Returns the logarithm of a number in a chosen base. | Math & Trig | 35 |
+| LOG10 | Returns the base-10 logarithm of a number. | Math & Trig | 31 |
+| LOGEST | Returns exponential regression statistics. | Statistical | 2 |
+| LOGNORM.DIST | Returns the lognormal distribution. | Statistical | 31 |
+| LOGNORM.INV | Returns the inverse of the lognormal cumulative distribution. | Statistical | 31 |
+| LOOKUP | Looks up a value in a one-dimensional range and returns the matching result. | Lookup & Reference | 24 |
+| LOWER | Converts text to lowercase. | Text | 23 |
+| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 16 |
+| MAX | Returns the largest numeric value. | Statistical | 31 |
+| MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
+| MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
+| MDETERM | Returns the determinant of a matrix. | Math & Trig | 31 |
+| MDURATION | Returns the modified duration of a security. | Financial | 2 |
+| MEDIAN | Returns the median of a data set. | Statistical | 27 |
+| MID | Returns characters from the middle of a text value. | Text | 50 |
+| MIN | Returns the smallest numeric value. | Statistical | 30 |
+| MINA | Returns the smallest value, counting logical values and text coercions. | Statistical | 16 |
+| MINIFS | Returns the minimum value that matches all supplied conditions. | Statistical | 49 |
+| MINUTE | Returns the minute from a time or datetime value. | Date & Time | 16 |
+| MINVERSE | Returns the inverse of a matrix. | Math & Trig | 33 |
+| MIRR | Returns the modified internal rate of return. | Financial | 24 |
+| MMULT | Returns the matrix product of two arrays. | Math & Trig | 38 |
+| MOD | Returns the remainder after division. | Math & Trig | 16 |
+| MODE | Returns the most frequently occurring value. | Statistical | 19 |
+| MODE.MULT | Returns all modes in a data set. | Statistical | 22 |
+| MODE.SNGL | Returns a single mode from a data set. | Statistical | 19 |
+| MONTH | Returns the month number from a date. | Date & Time | 5 |
+| MROUND | Rounds a number to the nearest multiple. | Math & Trig | 38 |
+| MULTINOMIAL | Returns the multinomial of a set of numbers. | Math & Trig | 36 |
+| MUNIT | Returns a unit matrix of a requested size. | Math & Trig | 38 |
+| N | Converts a value to a number using spreadsheet coercion rules. | Information | 18 |
+| NA | Returns the #N/A error value. | Information | 4 |
+| NEGBINOM.DIST | Returns the negative binomial distribution. | Statistical | 30 |
+| NETWORKDAYS | Counts working days between two dates. | Date & Time | 26 |
+| NETWORKDAYS.INTL | Counts working days between two dates using a custom weekend pattern. | Date & Time | 44 |
+| NOMINAL | Returns the nominal annual interest rate for an effective rate. | Financial | 17 |
+| NORM.DIST | Returns the normal distribution. | Statistical | 29 |
+| NORM.INV | Returns the inverse of the normal cumulative distribution. | Statistical | 28 |
+| NORM.S.DIST | Returns the standard normal distribution. | Statistical | 27 |
+| NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
+| NOT | Returns the opposite of a logical value. | Logical | 10 |
+| NOW | Returns the current date and time. | Date & Time | 2 |
+| NPER | Returns the number of periods for an investment or loan. | Financial | 3 |
+| NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
+| NUMBERVALUE | Converts locale-formatted text to a number. | Text | 27 |
+| OCT2BIN | Converts a octal number to binary. | Engineering | 38 |
+| OCT2DEC | Converts a octal number to decimal. | Engineering | 43 |
+| OCT2HEX | Converts a octal number to hexadecimal. | Engineering | 36 |
+| ODD | Rounds a number away from zero to the nearest odd integer. | Math & Trig | 40 |
+| OFFSET | Returns a reference offset from a starting reference. | Lookup & Reference | 25 |
+| OR | Returns TRUE when any supplied condition is TRUE. | Logical | 50 |
+| PDURATION | Returns the periods required for an investment to reach a target value. | Financial | 23 |
+| PEARSON | Returns the Pearson correlation coefficient. | Statistical | 23 |
+| PERCENTILE | Returns the percentile of a data set. | Statistical | 32 |
+| PERCENTILE.EXC | Returns the exclusive percentile of a data set. | Statistical | 31 |
+| PERCENTILE.INC | Returns the inclusive percentile of a data set. | Statistical | 4 |
+| PERCENTRANK | Returns the rank of a value as a percentage of a data set. | Statistical | 26 |
+| PERCENTRANK.EXC | Returns the exclusive percentage rank of a value in a data set. | Statistical | 29 |
+| PERCENTRANK.INC | Returns the inclusive percentage rank of a value in a data set. | Statistical | 3 |
+| PERMUT | Returns the number of permutations for a number of objects. | Math & Trig | 39 |
+| PERMUTATIONA | Returns the number of permutations with repetitions. | Statistical | 17 |
+| PHI | Returns the standard normal density at a value. | Statistical | 11 |
+| PI | Returns the value of pi. | Math & Trig | 13 |
+| PMT | Returns the periodic payment for a loan or annuity. | Financial | 5 |
+| POISSON.DIST | Returns the Poisson distribution. | Statistical | 26 |
+| POWER | Returns a number raised to a power. | Math & Trig | 49 |
+| PPMT | Returns the principal portion of a payment for a given period. | Financial | 2 |
+| PRICE | Returns the price per 100 face value of a coupon-paying security. | Financial | 3 |
+| PRICEDISC | Returns the price per 100 face value of a discounted security. | Financial | 3 |
+| PRICEMAT | Returns the price per 100 face value of a security that pays interest at maturity. | Financial | 3 |
+| PROB | Returns the probability that values fall within a range. | Statistical | 27 |
+| PRODUCT | Returns the product of supplied numbers. | Math & Trig | 36 |
+| PROPER | Capitalizes words in text. | Text | 25 |
+| PV | Returns the present value of an investment or loan. | Financial | 3 |
+| QUARTILE | Returns a quartile of a data set. | Statistical | 36 |
+| QUARTILE.EXC | Returns the exclusive quartile of a data set. | Statistical | 27 |
+| QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 5 |
+| QUOTIENT | Returns the integer portion of a division. | Math & Trig | 43 |
+| RADIANS | Converts degrees to radians. | Math & Trig | 30 |
+| RAND | Returns a random number between 0 and 1. | Math & Trig | 1 |
+| RANDARRAY | Returns an array of random numbers. | Math & Trig | 50 |
+| RANDBETWEEN | Returns a random integer between two bounds. | Math & Trig | 1 |
+| RANK | Returns the rank of a number in a list. | Statistical | 32 |
+| RANK.AVG | Returns the average rank of a number in a list with ties. | Statistical | 21 |
+| RANK.EQ | Returns the rank of a number in a list with ties sharing the same rank. | Statistical | 7 |
+| RATE | Returns the interest rate per period for an annuity. | Financial | 6 |
+| RECEIVED | Returns the amount received at maturity for a fully invested security. | Financial | 3 |
+| REPLACE | Replaces characters within text at a given position. | Text | 38 |
+| REPT | Repeats text a specified number of times. | Text | 26 |
+| RIGHT | Returns characters from the right side of a text value. | Text | 41 |
+| ROMAN | Converts an Arabic number to Roman numeral text. | Text | 38 |
+| ROUND | Rounds a number to a requested number of digits. | Math & Trig | 39 |
+| ROUNDDOWN | Rounds a number toward zero. | Math & Trig | 36 |
+| ROUNDUP | Rounds a number away from zero. | Math & Trig | 36 |
+| ROW | Returns the row number of a reference. | Information | 1 |
+| ROWS | Returns the number of rows in a reference or array. | Information | 32 |
+| RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
+| RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 23 |
+| SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 15 |
+| SEC | Returns the secant of an angle. | Math & Trig | 26 |
+| SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
+| SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |
+| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 46 |
+| SERIESSUM | Returns the sum of a power series. | Math & Trig | 27 |
+| SIGN | Returns the sign of a number. | Math & Trig | 30 |
+| SIN | Returns the sine of an angle. | Math & Trig | 33 |
+| SINH | Returns the hyperbolic sine of a number. | Math & Trig | 23 |
+| SKEW | Returns the sample skewness of a data set. | Statistical | 23 |
+| SKEW.P | Returns the population skewness of a data set. | Statistical | 27 |
+| SLN | Returns straight-line depreciation for one period. | Financial | 6 |
+| SLOPE | Returns the slope of a linear regression line. | Statistical | 16 |
+| SMALL | Returns the k-th smallest value in a data set. | Statistical | 28 |
+| SORT | Sorts an array by row or column order. | Logical | 25 |
+| SORTBY | Sorts an array by one or more companion arrays. | Logical | 2 |
+| SQRT | Returns the square root of a number. | Math & Trig | 29 |
+| SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
+| STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 16 |
+| STDEV | Returns the sample standard deviation. | Statistical | 24 |
+| STDEV.P | Returns the population standard deviation. | Statistical | 15 |
+| STDEV.S | Returns the sample standard deviation. | Statistical | 1 |
+| STDEVA | Returns the sample standard deviation including logical values and text coercions. | Statistical | 28 |
+| STDEVP | Returns the population standard deviation. | Statistical | 4 |
+| STDEVPA | Returns the population standard deviation including logical values and text coercions. | Statistical | 29 |
+| STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
+| SUBSTITUTE | Replaces matching text within a string. | Text | 23 |
+| SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 32 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 44 |
+| SUMIF | Returns the sum of values that match one condition. | Statistical | 37 |
+| SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 42 |
+| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 22 |
+| SUMSQ | Returns the sum of squares of the supplied values. | Statistical | 30 |
+| SUMX2MY2 | Returns the sum of the difference of squares of paired arrays. | Math & Trig | 31 |
+| SUMX2PY2 | Returns the sum of the sum of squares of paired arrays. | Math & Trig | 31 |
+| SUMXMY2 | Returns the sum of squares of differences of paired arrays. | Math & Trig | 31 |
+| SWITCH | Matches an expression against a list of values and returns the corresponding result. | Logical | 28 |
+| SYD | Returns sum-of-years'-digits depreciation for a period. | Financial | 23 |
+| T | Returns text when a value is text, otherwise an empty string. | Text | 17 |
+| T.DIST | Returns the Student's t-distribution. | Statistical | 41 |
+| T.DIST.2T | Returns the two-tailed Student's t-distribution. | Statistical | 19 |
+| T.DIST.RT | Returns the right-tailed Student's t-distribution. | Statistical | 18 |
+| T.INV | Returns the inverse of the Student's t cumulative distribution. | Statistical | 33 |
+| T.INV.2T | Returns the inverse of the two-tailed Student's t-distribution. | Statistical | 20 |
+| T.TEST | Returns the probability associated with a Student's t-test. | Statistical | 34 |
+| TAKE | Returns a requested number of rows or columns from an array. | Lookup & Reference | 30 |
+| TAN | Returns the tangent of an angle. | Math & Trig | 23 |
+| TANH | Returns the hyperbolic tangent of a number. | Math & Trig | 27 |
+| TBILLEQ | Returns the bond-equivalent yield for a Treasury bill. | Financial | 3 |
+| TBILLPRICE | Returns the price per 100 face value for a Treasury bill. | Financial | 3 |
+| TBILLYIELD | Returns the yield for a Treasury bill. | Financial | 3 |
+| TEXT | Formats a value as text using a number format pattern. | Text | 127 |
+| TEXTAFTER | Returns the text that appears after a delimiter. | Text | 34 |
+| TEXTBEFORE | Returns the text that appears before a delimiter. | Text | 34 |
+| TEXTJOIN | Joins text values with a delimiter. | Text | 26 |
+| TEXTSPLIT | Splits text into rows or columns around delimiters. | Text | 50 |
+| TIME | Builds a time value from hour, minute, and second numbers. | Date & Time | 42 |
+| TIMEVALUE | Converts time text to a serial time value. | Date & Time | 7 |
+| TOCOL | Flattens an array into a single column. | Lookup & Reference | 22 |
+| TODAY | Returns the current date. | Date & Time | 2 |
+| TOROW | Flattens an array into a single row. | Lookup & Reference | 20 |
+| TRANSPOSE | Swaps the rows and columns of an array. | Lookup & Reference | 35 |
+| TREND | Returns values along a linear trend. | Statistical | 10 |
+| TRIM | Removes extra spaces from text. | Text | 18 |
+| TRIMMEAN | Returns the mean after trimming values from both tails of a data set. | Statistical | 23 |
+| TRUE | Returns the logical value TRUE. | Logical | 10 |
+| TRUNC | Truncates a number to an integer or fixed precision. | Math & Trig | 34 |
+| TYPE | Returns a numeric code describing a value's type. | Information | 22 |
+| UNICHAR | Returns the Unicode character for a code point. | Text | 37 |
+| UNICODE | Returns the Unicode code point for the first character in text. | Text | 36 |
+| UNIQUE | Returns distinct rows or columns from an array. | Lookup & Reference | 29 |
+| UPPER | Converts text to uppercase. | Text | 23 |
+| VALUE | Converts text that looks like a number into a numeric value. | Text | 31 |
+| VALUETOTEXT | Converts a value to a text representation. | Text | 26 |
+| VAR | Returns the sample variance. | Statistical | 24 |
+| VAR.P | Returns the population variance. | Statistical | 22 |
+| VAR.S | Returns the sample variance. | Statistical | 4 |
+| VARA | Returns the sample variance including logical values and text coercions. | Statistical | 22 |
+| VARP | Returns the population variance. | Statistical | 4 |
+| VARPA | Returns the population variance including logical values and text coercions. | Statistical | 22 |
+| VDB | Returns depreciation using the variable declining balance method. | Financial | 33 |
+| VLOOKUP | Looks up a value in the first column of a table and returns a value from another column. | Lookup & Reference | 15 |
+| VSTACK | Stacks arrays vertically. | Lookup & Reference | 18 |
+| WEEKDAY | Returns the day of the week for a date. | Date & Time | 1 |
+| WEEKNUM | Returns the week number of a date. | Date & Time | 39 |
+| WEIBULL.DIST | Returns the Weibull distribution. | Statistical | 33 |
+| WORKDAY | Returns a working day offset from a start date. | Date & Time | 23 |
+| WORKDAY.INTL | Returns a working day offset using a custom weekend pattern. | Date & Time | 34 |
+| WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
+| WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |
+| XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 19 |
+| XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 22 |
+| XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 35 |
+| XNPV | Returns the net present value of cash flows on irregular dates. | Financial | 18 |
+| XOR | Returns TRUE when an odd number of supplied conditions are TRUE. | Logical | 34 |
+| YEAR | Returns the year from a date. | Date & Time | 26 |
+| YEARFRAC | Returns the fraction of a year between two dates. | Date & Time | 38 |
+| YIELD | Returns the yield of a coupon-paying security. | Financial | 2 |
+| YIELDDISC | Returns the annual yield of a discounted security. | Financial | 3 |
+| YIELDMAT | Returns the annual yield of a security that pays interest at maturity. | Financial | 3 |
+| Z.TEST | Returns the one-tailed probability value of a z-test. | Statistical | 22 |
 
 # No Planned Support
 
 These functions depend on the spreadsheet application's runtime environment, have side
 effects, or require locale-specific behavior that cannot be reproduced in a server-side library.
 
-| Function | Category | Reason |
-|----------|----------|--------|
-| ASC | Text | Full-width → half-width conversion; behavior depends on the application's MBCS locale setting |
-| BAHTTEXT | Text | Converts numbers to Thai Baht text — extremely locale-specific |
-| CELL | Information | Many modes return application-specific environment info (filename, format codes from the UI) |
-| DBCS | Text | Half-width → full-width conversion; behavior depends on the application's MBCS locale setting |
-| FILTERXML | Web | Paired with WEBSERVICE; fetches/parses external XML |
-| FINDB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| INFO | Information | Returns application environment info (OS version, memory, app version) |
-| LEFTB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| LENB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| MIDB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| PHONETIC | Text | Returns Japanese furigana metadata from the IME — not stored in XLSX files |
-| REPLACEB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| RIGHTB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| SEARCHB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
-| WEBSERVICE | Web | Makes HTTP requests from formulas — security risk, side effects |
+| Function | Description | Category | Reason |
+|----------|-------------|----------|--------|
+| ASC | Converts full-width characters to half-width characters. | Text | Full-width → half-width conversion; behavior depends on the application's MBCS locale setting |
+| BAHTTEXT | Converts a number to Thai Baht text. | Text | Converts numbers to Thai Baht text — extremely locale-specific |
+| CELL | Returns information about a cell's contents, location, or formatting. | Information | Many modes return application-specific environment info (filename, format codes from the UI) |
+| DBCS | Converts half-width characters to full-width characters. | Text | Half-width → full-width conversion; behavior depends on the application's MBCS locale setting |
+| FILTERXML | Extracts data from XML by XPath. | Web | Paired with WEBSERVICE; fetches/parses external XML |
+| FINDB | Returns the byte position of one text value inside another. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| INFO | Returns environment information about the current workbook session. | Information | Returns application environment info (OS version, memory, app version) |
+| LEFTB | Returns bytes from the left side of a text value. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| LENB | Returns the number of bytes in text. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| MIDB | Returns bytes from the middle of a text value. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| PHONETIC | Returns furigana text associated with a string. | Text | Returns Japanese furigana metadata from the IME — not stored in XLSX files |
+| REPLACEB | Replaces bytes within text at a given position. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| RIGHTB | Returns bytes from the right side of a text value. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| SEARCHB | Returns the byte position of one text value inside another, case-insensitive. | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| WEBSERVICE | Returns data from a web service. | Web | Makes HTTP requests from formulas — security risk, side effects |
 
 # Not Yet Implemented
 
 The following **18** functions are not yet supported.
 
-| Function | Category |
-|----------|----------|
-| AREAS | Lookup & Reference |
-| BYCOL | Logical |
-| BYROW | Logical |
-| FORECAST.ETS | Statistical |
-| FORECAST.ETS.CONFINT | Statistical |
-| FORECAST.ETS.SEASONALITY | Statistical |
-| FORECAST.ETS.STAT | Statistical |
-| GETPIVOTDATA | Lookup & Reference |
-| MAKEARRAY | Logical |
-| MAP | Logical |
-| ODDFPRICE | Financial |
-| ODDFYIELD | Financial |
-| ODDLPRICE | Financial |
-| ODDLYIELD | Financial |
-| REDUCE | Logical |
-| SCAN | Logical |
-| SHEET | Information |
-| SHEETS | Information |
+| Function | Description | Category |
+|----------|-------------|----------|
+| AREAS | Counts the number of areas in a reference. | Lookup & Reference |
+| BYCOL | Applies a lambda to each column of an array. | Logical |
+| BYROW | Applies a lambda to each row of an array. | Logical |
+| FORECAST.ETS | Predicts a future value using exponential smoothing. | Statistical |
+| FORECAST.ETS.CONFINT | Returns a confidence interval for an exponential smoothing forecast. | Statistical |
+| FORECAST.ETS.SEASONALITY | Returns the detected seasonality length for exponential smoothing. | Statistical |
+| FORECAST.ETS.STAT | Returns forecast statistics from exponential smoothing. | Statistical |
+| GETPIVOTDATA | Returns a value from a pivot table by field and item labels. | Lookup & Reference |
+| MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical |
+| MAP | Applies a lambda element-by-element across one or more arrays. | Logical |
+| ODDFPRICE | Returns the price of a security with an odd first period. | Financial |
+| ODDFYIELD | Returns the yield of a security with an odd first period. | Financial |
+| ODDLPRICE | Returns the price of a security with an odd last period. | Financial |
+| ODDLYIELD | Returns the yield of a security with an odd last period. | Financial |
+| REDUCE | Folds an array to a single result by repeatedly applying a lambda. | Logical |
+| SCAN | Returns the running accumulation produced by a lambda over an array. | Logical |
+| SHEET | Returns the sheet index of a reference. | Information |
+| SHEETS | Returns the number of sheets in a reference or workbook scope. | Information |
