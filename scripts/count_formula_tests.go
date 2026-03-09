@@ -19,6 +19,27 @@ import (
 	"strings"
 )
 
+// willNotSupport lists functions that depend on the spreadsheet application's
+// runtime environment, have side effects, or require locale-specific behavior
+// that cannot be reproduced in a server-side library.
+var willNotSupport = map[string]string{
+	"WEBSERVICE": "Makes HTTP requests from formulas — security risk, side effects",
+	"FILTERXML":  "Paired with WEBSERVICE; fetches/parses external XML",
+	"INFO":       "Returns application environment info (OS version, memory, app version)",
+	"CELL":       "Many modes return application-specific environment info (filename, format codes from the UI)",
+	"PHONETIC":   "Returns Japanese furigana metadata from the IME — not stored in XLSX files",
+	"ASC":        "Full-width → half-width conversion; behavior depends on the application's MBCS locale setting",
+	"DBCS":       "Half-width → full-width conversion; behavior depends on the application's MBCS locale setting",
+	"BAHTTEXT":   "Converts numbers to Thai Baht text — extremely locale-specific",
+	"FINDB":      "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"LEFTB":      "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"LENB":       "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"MIDB":       "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"REPLACEB":   "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"RIGHTB":     "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+	"SEARCHB":    "Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS)",
+}
+
 // categoryMap maps source file suffix to display category.
 var categoryMap = map[string]string{
 	"date":    "Date & Time",
@@ -409,9 +430,15 @@ func computeUnsupported(supported map[string]funcInfo) []funcInfo {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "# Unsupported") {
+		if strings.HasPrefix(line, "# Unsupported") ||
+			strings.HasPrefix(line, "# Will Not Support") ||
+			strings.HasPrefix(line, "# Not Yet Implemented") {
 			inUnsupported = true
 			continue
+		}
+		if strings.HasPrefix(line, "# ") && inUnsupported {
+			// Another top-level heading after unsupported sections — stop
+			break
 		}
 		if !inUnsupported {
 			continue
@@ -454,15 +481,40 @@ func generateMarkdown(supported map[string]funcInfo, unsupported []funcInfo) str
 		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", fi.Name, fi.Category, tests))
 	}
 
-	if len(unsupported) > 0 {
-		sort.Slice(unsupported, func(i, j int) bool {
-			return unsupported[i].Name < unsupported[j].Name
+	// Split unsupported into "will not support" and "not yet implemented"
+	var wontSupport, notYet []funcInfo
+	for _, fi := range unsupported {
+		if _, ok := willNotSupport[fi.Name]; ok {
+			wontSupport = append(wontSupport, fi)
+		} else {
+			notYet = append(notYet, fi)
+		}
+	}
+
+	if len(wontSupport) > 0 {
+		sort.Slice(wontSupport, func(i, j int) bool {
+			return wontSupport[i].Name < wontSupport[j].Name
 		})
-		b.WriteString(fmt.Sprintf("\n# Unsupported Formulas\n\n"))
-		b.WriteString(fmt.Sprintf("The following **%d** functions are not yet supported.\n\n", len(unsupported)))
+		b.WriteString("\n# Will Not Support\n\n")
+		b.WriteString("These functions depend on the spreadsheet application's runtime environment, have side\n")
+		b.WriteString("effects, or require locale-specific behavior that cannot be reproduced in a server-side library.\n\n")
+		b.WriteString("| Function | Category | Reason |\n")
+		b.WriteString("|----------|----------|--------|\n")
+		for _, fi := range wontSupport {
+			reason := willNotSupport[fi.Name]
+			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", fi.Name, fi.Category, reason))
+		}
+	}
+
+	if len(notYet) > 0 {
+		sort.Slice(notYet, func(i, j int) bool {
+			return notYet[i].Name < notYet[j].Name
+		})
+		b.WriteString(fmt.Sprintf("\n# Not Yet Implemented\n\n"))
+		b.WriteString(fmt.Sprintf("The following **%d** functions are not yet supported.\n\n", len(notYet)))
 		b.WriteString("| Function | Category |\n")
 		b.WriteString("|----------|----------|\n")
-		for _, fi := range unsupported {
+		for _, fi := range notYet {
 			b.WriteString(fmt.Sprintf("| %s | %s |\n", fi.Name, fi.Category))
 		}
 	}

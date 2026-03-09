@@ -440,44 +440,52 @@ Werkbook supports **435** spreadsheet formula functions.
 | YIELDMAT | Financial | 3 |
 | Z.TEST | Statistical | 22 |
 
-# Unsupported Formulas
+# Will Not Support
 
-The following **35** functions are not yet supported.
+These functions depend on the spreadsheet application's runtime environment, have side
+effects, or require locale-specific behavior that cannot be reproduced in a server-side library.
+
+| Function | Category | Reason |
+|----------|----------|--------|
+| ASC | Text | Full-width → half-width conversion; behavior depends on the application's MBCS locale setting |
+| BAHTTEXT | Text | Converts numbers to Thai Baht text — extremely locale-specific |
+| CELL | Information | Many modes return application-specific environment info (filename, format codes from the UI) |
+| DBCS | Text | Half-width → full-width conversion; behavior depends on the application's MBCS locale setting |
+| FILTERXML | Web | Paired with WEBSERVICE; fetches/parses external XML |
+| FINDB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| INFO | Information | Returns application environment info (OS version, memory, app version) |
+| LEFTB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| LENB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| MIDB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| PHONETIC | Text | Returns Japanese furigana metadata from the IME — not stored in XLSX files |
+| REPLACEB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| RIGHTB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| SEARCHB | Text | Byte-position text function; behavior depends on the application's default language setting (MBCS vs SBCS) |
+| WEBSERVICE | Web | Makes HTTP requests from formulas — security risk, side effects |
+
+# Not Yet Implemented
+
+The following **20** functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
 | AREAS | Lookup & Reference |
-| ASC | Text |
-| BAHTTEXT | Text |
 | BYCOL | Logical |
 | BYROW | Logical |
-| CELL | Information |
-| DBCS | Text |
-| FILTERXML | Web |
-| FINDB | Text |
 | FORECAST.ETS | Statistical |
 | FORECAST.ETS.CONFINT | Statistical |
 | FORECAST.ETS.SEASONALITY | Statistical |
 | FORECAST.ETS.STAT | Statistical |
 | GETPIVOTDATA | Lookup & Reference |
-| INFO | Information |
 | LAMBDA | Logical |
-| LEFTB | Text |
-| LENB | Text |
 | LET | Logical |
 | MAKEARRAY | Logical |
 | MAP | Logical |
-| MIDB | Text |
 | ODDFPRICE | Financial |
 | ODDFYIELD | Financial |
 | ODDLPRICE | Financial |
 | ODDLYIELD | Financial |
-| PHONETIC | Text |
 | REDUCE | Logical |
-| REPLACEB | Text |
-| RIGHTB | Text |
 | SCAN | Logical |
-| SEARCHB | Text |
 | SHEET | Information |
 | SHEETS | Information |
-| WEBSERVICE | Web |
