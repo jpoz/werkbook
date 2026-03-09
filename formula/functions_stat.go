@@ -5917,6 +5917,81 @@ func fnTREND(args []Value) (Value, error) {
 	return Value{Type: ValueArray, Array: result}, nil
 }
 
+// linestQRResidualSS computes the residual sum of squares using Householder
+// QR decomposition. When the direct computation gives ssResid == 0 for a
+// perfect (or near-perfect) linear fit, the QR approach may still produce a
+// tiny non-zero residual due to intermediate floating-point rounding in the
+// Householder reflections. This matches the behaviour of Excel's LINEST,
+// which uses an analogous QR-based algorithm internally.
+func linestQRResidualSS(knownX, knownY []float64, useConst bool) float64 {
+	n := len(knownY)
+	var p, cols int
+	if useConst {
+		p, cols = 2, 3
+	} else {
+		p, cols = 1, 2
+	}
+
+	// Build augmented matrix [A | y].
+	M := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		M[i] = make([]float64, cols)
+		if useConst {
+			M[i][0] = 1.0       // intercept column
+			M[i][1] = knownX[i] // x column
+			M[i][2] = knownY[i] // response
+		} else {
+			M[i][0] = knownX[i]
+			M[i][1] = knownY[i]
+		}
+	}
+
+	// Householder QR factorisation applied to the augmented matrix.
+	for j := 0; j < p; j++ {
+		sigma := 0.0
+		for i := j; i < n; i++ {
+			sigma += M[i][j] * M[i][j]
+		}
+		sigma = math.Sqrt(sigma)
+		if sigma == 0 {
+			continue
+		}
+		if M[j][j] > 0 {
+			sigma = -sigma
+		}
+		M[j][j] -= sigma
+
+		vtv := 0.0
+		for i := j; i < n; i++ {
+			vtv += M[i][j] * M[i][j]
+		}
+		if vtv == 0 {
+			continue
+		}
+		beta := 2.0 / vtv
+
+		for k := j + 1; k < cols; k++ {
+			dot := 0.0
+			for i := j; i < n; i++ {
+				dot += M[i][j] * M[i][k]
+			}
+			dot *= beta
+			for i := j; i < n; i++ {
+				M[i][k] -= dot * M[i][j]
+			}
+		}
+		M[j][j] = sigma
+	}
+
+	// The residual SS is the sum of squares of the tail of Q^T * y.
+	yCol := cols - 1
+	ss := 0.0
+	for i := p; i < n; i++ {
+		ss += M[i][yCol] * M[i][yCol]
+	}
+	return ss
+}
+
 // fnLINEST implements LINEST(known_y's, [known_x's], [const], [stats]).
 // It calculates statistics for a line using the least squares method and
 // returns an array describing the line.
@@ -6137,12 +6212,18 @@ func fnLINEST(args []Value) (Value, error) {
 		}
 
 		// F-statistic = (ss_reg / k) / (ss_resid / df)
-		if ssResid == 0 {
-			if ssReg == 0 {
-				fStat = ErrorVal(ErrValNA)
+		if ssResid == 0 && ssReg > 0 {
+			// Direct computation gave exactly zero residual (perfect fit).
+			// Fall back to QR decomposition which may produce a tiny non-zero
+			// residual from floating-point rounding, matching Excel's behaviour.
+			ssResidQR := linestQRResidualSS(knownX, knownY, useConst)
+			if ssResidQR > 0 {
+				fStat = NumberVal((ssReg / 1) / (ssResidQR / df))
 			} else {
-				fStat = ErrorVal(ErrValNUM) // infinite F → Excel returns #NUM!
+				fStat = ErrorVal(ErrValNUM)
 			}
+		} else if ssResid == 0 {
+			fStat = ErrorVal(ErrValNA)
 		} else {
 			fStat = NumberVal((ssReg / 1) / (ssResid / df))
 		}

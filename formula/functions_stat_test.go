@@ -26243,13 +26243,57 @@ func TestLINEST(t *testing.T) {
 		if v.Array[2][1].Type != ValueNumber || math.Abs(v.Array[2][1].Num) > tol {
 			t.Errorf("se_y: got %v, want 0", v.Array[2][1])
 		}
-		// ss_resid = 0
+		// ss_resid = 0 (from direct computation)
 		if math.Abs(v.Array[4][1].Num) > tol {
 			t.Errorf("ss_resid: got %f, want 0", v.Array[4][1].Num)
 		}
-		// F and se_slope should be #N/A when ss_resid=0 (perfect fit)
-		if v.Array[3][0].Type != ValueError {
-			t.Errorf("F: expected #N/A for perfect fit, got %v", v.Array[3][0])
+		// For a perfect fit the direct computation gives ssResid=0, but the
+		// QR fallback may produce a tiny non-zero residual.  The F-statistic
+		// should be a very large finite number (not an error).
+		if v.Array[3][0].Type != ValueNumber {
+			t.Errorf("F: expected large number for near-perfect QR residual, got %v", v.Array[3][0])
+		} else if v.Array[3][0].Num < 1e20 {
+			t.Errorf("F: expected very large value, got %g", v.Array[3][0].Num)
+		}
+	})
+
+	t.Run("perfect_fit_y2x1_fstat", func(t *testing.T) {
+		// y=2x+1 for x=1..5: y={3,5,7,9,11}
+		// Perfect fit: ssResid=0 from direct computation, but QR fallback
+		// produces a tiny residual so F-statistic is a very large finite number.
+		v, err := fnLINEST([]Value{
+			rowArray(3, 5, 7, 9, 11),
+			rowArray(1, 2, 3, 4, 5),
+			BoolVal(true),
+			BoolVal(true),
+		})
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		if len(v.Array) != 5 {
+			t.Fatalf("expected 5 rows, got %d", len(v.Array))
+		}
+		// slope=2, intercept=1
+		if math.Abs(v.Array[0][0].Num-2) > tol {
+			t.Errorf("slope: got %f, want 2", v.Array[0][0].Num)
+		}
+		if math.Abs(v.Array[0][1].Num-1) > tol {
+			t.Errorf("intercept: got %f, want 1", v.Array[0][1].Num)
+		}
+		// r²=1
+		if v.Array[2][0].Type != ValueNumber || math.Abs(v.Array[2][0].Num-1) > tol {
+			t.Errorf("r²: got %v, want 1", v.Array[2][0])
+		}
+		// F-stat should be a very large finite number (not #NUM!)
+		fCell := v.Array[3][0]
+		if fCell.Type != ValueNumber {
+			t.Errorf("F: expected large finite number, got %v (type %d)", fCell, fCell.Type)
+		} else if fCell.Num < 1e20 {
+			t.Errorf("F: expected very large value, got %g", fCell.Num)
+		}
+		// df = 3
+		if math.Abs(v.Array[3][1].Num-3) > tol {
+			t.Errorf("df: got %f, want 3", v.Array[3][1].Num)
 		}
 	})
 
