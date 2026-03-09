@@ -1284,6 +1284,85 @@ func TestPV_Comprehensive(t *testing.T) {
 			args: numArgs(0.05, 10, 0, -1000, 1),
 			want: 613.91,
 		},
+		// --- Additional scenarios from requirements ---
+		// Car loan: how much can you borrow at 10%/12 for 48 months paying $263.33/mo
+		{
+			name: "car loan PV",
+			args: numArgs(0.10/12, 48, -263.33),
+			want: 10382.62,
+		},
+		// Mortgage: 30yr at 6% paying $1199.10/mo
+		{
+			name: "mortgage 30yr 6%",
+			args: numArgs(0.06/12, 360, -1199.10),
+			want: 199999.82,
+		},
+		// pmt + fv combined: 5yr monthly at 5%
+		{
+			name: "pmt and fv 5yr monthly 5%",
+			args: numArgs(0.05/12, 60, -200, -5000),
+			want: 14494.17,
+		},
+		// No pmt, just fv: 10yr annual at 8%
+		{
+			name: "no pmt just fv 10yr 8%",
+			args: numArgs(0.08, 10, 0, -50000),
+			want: 23159.67,
+		},
+		// Savings target: 10yr monthly at 6%
+		{
+			name: "savings target 10yr 6%",
+			args: numArgs(0.06/12, 120, 0, -100000),
+			want: 54963.27,
+		},
+		// Beginning of period: 20yr monthly 8%
+		{
+			name: "annuity begin of period 20yr 8%",
+			args: numArgs(0.08/12, 240, 500, 0, 1),
+			want: -60175.66,
+		},
+		// Beginning of period: pmt + fv 5yr monthly 6%
+		{
+			name: "pmt and fv begin of period 5yr 6%",
+			args: numArgs(0.06/12, 60, -500, -10000, 1),
+			want: 33405.82,
+		},
+		// Zero rate: PV(0, 10, 0, -10000) = 10000
+		{
+			name: "zero rate fv only no pmt",
+			args: numArgs(0, 10, 0, -10000),
+			want: 10000,
+		},
+		// High rate: 24%/12 for 36 months
+		{
+			name: "high rate 24% monthly 36mo",
+			args: numArgs(0.24/12, 36, -200),
+			want: 5097.77,
+		},
+		// Large nper: 50 years monthly at 5%
+		{
+			name: "large nper 50yr monthly 5%",
+			args: numArgs(0.05/12, 600, -100),
+			want: 22019.70,
+		},
+		// Negative pmt (receiving money): 5yr monthly at 5%
+		{
+			name: "receiving money 5yr monthly 5%",
+			args: numArgs(0.05/12, 60, 1000),
+			want: -52990.71,
+		},
+		// All string coercion: PV("0.05", "12", "-1000")
+		{
+			name: "all string coercion",
+			args: []Value{StringVal("0.05"), StringVal("12"), StringVal("-1000")},
+			want: 8863.25,
+		},
+		// Bool as nper: PV(0.05, TRUE, -1000) — TRUE as nper=1
+		{
+			name: "bool TRUE as nper",
+			args: []Value{NumberVal(0.05), BoolVal(true), NumberVal(-1000)},
+			want: 952.38,
+		},
 	}
 
 	for _, tc := range tests {
@@ -1383,6 +1462,40 @@ func TestPV_Errors(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertError(t, tc.name, v)
+		})
+	}
+}
+
+// TestPV_TVM_Identity verifies that PV(rate, nper, PMT(rate, nper, pv), 0) ≈ -pv.
+// This is the fundamental time value of money identity.
+func TestPV_TVM_Identity(t *testing.T) {
+	cases := []struct {
+		name string
+		rate float64
+		nper float64
+		pv   float64
+	}{
+		{"5% 10yr", 0.05, 10, 10000},
+		{"8% monthly 30yr", 0.08 / 12, 360, 200000},
+		{"3% 5yr", 0.03, 5, 50000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// First compute PMT(rate, nper, pv)
+			pmtVal, err := fnPMT(numArgs(tc.rate, tc.nper, tc.pv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pmtVal.Type != ValueNumber {
+				t.Fatalf("PMT returned non-number: %v", pmtVal)
+			}
+			// Then compute PV(rate, nper, pmt, 0) and verify ≈ pv
+			// PMT(rate, nper, pv) gives negative payment, so PV recovers original pv
+			pvVal, err := fnPV(numArgs(tc.rate, tc.nper, pmtVal.Num, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertClose(t, tc.name, pvVal, tc.pv)
 		})
 	}
 }

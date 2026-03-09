@@ -315,7 +315,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | PROB | Returns the probability that values fall within a range. | Statistical | 27 |
 | PRODUCT | Returns the product of supplied numbers. | Math & Trig | 36 |
 | PROPER | Capitalizes words in text. | Text | 25 |
-| PV | Returns the present value of an investment or loan. | Financial | 3 |
+| PV | Returns the present value of an investment or loan. | Financial | 4 |
 | QUARTILE | Returns a quartile of a data set. | Statistical | 37 |
 | QUARTILE.EXC | Returns the exclusive quartile of a data set. | Statistical | 27 |
 | QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 65 |
