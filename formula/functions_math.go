@@ -78,6 +78,7 @@ func init() {
 	Register("QUOTIENT", NoCtx(fnQUOTIENT))
 	Register("RADIANS", NoCtx(fnRADIANS))
 	Register("RAND", NoCtx(fnRAND))
+	Register("RANDARRAY", NoCtx(fnRANDARRAY))
 	Register("RANDBETWEEN", NoCtx(fnRANDBETWEEN))
 	Register("ROUND", NoCtx(fnROUND))
 	Register("ROUNDDOWN", NoCtx(fnROUNDDOWN))
@@ -399,6 +400,87 @@ func fnRAND(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return NumberVal(rand.Float64()), nil
+}
+
+func fnRANDARRAY(args []Value) (Value, error) {
+	if len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rows := 1
+	if len(args) >= 1 {
+		r, e := CoerceNum(args[0])
+		if e != nil {
+			return *e, nil
+		}
+		rows = int(math.Trunc(r))
+	}
+	cols := 1
+	if len(args) >= 2 {
+		c, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		cols = int(math.Trunc(c))
+	}
+	minVal := 0.0
+	if len(args) >= 3 {
+		m, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		minVal = m
+	}
+	maxVal := 1.0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		maxVal = m
+	}
+	whole := false
+	if len(args) >= 5 {
+		whole = IsTruthy(args[4])
+	}
+	if rows <= 0 || cols <= 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+	if minVal > maxVal {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if whole {
+		lo := int(math.Ceil(minVal))
+		hi := int(math.Floor(maxVal))
+		if lo > hi {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		if rows == 1 && cols == 1 {
+			return NumberVal(float64(lo + rand.Intn(hi-lo+1))), nil
+		}
+		result := make([][]Value, rows)
+		for r := 0; r < rows; r++ {
+			row := make([]Value, cols)
+			for c := 0; c < cols; c++ {
+				row[c] = NumberVal(float64(lo + rand.Intn(hi-lo+1)))
+			}
+			result[r] = row
+		}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
+	// Decimal mode
+	span := maxVal - minVal
+	if rows == 1 && cols == 1 {
+		return NumberVal(minVal + rand.Float64()*span), nil
+	}
+	result := make([][]Value, rows)
+	for r := 0; r < rows; r++ {
+		row := make([]Value, cols)
+		for c := 0; c < cols; c++ {
+			row[c] = NumberVal(minVal + rand.Float64()*span)
+		}
+		result[r] = row
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnRANDBETWEEN(args []Value) (Value, error) {

@@ -9991,3 +9991,454 @@ func TestISOCEILING(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// RANDARRAY tests
+// ---------------------------------------------------------------------------
+
+func TestRANDARRAY_NoArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY()")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("RANDARRAY() type = %v, want number", got.Type)
+	}
+	if got.Num < 0 || got.Num >= 1 {
+		t.Errorf("RANDARRAY() = %g, want [0,1)", got.Num)
+	}
+}
+
+func TestRANDARRAY_3x2(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(3,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("RANDARRAY(3,2) type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("RANDARRAY(3,2) rows = %d, want 3", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 2 {
+			t.Fatalf("RANDARRAY(3,2) row %d cols = %d, want 2", r, len(row))
+		}
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < 0 || v.Num >= 1 {
+				t.Errorf("RANDARRAY(3,2)[%d][%d] = %g, want [0,1)", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_1x1Scalar(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("RANDARRAY(1,1) type = %v, want number (scalar)", got.Type)
+	}
+	if got.Num < 0 || got.Num >= 1 {
+		t.Errorf("RANDARRAY(1,1) = %g, want [0,1)", got.Num)
+	}
+}
+
+func TestRANDARRAY_CustomMinMax(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,3,10,20)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 2 {
+		t.Fatalf("rows = %d, want 2", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 3 {
+			t.Fatalf("row %d cols = %d, want 3", r, len(row))
+		}
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < 10 || v.Num > 20 {
+				t.Errorf("[%d][%d] = %g, want [10,20]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_WholeNumberTrue(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(3,3,1,10,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	for r, row := range got.Array {
+		for c, v := range row {
+			if v.Type != ValueNumber {
+				t.Errorf("[%d][%d] type = %v, want number", r, c, v.Type)
+				continue
+			}
+			if v.Num != math.Floor(v.Num) {
+				t.Errorf("[%d][%d] = %g, want integer", r, c, v.Num)
+			}
+			if v.Num < 1 || v.Num > 10 {
+				t.Errorf("[%d][%d] = %g, want [1,10]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_WholeNumberFalse(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,2,0,100,FALSE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	for r, row := range got.Array {
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < 0 || v.Num > 100 {
+				t.Errorf("[%d][%d] = %g, want [0,100]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_MinGreaterThanMax(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,1,10,5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("RANDARRAY(1,1,10,5) = type=%v err=%v, want #VALUE!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_ZeroRows(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(0,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("RANDARRAY(0,1) = type=%v err=%v, want #CALC!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_ZeroCols(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("RANDARRAY(1,0) = type=%v err=%v, want #CALC!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_NegativeRows(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(-3,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("RANDARRAY(-3,2) = type=%v err=%v, want #CALC!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_NegativeCols(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("RANDARRAY(2,-1) = type=%v err=%v, want #CALC!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_WholeNoValidIntegers(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,1,1.5,1.7,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("RANDARRAY(1,1,1.5,1.7,TRUE) = type=%v err=%v, want #VALUE!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_DefaultMinMaxIntegerMode(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,2,,,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	for r, row := range got.Array {
+		for c, v := range row {
+			if v.Type != ValueNumber {
+				t.Errorf("[%d][%d] type = %v, want number", r, c, v.Type)
+				continue
+			}
+			// With default min=0, max=1 and whole=TRUE, valid integers are 0 and 1
+			if v.Num != 0 && v.Num != 1 {
+				t.Errorf("[%d][%d] = %g, want 0 or 1", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_LargeArray10x10(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(10,10,0,100)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 10 {
+		t.Fatalf("rows = %d, want 10", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 10 {
+			t.Fatalf("row %d cols = %d, want 10", r, len(row))
+		}
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < 0 || v.Num > 100 {
+				t.Errorf("[%d][%d] = %g, want [0,100]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_SingleRowMultipleCols(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 1 {
+		t.Fatalf("rows = %d, want 1", len(got.Array))
+	}
+	if len(got.Array[0]) != 5 {
+		t.Fatalf("cols = %d, want 5", len(got.Array[0]))
+	}
+}
+
+func TestRANDARRAY_MultipleRowsSingleCol(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(4,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 4 {
+		t.Fatalf("rows = %d, want 4", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 1 {
+			t.Fatalf("row %d cols = %d, want 1", r, len(row))
+		}
+	}
+}
+
+func TestRANDARRAY_StringCoercion(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `RANDARRAY("2","3","5","15")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 2 {
+		t.Fatalf("rows = %d, want 2", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 3 {
+			t.Fatalf("row %d cols = %d, want 3", r, len(row))
+		}
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < 5 || v.Num > 15 {
+				t.Errorf("[%d][%d] = %g, want [5,15]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_BooleanCoercion(t *testing.T) {
+	// TRUE coerces to 1, so RANDARRAY(TRUE,TRUE) = RANDARRAY(1,1) = scalar
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(TRUE,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("type = %v, want number (scalar)", got.Type)
+	}
+	if got.Num < 0 || got.Num >= 1 {
+		t.Errorf("RANDARRAY(TRUE,TRUE) = %g, want [0,1)", got.Num)
+	}
+}
+
+func TestRANDARRAY_ErrorTooManyArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,1,0,1,FALSE,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("RANDARRAY(6 args) = type=%v err=%v, want #VALUE!", got.Type, got.Err)
+	}
+}
+
+func TestRANDARRAY_ErrorNonNumericRows(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `RANDARRAY("abc")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("RANDARRAY(\"abc\") type = %v, want error", got.Type)
+	}
+}
+
+func TestRANDARRAY_WholeScalar(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(1,1,5,10,TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("type = %v, want number (scalar)", got.Type)
+	}
+	if got.Num != math.Floor(got.Num) {
+		t.Errorf("got %g, want integer", got.Num)
+	}
+	if got.Num < 5 || got.Num > 10 {
+		t.Errorf("got %g, want [5,10]", got.Num)
+	}
+}
+
+func TestRANDARRAY_RowsTruncated(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2.9,1.8)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	// 2.9 truncated to 2 rows, 1.8 truncated to 1 col
+	if len(got.Array) != 2 {
+		t.Fatalf("rows = %d, want 2", len(got.Array))
+	}
+	if len(got.Array[0]) != 1 {
+		t.Fatalf("cols = %d, want 1", len(got.Array[0]))
+	}
+}
+
+func TestRANDARRAY_MinEqualsMax(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,2,7,7)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	for r, row := range got.Array {
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num != 7 {
+				t.Errorf("[%d][%d] = %g, want 7", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_NegativeRange(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(2,2,-10,-5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	for r, row := range got.Array {
+		for c, v := range row {
+			if v.Type != ValueNumber || v.Num < -10 || v.Num > -5 {
+				t.Errorf("[%d][%d] = %g, want [-10,-5]", r, c, v.Num)
+			}
+		}
+	}
+}
+
+func TestRANDARRAY_OnlyRowsArg(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "RANDARRAY(3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("type = %v, want array", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("rows = %d, want 3", len(got.Array))
+	}
+	for r, row := range got.Array {
+		if len(row) != 1 {
+			t.Fatalf("row %d cols = %d, want 1 (default)", r, len(row))
+		}
+		if row[0].Type != ValueNumber || row[0].Num < 0 || row[0].Num >= 1 {
+			t.Errorf("[%d][0] = %g, want [0,1)", r, row[0].Num)
+		}
+	}
+}

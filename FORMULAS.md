@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **402** Excel formula functions.
+Werkbook supports **403** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -291,6 +291,7 @@ Werkbook supports **402** Excel formula functions.
 | QUOTIENT | Math & Trig | 43 |
 | RADIANS | Math & Trig | 30 |
 | RAND | Math & Trig | 1 |
+| RANDARRAY | Math & Trig | 50 |
 | RANDBETWEEN | Math & Trig | 1 |
 | RANK | Statistical | 32 |
 | RANK.AVG | Statistical | 21 |
@@ -409,7 +410,7 @@ Werkbook supports **402** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **68** Excel functions are not yet supported.
+The following **67** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -469,7 +470,6 @@ The following **68** Excel functions are not yet supported.
 | ODDLYIELD | Financial |
 | OFFSET | Lookup & Reference |
 | PHONETIC | Text |
-| RANDARRAY | Math & Trig |
 | REDUCE | Logical |
 | REPLACEB | Text |
 | RIGHTB | Text |
