@@ -2350,7 +2350,17 @@ func fnOFFSET(args []Value, ctx *EvalContext) (Value, error) {
 		toRow = ref.RangeOrigin.ToRow
 		sheet = ref.RangeOrigin.Sheet
 	default:
-		return ErrorVal(ErrValVALUE), nil
+		// A value produced by another function (e.g. nested OFFSET) may
+		// carry a CellOrigin that records its source cell address.
+		if ref.CellOrigin != nil {
+			fromCol = ref.CellOrigin.Col
+			fromRow = ref.CellOrigin.Row
+			toCol = fromCol
+			toRow = fromRow
+			sheet = ref.CellOrigin.Sheet
+		} else {
+			return ErrorVal(ErrValVALUE), nil
+		}
 	}
 
 	// Parse rows offset.
@@ -2400,26 +2410,49 @@ func fnOFFSET(args []Value, ctx *EvalContext) (Value, error) {
 		}
 	}
 
-	// Height and width must be positive.
-	if height <= 0 || width <= 0 {
+	// Height and width of zero are errors.
+	if height == 0 || width == 0 {
 		return ErrorVal(ErrValREF), nil
 	}
 
 	// Compute new range origin.
+	// Negative height/width reverses the direction (range extends upward/left).
 	newFromRow := fromRow + rowsOff
 	newFromCol := fromCol + colsOff
-	newToRow := newFromRow + height - 1
-	newToCol := newFromCol + width - 1
+	var newToRow, newToCol int
+	if height > 0 {
+		newToRow = newFromRow + height - 1
+	} else {
+		// Negative: anchor is at newFromRow, range extends upward.
+		newToRow = newFromRow
+		newFromRow = newFromRow + height + 1
+	}
+	if width > 0 {
+		newToCol = newFromCol + width - 1
+	} else {
+		// Negative: anchor is at newFromCol, range extends left.
+		newToCol = newFromCol
+		newFromCol = newFromCol + width + 1
+	}
+	// Use absolute values for subsequent size checks.
+	if height < 0 {
+		height = -height
+	}
+	if width < 0 {
+		width = -width
+	}
 
 	// Validate bounds.
 	if newFromRow < 1 || newFromCol < 1 || newToRow > maxRows || newToCol > maxCols {
 		return ErrorVal(ErrValREF), nil
 	}
 
-	// Single cell result — return the cell value directly.
+	// Single cell result — return the cell value directly, with the source
+	// cell address attached so nested OFFSET can extract it.
 	if height == 1 && width == 1 {
 		val := ctx.Resolver.GetCellValue(CellAddr{Sheet: sheet, Col: newFromCol, Row: newFromRow})
 		val.FromCell = true
+		val.CellOrigin = &CellAddr{Sheet: sheet, Col: newFromCol, Row: newFromRow}
 		return val, nil
 	}
 

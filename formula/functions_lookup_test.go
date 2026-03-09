@@ -8402,14 +8402,15 @@ func TestOFFSETHeightNegative(t *testing.T) {
 	}
 	ctx := &EvalContext{Resolver: resolver}
 
-	// Height = -1 → #REF!
+	// Height = -1 with OFFSET(A1,0,0,-1): anchor at row 1, range extends
+	// upward 1 row → row 1 to row 1 → returns A1 value (matches Excel).
 	cf := evalCompile(t, "OFFSET(A1,0,0,-1)")
 	got, err := Eval(cf, resolver, ctx)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValREF {
-		t.Errorf("OFFSET(A1,0,0,-1): got %v, want #REF!", got)
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("OFFSET(A1,0,0,-1): got %v, want 1", got)
 	}
 }
 
