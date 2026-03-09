@@ -1290,6 +1290,20 @@ func TestINDIRECTEmptyString(t *testing.T) {
 	}
 }
 
+func TestINDIRECTOversizedRangeReturnsREF(t *testing.T) {
+	resolver := &mockResolver{}
+	ctx := &EvalContext{Resolver: resolver}
+
+	cf := evalCompile(t, `INDIRECT("A1:B524289")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("INDIRECT oversized range: got %v, want #REF!", got)
+	}
+}
+
 func TestINDIRECTWithSheetName(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{

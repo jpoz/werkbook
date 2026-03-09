@@ -10,6 +10,10 @@ type mockResolver struct {
 	cells map[CellAddr]Value
 }
 
+type panicRangeResolver struct {
+	rangeCalls int
+}
+
 func (m *mockResolver) GetCellValue(addr CellAddr) Value {
 	if v, ok := m.cells[addr]; ok {
 		return v
@@ -30,6 +34,15 @@ func (m *mockResolver) GetRangeValues(addr RangeAddr) [][]Value {
 		rows[r-addr.FromRow] = row
 	}
 	return rows
+}
+
+func (m *panicRangeResolver) GetCellValue(addr CellAddr) Value {
+	return EmptyVal()
+}
+
+func (m *panicRangeResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	m.rangeCalls++
+	return nil
 }
 
 func evalCompile(t *testing.T, formula string) *CompiledFormula {
@@ -1399,6 +1412,22 @@ func TestEvalCOUNTBLANKPadding(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 1 {
 		t.Errorf("COUNTBLANK(A1:A3) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
+func TestEvalOversizedBoundedRangeReturnsREF(t *testing.T) {
+	resolver := &panicRangeResolver{}
+
+	cf := evalCompile(t, "SUM(A1:B524289)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(SUM(A1:B524289)): %v", err)
+	}
+	if resolver.rangeCalls != 0 {
+		t.Fatalf("GetRangeValues called %d times, want 0", resolver.rangeCalls)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("SUM(A1:B524289) = %v, want #REF!", got)
 	}
 }
 

@@ -111,14 +111,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 
 		case OpLoadRange:
 			addr := cf.Ranges[inst.Operand]
+			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
 			// Implicit intersection: when a full-column or full-row range is
 			// used in a non-array formula, reduce to the single cell at the
 			// formula's own row/column rather than loading the entire range.
 			// Skip implicit intersection when inside an array-forcing function
 			// (arrayCtxDepth > 0), since those functions need the full range.
 			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
-				isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
 				if isFullCol && addr.FromCol == addr.ToCol && ctx.CurrentRow >= addr.FromRow {
 					// Full-column ref like F:F → intersect at current row
 					push(resolver.GetCellValue(CellAddr{
@@ -138,13 +138,20 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 					continue
 				}
 			}
+			if !isFullCol && !isFullRow &&
+				RangeCellCountExceedsLimit(addr.ToRow-addr.FromRow+1, addr.ToCol-addr.FromCol+1) {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
 			rows := resolver.GetRangeValues(addr)
+			if isRangeOverflowMatrix(rows) {
+				push(ErrorVal(ErrValREF))
+				continue
+			}
 			// Pad trailing blank rows for bounded ranges. GetRangeValues
 			// clamps toRow to MaxRow to avoid huge allocations for
 			// full-column refs, but bounded ranges like A1:A5 need all
 			// requested rows so functions like COUNTBLANK see every blank.
-			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
-			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
 			if !isFullCol && !isFullRow {
 				expectedRows := addr.ToRow - addr.FromRow + 1
 				cols := addr.ToCol - addr.FromCol + 1
