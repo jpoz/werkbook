@@ -6141,7 +6141,7 @@ func fnLINEST(args []Value) (Value, error) {
 			if ssReg == 0 {
 				fStat = ErrorVal(ErrValNA)
 			} else {
-				fStat = ErrorVal(ErrValNA) // infinite F
+				fStat = ErrorVal(ErrValNUM) // infinite F → Excel returns #NUM!
 			}
 		} else {
 			fStat = NumberVal((ssReg / 1) / (ssResid / df))
