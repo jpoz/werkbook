@@ -187,6 +187,9 @@ func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
 		}
 		return NumberVal(float64(ctx.CurrentCol)), nil
 	}
+	if len(args) == 1 && args[0].Type == ValueError {
+		return args[0], nil
+	}
 	if len(args) == 1 && args[0].Type == ValueRef {
 		col := int(args[0].Num) % 100_000
 		return NumberVal(float64(col)), nil
@@ -200,6 +203,9 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
 			return ErrorVal(ErrValVALUE), nil
 		}
 		return NumberVal(float64(ctx.CurrentRow)), nil
+	}
+	if len(args) == 1 && args[0].Type == ValueError {
+		return args[0], nil
 	}
 	if len(args) == 1 && args[0].Type == ValueRef {
 		row := int(args[0].Num) / 100_000
@@ -222,6 +228,9 @@ func fnCOLUMNS(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
 	if args[0].Type == ValueArray && len(args[0].Array) > 0 {
 		return NumberVal(float64(len(args[0].Array[0]))), nil
 	}
@@ -231,6 +240,9 @@ func fnCOLUMNS(args []Value) (Value, error) {
 func fnROWS(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
 	}
 	if args[0].Type == ValueArray {
 		return NumberVal(float64(len(args[0].Array))), nil

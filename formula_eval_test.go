@@ -59,8 +59,8 @@ func TestTEXTWithStringFormatCell(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
 
-	s.SetValue("B1", "0.00")   // Format string that looks like a number
-	s.SetValue("C1", 12.344)   // Number to format
+	s.SetValue("B1", "0.00") // Format string that looks like a number
+	s.SetValue("C1", 12.344) // Number to format
 	s.SetFormula("A1", `TEXT(C1, B1)`)
 
 	val, err := s.GetValue("A1")
@@ -81,7 +81,7 @@ func TestArithmeticWithStringCell(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
 
-	s.SetValue("A1", "42")  // String that looks like a number
+	s.SetValue("A1", "42") // String that looks like a number
 	s.SetValue("A2", 8)
 	s.SetFormula("B1", "A1+A2")
 
@@ -210,6 +210,26 @@ func TestWholeColumnRefCrossSheet(t *testing.T) {
 	// x rows: B1=100, B3=300 → total 400
 	if val.Number != 400 {
 		t.Errorf("SUMIF(Sheet2!A:A,\"x\",Sheet2!B:B) = %g, want 400", val.Number)
+	}
+}
+
+func TestOversizedCrossSheetRangeReturnsREF(t *testing.T) {
+	f := werkbook.New()
+	s1 := f.Sheet("Sheet1")
+	s2, err := f.NewSheet("Sheet2")
+	if err != nil {
+		t.Fatalf("NewSheet: %v", err)
+	}
+
+	s1.SetValue("B524289", 1)
+	s2.SetFormula("A1", "SUM(Sheet1!A:B)")
+
+	val, err := s2.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeError || val.String != "#REF!" {
+		t.Errorf("SUM(Sheet1!A:B) = %#v, want #REF!", val)
 	}
 }
 

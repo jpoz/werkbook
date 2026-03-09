@@ -801,19 +801,22 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
 		}
 		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
 		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
+		nRows := addr.ToRow - addr.FromRow + 1
+		nCols := addr.ToCol - addr.FromCol + 1
 		// For full-row or full-column ranges (e.g. "1:20", "A:C"), return
 		// only the RangeOrigin metadata without resolving cell values.
 		// Functions like ROW() and COLUMN() only need the metadata, and
 		// resolving all cells in such large ranges causes false circular
 		// reference errors when the calling cell falls within the range.
 		if isFullCol || isFullRow {
-			nRows := addr.ToRow - addr.FromRow + 1
-			nCols := addr.ToCol - addr.FromCol + 1
 			if isFullRow {
 				nCols = 1 // placeholder; actual columns determined by consumer
 			}
 			if isFullCol {
 				nRows = 1 // placeholder; actual rows determined by consumer
+			}
+			if RangeCellCountExceedsLimit(nRows, nCols) {
+				return ErrorVal(ErrValREF), nil
 			}
 			rows := make([][]Value, nRows)
 			for i := range rows {
@@ -824,7 +827,13 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
 			}
 			return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
 		}
+		if RangeCellCountExceedsLimit(nRows, nCols) {
+			return ErrorVal(ErrValREF), nil
+		}
 		rows := ctx.Resolver.GetRangeValues(addr)
+		if isRangeOverflowMatrix(rows) {
+			return ErrorVal(ErrValREF), nil
+		}
 		// Pad trailing blank rows for bounded ranges.
 		expectedRows := addr.ToRow - addr.FromRow + 1
 		cols := addr.ToCol - addr.FromCol + 1

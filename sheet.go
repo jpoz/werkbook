@@ -714,17 +714,24 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 }
 
 func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
+	rangeOverflow := func() [][]formula.Value {
+		return [][]formula.Value{{{
+			Type:          formula.ValueError,
+			Err:           formula.ErrValREF,
+			RangeOverflow: true,
+		}}}
+	}
+
+	nCols := addr.ToCol - addr.FromCol + 1
 	s := fr.resolveSheet(addr.Sheet)
 	if s == nil {
-		// For unresolvable sheets, return a single-row error rather than
-		// potentially allocating millions of rows for full-column refs.
 		nRows := addr.ToRow - addr.FromRow + 1
-		if nRows > 1000 {
-			nRows = 1
+		if formula.RangeCellCountExceedsLimit(nRows, nCols) {
+			return rangeOverflow()
 		}
 		rows := make([][]formula.Value, nRows)
 		for i := range rows {
-			row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
+			row := make([]formula.Value, nCols)
 			for j := range row {
 				row[j] = formula.ErrorVal(formula.ErrValREF)
 			}
@@ -735,18 +742,27 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 
 	// Clamp the row range to the sheet's actual data extent so that
 	// full-column references (e.g. F:F → F1:F1048576) don't allocate
-	// a million rows.
+	// rows far beyond the populated extent. Empty sheets fall back to the
+	// range's start row so full-column references still evaluate as blanks.
 	toRow := addr.ToRow
-	if maxRow := s.MaxRow(); maxRow > 0 && toRow > maxRow {
+	maxRow := s.MaxRow()
+	if maxRow < addr.FromRow {
+		maxRow = addr.FromRow
+	}
+	if toRow > maxRow {
 		toRow = maxRow
 	}
 	if toRow < addr.FromRow {
 		toRow = addr.FromRow
 	}
+	nRows := toRow - addr.FromRow + 1
+	if formula.RangeCellCountExceedsLimit(nRows, nCols) {
+		return rangeOverflow()
+	}
 
-	rows := make([][]formula.Value, toRow-addr.FromRow+1)
+	rows := make([][]formula.Value, nRows)
 	for r := addr.FromRow; r <= toRow; r++ {
-		row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
+		row := make([]formula.Value, nCols)
 		for col := addr.FromCol; col <= addr.ToCol; col++ {
 			row[col-addr.FromCol] = fr.GetCellValue(formula.CellAddr{
 				Sheet: addr.Sheet,
