@@ -1460,7 +1460,17 @@ func TestDAVERAGE_WrongArgCount(t *testing.T) {
 func TestDCOUNT(t *testing.T) {
 	db := standardDB()
 
+	mixedDB := [][]Value{
+		{StringVal("Name"), StringVal("Value")},
+		{StringVal("A"), NumberVal(10)},
+		{StringVal("B"), StringVal("text")},
+		{StringVal("C"), NumberVal(20)},
+		{StringVal("D"), BoolVal(true)},
+		{StringVal("E"), EmptyVal()},
+	}
+
 	tests := []dbTestCase{
+		// --- basic counting ---
 		{
 			name: "count Apple profit values",
 			db:   db,
@@ -1473,7 +1483,7 @@ func TestDCOUNT(t *testing.T) {
 			wantNum:  3,
 		},
 		{
-			name: "count all profit values",
+			name: "count all profit values (blank criteria)",
 			db:   db,
 			crit: [][]Value{
 				{StringVal("Tree")},
@@ -1484,30 +1494,160 @@ func TestDCOUNT(t *testing.T) {
 			wantNum:  6,
 		},
 		{
-			name: "count mixed types - only numbers",
-			db: [][]Value{
-				{StringVal("Name"), StringVal("Value")},
-				{StringVal("A"), NumberVal(10)},
-				{StringVal("B"), StringVal("text")},
-				{StringVal("C"), NumberVal(20)},
-				{StringVal("D"), BoolVal(true)},
-				{StringVal("E"), EmptyVal()},
+			name: "count Pear yield values",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Pear")},
 			},
-			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
-			field:    `"Value"`,
+			field:    `"Yield"`,
 			wantType: ValueNumber,
-			wantNum:  2, // only 10, 20
+			wantNum:  2,
+		},
+		// --- field specified by column number ---
+		{
+			name: "field by column number 5 (Profit)",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "5",
+			wantType: ValueNumber,
+			wantNum:  3,
 		},
 		{
-			name:     "count no matches returns 0",
+			name: "field by column number 2 (Height)",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("")},
+			},
+			field:    "2",
+			wantType: ValueNumber,
+			wantNum:  6,
+		},
+		// --- field specified by header string ---
+		{
+			name: "field header is case-insensitive",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    `"profit"`,
+			wantType: ValueNumber,
+			wantNum:  3,
+		},
+		// --- no matching records → 0 ---
+		{
+			name:     "no matching records returns 0",
 			db:       db,
 			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Orange")}},
 			field:    `"Profit"`,
 			wantType: ValueNumber,
 			wantNum:  0,
 		},
+		// --- single record match → 1 ---
 		{
-			name: "count with Height>10",
+			name: "single record match returns 1",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Cherry")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  1,
+		},
+		// --- empty criteria (no criteria rows) matches all ---
+		{
+			name: "no criteria rows matches all records",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				// no condition rows
+			},
+			field:    `"Height"`,
+			wantType: ValueNumber,
+			wantNum:  6,
+		},
+		// --- multiple criteria rows (OR logic) ---
+		{
+			name: "OR criteria - Apple OR Pear",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+				{StringVal("Pear")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  5, // 3 Apple + 2 Pear
+		},
+		{
+			name: "OR criteria - Apple OR Cherry",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+				{StringVal("Cherry")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  4, // 3 Apple + 1 Cherry
+		},
+		// --- multiple criteria columns (AND logic) ---
+		{
+			name: "AND criteria - Apple AND Height>10",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // Apple h=18 and h=14
+		},
+		{
+			name: "three-column AND criteria",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height"), StringVal("Age")},
+				{StringVal("Apple"), StringVal(">10"), StringVal("<20")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only Apple h=14, age=15
+		},
+		// --- combined AND/OR criteria ---
+		{
+			name: "combined AND/OR - (Apple AND Height>10) OR Cherry",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10")},
+				{StringVal("Cherry"), StringVal("")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3, // Apple h>10: 2 records + Cherry: 1 record
+		},
+		{
+			name: "combined AND/OR - (Apple AND Height>10) OR (Pear AND Height<10)",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10")},
+				{StringVal("Pear"), StringVal("<10")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3, // Apple h>10: 2, Pear h<10: 1
+		},
+		// --- numeric comparison operators ---
+		{
+			name: "numeric comparison > on Height",
 			db:   db,
 			crit: [][]Value{
 				{StringVal("Height")},
@@ -1515,7 +1655,406 @@ func TestDCOUNT(t *testing.T) {
 			},
 			field:    `"Yield"`,
 			wantType: ValueNumber,
-			wantNum:  4,
+			wantNum:  4, // h=18,12,13,14 all > 10
+		},
+		{
+			name: "numeric comparison < on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<10")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // h=9 and h=8
+		},
+		{
+			name: "numeric comparison >= on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">=14")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // h=18, h=14
+		},
+		{
+			name: "numeric comparison <= on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<=12")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3, // h=12, h=9, h=8
+		},
+		{
+			name: "numeric comparison <> on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<>13")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  5, // all except Cherry (h=13)
+		},
+		{
+			name: "exact numeric match =14 on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("=14")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only Apple h=14
+		},
+		// --- wildcard criteria ---
+		{
+			name: "wildcard * in criteria - trees starting with A",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("A*")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3, // all Apple records
+		},
+		{
+			name: "wildcard ? in criteria - Pea? matches Pear",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Pea?")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // both Pear records
+		},
+		{
+			name: "wildcard * contains pattern",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("*e*")}, // all trees contain 'e'
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  6,
+		},
+		// --- counting a text column → 0 (DCOUNT only counts numbers) ---
+		{
+			name: "text column returns 0 - Tree column is text",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("")},
+			},
+			field:    `"Tree"`,
+			wantType: ValueNumber,
+			wantNum:  0, // Tree column is text; DCOUNT ignores text
+		},
+		{
+			name: "field index 1 on text column returns 0",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "1", // first column = Tree (text)
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- counting mixed types (only numbers counted) ---
+		{
+			name: "mixed types column - only numbers counted",
+			db:   mixedDB,
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  2, // only 10, 20
+		},
+		// --- field with empty cells (not counted) ---
+		{
+			name: "empty cells in field are not counted",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(100)},
+				{StringVal("B"), EmptyVal()},
+				{StringVal("C"), NumberVal(200)},
+				{StringVal("D"), EmptyVal()},
+				{StringVal("E"), NumberVal(300)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  3, // 100, 200, 300 (empties not counted)
+		},
+		// --- cross-column criteria ---
+		{
+			name: "criteria on different column than counted field",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Age")},
+				{StringVal(">14")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  2, // Age>14: age 20 and age 15
+		},
+		{
+			name: "criteria on Profit, count Yield",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Profit")},
+				{StringVal(">100")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  2, // Profit>100: Apple(105) and Cherry(105)
+		},
+		// --- database with boolean values ---
+		{
+			name: "boolean criteria match TRUE",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Active"), StringVal("Score")},
+				{StringVal("A"), BoolVal(true), NumberVal(10)},
+				{StringVal("B"), BoolVal(false), NumberVal(20)},
+				{StringVal("C"), BoolVal(true), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Active")},
+				{BoolVal(true)},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  2, // A and C
+		},
+		{
+			name: "boolean criteria match FALSE",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Active"), StringVal("Score")},
+				{StringVal("A"), BoolVal(true), NumberVal(10)},
+				{StringVal("B"), BoolVal(false), NumberVal(20)},
+				{StringVal("C"), BoolVal(true), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Active")},
+				{BoolVal(false)},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only B
+		},
+		{
+			name: "boolean column not counted by DCOUNT",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Active")},
+				{StringVal("A"), BoolVal(true)},
+				{StringVal("B"), BoolVal(false)},
+				{StringVal("C"), BoolVal(true)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Active"`,
+			wantType: ValueNumber,
+			wantNum:  0, // booleans are not numbers
+		},
+		// --- comparison with DCOUNTA behavior (DCOUNT only counts numbers) ---
+		{
+			name: "all text values returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Note")},
+				{StringVal("A"), StringVal("hello")},
+				{StringVal("B"), StringVal("world")},
+				{StringVal("C"), StringVal("test")},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Note"`,
+			wantType: ValueNumber,
+			wantNum:  0, // DCOUNT skips text
+		},
+		{
+			name: "all empty values returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), EmptyVal()},
+				{StringVal("B"), EmptyVal()},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0, // empties are not numbers
+		},
+		// --- case-insensitive text criteria ---
+		{
+			name: "case-insensitive text criteria match",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3,
+		},
+		// --- criteria header not in database ---
+		{
+			name: "criteria header not in database - no match",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(10)},
+				{StringVal("B"), NumberVal(20)},
+			},
+			crit: [][]Value{
+				{StringVal("NonExistentColumn")},
+				{StringVal("A")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0, // criteria column not found -> never matches
+		},
+		// --- empty database ---
+		{
+			name: "empty database returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				// no data rows
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- error field / field not found ---
+		{
+			name:     "field name not found returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    `"NonExistent"`,
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index out of range returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "99",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index 0 returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "0",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index negative returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "-1",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		// --- exact match with = prefix ---
+		{
+			name: "exact match with = prefix excludes partial matches",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("Apple"), NumberVal(10)},
+				{StringVal("Apple Pie"), NumberVal(20)},
+				{StringVal("apple"), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("=Apple")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  2, // "Apple" and "apple" match (case-insensitive), not "Apple Pie"
+		},
+		// --- <> on text ---
+		{
+			name: "not-equal text criteria",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("<>Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3, // Pear(2) + Cherry(1)
+		},
+		// --- numeric criteria value (not comparison string) ---
+		{
+			name: "numeric criteria value exact match",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score"), StringVal("Value")},
+				{StringVal("A"), NumberVal(100), NumberVal(10)},
+				{StringVal("B"), NumberVal(200), NumberVal(20)},
+				{StringVal("C"), NumberVal(100), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Score")},
+				{NumberVal(100)},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  2, // A and C
+		},
+		// --- multiple OR rows with same column value ---
+		{
+			name: "multiple OR rows with exact height match",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("=18")},
+				{StringVal("=8")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // h=18 and h=8
+		},
+		// --- zeros count as numbers ---
+		{
+			name: "zeros are counted as numbers",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(0)},
+				{StringVal("B"), NumberVal(0)},
+				{StringVal("C"), NumberVal(0)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  3, // zeros are numeric values
 		},
 	}
 
@@ -1523,12 +2062,77 @@ func TestDCOUNT(t *testing.T) {
 }
 
 func TestDCOUNT_WrongArgCount(t *testing.T) {
-	result, err := fnDCount(nil)
-	if err != nil {
-		t.Fatalf("fnDCount error: %v", err)
+	// Direct function call with wrong arg counts
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{"zero args", nil},
+		{"one arg", []Value{NumberVal(1)}},
+		{"two args", []Value{NumberVal(1), NumberVal(2)}},
+		{"four args", []Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)}},
 	}
-	if result.Type != ValueError || result.Err != ErrValVALUE {
-		t.Errorf("fnDCount(nil) = %+v, want #VALUE!", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := fnDCount(tt.args)
+			if err != nil {
+				t.Fatalf("fnDCount error: %v", err)
+			}
+			if result.Type != ValueError || result.Err != ErrValVALUE {
+				t.Errorf("fnDCount(%d args) = %+v, want #VALUE!", len(tt.args), result)
+			}
+		})
+	}
+}
+
+func TestDCOUNT_ErrorPropagation(t *testing.T) {
+	// If the database contains an error in the counted field, propagate it.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Value")},
+		{StringVal("A"), NumberVal(10)},
+		{StringVal("B"), ErrorVal(ErrValDIV0)},
+		{StringVal("C"), NumberVal(20)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")}, // match all
+	}
+
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	formula := `DCOUNT(A1:B4,"Value",G1:G2)`
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("DCOUNT with error cell = %+v, want #DIV/0!", got)
+	}
+}
+
+func TestDCOUNT_ErrorInDatabase(t *testing.T) {
+	// Error in a non-counted field should not affect counting.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Score"), StringVal("Value")},
+		{StringVal("A"), NumberVal(100), NumberVal(10)},
+		{StringVal("B"), ErrorVal(ErrValNA), NumberVal(20)},
+		{StringVal("C"), NumberVal(300), NumberVal(30)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")},
+	}
+
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	formula := `DCOUNT(A1:C4,"Value",G1:G2)`
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Error is in "Score" column but we're counting "Value" column, so no error.
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Errorf("DCOUNT = %+v, want 3", got)
 	}
 }
 
