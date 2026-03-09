@@ -3275,71 +3275,133 @@ func TestN(t *testing.T) {
 func TestNA(t *testing.T) {
 	resolver := &mockResolver{}
 
-	t.Run("returns_na_error", func(t *testing.T) {
-		cf := evalCompile(t, `NA()`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueError || got.Err != ErrValNA {
-			t.Errorf("NA() = %v, want #N/A", got)
-		}
-	})
+	type want struct {
+		typ  ValueType
+		num  float64
+		str  string
+		bool bool
+		err  ErrorValue
+	}
 
-	t.Run("with_one_arg_returns_value_error", func(t *testing.T) {
-		cf := evalCompile(t, `NA(1)`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf("NA(1) = %v, want #VALUE!", got)
-		}
-	})
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// --- Basic: NA() returns #N/A error ---
+		{"returns_na_error", `NA()`, want{typ: ValueError, err: ErrValNA}},
+		{"result_type_is_error", `NA()`, want{typ: ValueError, err: ErrValNA}},
 
-	t.Run("with_two_args_returns_value_error", func(t *testing.T) {
-		cf := evalCompile(t, `NA(1,2)`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf("NA(1,2) = %v, want #VALUE!", got)
-		}
-	})
+		// --- NA() with wrong argument counts returns #VALUE! ---
+		{"with_one_arg_returns_value_error", `NA(1)`, want{typ: ValueError, err: ErrValVALUE}},
+		{"with_two_args_returns_value_error", `NA(1,2)`, want{typ: ValueError, err: ErrValVALUE}},
+		{"with_string_arg_returns_value_error", `NA("test")`, want{typ: ValueError, err: ErrValVALUE}},
+		{"with_bool_arg_returns_value_error", `NA(TRUE)`, want{typ: ValueError, err: ErrValVALUE}},
 
-	t.Run("with_string_arg_returns_value_error", func(t *testing.T) {
-		cf := evalCompile(t, `NA("test")`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf(`NA("test") = %v, want #VALUE!`, got)
-		}
-	})
+		// --- NA() is specifically #N/A, not other error types ---
+		{"error_type_returns_7", `ERROR.TYPE(NA())`, want{typ: ValueNumber, num: 7}},
 
-	t.Run("nested_in_isna", func(t *testing.T) {
-		cf := evalCompile(t, `ISNA(NA())`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueBool || !got.Bool {
-			t.Errorf("ISNA(NA()) = %v, want TRUE", got)
-		}
-	})
+		// --- NA() inside ISNA → TRUE ---
+		{"isna_of_na_is_true", `ISNA(NA())`, want{typ: ValueBool, bool: true}},
 
-	t.Run("nested_in_iserror", func(t *testing.T) {
-		cf := evalCompile(t, `ISERROR(NA())`)
-		got, err := Eval(cf, resolver, nil)
-		if err != nil {
-			t.Fatalf("Eval: %v", err)
-		}
-		if got.Type != ValueBool || !got.Bool {
-			t.Errorf("ISERROR(NA()) = %v, want TRUE", got)
-		}
-	})
+		// --- ISNA with non-NA values → FALSE ---
+		{"isna_of_number_is_false", `ISNA(1)`, want{typ: ValueBool, bool: false}},
+		{"isna_of_text_is_false", `ISNA("text")`, want{typ: ValueBool, bool: false}},
+		{"isna_of_bool_is_false", `ISNA(TRUE)`, want{typ: ValueBool, bool: false}},
+		{"isna_of_value_error_is_false", `ISNA(#VALUE!)`, want{typ: ValueBool, bool: false}},
+		{"isna_of_div0_error_is_false", `ISNA(1/0)`, want{typ: ValueBool, bool: false}},
+
+		// --- NA() inside ISERROR → TRUE ---
+		{"iserror_of_na_is_true", `ISERROR(NA())`, want{typ: ValueBool, bool: true}},
+
+		// --- NA() inside ISERR → FALSE (ISERR catches all errors EXCEPT #N/A) ---
+		{"iserr_of_na_is_false", `ISERR(NA())`, want{typ: ValueBool, bool: false}},
+
+		// --- NA() inside IFERROR → returns alternative value ---
+		{"iferror_catches_na", `IFERROR(NA(),"fallback")`, want{typ: ValueString, str: "fallback"}},
+		{"iferror_catches_na_number", `IFERROR(NA(),99)`, want{typ: ValueNumber, num: 99}},
+
+		// --- NA() inside IFNA → returns alternative value ---
+		{"ifna_catches_na", `IFNA(NA(),"caught")`, want{typ: ValueString, str: "caught"}},
+		{"ifna_catches_na_number", `IFNA(NA(),42)`, want{typ: ValueNumber, num: 42}},
+		{"ifna_catches_na_bool", `IFNA(NA(),TRUE)`, want{typ: ValueBool, bool: true}},
+
+		// --- NA() in arithmetic → #N/A propagation ---
+		{"na_plus_one", `NA()+1`, want{typ: ValueError, err: ErrValNA}},
+		{"one_plus_na", `1+NA()`, want{typ: ValueError, err: ErrValNA}},
+		{"na_minus_one", `NA()-1`, want{typ: ValueError, err: ErrValNA}},
+		{"na_times_two", `NA()*2`, want{typ: ValueError, err: ErrValNA}},
+		{"na_div_two", `NA()/2`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() in comparison → #N/A propagation ---
+		{"na_gt_one", `NA()>1`, want{typ: ValueError, err: ErrValNA}},
+		{"na_lt_one", `NA()<1`, want{typ: ValueError, err: ErrValNA}},
+		{"na_eq_one", `NA()=1`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() in string concatenation → #N/A propagation ---
+		{"na_concat_string", `NA()&"text"`, want{typ: ValueError, err: ErrValNA}},
+		{"string_concat_na", `"text"&NA()`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() as argument to aggregate functions → #N/A propagation ---
+		{"sum_with_na", `SUM(NA(),1,2)`, want{typ: ValueError, err: ErrValNA}},
+		{"average_with_na", `AVERAGE(NA(),1,2)`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() as IF condition → #N/A propagation ---
+		{"if_na_condition", `IF(NA(),"yes","no")`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() as argument to AND/OR → #N/A propagation ---
+		{"and_with_na", `AND(NA(),TRUE)`, want{typ: ValueError, err: ErrValNA}},
+		{"or_with_na", `OR(NA(),FALSE)`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- Multiple NA() calls return same error type ---
+		{"two_na_same_type", `ISNA(NA())`, want{typ: ValueBool, bool: true}},
+		{"na_eq_na_propagates", `NA()=NA()`, want{typ: ValueError, err: ErrValNA}},
+
+		// --- NA() in nested function chains ---
+		{"nested_if_iferror_na", `IFERROR(IF(TRUE,NA(),"ok"),"recovered")`, want{typ: ValueString, str: "recovered"}},
+		{"nested_ifna_sum", `IFNA(SUM(NA(),1),"sum failed")`, want{typ: ValueString, str: "sum failed"}},
+		{"double_iferror_na", `IFERROR(IFERROR(NA(),"inner"),"outer")`, want{typ: ValueString, str: "inner"}},
+		{"isna_iferror_na", `ISNA(IFERROR(NA(),"ok"))`, want{typ: ValueBool, bool: false}},
+		{"error_type_of_iferror_na", `IFNA(NA(),0)+1`, want{typ: ValueNumber, num: 1}},
+
+		// --- NA() compared to #N/A literal ---
+		{"na_literal_also_na", `ISNA(#N/A)`, want{typ: ValueBool, bool: true}},
+		{"error_type_na_literal", `ERROR.TYPE(#N/A)`, want{typ: ValueNumber, num: 7}},
+
+		// --- NA() result used in TYPE function → 16 (error) ---
+		{"type_of_na_is_16", `TYPE(NA())`, want{typ: ValueNumber, num: 16}},
+
+		// --- NA() inside N() propagates error ---
+		{"n_of_na_propagates", `N(NA())`, want{typ: ValueError, err: ErrValNA}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Type != ValueNumber || got.Num != tt.want.num {
+					t.Errorf("%s = %v (num %g), want number %g", tt.formula, got.Type, got.Num, tt.want.num)
+				}
+			case ValueString:
+				if got.Type != ValueString || got.Str != tt.want.str {
+					t.Errorf("%s = %v (str %q), want string %q", tt.formula, got.Type, got.Str, tt.want.str)
+				}
+			case ValueBool:
+				if got.Type != ValueBool || got.Bool != tt.want.bool {
+					t.Errorf("%s = %v (bool %v), want bool %v", tt.formula, got.Type, got.Bool, tt.want.bool)
+				}
+			case ValueError:
+				if got.Type != ValueError || got.Err != tt.want.err {
+					t.Errorf("%s = %v (err %v), want error %v", tt.formula, got.Type, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
 }
 
 func TestERROR_TYPE(t *testing.T) {
