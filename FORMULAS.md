@@ -211,7 +211,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 22 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 27 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 24 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
