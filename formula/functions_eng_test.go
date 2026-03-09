@@ -5046,3 +5046,140 @@ func TestBESSELI(t *testing.T) {
 		}
 	})
 }
+
+func TestBESSELJ(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+			tol     float64
+		}{
+			// Excel documentation example
+			{"BESSELJ(1.9,2)", 0.329925727692387, 1e-12},
+
+			// x = 0 cases
+			{"BESSELJ(0,0)", 1, 0},
+			{"BESSELJ(0,1)", 0, 0},
+			{"BESSELJ(0,5)", 0, 0},
+
+			// Known values for n=0
+			{"BESSELJ(1,0)", 0.765197686557967, 1e-12},
+			{"BESSELJ(2,0)", 0.223890779141236, 1e-12},
+
+			// Known values for n=1
+			{"BESSELJ(1,1)", 0.440050585744934, 1e-12},
+			{"BESSELJ(2,1)", 0.576724807756874, 1e-12},
+
+			// Negative x, even n → positive (same as positive x)
+			{"BESSELJ(-1.9,2)", 0.329925727692387, 1e-12},
+			{"BESSELJ(-2,0)", 0.223890779141236, 1e-12},
+
+			// Negative x, odd n → negative
+			{"BESSELJ(-1.9,1)", -0.581157072713434, 1e-12},
+			{"BESSELJ(-1,1)", -0.440050585744934, 1e-12},
+
+			// n truncated: BESSELJ(1.9, 2.7) same as BESSELJ(1.9, 2)
+			{"BESSELJ(1.9,2.7)", 0.329925727692387, 1e-12},
+			{"BESSELJ(1.9,2.1)", 0.329925727692387, 1e-12},
+
+			// Oscillating region: larger x
+			{"BESSELJ(5,0)", -0.177596771314338, 1e-12},
+			{"BESSELJ(5,2)", 0.046565116277752, 1e-12},
+			{"BESSELJ(10,0)", -0.245935764451321, 1e-12},
+			{"BESSELJ(10,2)", 0.254630313685208, 1e-12},
+			{"BESSELJ(20,0)", 0.167024664372723, 1e-9},
+
+			// Higher order n
+			{"BESSELJ(1,5)", 0.000249757730211234, 1e-14},
+			{"BESSELJ(5,5)", 0.261140546120170, 1e-12},
+
+			// Boolean coercion (TRUE=1, FALSE=0)
+			{"BESSELJ(TRUE,0)", 0.765197686557967, 1e-12},
+			{"BESSELJ(1,FALSE)", 0.765197686557967, 1e-12},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("Eval(%q) = %v (type %d), want number", tt.formula, got, got.Type)
+				}
+				diff := math.Abs(got.Num - tt.want)
+				if tt.tol == 0 {
+					if got.Num != tt.want {
+						t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want)
+					}
+				} else if diff > tt.tol {
+					t.Errorf("Eval(%q) = %v, want %v (diff=%e, tol=%e)", tt.formula, got.Num, tt.want, diff, tt.tol)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// n < 0 → #NUM!
+			{"BESSELJ(1,-1)", ErrValNUM},
+			{"BESSELJ(1,-5)", ErrValNUM},
+
+			// Non-numeric x → #VALUE!
+			{`BESSELJ("abc",1)`, ErrValVALUE},
+
+			// Non-numeric n → #VALUE!
+			{`BESSELJ(1,"abc")`, ErrValVALUE},
+
+			// Both non-numeric → #VALUE!
+			{`BESSELJ("a","b")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"BESSELJ()", "BESSELJ(1)", "BESSELJ(1,2,3)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", formula, err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		for _, formula := range []string{"BESSELJ(1/0,1)", "BESSELJ(1,1/0)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", formula, err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}

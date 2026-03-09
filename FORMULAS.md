@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **429** spreadsheet formula functions.
+Werkbook supports **430** spreadsheet formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -29,6 +29,7 @@ Werkbook supports **429** spreadsheet formula functions.
 | AVERAGEIFS | Statistical | 48 |
 | BASE | Math & Trig | 31 |
 | BESSELI | Engineering | 29 |
+| BESSELJ | Engineering | 30 |
 | BETA.DIST | Statistical | 43 |
 | BETA.INV | Statistical | 42 |
 | BIN2DEC | Engineering | 38 |
@@ -436,7 +437,7 @@ Werkbook supports **429** spreadsheet formula functions.
 
 # Unsupported Formulas
 
-The following **41** functions are not yet supported.
+The following **40** functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -445,7 +446,6 @@ The following **41** functions are not yet supported.
 | AREAS | Lookup & Reference |
 | ASC | Text |
 | BAHTTEXT | Text |
-| BESSELJ | Engineering |
 | BESSELK | Engineering |
 | BESSELY | Engineering |
 | BYCOL | Logical |

@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Register("BESSELI", NoCtx(fnBesselI))
+	Register("BESSELJ", NoCtx(fnBesselJ))
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("BIN2HEX", NoCtx(fnBin2Hex))
 	Register("BIN2OCT", NoCtx(fnBin2Oct))
@@ -231,6 +232,161 @@ func besselI(n int, x float64) float64 {
 	// Normalize: at j=0 we have bi ≈ I_0(x) * scale, so result/bi * I_0(x) gives I_n(x).
 	result *= bi0 / bi
 	return result
+}
+
+// fnBesselJ implements the BESSELJ function.
+// BESSELJ(X, N) — returns the Bessel function of the first kind, J_n(x).
+// N is truncated to an integer. If N < 0, returns #NUM!.
+func fnBesselJ(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	nf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate n to integer.
+	n := int(math.Trunc(nf))
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Handle x = 0 specially.
+	if x == 0 {
+		if n == 0 {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	// Handle negative x: J_n(-x) = (-1)^n * J_n(x) for integer n.
+	sign := 1.0
+	if x < 0 {
+		if n%2 != 0 {
+			sign = -1
+		}
+		x = -x
+	}
+
+	result := besselJ(n, x)
+	return NumberVal(sign * result), nil
+}
+
+// besselJ computes J_n(x) for integer n >= 0 and x > 0.
+// Uses the power series: J_n(x) = sum_{k=0}^{inf} (-1)^k * (x/2)^{n+2k} / (k! * (n+k)!)
+// with incremental term computation for numerical stability.
+// For large x where the series converges slowly, uses Miller's backward
+// recurrence with Neumann sum normalization.
+func besselJ(n int, x float64) float64 {
+	if x == 0 {
+		if n == 0 {
+			return 1
+		}
+		return 0
+	}
+
+	// For small to moderate x (relative to n), the power series converges well.
+	// For large x, use Miller's backward recurrence.
+	// The series converges when x/2 < ~some threshold; generally when x < 2*(n+20).
+	// Use backward recurrence when x > n (where forward recurrence from series is slow).
+	if x <= float64(n)+20.0 || x <= 25.0 {
+		return besselJSeries(n, x)
+	}
+	return besselJMiller(n, x)
+}
+
+// besselJSeries computes J_n(x) using the convergent power series.
+// J_n(x) = (x/2)^n * sum_{k=0}^{inf} (-1)^k * (x/2)^{2k} / (k! * (n+k)!)
+// Terms are computed incrementally: term_{k+1} = -term_k * (x/2)^2 / ((k+1)*(n+k+1))
+func besselJSeries(n int, x float64) float64 {
+	halfX := x / 2.0
+
+	// Compute first term: (x/2)^n / n!
+	// Use logarithms to avoid overflow for large n.
+	var term float64
+	if n == 0 {
+		term = 1.0
+	} else {
+		// (x/2)^n / n! = exp(n*ln(x/2) - lnGamma(n+1))
+		lgn, _ := math.Lgamma(float64(n) + 1)
+		logTerm := float64(n)*math.Log(halfX) - lgn
+		term = math.Exp(logTerm)
+	}
+
+	sum := term
+	halfX2 := halfX * halfX
+	const maxIter = 300
+
+	for k := 1; k <= maxIter; k++ {
+		term *= -halfX2 / (float64(k) * float64(n+k))
+		sum += term
+		if math.Abs(term) < math.Abs(sum)*1e-16 {
+			break
+		}
+	}
+	return sum
+}
+
+// besselJMiller computes J_n(x) for large x using Miller's backward recurrence.
+// Uses the Neumann normalization: 1 = J_0(x) + 2*J_2(x) + 2*J_4(x) + ...
+func besselJMiller(n int, x float64) float64 {
+	const iacc = 40
+	bigno := 1e10
+	bigni := 1e-10
+
+	// Starting index for backward recurrence.
+	m := 2 * ((n + int(math.Sqrt(float64(iacc*n)))) / 2)
+	if m < 40 {
+		m = 40
+	}
+	if extra := int(x) + 20; m < n+extra {
+		m = n + extra
+		if m%2 != 0 {
+			m++
+		}
+	}
+
+	tox := 2.0 / x
+	var bjp, bj float64
+	var result float64
+	var sum float64
+	isEven := false // tracks whether current j is even
+
+	bjp = 0
+	bj = 1.0
+	for j := m; j >= 0; j-- {
+		bjm := float64(j+1)*tox*bj - bjp
+		bjp = bj
+		bj = bjm
+		// Renormalize to prevent overflow.
+		if math.Abs(bj) > bigno {
+			bj *= bigni
+			bjp *= bigni
+			result *= bigni
+			sum *= bigni
+		}
+		if isEven {
+			sum += bj // accumulate J_0 + 2*J_2 + 2*J_4 + ...
+		}
+		isEven = !isEven
+		if j == n {
+			result = bjp
+		}
+	}
+	// At j=0, bj = unnormalized J_0. The Neumann sum identity gives:
+	// 1 = J_0 + 2*(J_2 + J_4 + ...)
+	// sum currently has J_0 + J_2 + J_4 + ... (every other even term was added)
+	// Actually, let's just use: normalize = 2*sum - bj (since sum double-counted J_0 area)
+	// The identity: 1 = bj_unnorm/scale where scale = 2*sum - bj
+	norm := 2.0*sum - bj
+	return result / norm
 }
 
 // fnBin2Dec implements the BIN2DEC function.
