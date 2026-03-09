@@ -1174,6 +1174,11 @@ func collectNumeric(args []Value) ([]float64, *Value) {
 			if arg.Type == ValueError {
 				return nil, &arg
 			}
+			// Single-cell references to text, booleans, or empty cells
+			// are ignored, matching the range/array behavior above.
+			if arg.FromCell && (arg.Type == ValueString || arg.Type == ValueBool || arg.Type == ValueEmpty) {
+				continue
+			}
 			n, e := CoerceNum(arg)
 			if e != nil {
 				return nil, e
