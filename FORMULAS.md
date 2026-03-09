@@ -211,7 +211,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 34 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 36 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
@@ -240,7 +240,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
 | LEN | Returns the number of characters in text. | Text | 31 |
 | LET | Assigns names to intermediate values within a formula. | Logical | 33 |
-| LINEST | Returns linear regression statistics. | Statistical | 2 |
+| LINEST | Returns linear regression statistics. | Statistical | 3 |
 | LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
 | LOG | Returns the logarithm of a number in a chosen base. | Math & Trig | 35 |
 | LOG10 | Returns the base-10 logarithm of a number. | Math & Trig | 31 |
