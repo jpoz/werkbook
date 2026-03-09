@@ -1707,35 +1707,145 @@ func TestTIME(t *testing.T) {
 func TestTIMEVALUE(t *testing.T) {
 	resolver := &mockResolver{}
 
-	tests := []struct {
-		name    string
-		formula string
-		want    float64
-	}{
-		{"noon", `TIMEVALUE("12:00")`, 0.5},
-		{"6:30 PM", `TIMEVALUE("6:30 PM")`, 0.7708333333333334},
-		{"midnight_0:00", `TIMEVALUE("0:00")`, 0},
-		{"23:59:59", `TIMEVALUE("23:59:59")`, 0.999988425925926},
-		{"1:30:45", `TIMEVALUE("1:30:45")`, 0.06302083333333333},
-		{"12:00 AM", `TIMEVALUE("12:00 AM")`, 0},
-		{"12:00 PM", `TIMEVALUE("12:00 PM")`, 0.5},
-	}
+	t.Run("valid_times", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			// Original tests
+			{"noon_24h", `TIMEVALUE("12:00")`, 0.5},
+			{"6:30 PM", `TIMEVALUE("6:30 PM")`, 0.7708333333333334},
+			{"midnight_0:00", `TIMEVALUE("0:00")`, 0},
+			{"23:59:59", `TIMEVALUE("23:59:59")`, 0.999988425925926},
+			{"1:30:45_24h", `TIMEVALUE("1:30:45")`, 0.06302083333333333},
+			{"12:00 AM", `TIMEVALUE("12:00 AM")`, 0},
+			{"12:00 PM", `TIMEVALUE("12:00 PM")`, 0.5},
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cf := evalCompile(t, tc.formula)
-			got, err := Eval(cf, resolver, nil)
-			if err != nil {
-				t.Fatalf("Eval(%s): %v", tc.formula, err)
-			}
-			if got.Type != ValueNumber {
-				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
-			}
-			if math.Abs(got.Num-tc.want) > 1e-12 {
-				t.Errorf("%s = %.18g, want %.18g", tc.formula, got.Num, tc.want)
-			}
-		})
-	}
+			// Basic quarter-day times
+			{"6:00 AM", `TIMEVALUE("6:00 AM")`, 0.25},
+			{"6:00 PM", `TIMEVALUE("6:00 PM")`, 0.75},
+			{"3:00 AM", `TIMEVALUE("3:00 AM")`, 0.125},
+			{"9:00 PM", `TIMEVALUE("9:00 PM")`, 0.875},
+
+			// End of day
+			{"11:59:59 PM", `TIMEVALUE("11:59:59 PM")`, 0.999988425925926},
+
+			// 24-hour format
+			{"13:00", `TIMEVALUE("13:00")`, 13.0 / 24.0},
+			{"23:59", `TIMEVALUE("23:59")`, (23*3600 + 59*60) / 86400.0},
+			{"6:00_24h", `TIMEVALUE("6:00")`, 0.25},
+			{"18:00_24h", `TIMEVALUE("18:00")`, 0.75},
+
+			// With seconds
+			{"1:30:30 PM", `TIMEVALUE("1:30:30 PM")`, (13*3600 + 30*60 + 30) / 86400.0},
+			{"12:00:00_24h", `TIMEVALUE("12:00:00")`, 0.5},
+			{"0:00:01", `TIMEVALUE("0:00:01")`, 1.0 / 86400.0},
+
+			// Minutes only (hour zero)
+			{"0:30", `TIMEVALUE("0:30")`, 30.0 * 60.0 / 86400.0},
+			{"0:01", `TIMEVALUE("0:01")`, 60.0 / 86400.0},
+			{"0:59", `TIMEVALUE("0:59")`, 59.0 * 60.0 / 86400.0},
+
+			// Noon variations
+			{"12:00:00 PM", `TIMEVALUE("12:00:00 PM")`, 0.5},
+			{"12:00:00_noon", `TIMEVALUE("12:00:00")`, 0.5},
+
+			// Edge times around midnight
+			{"12:00:01 AM", `TIMEVALUE("12:00:01 AM")`, 1.0 / 86400.0},
+
+			// Edge times around noon
+			{"11:59:59 AM", `TIMEVALUE("11:59:59 AM")`, (11*3600 + 59*60 + 59) / 86400.0},
+			{"12:00:01 PM", `TIMEVALUE("12:00:01 PM")`, (12*3600 + 1) / 86400.0},
+
+			// AM/PM variants
+			{"1:00 AM", `TIMEVALUE("1:00 AM")`, 1.0 / 24.0},
+			{"1:00 PM", `TIMEVALUE("1:00 PM")`, 13.0 / 24.0},
+			{"11:00 AM", `TIMEVALUE("11:00 AM")`, 11.0 / 24.0},
+			{"11:00 PM", `TIMEVALUE("11:00 PM")`, 23.0 / 24.0},
+
+			// Specific Excel-known values
+			{"2:00 AM", `TIMEVALUE("2:00 AM")`, 2.0 / 24.0},
+			{"4:30 PM", `TIMEVALUE("4:30 PM")`, (16*3600 + 30*60) / 86400.0},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): %v", tc.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+				}
+				if math.Abs(got.Num-tc.want) > 1e-12 {
+					t.Errorf("%s = %.18g, want %.18g", tc.formula, got.Num, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+		}{
+			// Wrong argument count
+			{"no_args", `TIMEVALUE()`},
+			{"two_args", `TIMEVALUE("12:00","13:00")`},
+
+			// Non-time strings
+			{"non_time_string", `TIMEVALUE("hello")`},
+			{"empty_string", `TIMEVALUE("")`},
+			{"date_only", `TIMEVALUE("2024-01-01")`},
+			{"random_text", `TIMEVALUE("abc:def")`},
+
+			// Boolean input (converted to "TRUE"/"FALSE" text, not parseable)
+			{"boolean_true", `TIMEVALUE(TRUE)`},
+			{"boolean_false", `TIMEVALUE(FALSE)`},
+
+			// Numeric input (converted to text like "123", not parseable)
+			{"numeric_input", `TIMEVALUE(123)`},
+			{"numeric_zero", `TIMEVALUE(0)`},
+
+			// Invalid time values
+			{"invalid_minute_60", `TIMEVALUE("12:60")`},
+			{"invalid_second_60", `TIMEVALUE("12:00:60")`},
+			{"invalid_hour_13_am", `TIMEVALUE("13:00 AM")`},
+			{"invalid_hour_0_am", `TIMEVALUE("0:00 AM")`},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				cf := evalCompile(t, tc.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%s): unexpected Go error: %v", tc.formula, err)
+				}
+				if got.Type != ValueError {
+					t.Fatalf("%s: got type %v (%v), want error", tc.formula, got.Type, got)
+				}
+				if got.Err != ErrValVALUE {
+					t.Errorf("%s: got error %v, want %v", tc.formula, got.Err, ErrValVALUE)
+				}
+			})
+		}
+	})
+
+	t.Run("error_propagation", func(t *testing.T) {
+		cf := evalCompile(t, `TIMEVALUE(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Fatalf("got type %v (%v), want error", got.Type, got)
+		}
+		if got.Err != ErrValDIV0 {
+			t.Errorf("got error %v, want %v", got.Err, ErrValDIV0)
+		}
+	})
 }
 
 func TestDATEVALUE_extended(t *testing.T) {
