@@ -167,7 +167,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | GAMMA.DIST | Returns the gamma distribution. | Statistical | 41 |
 | GAMMA.INV | Returns the inverse of the gamma cumulative distribution. | Statistical | 34 |
 | GAMMALN | Returns the natural logarithm of the gamma function. | Statistical | 23 |
-| GAMMALN.PRECISE | Returns the natural logarithm of the gamma function using the precise definition. | Statistical | 6 |
+| GAMMALN.PRECISE | Returns the natural logarithm of the gamma function using the precise definition. | Statistical | 30 |
 | GAUSS | Returns the probability that a standard normal variable lies between the mean and a value. | Statistical | 28 |
 | GCD | Returns the greatest common divisor. | Math & Trig | 37 |
 | GEOMEAN | Returns the geometric mean of positive values. | Statistical | 24 |

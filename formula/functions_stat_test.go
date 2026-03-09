@@ -8396,13 +8396,57 @@ func TestGAMMALN(t *testing.T) {
 		// Error cases: text
 		{"gammaln_text", `GAMMALN("text")`, 0, true, ErrValVALUE},
 
-		// GAMMALN.PRECISE should behave identically
-		{"precise_4", "GAMMALN.PRECISE(4)", 1.7917595, false, 0},
+		// GAMMALN.PRECISE — basic: ln(Γ(1)) = ln(1) = 0
 		{"precise_1", "GAMMALN.PRECISE(1)", 0, false, 0},
+		// GAMMALN.PRECISE — ln(Γ(2)) = ln(1!) = 0
+		{"precise_2", "GAMMALN.PRECISE(2)", 0, false, 0},
+		// GAMMALN.PRECISE — ln(Γ(0.5)) = ln(√π) ≈ 0.5724
 		{"precise_0.5", "GAMMALN.PRECISE(0.5)", 0.5723649, false, 0},
+
+		// Integer values: Γ(n) = (n-1)!, so GAMMALN.PRECISE(n) = ln((n-1)!)
+		{"precise_3", "GAMMALN.PRECISE(3)", 0.6931472, false, 0},   // ln(2!) = ln(2)
+		{"precise_4", "GAMMALN.PRECISE(4)", 1.7917595, false, 0},   // ln(3!) = ln(6)
+		{"precise_5", "GAMMALN.PRECISE(5)", 3.1780538, false, 0},   // ln(4!) = ln(24)
+		{"precise_6", "GAMMALN.PRECISE(6)", 4.7874917, false, 0},   // ln(5!) = ln(120)
+		{"precise_10", "GAMMALN.PRECISE(10)", 12.80183, false, 0},  // ln(9!) = ln(362880)
+		{"precise_20", "GAMMALN.PRECISE(20)", 39.339885, false, 0}, // ln(19!)
+
+		// Small values close to 0
+		{"precise_0.01", "GAMMALN.PRECISE(0.01)", 4.5994799, false, 0},
+		{"precise_0.001", "GAMMALN.PRECISE(0.001)", 6.9071786, false, 0},
+		{"precise_0.1", "GAMMALN.PRECISE(0.1)", 2.2527127, false, 0},
+		{"precise_1e-10", "GAMMALN.PRECISE(0.0000000001)", 23.02585, false, 0},
+
+		// Large values
+		{"precise_50", "GAMMALN.PRECISE(50)", 144.5657, false, 0},
+		{"precise_100", "GAMMALN.PRECISE(100)", 359.1342, false, 0},
+		{"precise_170", "GAMMALN.PRECISE(170)", 701.43726, false, 0},
+
+		// Fractional values
+		{"precise_1.5", "GAMMALN.PRECISE(1.5)", -0.1207822, false, 0},
+		{"precise_2.5", "GAMMALN.PRECISE(2.5)", 0.2846829, false, 0},
+		{"precise_3.5", "GAMMALN.PRECISE(3.5)", 1.2009736, false, 0},
+		{"precise_0.25", "GAMMALN.PRECISE(0.25)", 1.2880226, false, 0},
+		{"precise_0.75", "GAMMALN.PRECISE(0.75)", 0.2032809, false, 0},
+
+		// Boolean coercion: TRUE → 1, so GAMMALN.PRECISE(TRUE) = 0
+		{"precise_true", "GAMMALN.PRECISE(TRUE)", 0, false, 0},
+
+		// String coercion: numeric string should coerce
+		{"precise_str_4", `GAMMALN.PRECISE("4")`, 1.7917595, false, 0},
+
+		// Error cases: x = 0 → #NUM!
 		{"precise_zero", "GAMMALN.PRECISE(0)", 0, true, ErrValNUM},
-		{"precise_neg", "GAMMALN.PRECISE(-1)", 0, true, ErrValNUM},
+		// Error cases: negative values → #NUM!
+		{"precise_neg1", "GAMMALN.PRECISE(-1)", 0, true, ErrValNUM},
+		{"precise_neg0.5", "GAMMALN.PRECISE(-0.5)", 0, true, ErrValNUM},
+		{"precise_neg100", "GAMMALN.PRECISE(-100)", 0, true, ErrValNUM},
+		// Error cases: non-numeric text → #VALUE!
 		{"precise_text", `GAMMALN.PRECISE("text")`, 0, true, ErrValVALUE},
+		// Error cases: no args → #VALUE!
+		{"precise_no_args", "GAMMALN.PRECISE()", 0, true, ErrValVALUE},
+		// Error cases: too many args → #VALUE!
+		{"precise_too_many_args", "GAMMALN.PRECISE(1,2)", 0, true, ErrValVALUE},
 	}
 
 	for _, tt := range tests {
