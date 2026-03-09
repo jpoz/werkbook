@@ -336,7 +336,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | ROUND | Rounds a number to a requested number of digits. | Math & Trig | 39 |
 | ROUNDDOWN | Rounds a number toward zero. | Math & Trig | 36 |
 | ROUNDUP | Rounds a number away from zero. | Math & Trig | 36 |
-| ROW | Returns the row number of a reference. | Information | 1 |
+| ROW | Returns the row number of a reference. | Information | 40 |
 | ROWS | Returns the number of rows in a reference or array. | Information | 32 |
 | RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
 | RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 23 |

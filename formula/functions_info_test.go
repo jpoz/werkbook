@@ -3017,3 +3017,565 @@ func TestISREF(t *testing.T) {
 		}
 	})
 }
+
+func TestROW(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("no_args_returns_current_row", func(t *testing.T) {
+		tests := []struct {
+			name string
+			row  int
+			want float64
+		}{
+			{"row_1", 1, 1},
+			{"row_3", 3, 3},
+			{"row_5", 5, 5},
+			{"row_10", 10, 10},
+			{"row_100", 100, 100},
+			{"row_256", 256, 256},
+			{"row_1000", 1000, 1000},
+			{"row_1048576", 1048576, 1048576},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := &EvalContext{
+					CurrentCol:   1,
+					CurrentRow:   tt.row,
+					CurrentSheet: "",
+					Resolver:     resolver,
+				}
+				cf := evalCompile(t, `ROW()`)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("ROW() with CurrentRow=%d = %v, want %v", tt.row, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("no_args_nil_context", func(t *testing.T) {
+		// ROW() with no EvalContext should return #VALUE!
+		cf := evalCompile(t, `ROW()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ROW() with nil ctx = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("single_cell_ref", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			{"A1_row_1", `ROW(A1)`, 1},
+			{"A2_row_2", `ROW(A2)`, 2},
+			{"A5_row_5", `ROW(A5)`, 5},
+			{"B10_row_10", `ROW(B10)`, 10},
+			{"C50_row_50", `ROW(C50)`, 50},
+			{"A100_row_100", `ROW(A100)`, 100},
+			{"Z999_row_999", `ROW(Z999)`, 999},
+			{"A1000_row_1000", `ROW(A1000)`, 1000},
+			{"AA10000_row_10000", `ROW(AA10000)`, 10000},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := &EvalContext{
+					CurrentCol:   1,
+					CurrentRow:   1,
+					CurrentSheet: "",
+					Resolver:     resolver,
+				}
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("ref_different_cols_same_row", func(t *testing.T) {
+		// ROW should return the row regardless of which column the ref is in
+		tests := []struct {
+			name    string
+			formula string
+			want    float64
+		}{
+			{"A7", `ROW(A7)`, 7},
+			{"B7", `ROW(B7)`, 7},
+			{"C7", `ROW(C7)`, 7},
+			{"Z7", `ROW(Z7)`, 7},
+			{"AA7", `ROW(AA7)`, 7},
+			{"XFD7", `ROW(XFD7)`, 7},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := &EvalContext{
+					CurrentCol:   1,
+					CurrentRow:   1,
+					CurrentSheet: "",
+					Resolver:     resolver,
+				}
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != tt.want {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("non_reference_arg_returns_VALUE_error", func(t *testing.T) {
+		// Non-reference arguments (numbers, strings, booleans) should return #VALUE!
+		tests := []struct {
+			name    string
+			formula string
+		}{
+			{"number", `ROW(42)`},
+			{"string", `ROW("hello")`},
+			{"boolean_true", `ROW(TRUE)`},
+			{"boolean_false", `ROW(FALSE)`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := &EvalContext{
+					CurrentCol:   1,
+					CurrentRow:   1,
+					CurrentSheet: "",
+					Resolver:     resolver,
+				}
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueError || got.Err != ErrValVALUE {
+					t.Errorf("%s = %v, want #VALUE!", tt.formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("range_ref_returns_array", func(t *testing.T) {
+		// ROW(A1:A5) should return an array {1;2;3;4;5}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(A1:A5)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(A1:A5): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 5 {
+			t.Fatalf("ROW(A1:A5): expected 5 rows, got %d", len(got.Array))
+		}
+		for i := 0; i < 5; i++ {
+			want := float64(i + 1)
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW(A1:A5)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+
+	t.Run("range_ref_multi_col", func(t *testing.T) {
+		// ROW(B3:D7) should return array {3;4;5;6;7} — the rows of the range
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(B3:D7)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(B3:D7): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 5 {
+			t.Fatalf("ROW(B3:D7): expected 5 rows, got %d", len(got.Array))
+		}
+		for i := 0; i < 5; i++ {
+			want := float64(i + 3)
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW(B3:D7)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+
+	t.Run("range_ref_single_row", func(t *testing.T) {
+		// ROW(A5:C5) — single-row range should return array with one element {5}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(A5:C5)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(A5:C5): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 1 {
+			t.Fatalf("ROW(A5:C5): expected 1 row, got %d", len(got.Array))
+		}
+		if got.Array[0][0].Num != 5 {
+			t.Errorf("ROW(A5:C5)[0]: got %g, want 5", got.Array[0][0].Num)
+		}
+	})
+
+	t.Run("range_ref_starting_not_at_1", func(t *testing.T) {
+		// ROW(A10:A12) should return {10;11;12}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(A10:A12)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(A10:A12): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 3 {
+			t.Fatalf("ROW(A10:A12): expected 3 rows, got %d", len(got.Array))
+		}
+		expected := []float64{10, 11, 12}
+		for i, want := range expected {
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW(A10:A12)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+
+	t.Run("absolute_ref", func(t *testing.T) {
+		// Absolute references ($A$5) should work identically
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW($A$5)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("ROW($A$5) = %v, want 5", got)
+		}
+	})
+
+	t.Run("absolute_row_only", func(t *testing.T) {
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(A$10)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("ROW(A$10) = %v, want 10", got)
+		}
+	})
+
+	t.Run("absolute_col_only", func(t *testing.T) {
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW($B3)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("ROW($B3) = %v, want 3", got)
+		}
+	})
+
+	t.Run("absolute_range", func(t *testing.T) {
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW($A$2:$A$4)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW($A$2:$A$4): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 3 {
+			t.Fatalf("ROW($A$2:$A$4): expected 3 rows, got %d", len(got.Array))
+		}
+		for i := 0; i < 3; i++ {
+			want := float64(i + 2)
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW($A$2:$A$4)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+
+	t.Run("error_propagation", func(t *testing.T) {
+		// ROW(1/0) — the argument evaluates to #DIV/0! which is not a ref, so #VALUE!
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(1/0)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("ROW(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("row_in_arithmetic", func(t *testing.T) {
+		// ROW(A3)+10 should return 13
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(A3)+10`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 13 {
+			t.Errorf("ROW(A3)+10 = %v, want 13", got)
+		}
+	})
+
+	t.Run("row_multiply", func(t *testing.T) {
+		// ROW(A5)*2 should return 10
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(A5)*2`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("ROW(A5)*2 = %v, want 10", got)
+		}
+	})
+
+	t.Run("row_no_args_in_arithmetic", func(t *testing.T) {
+		// ROW()+5 when current row is 3 should return 8
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   3,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW()+5`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 8 {
+			t.Errorf("ROW()+5 with CurrentRow=3 = %v, want 8", got)
+		}
+	})
+
+	t.Run("row_first_row", func(t *testing.T) {
+		// ROW(A1) — the very first row should be 1
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("ROW(A1) = %v, want 1", got)
+		}
+	})
+
+	t.Run("row_with_indirect_range", func(t *testing.T) {
+		// ROW(INDIRECT("1:5")) should return array {1;2;3;4;5}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(INDIRECT("1:5"))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(INDIRECT(\"1:5\")): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 5 {
+			t.Fatalf("ROW(INDIRECT(\"1:5\")): expected 5 rows, got %d", len(got.Array))
+		}
+		for i := 0; i < 5; i++ {
+			want := float64(i + 1)
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW(INDIRECT(\"1:5\"))[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+
+	t.Run("row_with_indirect_cell", func(t *testing.T) {
+		// INDIRECT("B7") for a single cell resolves the cell value (not a ref),
+		// so ROW(INDIRECT("B7")) receives a non-ref and returns #VALUE!.
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(INDIRECT("B7"))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("ROW(INDIRECT(\"B7\")) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("row_range_single_cell_range", func(t *testing.T) {
+		// ROW(A1:A1) — single cell range should return array with one element {1}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(A1:A1)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(A1:A1): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 1 {
+			t.Fatalf("ROW(A1:A1): expected 1 row, got %d", len(got.Array))
+		}
+		if got.Array[0][0].Num != 1 {
+			t.Errorf("ROW(A1:A1)[0]: got %g, want 1", got.Array[0][0].Num)
+		}
+	})
+
+	t.Run("row_no_args_different_positions", func(t *testing.T) {
+		// Verify ROW() returns the row of the cell regardless of the column
+		tests := []struct {
+			name string
+			col  int
+			row  int
+		}{
+			{"A1", 1, 1},
+			{"B5", 2, 5},
+			{"Z100", 26, 100},
+			{"AA50", 27, 50},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := &EvalContext{
+					CurrentCol:   tt.col,
+					CurrentRow:   tt.row,
+					CurrentSheet: "",
+					Resolver:     resolver,
+				}
+				cf := evalCompile(t, `ROW()`)
+				got, err := Eval(cf, resolver, ctx)
+				if err != nil {
+					t.Fatalf("Eval: %v", err)
+				}
+				if got.Type != ValueNumber || got.Num != float64(tt.row) {
+					t.Errorf("ROW() at col=%d, row=%d = %v, want %v", tt.col, tt.row, got, float64(tt.row))
+				}
+			})
+		}
+	})
+
+	t.Run("range_ref_large", func(t *testing.T) {
+		// ROW(A1:A10) should return array {1;2;3;4;5;6;7;8;9;10}
+		ctx := &EvalContext{
+			CurrentCol:     1,
+			CurrentRow:     1,
+			CurrentSheet:   "",
+			Resolver:       resolver,
+			IsArrayFormula: true,
+		}
+		cf := evalCompile(t, `ROW(A1:A10)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("ROW(A1:A10): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 10 {
+			t.Fatalf("ROW(A1:A10): expected 10 rows, got %d", len(got.Array))
+		}
+		for i := 0; i < 10; i++ {
+			want := float64(i + 1)
+			if got.Array[i][0].Num != want {
+				t.Errorf("ROW(A1:A10)[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			}
+		}
+	})
+}
