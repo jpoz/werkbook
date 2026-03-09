@@ -79,8 +79,8 @@ Werkbook supports **437** spreadsheet formula functions.
 | COUNT | Counts numeric values. | Statistical | 26 |
 | COUNTA | Counts non-empty values. | Statistical | 18 |
 | COUNTBLANK | Counts blank cells in a range. | Statistical | 15 |
-| COUNTIF | Counts values that match one condition. | Statistical | 17 |
-| COUNTIFS | Counts values that match all supplied conditions. | Statistical | 47 |
+| COUNTIF | Counts values that match one condition. | Statistical | 20 |
+| COUNTIFS | Counts values that match all supplied conditions. | Statistical | 49 |
 | COUPDAYBS | Returns the number of days from the coupon period start to settlement. | Financial | 2 |
 | COUPDAYS | Returns the number of days in the coupon period containing settlement. | Financial | 2 |
 | COUPDAYSNC | Returns the number of days from settlement to the next coupon date. | Financial | 2 |
@@ -182,7 +182,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
-| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 29 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 32 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 57 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 44 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
@@ -368,8 +368,8 @@ Werkbook supports **437** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 23 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 32 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 50 |
-| SUMIF | Returns the sum of values that match one condition. | Statistical | 37 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 51 |
+| SUMIF | Returns the sum of values that match one condition. | Statistical | 39 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 42 |
 | SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 22 |
 | SUMSQ | Returns the sum of squares of the supplied values. | Statistical | 30 |
