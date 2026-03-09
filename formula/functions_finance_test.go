@@ -1260,6 +1260,127 @@ func TestNPER_Comprehensive(t *testing.T) {
 			args:    []Value{NumberVal(0.01), NumberVal(-100), StringVal("bad")},
 			wantErr: true,
 		},
+
+		// --- Error: non-numeric fv ---
+		{
+			name:    "error: non-numeric fv",
+			args:    []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), StringVal("bad")},
+			wantErr: true,
+		},
+
+		// --- Error: non-numeric type ---
+		{
+			name:    "error: non-numeric type",
+			args:    []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), NumberVal(0), StringVal("nope")},
+			wantErr: true,
+		},
+
+		// --- Boolean coercion ---
+		{
+			name: "boolean coercion: TRUE as type (=1)",
+			args: []Value{NumberVal(0.06 / 12), NumberVal(-200), NumberVal(10000), NumberVal(0), BoolVal(true)},
+			want: 57.35,
+		},
+		{
+			name: "boolean coercion: FALSE as type (=0)",
+			args: []Value{NumberVal(0.06 / 12), NumberVal(-200), NumberVal(10000), NumberVal(0), BoolVal(false)},
+			want: 57.68,
+		},
+
+		// --- Empty cell references ---
+		{
+			name: "empty fv treated as 0",
+			args: []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), EmptyVal()},
+			want: 10.58,
+		},
+		{
+			name: "empty type treated as 0",
+			args: []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), NumberVal(0), EmptyVal()},
+			want: 10.58,
+		},
+		{
+			name: "empty rate treated as 0",
+			args: []Value{EmptyVal(), NumberVal(-100), NumberVal(1000)},
+			want: 10,
+		},
+
+		// --- Very high interest rate ---
+		{
+			name:    "very high rate: 100% per period, pmt too small",
+			args:    numArgs(1.0, -500, 1000),
+			wantErr: true,
+		},
+		{
+			name: "high rate: 50% per period, large payment",
+			args: numArgs(0.50, -2000, 1000),
+			want: 0.71,
+		},
+
+		// --- Very small interest rate ---
+		{
+			name: "very small rate: 0.001% per period",
+			args: numArgs(0.00001, -100, 1000),
+			want: 10.00,
+		},
+
+		// --- Both pv and fv specified ---
+		{
+			name: "both pv and fv: loan with residual",
+			args: numArgs(0.005, -500, 20000, 5000),
+			want: 54.52,
+		},
+
+		// --- Payment too small to cover interest (NUM error) ---
+		{
+			name:    "pmt too small: interest exceeds payment",
+			args:    numArgs(0.10, -50, 1000),
+			wantErr: true,
+		},
+
+		// --- Precise Excel doc values ---
+		{
+			name: "excel doc: type=1, precise value 59.6738657",
+			args: numArgs(0.12/12, -100, -1000, 10000, 1),
+			want: 59.6738657,
+		},
+		{
+			name: "excel doc: type=0 default, precise value 60.0821229",
+			args: numArgs(0.12/12, -100, -1000, 10000),
+			want: 60.0821229,
+		},
+		{
+			name: "excel doc: no fv, precise value -9.57859404",
+			args: numArgs(0.12/12, -100, -1000),
+			want: -9.57859404,
+		},
+
+		// --- Investment scenarios: positive pv, negative fv ---
+		{
+			name: "investment: grow $5000 to $10000 at 6%/yr",
+			args: numArgs(0.06/12, 0, -5000, 10000),
+			want: 138.98,
+		},
+
+		// --- Zero args edge ---
+		{
+			name:    "error: zero args",
+			args:    []Value{},
+			wantErr: true,
+		},
+
+		// --- Negative rate (deflation scenario) ---
+		{
+			name: "negative rate: -1% per period (deflation)",
+			args: numArgs(-0.01, -100, 1000),
+			want: 9.48,
+		},
+
+		// --- pmt=0, rate=0: both zero should error ---
+		{
+			name:    "pmt=0 rate=0: div by zero",
+			args:    numArgs(0, 0, 1000, 5000),
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
