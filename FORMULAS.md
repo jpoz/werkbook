@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **435** spreadsheet formula functions.
+Werkbook supports **437** spreadsheet formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -234,10 +234,12 @@ Werkbook supports **435** spreadsheet formula functions.
 | ISREF | Information | 24 |
 | ISTEXT | Information | 24 |
 | KURT | Statistical | 22 |
+| LAMBDA | Logical | 6 |
 | LARGE | Statistical | 30 |
 | LCM | Math & Trig | 39 |
 | LEFT | Text | 42 |
 | LEN | Text | 29 |
+| LET | Logical | 33 |
 | LINEST | Statistical | 2 |
 | LN | Math & Trig | 32 |
 | LOG | Math & Trig | 35 |
@@ -465,7 +467,7 @@ effects, or require locale-specific behavior that cannot be reproduced in a serv
 
 # Not Yet Implemented
 
-The following **20** functions are not yet supported.
+The following **18** functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -477,8 +479,6 @@ The following **20** functions are not yet supported.
 | FORECAST.ETS.SEASONALITY | Statistical |
 | FORECAST.ETS.STAT | Statistical |
 | GETPIVOTDATA | Lookup & Reference |
-| LAMBDA | Logical |
-| LET | Logical |
 | MAKEARRAY | Logical |
 | MAP | Logical |
 | ODDFPRICE | Financial |

@@ -102,10 +102,24 @@ func main() {
 		len(supported), len(unsupported))
 }
 
-// discoverSupported scans formula/*.go (non-test) for Register("NAME", ...) calls.
+// parserSupported lists functions that are implemented at the parser level
+// rather than via Register(). These are handled specially (e.g. desugared
+// during parsing) and won't appear in Register() calls.
+var parserSupported = map[string]funcInfo{
+	"LAMBDA": {Name: "LAMBDA", Category: "Logical"},
+	"LET":    {Name: "LET", Category: "Logical"},
+}
+
+// discoverSupported scans formula/*.go (non-test) for Register("NAME", ...) calls
+// and includes parser-level functions.
 func discoverSupported() map[string]funcInfo {
 	re := regexp.MustCompile(`Register\("([A-Z][A-Z0-9.]*)"`)
 	result := map[string]funcInfo{}
+
+	// Include parser-level functions
+	for name, fi := range parserSupported {
+		result[name] = fi
+	}
 
 	files, _ := filepath.Glob("formula/functions_*.go")
 	for _, path := range files {
