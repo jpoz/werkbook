@@ -19573,6 +19573,399 @@ func TestSTDEV(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// STDEV.S — comprehensive tests (STDEV.S is an alias for STDEV)
+// ---------------------------------------------------------------------------
+
+func TestSTDEVS(t *testing.T) {
+	const tol = 1e-9
+
+	// Helper to build a resolver with arbitrary values in column A.
+	valResolver := func(vals ...Value) *mockResolver {
+		m := &mockResolver{cells: map[CellAddr]Value{}}
+		for i, v := range vals {
+			m.cells[CellAddr{Col: 1, Row: i + 1}] = v
+		}
+		return m
+	}
+
+	type stdevTest struct {
+		name      string
+		formula   string
+		setup     func() *mockResolver
+		wantNum   float64
+		wantErr   ErrorValue // 0 value (ErrValDIV0) is valid; use expectErr flag
+		expectErr bool       // true means we expect an error result
+		numTol    float64
+	}
+
+	tests := []stdevTest{
+		// --- Basic usage ---
+		{
+			name:    "basic five integers",
+			formula: "STDEV.S(1,2,3,4,5)",
+			wantNum: math.Sqrt(2.5), // mean=3, ssq=10, var=10/4=2.5
+		},
+		{
+			name:    "two element dataset",
+			formula: "STDEV.S(10,20)",
+			wantNum: math.Sqrt(50), // mean=15, ssq=50, var=50/1=50
+		},
+		{
+			name:    "three integers",
+			formula: "STDEV.S(2,4,6)",
+			wantNum: 2.0, // mean=4, ssq=8, var=8/2=4, stdev=2
+		},
+		// --- Excel documentation example ---
+		{
+			name:    "Excel doc example strength data",
+			formula: "STDEV.S(A1:A10)",
+			setup: func() *mockResolver {
+				return valResolver(
+					NumberVal(1345), NumberVal(1301), NumberVal(1368),
+					NumberVal(1322), NumberVal(1310), NumberVal(1370),
+					NumberVal(1318), NumberVal(1350), NumberVal(1303),
+					NumberVal(1299),
+				)
+			},
+			wantNum: 27.46391572,
+			numTol:  1e-4,
+		},
+		// --- Single value → #DIV/0! (n-1=0) ---
+		{
+			name:      "single number arg returns DIV0",
+			formula:   "STDEV.S(42)",
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		{
+			name:    "single value in range returns DIV0",
+			formula: "STDEV.S(A1:A1)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(99))
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		// --- Zero arguments ---
+		{
+			name:      "no args returns VALUE error",
+			formula:   "STDEV.S()",
+			wantErr:   ErrValVALUE,
+			expectErr: true,
+		},
+		// --- Multiple scalar arguments ---
+		{
+			name:    "four scalars",
+			formula: "STDEV.S(10,20,30,40)",
+			wantNum: math.Sqrt(500.0 / 3.0), // mean=25, ssq=500, var=500/3
+		},
+		{
+			name:    "six scalars",
+			formula: "STDEV.S(1,1,1,2,2,2)",
+			wantNum: math.Sqrt(0.3), // mean=1.5, ssq=1.5, var=1.5/5=0.3
+		},
+		// --- Range/array argument ---
+		{
+			name:    "range of five values",
+			formula: "STDEV.S(A1:A5)",
+			setup: func() *mockResolver {
+				return valResolver(
+					NumberVal(1), NumberVal(2), NumberVal(3),
+					NumberVal(4), NumberVal(5),
+				)
+			},
+			wantNum: math.Sqrt(2.5),
+		},
+		// --- Mixed scalars and ranges ---
+		{
+			name:    "range plus scalar arg",
+			formula: "STDEV.S(A1:A2,30)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(10), NumberVal(20))
+			},
+			wantNum: 10.0, // {10,20,30}: mean=20, ssq=200, var=100, stdev=10
+		},
+		{
+			name:    "scalar plus range",
+			formula: "STDEV.S(5,A1:A2)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(10), NumberVal(15))
+			},
+			wantNum: 5.0, // {5,10,15}: mean=10, ssq=50, var=25, stdev=5
+		},
+		// --- Negative numbers ---
+		{
+			name:    "negative numbers",
+			formula: "STDEV.S(-2,-4,-6)",
+			wantNum: 2.0, // mean=-4, ssq=8, var=4, stdev=2
+		},
+		{
+			name:    "mixed positive and negative",
+			formula: "STDEV.S(-10,0,10)",
+			wantNum: 10.0, // mean=0, ssq=200, var=100, stdev=10
+		},
+		// --- Zeros ---
+		{
+			name:    "all zeros",
+			formula: "STDEV.S(0,0,0)",
+			wantNum: 0.0,
+		},
+		{
+			name:    "zeros and non-zero",
+			formula: "STDEV.S(0,0,3)",
+			wantNum: math.Sqrt(3), // mean=1, ssq=3, var=3/2=1.5 ... wait
+			// mean=1, deviations: -1,-1,2, ssq=1+1+4=6, var=6/2=3, stdev=sqrt(3)
+		},
+		// --- Very large numbers ---
+		{
+			name:    "large numbers",
+			formula: "STDEV.S(1000000,2000000,3000000)",
+			wantNum: 1000000.0,
+			numTol:  1e-3,
+		},
+		{
+			name:    "very large numbers precision",
+			formula: "STDEV.S(1e12,2e12,3e12)",
+			wantNum: 1e12,
+			numTol:  1e3, // allow some float precision slack
+		},
+		// --- Very small numbers ---
+		{
+			name:    "very small numbers",
+			formula: "STDEV.S(0.001,0.002,0.003)",
+			wantNum: 0.001,
+			numTol:  1e-12,
+		},
+		// --- All identical values → 0 ---
+		{
+			name:    "identical values return zero",
+			formula: "STDEV.S(7,7,7,7)",
+			wantNum: 0.0,
+		},
+		{
+			name:    "identical values in range",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(42), NumberVal(42), NumberVal(42))
+			},
+			wantNum: 0.0,
+		},
+		// --- Boolean values as direct args (TRUE=1, FALSE=0) ---
+		{
+			name:    "direct TRUE coerces to 1",
+			formula: "STDEV.S(TRUE,3)",
+			wantNum: math.Sqrt(2), // {1,3}: mean=2, ssq=2, var=2
+		},
+		{
+			name:    "direct FALSE coerces to 0",
+			formula: "STDEV.S(FALSE,4)",
+			wantNum: math.Sqrt(8), // {0,4}: mean=2, ssq=8, var=8
+		},
+		{
+			name:    "direct TRUE and FALSE",
+			formula: "STDEV.S(TRUE,FALSE)",
+			wantNum: math.Sqrt(0.5), // {1,0}: mean=0.5, ssq=0.5, var=0.5
+		},
+		// --- Boolean values in ranges (ignored per Excel behavior) ---
+		{
+			name:    "range ignores TRUE cells",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(10), BoolVal(true), NumberVal(30))
+			},
+			wantNum: math.Sqrt(200), // {10,30}: mean=20, ssq=200, var=200
+		},
+		{
+			name:    "range ignores FALSE cells",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(4), BoolVal(false), NumberVal(6))
+			},
+			wantNum: math.Sqrt(2), // {4,6}: mean=5, ssq=2, var=2
+		},
+		{
+			name:    "range with only booleans returns DIV0",
+			formula: "STDEV.S(A1:A2)",
+			setup: func() *mockResolver {
+				return valResolver(BoolVal(true), BoolVal(false))
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		// --- String values ---
+		{
+			name:    "range ignores text cells",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(10), StringVal("hello"), NumberVal(20))
+			},
+			wantNum: math.Sqrt(50), // {10,20}
+		},
+		{
+			name:    "range ignores numeric string cells",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(10), StringVal("5"), NumberVal(30))
+			},
+			wantNum: math.Sqrt(200), // {10,30}: ignores "5" in range
+		},
+		{
+			name:    "range with only text returns DIV0",
+			formula: "STDEV.S(A1:A2)",
+			setup: func() *mockResolver {
+				return valResolver(StringVal("a"), StringVal("b"))
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		{
+			name:    "direct numeric string coerces",
+			formula: `STDEV.S("5",15)`,
+			wantNum: math.Sqrt(50), // {5,15}: mean=10, ssq=50, var=50
+		},
+		{
+			name:      "direct non-numeric string errors",
+			formula:   `STDEV.S("hello",10)`,
+			wantErr:   ErrValVALUE,
+			expectErr: true,
+		},
+		// --- Empty cells in ranges (ignored) ---
+		{
+			name:    "empty cells ignored in range",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return &mockResolver{cells: map[CellAddr]Value{
+					{Col: 1, Row: 1}: NumberVal(2),
+					{Col: 1, Row: 3}: NumberVal(8),
+				}}
+			},
+			wantNum: math.Sqrt(18), // {2,8}: mean=5, ssq=18, var=18
+		},
+		{
+			name:    "all empty cells returns DIV0",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return &mockResolver{cells: map[CellAddr]Value{}}
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		// --- Error propagation ---
+		{
+			name:    "error in range propagates NA",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(1), ErrorVal(ErrValNA), NumberVal(3))
+			},
+			wantErr:   ErrValNA,
+			expectErr: true,
+		},
+		{
+			name:    "error in range propagates DIV0",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(1), ErrorVal(ErrValDIV0), NumberVal(3))
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		{
+			name:    "error in range propagates VALUE",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(1), ErrorVal(ErrValVALUE), NumberVal(3))
+			},
+			wantErr:   ErrValVALUE,
+			expectErr: true,
+		},
+		{
+			name:    "error as direct arg propagates REF",
+			formula: "STDEV.S(A1,5,10)",
+			setup: func() *mockResolver {
+				return &mockResolver{cells: map[CellAddr]Value{
+					{Col: 1, Row: 1}: ErrorVal(ErrValREF),
+				}}
+			},
+			wantErr:   ErrValREF,
+			expectErr: true,
+		},
+		{
+			name:      "division by zero in arg propagates",
+			formula:   "STDEV.S(1/0,5)",
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		// --- Decimal / fractional values ---
+		{
+			name:    "decimal values",
+			formula: "STDEV.S(1.5,2.5,3.5)",
+			wantNum: 1.0, // mean=2.5, ssq=2, var=1
+		},
+		{
+			name:    "small fractional differences",
+			formula: "STDEV.S(0.1,0.2,0.3)",
+			wantNum: 0.1,
+			numTol:  1e-12,
+		},
+		// --- Large dataset for precision ---
+		{
+			name:    "ten element dataset from Excel docs",
+			formula: "STDEV.S(1345,1301,1368,1322,1310,1370,1318,1350,1303,1299)",
+			wantNum: 27.46391572,
+			numTol:  1e-4,
+		},
+		// --- Range with single numeric among non-numerics → DIV/0! ---
+		{
+			name:    "range single numeric among non-numeric returns DIV0",
+			formula: "STDEV.S(A1:A3)",
+			setup: func() *mockResolver {
+				return valResolver(NumberVal(5), StringVal("x"), BoolVal(false))
+			},
+			wantErr:   ErrValDIV0,
+			expectErr: true,
+		},
+		// --- Equivalence with STDEV ---
+		{
+			name:    "matches STDEV for same input",
+			formula: "STDEV.S(100,200,300,400,500)",
+			wantNum: math.Sqrt(25000), // same as STDEV(100,200,300,400,500)
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			var r *mockResolver
+			if tc.setup != nil {
+				r = tc.setup()
+			} else {
+				r = &mockResolver{}
+			}
+			got, err := Eval(cf, r, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tc.expectErr {
+				if got.Type != ValueError || got.Err != tc.wantErr {
+					t.Errorf("got %v, want error %v", got, tc.wantErr)
+				}
+				return
+			}
+			tolerance := tol
+			if tc.numTol > 0 {
+				tolerance = tc.numTol
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tc.wantNum) > tolerance {
+				t.Errorf("got %g, want %g (tol=%g)", got.Num, tc.wantNum, tolerance)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // STDEV.P / STDEVP
 // ---------------------------------------------------------------------------
 

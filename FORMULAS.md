@@ -361,7 +361,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 16 |
 | STDEV | Returns the sample standard deviation. | Statistical | 24 |
 | STDEV.P | Returns the population standard deviation. | Statistical | 15 |
-| STDEV.S | Returns the sample standard deviation. | Statistical | 1 |
+| STDEV.S | Returns the sample standard deviation. | Statistical | 45 |
 | STDEVA | Returns the sample standard deviation including logical values and text coercions. | Statistical | 28 |
 | STDEVP | Returns the population standard deviation. | Statistical | 4 |
 | STDEVPA | Returns the population standard deviation including logical values and text coercions. | Statistical | 29 |
