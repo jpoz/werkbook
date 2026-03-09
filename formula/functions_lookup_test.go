@@ -935,7 +935,7 @@ func TestHLOOKUPArgErrors(t *testing.T) {
 }
 
 func TestHLOOKUPRowIndexZero(t *testing.T) {
-	// row_index_num = 0 → #REF! (index out of range)
+	// row_index_num = 0 → #VALUE! (Excel returns #VALUE! for row_index < 1)
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
 			{Col: 1, Row: 1}: NumberVal(1),
@@ -950,13 +950,13 @@ func TestHLOOKUPRowIndexZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValREF {
-		t.Errorf("HLOOKUP row_index=0: got %v, want #REF!", got)
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("HLOOKUP row_index=0: got %v, want #VALUE!", got)
 	}
 }
 
 func TestHLOOKUPNegativeRowIndex(t *testing.T) {
-	// Negative row_index_num → #REF!
+	// Negative row_index_num → #VALUE! (Excel returns #VALUE! for row_index < 1)
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
 			{Col: 1, Row: 1}: NumberVal(1),
@@ -971,8 +971,8 @@ func TestHLOOKUPNegativeRowIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValREF {
-		t.Errorf("HLOOKUP negative row_index: got %v, want #REF!", got)
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("HLOOKUP negative row_index: got %v, want #VALUE!", got)
 	}
 }
 
@@ -1389,14 +1389,14 @@ func TestHLOOKUP_Comprehensive(t *testing.T) {
 		// Error cases
 		// ----------------------------------------------------------------
 		{
-			name:    "row_index_zero_returns_REF",
+			name:    "row_index_zero_returns_VALUE",
 			formula: "HLOOKUP(1,A1:C2,0,FALSE)",
-			want:    ErrorVal(ErrValREF),
+			want:    ErrorVal(ErrValVALUE),
 		},
 		{
-			name:    "row_index_negative_returns_REF",
+			name:    "row_index_negative_returns_VALUE",
 			formula: "HLOOKUP(1,A1:C2,-1,FALSE)",
-			want:    ErrorVal(ErrValREF),
+			want:    ErrorVal(ErrValVALUE),
 		},
 		{
 			name:    "row_index_exceeds_rows_returns_REF",

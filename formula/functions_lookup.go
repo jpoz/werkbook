@@ -336,7 +336,10 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		return *e, nil
 	}
 	ri := int(rowIdx)
-	if ri < 1 || ri > len(table.Array) {
+	if ri < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if ri > len(table.Array) {
 		return ErrorVal(ErrValREF), nil
 	}
 
