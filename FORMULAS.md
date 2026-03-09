@@ -177,7 +177,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | HEX2BIN | Converts a hexadecimal number to binary. | Engineering | 38 |
 | HEX2DEC | Converts a hexadecimal number to decimal. | Engineering | 39 |
 | HEX2OCT | Converts a hexadecimal number to octal. | Engineering | 35 |
-| HLOOKUP | Looks up a value across the top row of a table and returns a value from a specified row. | Lookup & Reference | 22 |
+| HLOOKUP | Looks up a value across the top row of a table and returns a value from a specified row. | Lookup & Reference | 69 |
 | HOUR | Returns the hour from a time or datetime value. | Date & Time | 16 |
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |

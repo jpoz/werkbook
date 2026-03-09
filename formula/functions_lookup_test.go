@@ -1069,6 +1069,466 @@ func TestHLOOKUPNumberLookup(t *testing.T) {
 	}
 }
 
+func TestHLOOKUP_Comprehensive(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// Rows 1-2: basic numeric header (3 columns)
+			// A1:C2 — sorted first row [1, 2, 3]
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 3, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: StringVal("a"),
+			{Col: 2, Row: 2}: StringVal("b"),
+			{Col: 3, Row: 2}: StringVal("c"),
+
+			// Rows 3-5: 3 rows, string header (3 columns)
+			// A3:C5
+			{Col: 1, Row: 3}: StringVal("X"),
+			{Col: 2, Row: 3}: StringVal("Y"),
+			{Col: 3, Row: 3}: StringVal("Z"),
+			{Col: 1, Row: 4}: NumberVal(10),
+			{Col: 2, Row: 4}: NumberVal(20),
+			{Col: 3, Row: 4}: NumberVal(30),
+			{Col: 1, Row: 5}: NumberVal(100),
+			{Col: 2, Row: 5}: NumberVal(200),
+			{Col: 3, Row: 5}: NumberVal(300),
+
+			// Rows 6-7: sorted numeric header (5 columns) for approx match
+			// A6:E7 — [10, 20, 30, 40, 50]
+			{Col: 1, Row: 6}: NumberVal(10),
+			{Col: 2, Row: 6}: NumberVal(20),
+			{Col: 3, Row: 6}: NumberVal(30),
+			{Col: 4, Row: 6}: NumberVal(40),
+			{Col: 5, Row: 6}: NumberVal(50),
+			{Col: 1, Row: 7}: StringVal("r1"),
+			{Col: 2, Row: 7}: StringVal("r2"),
+			{Col: 3, Row: 7}: StringVal("r3"),
+			{Col: 4, Row: 7}: StringVal("r4"),
+			{Col: 5, Row: 7}: StringVal("r5"),
+
+			// Rows 8-9: duplicates in header
+			// A8:D9 — [1, 2, 2, 3]
+			{Col: 1, Row: 8}: NumberVal(1),
+			{Col: 2, Row: 8}: NumberVal(2),
+			{Col: 3, Row: 8}: NumberVal(2),
+			{Col: 4, Row: 8}: NumberVal(3),
+			{Col: 1, Row: 9}: StringVal("first"),
+			{Col: 2, Row: 9}: StringVal("dup1"),
+			{Col: 3, Row: 9}: StringVal("dup2"),
+			{Col: 4, Row: 9}: StringVal("last"),
+
+			// Rows 10-11: case-insensitive string header
+			// A10:C11
+			{Col: 1, Row: 10}: StringVal("Apple"),
+			{Col: 2, Row: 10}: StringVal("Banana"),
+			{Col: 3, Row: 10}: StringVal("Cherry"),
+			{Col: 1, Row: 11}: NumberVal(1),
+			{Col: 2, Row: 11}: NumberVal(2),
+			{Col: 3, Row: 11}: NumberVal(3),
+
+			// Row 12: single row table
+			// A12:C12
+			{Col: 1, Row: 12}: NumberVal(10),
+			{Col: 2, Row: 12}: NumberVal(20),
+			{Col: 3, Row: 12}: NumberVal(30),
+
+			// Rows 13-14: boolean header
+			// A13:B14
+			{Col: 1, Row: 13}: BoolVal(false),
+			{Col: 2, Row: 13}: BoolVal(true),
+			{Col: 1, Row: 14}: StringVal("no"),
+			{Col: 2, Row: 14}: StringVal("yes"),
+
+			// Rows 15-16: mixed types in header
+			// A15:C16
+			{Col: 1, Row: 15}: NumberVal(42),
+			{Col: 2, Row: 15}: StringVal("hello"),
+			{Col: 3, Row: 15}: BoolVal(true),
+			{Col: 1, Row: 16}: StringVal("num"),
+			{Col: 2, Row: 16}: StringVal("str"),
+			{Col: 3, Row: 16}: StringVal("bool"),
+
+			// Rows 17-18: wildcard test data
+			// A17:D18
+			{Col: 1, Row: 17}: StringVal("Apple"),
+			{Col: 2, Row: 17}: StringVal("Apricot"),
+			{Col: 3, Row: 17}: StringVal("Banana"),
+			{Col: 4, Row: 17}: StringVal("Blueberry"),
+			{Col: 1, Row: 18}: NumberVal(1),
+			{Col: 2, Row: 18}: NumberVal(2),
+			{Col: 3, Row: 18}: NumberVal(3),
+			{Col: 4, Row: 18}: NumberVal(4),
+
+			// Rows 19-20: single-char wildcard test
+			// A19:D20
+			{Col: 1, Row: 19}: StringVal("Cat"),
+			{Col: 2, Row: 19}: StringVal("Car"),
+			{Col: 3, Row: 19}: StringVal("Cup"),
+			{Col: 4, Row: 19}: StringVal("Dog"),
+			{Col: 1, Row: 20}: NumberVal(10),
+			{Col: 2, Row: 20}: NumberVal(20),
+			{Col: 3, Row: 20}: NumberVal(30),
+			{Col: 4, Row: 20}: NumberVal(40),
+
+			// Rows 21-22: tilde escape test — header contains literal *
+			// A21:C22
+			{Col: 1, Row: 21}: StringVal("A*B"),
+			{Col: 2, Row: 21}: StringVal("AXB"),
+			{Col: 3, Row: 21}: StringVal("A?B"),
+			{Col: 1, Row: 22}: NumberVal(100),
+			{Col: 2, Row: 22}: NumberVal(200),
+			{Col: 3, Row: 22}: NumberVal(300),
+
+			// Rows 23-24: large table (12 columns), sorted
+			// A23:L24
+			{Col: 1, Row: 23}: NumberVal(5),
+			{Col: 2, Row: 23}: NumberVal(10),
+			{Col: 3, Row: 23}: NumberVal(15),
+			{Col: 4, Row: 23}: NumberVal(20),
+			{Col: 5, Row: 23}: NumberVal(25),
+			{Col: 6, Row: 23}: NumberVal(30),
+			{Col: 7, Row: 23}: NumberVal(35),
+			{Col: 8, Row: 23}: NumberVal(40),
+			{Col: 9, Row: 23}: NumberVal(45),
+			{Col: 10, Row: 23}: NumberVal(50),
+			{Col: 11, Row: 23}: NumberVal(55),
+			{Col: 12, Row: 23}: NumberVal(60),
+			{Col: 1, Row: 24}: StringVal("c1"),
+			{Col: 2, Row: 24}: StringVal("c2"),
+			{Col: 3, Row: 24}: StringVal("c3"),
+			{Col: 4, Row: 24}: StringVal("c4"),
+			{Col: 5, Row: 24}: StringVal("c5"),
+			{Col: 6, Row: 24}: StringVal("c6"),
+			{Col: 7, Row: 24}: StringVal("c7"),
+			{Col: 8, Row: 24}: StringVal("c8"),
+			{Col: 9, Row: 24}: StringVal("c9"),
+			{Col: 10, Row: 24}: StringVal("c10"),
+			{Col: 11, Row: 24}: StringVal("c11"),
+			{Col: 12, Row: 24}: StringVal("c12"),
+
+			// Row 25: single column table (A25:A26)
+			{Col: 1, Row: 25}: NumberVal(99),
+			{Col: 1, Row: 26}: StringVal("below"),
+
+			// Rows 27-28: empty cells in table
+			// A27:D28 — header has empty cell at B27
+			{Col: 1, Row: 27}: NumberVal(1),
+			// Col 2 Row 27 intentionally empty
+			{Col: 3, Row: 27}: NumberVal(3),
+			{Col: 4, Row: 27}: NumberVal(4),
+			{Col: 1, Row: 28}: StringVal("v1"),
+			{Col: 2, Row: 28}: StringVal("v2"),
+			{Col: 3, Row: 28}: StringVal("v3"),
+			{Col: 4, Row: 28}: StringVal("v4"),
+
+			// Rows 29-32: 4-row table for return from different rows
+			// A29:C32
+			{Col: 1, Row: 29}: StringVal("H1"),
+			{Col: 2, Row: 29}: StringVal("H2"),
+			{Col: 3, Row: 29}: StringVal("H3"),
+			{Col: 1, Row: 30}: StringVal("r2c1"),
+			{Col: 2, Row: 30}: StringVal("r2c2"),
+			{Col: 3, Row: 30}: StringVal("r2c3"),
+			{Col: 1, Row: 31}: StringVal("r3c1"),
+			{Col: 2, Row: 31}: StringVal("r3c2"),
+			{Col: 3, Row: 31}: StringVal("r3c3"),
+			{Col: 1, Row: 32}: StringVal("r4c1"),
+			{Col: 2, Row: 32}: StringVal("r4c2"),
+			{Col: 3, Row: 32}: StringVal("r4c3"),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		// ----------------------------------------------------------------
+		// Exact match (range_lookup=FALSE)
+		// ----------------------------------------------------------------
+		{
+			name:    "exact_number_return_row2",
+			formula: "HLOOKUP(2,A1:C2,2,FALSE)",
+			want:    StringVal("b"),
+		},
+		{
+			name:    "exact_string_return_row2",
+			formula: `HLOOKUP("Y",A3:C5,2,FALSE)`,
+			want:    NumberVal(20),
+		},
+		{
+			name:    "exact_string_return_row3",
+			formula: `HLOOKUP("Y",A3:C5,3,FALSE)`,
+			want:    NumberVal(200),
+		},
+		{
+			name:    "exact_return_row4_of_4row_table",
+			formula: `HLOOKUP("H2",A29:C32,4,FALSE)`,
+			want:    StringVal("r4c2"),
+		},
+		{
+			name:    "exact_case_insensitive_lower",
+			formula: `HLOOKUP("banana",A10:C11,2,FALSE)`,
+			want:    NumberVal(2),
+		},
+		{
+			name:    "exact_case_insensitive_upper",
+			formula: `HLOOKUP("CHERRY",A10:C11,2,FALSE)`,
+			want:    NumberVal(3),
+		},
+		{
+			name:    "exact_not_found_returns_NA",
+			formula: "HLOOKUP(99,A1:C2,2,FALSE)",
+			want:    ErrorVal(ErrValNA),
+		},
+		{
+			name:    "exact_first_match_wins_with_duplicates",
+			formula: "HLOOKUP(2,A8:D9,2,FALSE)",
+			want:    StringVal("dup1"),
+		},
+		{
+			name:    "exact_return_row1_itself",
+			formula: "HLOOKUP(2,A1:C2,1,FALSE)",
+			want:    NumberVal(2),
+		},
+		{
+			name:    "exact_using_0_for_false",
+			formula: `HLOOKUP("Apple",A10:C11,2,0)`,
+			want:    NumberVal(1),
+		},
+
+		// ----------------------------------------------------------------
+		// Approximate match (range_lookup=TRUE)
+		// ----------------------------------------------------------------
+		{
+			name:    "approx_between_entries_returns_lower",
+			formula: "HLOOKUP(25,A6:E7,2,TRUE)",
+			want:    StringVal("r2"),
+		},
+		{
+			name:    "approx_exact_value_in_sorted",
+			formula: "HLOOKUP(30,A6:E7,2,TRUE)",
+			want:    StringVal("r3"),
+		},
+		{
+			name:    "approx_smaller_than_all_returns_NA",
+			formula: "HLOOKUP(5,A6:E7,2,TRUE)",
+			want:    ErrorVal(ErrValNA),
+		},
+		{
+			name:    "approx_larger_than_all_returns_last",
+			formula: "HLOOKUP(99,A6:E7,2,TRUE)",
+			want:    StringVal("r5"),
+		},
+		{
+			name:    "approx_default_omit_4th_arg",
+			formula: "HLOOKUP(35,A6:E7,2)",
+			want:    StringVal("r3"),
+		},
+		{
+			name:    "approx_value_equals_first_entry",
+			formula: "HLOOKUP(10,A6:E7,2,TRUE)",
+			want:    StringVal("r1"),
+		},
+		{
+			name:    "approx_value_equals_last_entry",
+			formula: "HLOOKUP(50,A6:E7,2,TRUE)",
+			want:    StringVal("r5"),
+		},
+
+		// ----------------------------------------------------------------
+		// Wildcard matching (exact mode)
+		// ----------------------------------------------------------------
+		{
+			name:    "wildcard_star_matches_prefix",
+			formula: `HLOOKUP("A*",A17:D18,2,FALSE)`,
+			want:    NumberVal(1),
+		},
+		{
+			name:    "wildcard_star_matches_middle",
+			formula: `HLOOKUP("*berry",A17:D18,2,FALSE)`,
+			want:    NumberVal(4),
+		},
+		{
+			name:    "wildcard_star_matches_banana",
+			formula: `HLOOKUP("B*a",A17:D18,2,FALSE)`,
+			want:    NumberVal(3),
+		},
+		{
+			name:    "wildcard_question_mark_single_char",
+			formula: `HLOOKUP("Ca?",A19:D20,2,FALSE)`,
+			want:    NumberVal(10),
+		},
+		{
+			name:    "wildcard_question_mark_cup",
+			formula: `HLOOKUP("C?p",A19:D20,2,FALSE)`,
+			want:    NumberVal(30),
+		},
+		{
+			name:    "wildcard_combined_star_and_question",
+			formula: `HLOOKUP("?p*cot",A17:D18,2,FALSE)`,
+			want:    NumberVal(2),
+		},
+		{
+			name:    "wildcard_escaped_tilde_star",
+			formula: `HLOOKUP("A~*B",A21:C22,2,FALSE)`,
+			want:    NumberVal(100),
+		},
+		{
+			name:    "wildcard_escaped_tilde_question",
+			formula: `HLOOKUP("A~?B",A21:C22,2,FALSE)`,
+			want:    NumberVal(300),
+		},
+		{
+			name:    "wildcard_no_match_returns_NA",
+			formula: `HLOOKUP("Z*",A17:D18,2,FALSE)`,
+			want:    ErrorVal(ErrValNA),
+		},
+
+		// ----------------------------------------------------------------
+		// Error cases
+		// ----------------------------------------------------------------
+		{
+			name:    "row_index_zero_returns_REF",
+			formula: "HLOOKUP(1,A1:C2,0,FALSE)",
+			want:    ErrorVal(ErrValREF),
+		},
+		{
+			name:    "row_index_negative_returns_REF",
+			formula: "HLOOKUP(1,A1:C2,-1,FALSE)",
+			want:    ErrorVal(ErrValREF),
+		},
+		{
+			name:    "row_index_exceeds_rows_returns_REF",
+			formula: "HLOOKUP(1,A1:C2,5,FALSE)",
+			want:    ErrorVal(ErrValREF),
+		},
+		{
+			name:    "too_few_args_returns_VALUE",
+			formula: "HLOOKUP(1,A1:C2)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+		{
+			name:    "too_many_args_returns_VALUE",
+			formula: "HLOOKUP(1,A1:C2,2,FALSE,1)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+		{
+			name:    "non_numeric_row_index_returns_VALUE",
+			formula: `HLOOKUP(1,A1:C2,"abc",FALSE)`,
+			want:    ErrorVal(ErrValVALUE),
+		},
+
+		// ----------------------------------------------------------------
+		// Edge cases
+		// ----------------------------------------------------------------
+		{
+			name:    "single_column_table_row1",
+			formula: "HLOOKUP(99,A25:A26,1,FALSE)",
+			want:    NumberVal(99),
+		},
+		{
+			name:    "single_column_table_row2",
+			formula: "HLOOKUP(99,A25:A26,2,FALSE)",
+			want:    StringVal("below"),
+		},
+		{
+			name:    "single_row_table_row_index_1",
+			formula: "HLOOKUP(20,A12:C12,1,FALSE)",
+			want:    NumberVal(20),
+		},
+		{
+			name:    "fractional_row_index_truncated",
+			formula: "HLOOKUP(2,A1:C2,1.9,FALSE)",
+			want:    NumberVal(2),
+		},
+		{
+			name:    "range_lookup_1_means_true",
+			formula: "HLOOKUP(25,A6:E7,2,1)",
+			want:    StringVal("r2"),
+		},
+		{
+			name:    "large_table_exact_middle",
+			formula: "HLOOKUP(30,A23:L24,2,FALSE)",
+			want:    StringVal("c6"),
+		},
+		{
+			name:    "large_table_approx_between",
+			formula: "HLOOKUP(33,A23:L24,2,TRUE)",
+			want:    StringVal("c6"),
+		},
+		{
+			name:    "large_table_approx_last",
+			formula: "HLOOKUP(100,A23:L24,2,TRUE)",
+			want:    StringVal("c12"),
+		},
+		{
+			name:    "mixed_types_number_in_header",
+			formula: "HLOOKUP(42,A15:C16,2,FALSE)",
+			want:    StringVal("num"),
+		},
+		{
+			name:    "mixed_types_string_in_header",
+			formula: `HLOOKUP("hello",A15:C16,2,FALSE)`,
+			want:    StringVal("str"),
+		},
+		{
+			name:    "mixed_types_bool_in_header",
+			formula: "HLOOKUP(TRUE,A15:C16,2,FALSE)",
+			want:    StringVal("bool"),
+		},
+		{
+			name:    "boolean_lookup_false",
+			formula: "HLOOKUP(FALSE,A13:B14,2,FALSE)",
+			want:    StringVal("no"),
+		},
+		{
+			name:    "boolean_lookup_true",
+			formula: "HLOOKUP(TRUE,A13:B14,2,FALSE)",
+			want:    StringVal("yes"),
+		},
+		{
+			name:    "empty_cell_skipped_in_exact_match",
+			formula: "HLOOKUP(3,A27:D28,2,FALSE)",
+			want:    StringVal("v3"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != tc.want.Type {
+				t.Fatalf("type mismatch: got %v (type %d), want %v (type %d)",
+					got, got.Type, tc.want, tc.want.Type)
+			}
+			switch tc.want.Type {
+			case ValueNumber:
+				if got.Num != tc.want.Num {
+					t.Errorf("got %g, want %g", got.Num, tc.want.Num)
+				}
+			case ValueString:
+				if got.Str != tc.want.Str {
+					t.Errorf("got %q, want %q", got.Str, tc.want.Str)
+				}
+			case ValueBool:
+				if got.Bool != tc.want.Bool {
+					t.Errorf("got %v, want %v", got.Bool, tc.want.Bool)
+				}
+			case ValueError:
+				if got.Err != tc.want.Err {
+					t.Errorf("got %v, want %v", got.Err, tc.want.Err)
+				}
+			case ValueEmpty:
+				// just type match is sufficient
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // MATCH edge cases — all match types
 // ---------------------------------------------------------------------------

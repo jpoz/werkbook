@@ -369,8 +369,32 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		return table.Array[ri-1][lastMatch], nil
 	}
 
+	// Determine if wildcard matching is needed (only for string lookups).
+	useWildcard := false
+	if lookup.Type == ValueString {
+		wm := classifyWildcard(lookup.Str)
+		if wm == wildcardFull {
+			useWildcard = true
+		} else if wm == wildcardEscape {
+			// Tilde escapes with no unescaped wildcards: compare against
+			// the unescaped literal string.
+			lookup = StringVal(unescapePattern(lookup.Str))
+		}
+	}
+
 	for i, cell := range firstRow {
-		if CompareValuesExact(cell, lookup) == 0 {
+		if cell.Type == ValueEmpty {
+			continue
+		}
+		matched := false
+		if useWildcard {
+			if cell.Type == ValueString {
+				matched = WildcardMatch(cell.Str, lookup.Str)
+			}
+		} else {
+			matched = CompareValuesExact(cell, lookup) == 0
+		}
+		if matched {
 			if i >= len(table.Array[ri-1]) {
 				return ErrorVal(ErrValREF), nil
 			}
