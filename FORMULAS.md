@@ -103,7 +103,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 57 |
 | DB | Returns depreciation using the fixed-declining balance method. | Financial | 29 |
 | DCOUNT | Counts numeric values in matching records of a database range. | Db | 5 |
-| DCOUNTA | Counts non-empty values in matching records of a database range. | Db | 1 |
+| DCOUNTA | Counts non-empty values in matching records of a database range. | Db | 5 |
 | DDB | Returns depreciation using the double-declining balance method or another factor. | Financial | 27 |
 | DEC2BIN | Converts a decimal number to binary. | Engineering | 37 |
 | DEC2HEX | Converts a decimal number to hexadecimal. | Engineering | 45 |
