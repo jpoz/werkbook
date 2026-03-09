@@ -211,7 +211,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 27 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 30 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 24 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
@@ -355,7 +355,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | SLOPE | Returns the slope of a linear regression line. | Statistical | 16 |
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 28 |
 | SORT | Sorts an array by row or column order. | Logical | 25 |
-| SORTBY | Sorts an array by one or more companion arrays. | Logical | 2 |
+| SORTBY | Sorts an array by one or more companion arrays. | Logical | 3 |
 | SQRT | Returns the square root of a number. | Math & Trig | 29 |
 | SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
 | STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 16 |
