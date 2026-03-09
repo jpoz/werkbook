@@ -1484,6 +1484,305 @@ func TestRandFunctions(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RAND comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestRAND(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns_number_type", func(t *testing.T) {
+		cf := evalCompile(t, "RAND()")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Errorf("RAND() type = %v, want ValueNumber", got.Type)
+		}
+	})
+
+	t.Run("no_args_works", func(t *testing.T) {
+		cf := evalCompile(t, "RAND()")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Errorf("RAND() should succeed with no args, got type %v", got.Type)
+		}
+	})
+
+	t.Run("wrong_arg_count_one_number", func(t *testing.T) {
+		cf := evalCompile(t, "RAND(1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("RAND(1) = %v, want #VALUE! error", got)
+		}
+	})
+
+	t.Run("wrong_arg_count_string", func(t *testing.T) {
+		cf := evalCompile(t, `RAND("x")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`RAND("x") = %v, want #VALUE! error`, got)
+		}
+	})
+
+	t.Run("wrong_arg_count_two_args", func(t *testing.T) {
+		cf := evalCompile(t, "RAND(1,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("RAND(1,2) = %v, want #VALUE! error", got)
+		}
+	})
+
+	t.Run("lower_bound_inclusive", func(t *testing.T) {
+		// RAND() >= 0 must always be true
+		for i := 0; i < 100; i++ {
+			cf := evalCompile(t, "RAND()>=0")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueBool || !got.Bool {
+				t.Fatalf("RAND()>=0 = %v, want TRUE (iteration %d)", got, i)
+			}
+		}
+	})
+
+	t.Run("upper_bound_exclusive", func(t *testing.T) {
+		// RAND() < 1 must always be true
+		for i := 0; i < 100; i++ {
+			cf := evalCompile(t, "RAND()<1")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueBool || !got.Bool {
+				t.Fatalf("RAND()<1 = %v, want TRUE (iteration %d)", got, i)
+			}
+		}
+	})
+
+	t.Run("not_negative", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			cf := evalCompile(t, "RAND()")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Num < 0 {
+				t.Fatalf("RAND() = %g, want non-negative (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("TYPE_equals_1", func(t *testing.T) {
+		cf := evalCompile(t, "TYPE(RAND())")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("TYPE(RAND()) = %v, want 1 (number)", got)
+		}
+	})
+
+	t.Run("ISNUMBER_true", func(t *testing.T) {
+		cf := evalCompile(t, "ISNUMBER(RAND())")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("ISNUMBER(RAND()) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("ISTEXT_false", func(t *testing.T) {
+		cf := evalCompile(t, "ISTEXT(RAND())")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool {
+			t.Errorf("ISTEXT(RAND()) = %v, want FALSE", got)
+		}
+	})
+
+	t.Run("arithmetic_plus_one", func(t *testing.T) {
+		// RAND()+1 should be between 1 (inclusive) and 2 (exclusive)
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "RAND()+1")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 1 || got.Num >= 2 {
+				t.Fatalf("RAND()+1 = %g, want [1,2) (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("scaling_times_10", func(t *testing.T) {
+		// RAND()*10 should be in [0, 10)
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "RAND()*10")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 0 || got.Num >= 10 {
+				t.Fatalf("RAND()*10 = %g, want [0,10) (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("INT_of_RAND_is_zero", func(t *testing.T) {
+		// Since 0 <= RAND() < 1, INT(RAND()) = 0 always
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "INT(RAND())")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != 0 {
+				t.Fatalf("INT(RAND()) = %g, want 0 (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("in_IF_condition", func(t *testing.T) {
+		// RAND()+1 > 0 is always true, so IF should return "yes"
+		cf := evalCompile(t, `IF(RAND()+1>0,"yes","no")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "yes" {
+			t.Errorf(`IF(RAND()+1>0,"yes","no") = %v, want "yes"`, got)
+		}
+	})
+
+	t.Run("comparison_chain_AND", func(t *testing.T) {
+		// AND(RAND()>=0, RAND()<1) should always be TRUE
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "AND(RAND()>=0, RAND()<1)")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueBool || !got.Bool {
+				t.Fatalf("AND(RAND()>=0, RAND()<1) = %v, want TRUE (iteration %d)", got, i)
+			}
+		}
+	})
+
+	t.Run("dice_roll_simulation", func(t *testing.T) {
+		// INT(RAND()*6)+1 should be in [1, 6]
+		for i := 0; i < 100; i++ {
+			cf := evalCompile(t, "INT(RAND()*6)+1")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 1 || got.Num > 6 {
+				t.Fatalf("INT(RAND()*6)+1 = %g, want [1,6] (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("ROUND_to_zero_decimals", func(t *testing.T) {
+		// ROUND(RAND(),0) should be either 0 or 1
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "ROUND(RAND(),0)")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || (got.Num != 0 && got.Num != 1) {
+				t.Fatalf("ROUND(RAND(),0) = %g, want 0 or 1 (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("two_calls_independent", func(t *testing.T) {
+		// Two separate RAND() evaluations should both be valid numbers in [0,1)
+		cf1 := evalCompile(t, "RAND()")
+		got1, err := Eval(cf1, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval RAND() #1: %v", err)
+		}
+		cf2 := evalCompile(t, "RAND()")
+		got2, err := Eval(cf2, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval RAND() #2: %v", err)
+		}
+		if got1.Type != ValueNumber || got1.Num < 0 || got1.Num >= 1 {
+			t.Errorf("RAND() #1 = %g, want [0,1)", got1.Num)
+		}
+		if got2.Type != ValueNumber || got2.Num < 0 || got2.Num >= 1 {
+			t.Errorf("RAND() #2 = %g, want [0,1)", got2.Num)
+		}
+	})
+
+	t.Run("SUM_of_two_RANDs", func(t *testing.T) {
+		// SUM(RAND(), RAND()) should be in [0, 2)
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "SUM(RAND(), RAND())")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 0 || got.Num >= 2 {
+				t.Fatalf("SUM(RAND(), RAND()) = %g, want [0,2) (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("AVERAGE_of_RAND", func(t *testing.T) {
+		// AVERAGE(RAND()) should be in [0, 1)
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "AVERAGE(RAND())")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 0 || got.Num >= 1 {
+				t.Fatalf("AVERAGE(RAND()) = %g, want [0,1) (iteration %d)", got.Num, i)
+			}
+		}
+	})
+
+	t.Run("RAND_times_100_int", func(t *testing.T) {
+		// INT(RAND()*100) should be in [0, 99] (Excel doc example)
+		for i := 0; i < 50; i++ {
+			cf := evalCompile(t, "INT(RAND()*100)")
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num < 0 || got.Num > 99 {
+				t.Fatalf("INT(RAND()*100) = %g, want [0,99] (iteration %d)", got.Num, i)
+			}
+			// Should be an integer
+			if got.Num != math.Floor(got.Num) {
+				t.Fatalf("INT(RAND()*100) = %g, want integer (iteration %d)", got.Num, i)
+			}
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // SEQUENCE tests
 // ---------------------------------------------------------------------------
 

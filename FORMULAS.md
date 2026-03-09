@@ -16,7 +16,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | AMORDEGRC | Returns depreciation for each accounting period using a French declining balance method. | Financial | 3 |
 | AMORLINC | Returns depreciation for each accounting period using a linear method. | Financial | 5 |
 | ANCHORARRAY | Returns the full spilled array produced by a dynamic array formula. | Lookup & Reference | 6 |
-| AND | Returns TRUE when every supplied condition is TRUE. | Logical | 30 |
+| AND | Returns TRUE when every supplied condition is TRUE. | Logical | 31 |
 | ARABIC | Converts Roman numeral text to an Arabic number. | Math & Trig | 38 |
 | ARRAYTOTEXT | Converts an array into a text representation. | Text | 24 |
 | ASIN | Returns the arcsine of a number. | Math & Trig | 30 |
@@ -25,7 +25,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | ATAN2 | Returns the arctangent from x and y coordinates. | Math & Trig | 30 |
 | ATANH | Returns the inverse hyperbolic tangent of a number. | Math & Trig | 31 |
 | AVEDEV | Returns the average absolute deviation from the mean. | Statistical | 22 |
-| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 29 |
+| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 30 |
 | AVERAGEA | Returns the average of supplied values, including logical values and text coercions. | Statistical | 24 |
 | AVERAGEIF | Returns the average of values that match one condition. | Statistical | 42 |
 | AVERAGEIFS | Returns the average of values that match all supplied conditions. | Statistical | 48 |
@@ -182,7 +182,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
-| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 24 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 25 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 57 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 44 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
@@ -213,7 +213,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
 | INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 30 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
-| INT | Rounds a number down to the nearest integer. | Math & Trig | 24 |
+| INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
 | INTRATE | Returns the interest rate for a fully invested security. | Financial | 3 |
 | IPMT | Returns the interest portion of a payment for a given period. | Financial | 4 |
@@ -226,13 +226,13 @@ Werkbook supports **437** spreadsheet formula functions.
 | ISLOGICAL | Returns TRUE when a value is logical. | Information | 27 |
 | ISNA | Returns TRUE when a value is #N/A. | Information | 30 |
 | ISNONTEXT | Returns TRUE when a value is not text. | Information | 26 |
-| ISNUMBER | Returns TRUE when a value is numeric. | Information | 23 |
+| ISNUMBER | Returns TRUE when a value is numeric. | Information | 24 |
 | ISO.CEILING | Rounds a number up using ISO.CEILING rules. | Math & Trig | 48 |
 | ISODD | Returns TRUE when a number is odd. | Information | 33 |
 | ISOWEEKNUM | Returns the ISO week number for a date. | Date & Time | 26 |
 | ISPMT | Returns the interest paid during a period for straight-line amortization. | Financial | 17 |
 | ISREF | Returns TRUE when a value is a reference. | Information | 24 |
-| ISTEXT | Returns TRUE when a value is text. | Information | 24 |
+| ISTEXT | Returns TRUE when a value is text. | Information | 25 |
 | KURT | Returns the kurtosis of a data set. | Statistical | 22 |
 | LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 6 |
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 30 |
@@ -321,7 +321,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 65 |
 | QUOTIENT | Returns the integer portion of a division. | Math & Trig | 43 |
 | RADIANS | Converts degrees to radians. | Math & Trig | 30 |
-| RAND | Returns a random number between 0 and 1. | Math & Trig | 1 |
+| RAND | Returns a random number between 0 and 1. | Math & Trig | 13 |
 | RANDARRAY | Returns an array of random numbers. | Math & Trig | 50 |
 | RANDBETWEEN | Returns a random integer between two bounds. | Math & Trig | 1 |
 | RANK | Returns the rank of a number in a list. | Statistical | 32 |
@@ -333,7 +333,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | REPT | Repeats text a specified number of times. | Text | 26 |
 | RIGHT | Returns characters from the right side of a text value. | Text | 41 |
 | ROMAN | Converts an Arabic number to Roman numeral text. | Text | 38 |
-| ROUND | Rounds a number to a requested number of digits. | Math & Trig | 39 |
+| ROUND | Rounds a number to a requested number of digits. | Math & Trig | 40 |
 | ROUNDDOWN | Rounds a number toward zero. | Math & Trig | 36 |
 | ROUNDUP | Rounds a number away from zero. | Math & Trig | 36 |
 | ROW | Returns the row number of a reference. | Information | 40 |
@@ -368,7 +368,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 23 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 32 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 45 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 46 |
 | SUMIF | Returns the sum of values that match one condition. | Statistical | 37 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 42 |
 | SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 22 |
@@ -407,7 +407,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | TRIMMEAN | Returns the mean after trimming values from both tails of a data set. | Statistical | 23 |
 | TRUE | Returns the logical value TRUE. | Logical | 10 |
 | TRUNC | Truncates a number to an integer or fixed precision. | Math & Trig | 34 |
-| TYPE | Returns a numeric code describing a value's type. | Information | 23 |
+| TYPE | Returns a numeric code describing a value's type. | Information | 24 |
 | UNICHAR | Returns the Unicode character for a code point. | Text | 37 |
 | UNICODE | Returns the Unicode code point for the first character in text. | Text | 36 |
 | UNIQUE | Returns distinct rows or columns from an array. | Lookup & Reference | 29 |
