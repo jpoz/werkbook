@@ -2354,6 +2354,285 @@ func TestPPMT_Comprehensive(t *testing.T) {
 			args:    []Value{NumberVal(0.05), StringVal("xyz"), NumberVal(12), NumberVal(10000)},
 			wantErr: true,
 		},
+
+		// --- Negative pv (investment perspective) ---
+		{
+			name: "negative pv gives positive principal",
+			// PPMT(0.05/12, 1, 360, -200000) — lender perspective
+			args: numArgs(0.05/12, 1, 360, -200000),
+			want: 240.31,
+		},
+
+		// --- Single period ---
+		{
+			name: "single period nper=1 type=0",
+			// PPMT(0.10, 1, 1, 1000) — entire loan repaid in one period
+			args: numArgs(0.10, 1, 1, 1000),
+			want: -1000.00,
+		},
+		{
+			name: "single period nper=1 type=1",
+			// PPMT(0.10, 1, 1, 1000, 0, 1) — beginning of period, PPMT=PMT
+			args: numArgs(0.10, 1, 1, 1000, 0, 1),
+			want: -1000.00,
+		},
+
+		// --- Very high interest rate ---
+		{
+			name: "very high rate 100% per period",
+			// PPMT(1.0, 1, 12, 10000) — extreme rate
+			args: numArgs(1.0, 1, 12, 10000),
+			want: -2.44,
+		},
+		{
+			name: "very high rate 50% middle period",
+			// PPMT(0.5, 5, 10, 10000)
+			args: numArgs(0.5, 5, 10, 10000),
+			want: -446.70,
+		},
+
+		// --- Very small interest rate ---
+		{
+			name: "very small rate 0.001% per period",
+			// PPMT(0.00001, 1, 360, 200000)
+			args: numArgs(0.00001, 1, 360, 200000),
+			want: -554.56,
+		},
+
+		// --- Both pv and fv specified ---
+		{
+			name: "pv and fv both specified first period",
+			// PPMT(0.06/12, 1, 60, 10000, 5000)
+			args: numArgs(0.06/12, 1, 60, 10000, 5000),
+			want: -214.99,
+		},
+		{
+			name: "pv and fv both specified last period",
+			// PPMT(0.06/12, 60, 60, 10000, 5000)
+			args: numArgs(0.06/12, 60, 60, 10000, 5000),
+			want: -288.55,
+		},
+
+		// --- fv only (saving with target future value, pv=0) ---
+		{
+			name: "saving with fv only pv=0 first period",
+			// PPMT(0.05/12, 1, 60, 0, 10000)
+			args: numArgs(0.05/12, 1, 60, 0, 10000),
+			want: -147.05,
+		},
+		{
+			name: "saving with fv only middle period",
+			// PPMT(0.05/12, 30, 60, 0, 10000)
+			args: numArgs(0.05/12, 30, 60, 0, 10000),
+			want: -165.89,
+		},
+
+		// --- Large nper values ---
+		{
+			name: "large nper 600 months first payment",
+			// PPMT(0.03/12, 1, 600, 100000) — 50 year mortgage first payment
+			args: numArgs(0.03/12, 1, 600, 100000),
+			want: -71.98,
+		},
+		{
+			name: "large nper 600 months last payment",
+			// PPMT(0.03/12, 600, 600, 100000) — 50 year mortgage last payment
+			args: numArgs(0.03/12, 600, 600, 100000),
+			want: -321.17,
+		},
+
+		// --- Type=1 with future value ---
+		{
+			name: "type=1 with fv period 1",
+			// PPMT(0.06/12, 1, 60, 10000, 5000, 1) — beginning of period, PPMT=PMT
+			args: numArgs(0.06/12, 1, 60, 10000, 5000, 1),
+			want: -263.67,
+		},
+		{
+			name: "type=1 with fv period 2",
+			// PPMT(0.06/12, 2, 60, 10000, 5000, 1)
+			args: numArgs(0.06/12, 2, 60, 10000, 5000, 1),
+			want: -214.99,
+		},
+		{
+			name: "type=1 last period with fv",
+			// PPMT(0.06/12, 60, 60, 10000, 5000, 1)
+			args: numArgs(0.06/12, 60, 60, 10000, 5000, 1),
+			want: -287.11,
+		},
+
+		// --- String coercion ---
+		{
+			name: "string coercion for rate",
+			// PPMT("0.1", 1, 12, 10000, 0, 0)
+			args: []Value{StringVal("0.1"), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), NumberVal(0)},
+			want: -467.63,
+		},
+		{
+			name: "string coercion for per",
+			args: []Value{NumberVal(0.05 / 12), StringVal("1"), NumberVal(360), NumberVal(200000)},
+			want: -240.31,
+		},
+		{
+			name: "string coercion for nper",
+			args: []Value{NumberVal(0.05 / 12), NumberVal(1), StringVal("360"), NumberVal(200000)},
+			want: -240.31,
+		},
+		{
+			name: "string coercion for pv",
+			args: []Value{NumberVal(0.05 / 12), NumberVal(1), NumberVal(360), StringVal("200000")},
+			want: -240.31,
+		},
+		{
+			name: "string coercion for fv",
+			args: []Value{NumberVal(0.1 / 12), NumberVal(1), NumberVal(60), NumberVal(50000), StringVal("10000")},
+			want: -774.82,
+		},
+		{
+			name: "string coercion for type",
+			args: []Value{NumberVal(0.1 / 12), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), StringVal("1")},
+			want: -871.89,
+		},
+
+		// --- Boolean coercion ---
+		{
+			name: "bool TRUE as rate coerced to 1",
+			args: []Value{BoolVal(true), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			want: -2.44,
+		},
+		{
+			name: "bool FALSE as rate coerced to 0",
+			args: []Value{BoolVal(false), NumberVal(5), NumberVal(10), NumberVal(10000)},
+			want: -1000.00,
+		},
+		{
+			name: "bool TRUE as type (beginning of period)",
+			args: []Value{NumberVal(0.1 / 12), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), BoolVal(true)},
+			want: -871.89,
+		},
+		{
+			name: "bool FALSE as type (end of period)",
+			args: []Value{NumberVal(0.1 / 12), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), BoolVal(false)},
+			want: -795.83,
+		},
+		{
+			name: "bool TRUE as per coerced to 1",
+			args: []Value{NumberVal(0.05 / 12), BoolVal(true), NumberVal(360), NumberVal(200000)},
+			want: -240.31,
+		},
+
+		// --- Empty cell references (coerce to 0) ---
+		{
+			name: "empty val for rate coerces to 0",
+			args: []Value{EmptyVal(), NumberVal(5), NumberVal(10), NumberVal(10000)},
+			want: -1000.00,
+		},
+		{
+			name: "empty val for fv coerces to 0",
+			args: []Value{NumberVal(0.05 / 12), NumberVal(1), NumberVal(360), NumberVal(200000), EmptyVal()},
+			want: -240.31,
+		},
+		{
+			name: "empty val for type coerces to 0 end of period",
+			args: []Value{NumberVal(0.1 / 12), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), EmptyVal()},
+			want: -795.83,
+		},
+
+		// --- Error propagation ---
+		{
+			name:    "error propagation in rate",
+			args:    []Value{ErrorVal(ErrValNUM), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in per",
+			args:    []Value{NumberVal(0.05), ErrorVal(ErrValNA), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in nper",
+			args:    []Value{NumberVal(0.05), NumberVal(1), ErrorVal(ErrValREF), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in pv",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), ErrorVal(ErrValDIV0)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in fv",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), NumberVal(10000), ErrorVal(ErrValVALUE)},
+			wantErr: true,
+		},
+		{
+			name:    "error propagation in type",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), ErrorVal(ErrValNUM)},
+			wantErr: true,
+		},
+
+		// --- Non-numeric errors for remaining args ---
+		{
+			name:    "non-numeric nper",
+			args:    []Value{NumberVal(0.05), NumberVal(1), StringVal("bad"), NumberVal(10000)},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric pv",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), StringVal("bad")},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric fv",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), NumberVal(10000), StringVal("bad")},
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric type",
+			args:    []Value{NumberVal(0.05), NumberVal(1), NumberVal(12), NumberVal(10000), NumberVal(0), StringVal("bad")},
+			wantErr: true,
+		},
+		{
+			name:    "empty string rate not coercible",
+			args:    []Value{StringVal(""), NumberVal(1), NumberVal(12), NumberVal(10000)},
+			wantErr: true,
+		},
+
+		// --- per boundary errors ---
+		{
+			name:    "per < 1 fractional returns NUM error",
+			args:    numArgs(0.05/12, 0.5, 360, 200000),
+			wantErr: true,
+		},
+
+		// --- Amortization: principal increases over time ---
+		{
+			name: "amortization: period 2 more principal than period 1",
+			// PPMT(0.08, 2, 5, 25000)
+			args: numArgs(0.08, 2, 5, 25000),
+			want: -4602.32,
+		},
+		{
+			name: "amortization: last period of 5yr loan",
+			// PPMT(0.08, 5, 5, 25000)
+			args: numArgs(0.08, 5, 5, 25000),
+			want: -5797.60,
+		},
+
+		// --- Zero rate with fv ---
+		{
+			name: "zero rate with fv",
+			// PPMT(0, 3, 10, 10000, 5000) — principal = -(pv+fv)/nper = -1500
+			args: numArgs(0, 3, 10, 10000, 5000),
+			want: -1500.00,
+		},
+
+		// --- Zero rate with type=1 ---
+		{
+			name: "zero rate with type 1",
+			// PPMT(0, 1, 10, 10000, 0, 1)
+			args: numArgs(0, 1, 10, 10000, 0, 1),
+			want: -1000.00,
+		},
 	}
 
 	for _, tc := range tests {
