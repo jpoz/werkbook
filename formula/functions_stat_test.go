@@ -22965,6 +22965,213 @@ func TestCOVARIANCE_S(t *testing.T) {
 			t.Errorf("COVARIANCE.S(X,Y)=%g != COVARIANCE.S(Y,X)=%g", v1.Num, v2.Num)
 		}
 	})
+
+	t.Run("perfect negative correlation x equals negative y", func(t *testing.T) {
+		// {1,2,3,4,5}, {-1,-2,-3,-4,-5}: meanX=3, meanY=-3
+		// sum = (1-3)*(-1+3) + (2-3)*(-2+3) + (3-3)*0 + (4-3)*(-4+3) + (5-3)*(-5+3)
+		//     = (-2)(2) + (-1)(1) + 0 + (1)(-1) + (2)(-2) = -4 -1 +0 -1 -4 = -10
+		// COVARIANCE.S = -10/(5-1) = -2.5
+		v, err := fnCOVARIANCES([]Value{covSArray(1, 2, 3, 4, 5), covSArray(-1, -2, -3, -4, -5)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueNumber || math.Abs(v.Num-(-2.5)) > 1e-10 {
+			t.Errorf("got %g, want -2.5", v.Num)
+		}
+	})
+
+	t.Run("large dataset 20 elements", func(t *testing.T) {
+		// X = 1..20, Y = 2*X (perfect linear relationship)
+		// meanX = 10.5, meanY = 21
+		// sum((xi-10.5)*(yi-21)) = sum((xi-10.5)*2*(xi-10.5)) = 2*sum((xi-10.5)^2)
+		// sum((xi-10.5)^2) for i=1..20 = 665
+		// so sum = 2*665 = 1330
+		// COVARIANCE.S = 1330/19 = 70.0
+		xVals := make([]float64, 20)
+		yVals := make([]float64, 20)
+		for i := 0; i < 20; i++ {
+			xVals[i] = float64(i + 1)
+			yVals[i] = float64(2 * (i + 1))
+		}
+		v, err := fnCOVARIANCES([]Value{covSArray(xVals...), covSArray(yVals...)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := 1330.0 / 19.0
+		if v.Type != ValueNumber || math.Abs(v.Num-want) > 1e-10 {
+			t.Errorf("got %g, want %g", v.Num, want)
+		}
+	})
+
+	t.Run("boolean values ignored in arrays", func(t *testing.T) {
+		// Booleans are non-numeric in flattened arrays and should be skipped.
+		// Only numeric pairs: (1,4) and (3,6) remain (n=2).
+		// meanX=2, meanY=5
+		// sum = (1-2)*(4-5) + (3-2)*(6-5) = 1+1 = 2
+		// COVARIANCE.S = 2/(2-1) = 2.0
+		v, err := fnCOVARIANCES([]Value{
+			covSMixedArray(NumberVal(1), BoolVal(true), NumberVal(3)),
+			covSMixedArray(NumberVal(4), BoolVal(false), NumberVal(6)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueNumber || math.Abs(v.Num-2.0) > 1e-10 {
+			t.Errorf("got %g, want 2.0", v.Num)
+		}
+	})
+
+	t.Run("inline array literal via eval", func(t *testing.T) {
+		// Test using Excel-style inline array literals parsed by the formula engine
+		cf := evalCompile(t, "COVARIANCE.S({2,4,8},{5,11,12})")
+		got, err := Eval(cf, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-9.666666667) > 1e-6 {
+			t.Errorf("got %v, want 9.666666667", got)
+		}
+	})
+
+	t.Run("relationship with COVARIANCE.P five elements", func(t *testing.T) {
+		// For {10,20,30,40,50} and {5,15,25,35,45}:
+		// COVARIANCE.S * (n-1)/n should equal COVARIANCE.P
+		x := covSArray(10, 20, 30, 40, 50)
+		y := covSArray(5, 15, 25, 35, 45)
+		vS, err := fnCOVARIANCES([]Value{x, y})
+		if err != nil {
+			t.Fatal(err)
+		}
+		vP, err := fnCOVARIANCEP([]Value{x, y})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 5.0
+		expected := vS.Num * (n - 1) / n
+		if math.Abs(expected-vP.Num) > 1e-10 {
+			t.Errorf("COVARIANCE.S*(%g-1)/%g = %g != COVARIANCE.P = %g", n, n, expected, vP.Num)
+		}
+	})
+
+	t.Run("empty cells in range ignored", func(t *testing.T) {
+		// Range A1:A4, B1:B4 but A3 and B3 are empty.
+		// Numeric pairs: (1,10), (2,20), (4,40) -> n=3
+		// meanX = 7/3, meanY = 70/3
+		// sum = (1-7/3)*(10-70/3) + (2-7/3)*(20-70/3) + (4-7/3)*(40-70/3)
+		//     = (-4/3)*(-40/3) + (-1/3)*(-10/3) + (5/3)*(50/3)
+		//     = 160/9 + 10/9 + 250/9 = 420/9
+		// COVARIANCE.S = (420/9)/(3-1) = 420/18 = 70/3
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				// A3 is empty
+				{Col: 1, Row: 4}: NumberVal(4),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+				// B3 is empty
+				{Col: 2, Row: 4}: NumberVal(40),
+			},
+		}
+		cf := evalCompile(t, "COVARIANCE.S(A1:A4,B1:B4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := 70.0 / 3.0
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %g, want %g", got.Num, want)
+		}
+	})
+
+	t.Run("mixed positive negative both arrays", func(t *testing.T) {
+		// {-5, 10, -15, 20}, {3, -6, 9, -12}: meanX=2.5, meanY=-1.5
+		// sum = (-5-2.5)*(3+1.5) + (10-2.5)*(-6+1.5) + (-15-2.5)*(9+1.5) + (20-2.5)*(-12+1.5)
+		//     = (-7.5)(4.5) + (7.5)(-4.5) + (-17.5)(10.5) + (17.5)(-10.5)
+		//     = -33.75 + -33.75 + -183.75 + -183.75 = -435
+		// COVARIANCE.S = -435/(4-1) = -145
+		v, err := fnCOVARIANCES([]Value{covSArray(-5, 10, -15, 20), covSArray(3, -6, 9, -12)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueNumber || math.Abs(v.Num-(-145.0)) > 1e-10 {
+			t.Errorf("got %g, want -145.0", v.Num)
+		}
+	})
+
+	t.Run("very large dataset 100 elements", func(t *testing.T) {
+		// X = 1..100, Y = X (identical)
+		// COVARIANCE.S(X,X) = sample variance = sum((xi-50.5)^2)/99
+		// sum((i-50.5)^2) for i=1..100 = 83325/100*100... let's compute:
+		// = sum of (i-50.5)^2 = sum from k=-49.5 to 49.5 step 1 of k^2
+		// = 2*(0.5^2+1.5^2+...+49.5^2) = 2*sum_{j=0}^{49} (j+0.5)^2
+		// = 2*sum (j^2+j+0.25) = 2*(49*50*99/6 + 49*50/2 + 50*0.25)
+		// = 2*(40425 + 1225 + 12.5) = 2*41662.5 = 83325
+		// COVARIANCE.S = 83325/99 = 841.666...
+		xVals := make([]float64, 100)
+		for i := 0; i < 100; i++ {
+			xVals[i] = float64(i + 1)
+		}
+		v, err := fnCOVARIANCES([]Value{covSArray(xVals...), covSArray(xVals...)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := 83325.0 / 99.0
+		if v.Type != ValueNumber || math.Abs(v.Num-want) > 1e-8 {
+			t.Errorf("got %g, want %g", v.Num, want)
+		}
+	})
+
+	t.Run("all same values both arrays", func(t *testing.T) {
+		// {7,7,7,7}, {7,7,7,7}: all means are 7, all deviations are 0
+		// COVARIANCE.S = 0
+		v, err := fnCOVARIANCES([]Value{covSArray(7, 7, 7, 7), covSArray(7, 7, 7, 7)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueNumber || v.Num != 0 {
+			t.Errorf("got %v, want 0", v)
+		}
+	})
+
+	t.Run("no correlation orthogonal pattern", func(t *testing.T) {
+		// {1, -1, 1, -1}, {1, 1, -1, -1}: meanX=0, meanY=0
+		// sum = (1)(1) + (-1)(1) + (1)(-1) + (-1)(-1) = 1-1-1+1 = 0
+		// COVARIANCE.S = 0/(4-1) = 0
+		v, err := fnCOVARIANCES([]Value{covSArray(1, -1, 1, -1), covSArray(1, 1, -1, -1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueNumber || v.Num != 0 {
+			t.Errorf("got %g, want 0", v.Num)
+		}
+	})
+
+	t.Run("one numeric pair after filtering non-numeric returns DIV0", func(t *testing.T) {
+		// After ignoring booleans and text, only (5,10) remains -> n=1 -> #DIV/0!
+		v, err := fnCOVARIANCES([]Value{
+			covSMixedArray(NumberVal(5), BoolVal(true), StringVal("hello")),
+			covSMixedArray(NumberVal(10), BoolVal(false), StringVal("world")),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueError || v.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", v)
+		}
+	})
+
+	t.Run("xlfn prefix COVARIANCE.S", func(t *testing.T) {
+		// Test via _xlfn.COVARIANCE.S prefix (used in some XLSX files)
+		cf := evalCompile(t, "_xlfn.COVARIANCE.S({1,2,3},{4,5,6})")
+		got, err := Eval(cf, nil, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-1.0) > 1e-10 {
+			t.Errorf("got %v, want 1.0", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
