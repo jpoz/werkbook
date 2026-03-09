@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -729,6 +730,15 @@ func fnXLOOKUP(args []Value) (Value, error) {
 		matchMode = int(mm)
 	}
 
+	searchMode := 1
+	if len(args) >= 6 {
+		sm, e := CoerceNum(args[5])
+		if e != nil {
+			return *e, nil
+		}
+		searchMode = int(sm)
+	}
+
 	var lookupValues []Value
 	if lookupArr.Type == ValueArray {
 		for _, row := range lookupArr.Array {
@@ -747,62 +757,146 @@ func fnXLOOKUP(args []Value) (Value, error) {
 		returnValues = []Value{returnArr}
 	}
 
+	n := len(lookupValues)
+
+	xlookupReturn := func(i int) (Value, error) {
+		if i >= 0 && i < len(returnValues) {
+			return returnValues[i], nil
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// --- Binary search modes (search_mode 2 or -2) ---
+	if searchMode == 2 || searchMode == -2 {
+		ascending := searchMode == 2
+		idx := xlookupBinarySearch(lookupValues, lookup, matchMode, ascending)
+		if idx >= 0 {
+			return xlookupReturn(idx)
+		}
+		return notFound, nil
+	}
+
+	// --- Linear search modes (search_mode 1 or -1) ---
+	// Determine iteration order: forward (1) or reverse (-1).
+	start, end, step := 0, n, 1
+	if searchMode == -1 {
+		start, end, step = n-1, -1, -1
+	}
+
 	switch matchMode {
-	case 0:
-		for i, v := range lookupValues {
-			if CompareValuesExact(v, lookup) == 0 {
-				if i < len(returnValues) {
-					return returnValues[i], nil
-				}
-				return ErrorVal(ErrValNA), nil
+	case 0: // Exact match
+		for i := start; i != end; i += step {
+			if CompareValuesExact(lookupValues[i], lookup) == 0 {
+				return xlookupReturn(i)
 			}
 		}
 
-	case -1:
+	case -1: // Exact match or next smaller item
+		// Scan in the specified direction, keeping the last index where v <= lookup.
+		// On sorted ascending data this finds the correct "next smaller" value.
 		lastMatch := -1
-		for i, v := range lookupValues {
-			if CompareValues(v, lookup) <= 0 {
+		for i := start; i != end; i += step {
+			if CompareValues(lookupValues[i], lookup) <= 0 {
 				lastMatch = i
 			}
 		}
-		if lastMatch >= 0 && lastMatch < len(returnValues) {
-			return returnValues[lastMatch], nil
+		if lastMatch >= 0 {
+			return xlookupReturn(lastMatch)
 		}
 
-	case 1:
-		for i, v := range lookupValues {
-			if CompareValues(v, lookup) >= 0 {
-				if i < len(returnValues) {
-					return returnValues[i], nil
-				}
-				break
+	case 1: // Exact match or next larger item
+		// Scan in the specified direction, returning the first index where v >= lookup.
+		for i := start; i != end; i += step {
+			if CompareValues(lookupValues[i], lookup) >= 0 {
+				return xlookupReturn(i)
 			}
 		}
 
-	case 2:
-		// Wildcard match: * matches any sequence, ? matches single char, ~ escapes.
+	case 2: // Wildcard match
 		pattern := ValueToString(lookup)
 		re, err := patternToRegexp(pattern)
 		if err != nil {
 			return ErrorVal(ErrValVALUE), nil
 		}
-		// Anchor the pattern for full-string matching.
 		anchored, err := regexp.Compile("(?i)^" + re.String() + "$")
 		if err != nil {
 			return ErrorVal(ErrValVALUE), nil
 		}
-		for i, v := range lookupValues {
-			s := ValueToString(v)
+		for i := start; i != end; i += step {
+			s := ValueToString(lookupValues[i])
 			if anchored.MatchString(s) {
-				if i < len(returnValues) {
-					return returnValues[i], nil
-				}
-				return ErrorVal(ErrValNA), nil
+				return xlookupReturn(i)
 			}
 		}
 	}
 
 	return notFound, nil
+}
+
+// xlookupBinarySearch performs a binary search on lookupValues for the given
+// lookup value, respecting matchMode (0=exact, -1=next smaller, 1=next larger)
+// and whether the data is sorted ascending or descending.
+func xlookupBinarySearch(lookupValues []Value, lookup Value, matchMode int, ascending bool) int {
+	n := len(lookupValues)
+	if n == 0 {
+		return -1
+	}
+
+	// Binary search for exact match position.
+	// For ascending data, sort.Search finds the first index where lookupValues[i] >= lookup.
+	// For descending data, sort.Search finds the first index where lookupValues[i] <= lookup.
+	idx := sort.Search(n, func(i int) bool {
+		cmp := CompareValues(lookupValues[i], lookup)
+		if ascending {
+			return cmp >= 0
+		}
+		return cmp <= 0
+	})
+
+	switch matchMode {
+	case 0: // Exact match only
+		if idx < n && CompareValues(lookupValues[idx], lookup) == 0 {
+			return idx
+		}
+		return -1
+
+	case -1: // Exact or next smaller
+		if idx < n && CompareValues(lookupValues[idx], lookup) == 0 {
+			return idx
+		}
+		if ascending {
+			// The element before idx is the largest element < lookup.
+			if idx > 0 {
+				return idx - 1
+			}
+		} else {
+			// In descending data, idx points at first element <= lookup.
+			// If it's not exact, it's the next smaller element.
+			if idx < n {
+				return idx
+			}
+		}
+		return -1
+
+	case 1: // Exact or next larger
+		if idx < n && CompareValues(lookupValues[idx], lookup) == 0 {
+			return idx
+		}
+		if ascending {
+			// idx points at first element >= lookup; if not exact, it's next larger.
+			if idx < n {
+				return idx
+			}
+		} else {
+			// In descending data, the element before idx is the first > lookup.
+			if idx > 0 {
+				return idx - 1
+			}
+		}
+		return -1
+	}
+
+	return -1
 }
 
 // fnINDIRECT implements INDIRECT(ref_text, [a1]).
