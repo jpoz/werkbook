@@ -27393,11 +27393,10 @@ func TestLOGEST(t *testing.T) {
 		}
 	})
 
-	t.Run("perfect_fit_F_stat", func(t *testing.T) {
-		// Perfect exponential fit: ln(2^x) = x*ln(2). Depending on
-		// platform floating-point behavior, ssResid may be exactly 0
-		// (yielding #NUM! like LINEST) or a tiny epsilon (yielding a
-		// very large F-stat). Both are acceptable.
+	t.Run("perfect_fit_F_stat_const_true", func(t *testing.T) {
+		// Perfect exponential fit y=2^x with const=TRUE: the QR
+		// decomposition produces a tiny non-zero residual, yielding a
+		// very large (but finite) F-statistic.
 		v, err := fnLOGEST([]Value{
 			rowArray(2, 4, 8, 16, 32),
 			rowArray(1, 2, 3, 4, 5),
@@ -27408,10 +27407,56 @@ func TestLOGEST(t *testing.T) {
 			t.Fatalf("error: %v", err)
 		}
 		f := v.Array[3][0]
-		isNumErr := f.Type == ValueError && f.Err == ErrValNUM
-		isLargeNum := f.Type == ValueNumber && f.Num > 1e20
-		if !isNumErr && !isLargeNum {
-			t.Errorf("F: expected #NUM! or very large number, got %v", f)
+		if f.Type != ValueNumber || f.Num < 1e30 {
+			t.Errorf("F: expected very large number (>1e30), got %v", f)
+		}
+	})
+
+	t.Run("perfect_fit_F_stat_const_false_is_NUM", func(t *testing.T) {
+		// Perfect exponential fit y=2^x with const=FALSE: the fit is
+		// exact (ln(y) = x*ln(2) passes through origin), so ssResid
+		// is effectively zero and F should be #NUM!.
+		v, err := fnLOGEST([]Value{
+			rowArray(2, 4, 8, 16, 32),
+			rowArray(1, 2, 3, 4, 5),
+			BoolVal(false),
+			BoolVal(true),
+		})
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		f := v.Array[3][0]
+		if f.Type != ValueError || f.Err != ErrValNUM {
+			t.Errorf("F: expected #NUM! for perfect const=FALSE fit, got type=%d val=%v", f.Type, f)
+		}
+	})
+
+	t.Run("perfect_fit_stats_consistent", func(t *testing.T) {
+		// For perfect exponential fit y=3*5^x with stats=TRUE,
+		// verify that the statistics are internally consistent.
+		v, err := fnLOGEST([]Value{
+			rowArray(15, 75, 375, 1875, 9375),
+			rowArray(1, 2, 3, 4, 5),
+			Value{Type: ValueEmpty},
+			BoolVal(true),
+		})
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		// r² should be 1 (perfect fit)
+		r2 := v.Array[2][0].Num
+		if math.Abs(r2-1) > tol {
+			t.Errorf("r²: got %f, want 1", r2)
+		}
+		// df should be 3 (n-2 = 5-2)
+		df := v.Array[3][1].Num
+		if math.Abs(df-3) > tol {
+			t.Errorf("df: got %f, want 3", df)
+		}
+		// F should be a very large positive number
+		f := v.Array[3][0]
+		if f.Type != ValueNumber || f.Num < 1e30 {
+			t.Errorf("F: expected very large number (>1e30), got %v", f)
 		}
 	})
 

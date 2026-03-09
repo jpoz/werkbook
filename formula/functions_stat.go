@@ -6447,14 +6447,28 @@ func fnLOGEST(args []Value) (Value, error) {
 		}
 	} else {
 		// r²
+		r2Val := 0.0
 		if ssTotal == 0 {
 			if ssResid == 0 {
-				r2 = NumberVal(1)
-			} else {
-				r2 = NumberVal(0)
+				r2Val = 1
 			}
 		} else {
-			r2 = NumberVal(ssReg / ssTotal)
+			r2Val = ssReg / ssTotal
+		}
+		r2 = NumberVal(r2Val)
+
+		// Detect near-perfect exponential fit. The log transformation
+		// introduces floating-point noise that makes ssResid tiny but
+		// nonzero even for mathematically perfect exponential data
+		// (e.g., y = 2^x). When R² rounds to exactly 1.0 in float64,
+		// ssResid is dominated by this noise and must be treated as
+		// zero, matching Excel's behaviour.
+		perfectFit := r2Val == 1.0 && ssReg > 0
+
+		// For a perfect fit, recompute ssResid so that downstream
+		// statistics (se_y, se_slope, se_intercept, F) are consistent.
+		if perfectFit {
+			ssResid = 0
 		}
 
 		// se_y = sqrt(ss_resid / df) — from the ln(y) regression, as-is
@@ -6479,13 +6493,25 @@ func fnLOGEST(args []Value) (Value, error) {
 			seIntercept = ErrorVal(ErrValNA)
 		}
 
-		// F-statistic = (ss_reg / k) / (ss_resid / df) — from ln(y) regression, as-is
-		if ssResid == 0 {
-			if ssReg == 0 {
-				fStat = ErrorVal(ErrValNA)
+		// F-statistic = (ss_reg / k) / (ss_resid / df).
+		if ssResid == 0 && ssReg > 0 {
+			if useConst {
+				// Perfect fit with intercept: fall back to QR
+				// decomposition to obtain a tiny non-zero residual
+				// from floating-point rounding, matching the
+				// approach LINEST uses for perfect linear fits.
+				ssResidQR := linestQRResidualSS(knownX, lnY, useConst)
+				if ssResidQR > 0 {
+					fStat = NumberVal((ssReg / 1) / (ssResidQR / df))
+				} else {
+					fStat = ErrorVal(ErrValNUM)
+				}
 			} else {
-				fStat = ErrorVal(ErrValNUM) // infinite F → Excel returns #NUM!
+				// Perfect fit without intercept: infinite F.
+				fStat = ErrorVal(ErrValNUM)
 			}
+		} else if ssResid == 0 {
+			fStat = ErrorVal(ErrValNA)
 		} else {
 			fStat = NumberVal((ssReg / 1) / (ssResid / df))
 		}
