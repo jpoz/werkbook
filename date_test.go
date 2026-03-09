@@ -43,9 +43,9 @@ func TestSerialToTime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := excelSerialToTime(tt.serial)
+			got := serialToTime(tt.serial)
 			if !got.Equal(tt.want) {
-				t.Errorf("excelSerialToTime(%f) = %v, want %v", tt.serial, got, tt.want)
+				t.Errorf("serialToTime(%f) = %v, want %v", tt.serial, got, tt.want)
 			}
 		})
 	}
@@ -105,9 +105,9 @@ func TestSerialToTime1904(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := excelSerialToTime1904(tt.serial)
+			got := serialToTime1904(tt.serial)
 			if !got.Equal(tt.want) {
-				t.Errorf("excelSerialToTime1904(%f) = %v, want %v", tt.serial, got, tt.want)
+				t.Errorf("serialToTime1904(%f) = %v, want %v", tt.serial, got, tt.want)
 			}
 		})
 	}
@@ -121,7 +121,7 @@ func TestDateRoundTrip(t *testing.T) {
 	}
 	for _, d := range dates {
 		serial := timeToSerial(d)
-		got := excelSerialToTime(serial)
+		got := serialToTime(serial)
 		if !got.Equal(d) {
 			t.Errorf("round-trip failed: %v -> %f -> %v", d, serial, got)
 		}

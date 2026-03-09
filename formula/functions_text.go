@@ -389,7 +389,7 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	// "@" format with a numeric value: convert number to string using
 	// the text section (@ is the text placeholder).
 	if sectionContainsAt(format) && !strings.ContainsAny(format, "0#?") {
-		return StringVal(formatTextSection(excelNumberToString(n), format)), nil
+		return StringVal(formatTextSection(numberToString(n), format)), nil
 	}
 
 	return StringVal(formatNumber(n, format, date1904)), nil
@@ -810,7 +810,7 @@ func fnSEARCH(args []Value) (Value, error) {
 	}
 
 	// Convert wildcard pattern to a regexp.
-	re, err := excelPatternToRegexp(findText)
+	re, err := patternToRegexp(findText)
 	if err != nil {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -822,10 +822,10 @@ func fnSEARCH(args []Value) (Value, error) {
 	return NumberVal(float64(start + runeIdx + 1)), nil
 }
 
-// excelPatternToRegexp converts a SEARCH wildcard pattern to a Go regexp.
+// patternToRegexp converts a SEARCH wildcard pattern to a Go regexp.
 // * matches any sequence of characters, ? matches exactly one character.
 // ~* and ~? match literal * and ? respectively. ~~ matches a literal ~.
-func excelPatternToRegexp(pattern string) (*regexp.Regexp, error) {
+func patternToRegexp(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	runes := []rune(pattern)
 	for i := 0; i < len(runes); i++ {
@@ -1031,7 +1031,7 @@ func fnROMAN(args []Value) (Value, error) {
 func valueToTextFormat(v Value, strict bool) string {
 	switch v.Type {
 	case ValueNumber:
-		return excelNumberToString(v.Num)
+		return numberToString(v.Num)
 	case ValueString:
 		if strict {
 			return "\"" + v.Str + "\""

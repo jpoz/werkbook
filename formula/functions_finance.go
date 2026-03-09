@@ -3223,7 +3223,7 @@ func fnFVSchedule(args []Value) (Value, error) {
 		case ValueNumber:
 			principal *= 1 + v.Num
 		default:
-			// Excel treats booleans, strings, and any other non-numeric type
+			// spreadsheet treats booleans, strings, and any other non-numeric type
 			// in the schedule as #VALUE! errors.
 			return ErrorVal(ErrValVALUE), nil
 		}

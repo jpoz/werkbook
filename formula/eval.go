@@ -507,10 +507,10 @@ func CoerceNum(v Value) (float64, *Value) {
 	}
 }
 
-// excelNumberToString formats a number for concatenation:
+// numberToString formats a number for concatenation:
 // - At most 15 significant digits
 // - Scientific notation (capital E with +/- sign) for abs >= 1e15 or abs < 1e-4 (nonzero)
-func excelNumberToString(f float64) string {
+func numberToString(f float64) string {
 	if f == 0 {
 		return "0"
 	}
@@ -538,7 +538,7 @@ func excelNumberToString(f float64) string {
 func ValueToString(v Value) string {
 	switch v.Type {
 	case ValueNumber:
-		return excelNumberToString(v.Num)
+		return numberToString(v.Num)
 	case ValueString:
 		return v.Str
 	case ValueBool:

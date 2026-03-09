@@ -1461,7 +1461,7 @@ func TestROWS(t *testing.T) {
 			{"three_rows_B2_C4", `ROWS(B2:C4)`, 3},
 
 			// Documentation example: ROWS(C1:E4) = 4
-			{"excel_doc_example", `ROWS(C1:E4)`, 4},
+			{"doc_example", `ROWS(C1:E4)`, 4},
 
 			// Large range
 			{"hundred_rows_A1_A100", `ROWS(A1:A100)`, 100},

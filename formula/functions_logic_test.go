@@ -1031,7 +1031,7 @@ func TestIFERROR(t *testing.T) {
 		}
 	})
 
-	t.Run("Excel doc example 210/35 no error", func(t *testing.T) {
+	t.Run("doc example 210/35 no error", func(t *testing.T) {
 		cf := evalCompile(t, `IFERROR(210/35, "Error in calculation")`)
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {
@@ -1042,7 +1042,7 @@ func TestIFERROR(t *testing.T) {
 		}
 	})
 
-	t.Run("Excel doc example 55/0 error", func(t *testing.T) {
+	t.Run("doc example 55/0 error", func(t *testing.T) {
 		cf := evalCompile(t, `IFERROR(55/0, "Error in calculation")`)
 		got, err := Eval(cf, resolver, nil)
 		if err != nil {

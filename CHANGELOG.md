@@ -41,12 +41,12 @@
 ### Features
 
 - **Lambda support**: Formula engine now supports `LAMBDA` functions and 1904 date system
-- **Dynamic array formulas**: Added support for Excel dynamic array formula spill ranges
+- **Dynamic array formulas**: Added support for dynamic array formula spill ranges
 - **Sheet copying and cloning**: New `Sheet.Copy()` and `File.CloneSheet()` methods
 - **Merge cell support**: Added sheet operations for merged cells
 - **Defined names**: Added defined name resolution API and operations
-- **Excel table support**: Added Excel table and calc properties support
-- **`_xlfn` prefix handling**: Extended function prefix mapping for better Excel compatibility
+- **Table support**: Added table and calc properties support
+- **`_xlfn` prefix handling**: Extended function prefix mapping for better spreadsheet compatibility
 
 ### CLI improvements
 
@@ -56,11 +56,11 @@
 ### Bug fixes
 
 - Improved `NORM.INV` precision with Newton-Raphson refinement
-- Fixed `GAMMA.DIST`, `LOGNORM.DIST`/`LOGNORM.INV`, and `WEIBULL.DIST` to match Excel behavior
+- Fixed `GAMMA.DIST`, `LOGNORM.DIST`/`LOGNORM.INV`, and `WEIBULL.DIST` to match spreadsheet behavior
 - Fixed `CODE` function to return underscore (95) for unmappable characters
 - Fixed tilde escape handling in `COUNTIF`/`SUMIF` wildcard criteria
 - Fixed `INDEX` to return `#VALUE!` for `row_num=0` in non-array context
-- Fixed `_xludf.` prefixed functions to return `#NAME?` matching Excel behavior
+- Fixed `_xludf.` prefixed functions to return `#NAME?` matching spreadsheet behavior
 - Replaced `fmt.Sprintf` with `strconv` for number formatting (performance)
 
 ### Test coverage

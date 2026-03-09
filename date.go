@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-// excelEpoch is "January 0, 1900" = December 31, 1899.
+// epoch1900 is "January 0, 1900" = December 31, 1899.
 // Serial 1 = January 1, 1900 = epoch + 1 day.
-var excelEpoch = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
+var epoch1900 = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
 
-// excel1904Epoch is January 1, 1904.
+// epoch1904 is January 1, 1904.
 // In the 1904 date system, serial number 0 = January 1, 1904.
 // Unlike the 1900 system, there is no phantom "January 0" offset.
-var excel1904Epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
+var epoch1904 = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // timeToSerial converts a time.Time to a serial date number.
 func timeToSerial(t time.Time) float64 {
@@ -29,11 +29,11 @@ func timeToSerialForDateSystem(t time.Time, date1904 bool) float64 {
 
 func timeToSerial1900(t time.Time) float64 {
 	// Calculate the number of days between the 1900 epoch and the given time.
-	// We cannot use t.Sub(excelEpoch) because time.Duration is an int64 of
+	// We cannot use t.Sub(epoch1900) because time.Duration is an int64 of
 	// nanoseconds, which overflows for dates more than ~292 years from the epoch.
 	// Instead, compute whole days via calendar difference and fractional day
 	// from the time-of-day components.
-	y1, m1, d1 := excelEpoch.Date()
+	y1, m1, d1 := epoch1900.Date()
 	y2, m2, d2 := t.Date()
 	epochDays := julianDayNumber(y1, int(m1), d1)
 	tDays := julianDayNumber(y2, int(m2), d2)
@@ -52,7 +52,7 @@ func timeToSerial1900(t time.Time) float64 {
 }
 
 func timeToSerial1904(t time.Time) float64 {
-	y1, m1, d1 := excel1904Epoch.Date()
+	y1, m1, d1 := epoch1904.Date()
 	y2, m2, d2 := t.Date()
 	epochDays := julianDayNumber(y1, int(m1), d1)
 	tDays := julianDayNumber(y2, int(m2), d2)
@@ -63,7 +63,7 @@ func timeToSerial1904(t time.Time) float64 {
 	return days
 }
 
-func excelDateStringToSerial(s string, date1904 bool) (float64, error) {
+func dateStringToSerial(s string, date1904 bool) (float64, error) {
 	layouts := []string{
 		time.RFC3339Nano,
 		"2006-01-02T15:04:05.999999999",
@@ -79,7 +79,7 @@ func excelDateStringToSerial(s string, date1904 bool) (float64, error) {
 			return timeToSerialForDateSystem(parsed.UTC(), date1904), nil
 		}
 	}
-	return 0, fmt.Errorf("invalid Excel date %q", s)
+	return 0, fmt.Errorf("invalid date %q", s)
 }
 
 // julianDayNumber returns a Julian Day Number for the given date, useful for
@@ -93,11 +93,11 @@ func julianDayNumber(year, month, day int) int {
 
 // SerialToTime converts a serial date number to a time.Time.
 func SerialToTime(serial float64) time.Time {
-	return excelSerialToTime(serial)
+	return serialToTime(serial)
 }
 
-// excelSerialToTime converts a serial date number to a time.Time.
-func excelSerialToTime(serial float64) time.Time {
+// serialToTime converts a serial date number to a time.Time.
+func serialToTime(serial float64) time.Time {
 	// 1900 leap year bug: serial 60 is the phantom Feb 29.
 	// For serial > 60, subtract 1 to get the real day count.
 	if serial > 60 {
@@ -105,17 +105,17 @@ func excelSerialToTime(serial float64) time.Time {
 	}
 	days := int(serial)
 	frac := serial - float64(days)
-	t := excelEpoch.AddDate(0, 0, days)
+	t := epoch1900.AddDate(0, 0, days)
 	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
 	return t
 }
 
-// excelSerialToTime1904 converts a serial date number to a time.Time
+// serialToTime1904 converts a serial date number to a time.Time
 // using the 1904 date system. No leap-year bug adjustment is needed.
-func excelSerialToTime1904(serial float64) time.Time {
+func serialToTime1904(serial float64) time.Time {
 	days := int(serial)
 	frac := serial - float64(days)
-	t := excel1904Epoch.AddDate(0, 0, days)
+	t := epoch1904.AddDate(0, 0, days)
 	t = t.Add(time.Duration(frac * 24 * float64(time.Hour)))
 	return t
 }

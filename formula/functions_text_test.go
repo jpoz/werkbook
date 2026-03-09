@@ -123,11 +123,11 @@ func TestSUBSTITUTE(t *testing.T) {
 		// Delete specific instance
 		{name: "delete_2nd", formula: `SUBSTITUTE("abab","a","",2)`, want: "abb"},
 		// Doc example: replace "Sales" with "Cost"
-		{name: "excel_example_1", formula: `SUBSTITUTE("Sales Data","Sales","Cost")`, want: "Cost Data"},
+		{name: "doc_example_1", formula: `SUBSTITUTE("Sales Data","Sales","Cost")`, want: "Cost Data"},
 		// Doc example: replace 1st "1" with "2"
-		{name: "excel_example_2", formula: `SUBSTITUTE("Quarter 1, 2008","1","2",1)`, want: "Quarter 2, 2008"},
+		{name: "doc_example_2", formula: `SUBSTITUTE("Quarter 1, 2008","1","2",1)`, want: "Quarter 2, 2008"},
 		// Doc example: replace 3rd "1" with "2"
-		{name: "excel_example_3", formula: `SUBSTITUTE("Quarter 1, 2011","1","2",3)`, want: "Quarter 1, 2012"},
+		{name: "doc_example_3", formula: `SUBSTITUTE("Quarter 1, 2011","1","2",3)`, want: "Quarter 1, 2012"},
 	}
 
 	for _, tt := range tests {
@@ -1210,7 +1210,7 @@ func TestCHOOSEComprehensive(t *testing.T) {
 		{name: "bool_true_index", formula: `CHOOSE(TRUE,"a","b","c")`, want: want{typ: ValueString, str: "a"}},
 
 		// Doc examples
-		{name: "excel_doc_example", formula: `CHOOSE(3,"Wide",115,"world",8)`, want: want{typ: ValueString, str: "world"}},
+		{name: "doc_example", formula: `CHOOSE(3,"Wide",115,"world",8)`, want: want{typ: ValueString, str: "world"}},
 
 		// Error: index out of range (too high)
 		{name: "index_too_high", formula: `CHOOSE(5,"a","b","c")`, want: want{typ: ValueError, err: ErrValVALUE}},
@@ -4019,8 +4019,8 @@ func TestREPLACEComprehensive(t *testing.T) {
 		isErr   bool
 	}{
 		// Documentation examples
-		{name: "excel_example_1", formula: `REPLACE("abcdefghijk",6,5,"*")`, want: "abcde*k"},
-		{name: "excel_example_2", formula: `REPLACE("2009",3,2,"10")`, want: "2010"},
+		{name: "doc_example_1", formula: `REPLACE("abcdefghijk",6,5,"*")`, want: "abcde*k"},
+		{name: "doc_example_2", formula: `REPLACE("2009",3,2,"10")`, want: "2010"},
 
 		// Replace at beginning of string
 		{name: "replace_at_start", formula: `REPLACE("123456",1,3,"A")`, want: "A456"},
@@ -4743,8 +4743,8 @@ func TestENCODEURL(t *testing.T) {
 		formula string
 		want    string
 	}{
-		// Documented Excel example
-		{"excel example URL", `ENCODEURL("http://contoso.sharepoint.com/Finance/Profit and Loss Statement.xlsx")`, "http%3A%2F%2Fcontoso.sharepoint.com%2FFinance%2FProfit%20and%20Loss%20Statement.xlsx"},
+		// Documented doc example
+		{"doc example URL", `ENCODEURL("http://contoso.sharepoint.com/Finance/Profit and Loss Statement.xlsx")`, "http%3A%2F%2Fcontoso.sharepoint.com%2FFinance%2FProfit%20and%20Loss%20Statement.xlsx"},
 		// Empty string
 		{"empty string", `ENCODEURL("")`, ""},
 		// Plain text (no special chars) unchanged

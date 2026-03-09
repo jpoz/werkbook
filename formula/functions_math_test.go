@@ -1006,7 +1006,7 @@ func TestMOD(t *testing.T) {
 		// Precision overflow: |n/d| >= 1e13 -> #NUM!
 		{"precision_overflow", "MOD(100,-1e-15)", ErrValNUM},
 		{"precision_overflow_large", "MOD(1e18,1)", ErrValNUM},
-		{"precision_overflow_excel", "MOD(10^15,7)", ErrValNUM},
+		{"precision_overflow", "MOD(10^15,7)", ErrValNUM},
 	}
 
 	for _, tt := range errTests {
@@ -2258,7 +2258,7 @@ func TestSERIESSUM(t *testing.T) {
 		tol     float64
 	}{
 		// Documentation example: cos(PI/4) via Taylor series
-		{"excel_example", "SERIESSUM(PI()/4,0,2,{1,-0.5,0.041666667,-0.001388889})", 0.707103, 1e-4},
+		{"doc_example", "SERIESSUM(PI()/4,0,2,{1,-0.5,0.041666667,-0.001388889})", 0.707103, 1e-4},
 		// Single coefficient
 		{"single_coeff", "SERIESSUM(2,3,1,{5})", 40, 0},
 		// Single coefficient as scalar
@@ -5047,9 +5047,9 @@ func TestINT(t *testing.T) {
 		// Already integer negative
 		{"already_int_neg", "INT(-10)", -10},
 		// Doc example: INT(8.9) = 8
-		{"excel_doc_pos", "INT(8.9)", 8},
+		{"doc_pos", "INT(8.9)", 8},
 		// Doc example: INT(-8.9) = -9
-		{"excel_doc_neg", "INT(-8.9)", -9},
+		{"doc_neg", "INT(-8.9)", -9},
 		// Positive number just below next integer
 		{"just_below", "INT(2.999999)", 2},
 		// Negative number just above integer
@@ -5135,7 +5135,7 @@ func TestSQRT(t *testing.T) {
 		{"bool_true", "SQRT(TRUE)", 1},
 		{"bool_false", "SQRT(FALSE)", 0},
 		// Doc example: SQRT(ABS(-16)) = 4
-		{"excel_doc_abs_neg16", "SQRT(ABS(-16))", 4},
+		{"doc_abs_neg16", "SQRT(ABS(-16))", 4},
 	}
 
 	for _, tt := range numTests {
@@ -5304,9 +5304,9 @@ func TestLOG(t *testing.T) {
 		{"log_large_base2", "LOG(1048576,2)", 20, 1e-10},
 
 		// Doc examples
-		{"excel_example_1", "LOG(10)", 1, 0},
-		{"excel_example_2", "LOG(8,2)", 3, 0},
-		{"excel_example_3", "LOG(86,2.7182818)", 4.4543473, 1e-4},
+		{"doc_example_1", "LOG(10)", 1, 0},
+		{"doc_example_2", "LOG(8,2)", 3, 0},
+		{"doc_example_3", "LOG(86,2.7182818)", 4.4543473, 1e-4},
 
 		// Boolean coercion: TRUE=1
 		{"log_true", "LOG(TRUE)", 0, 0},
@@ -5421,9 +5421,9 @@ func TestLOG10(t *testing.T) {
 		{"log10_1e-10", "LOG10(1E-10)", -10, 1e-6},
 
 		// Documentation example
-		{"excel_example_86", "LOG10(86)", 1.93449845124357, 1e-10},
-		{"excel_example_10", "LOG10(10)", 1, 0},
-		{"excel_example_1e5", "LOG10(1E5)", 5, 1e-10},
+		{"doc_example_86", "LOG10(86)", 1.93449845124357, 1e-10},
+		{"doc_example_10", "LOG10(10)", 1, 0},
+		{"doc_example_1e5", "LOG10(1E5)", 5, 1e-10},
 
 		// Boolean coercion: TRUE=1 -> LOG10(1)=0
 		{"log10_true", "LOG10(TRUE)", 0, 0},
@@ -7968,9 +7968,9 @@ func TestLN(t *testing.T) {
 		{"ln_exp_0_5", "LN(EXP(0.5))", 0.5, 1e-10},
 
 		// Documentation examples
-		{"excel_example_86", "LN(86)", 4.4543473, 1e-4},
-		{"excel_example_e", "LN(2.7182818)", 1, 1e-4},
-		{"excel_example_exp3", "LN(EXP(3))", 3, 0},
+		{"doc_example_86", "LN(86)", 4.4543473, 1e-4},
+		{"doc_example_e", "LN(2.7182818)", 1, 1e-4},
+		{"doc_example_exp3", "LN(EXP(3))", 3, 0},
 
 		// Common values
 		{"ln_2", "LN(2)", 0.69314718055994530, 1e-10},
@@ -8104,7 +8104,7 @@ func TestCSC(t *testing.T) {
 		{"degrees_30", "CSC(30*PI()/180)", 2, 1e-10},
 
 		// Example: CSC(15) ≈ 1.5377...
-		{"excel_example", "CSC(15)", 1 / math.Sin(15), 1e-10},
+		{"doc_example", "CSC(15)", 1 / math.Sin(15), 1e-10},
 	}
 
 	for _, tt := range numTests {
@@ -9878,7 +9878,7 @@ func TestISOCEILING(t *testing.T) {
 		formula string
 		wantNum float64
 	}{
-		// Excel documented examples
+		// documented examples
 		{"doc_iso_1", "ISO.CEILING(4.3)", 5},
 		{"doc_iso_2", "ISO.CEILING(-4.3)", -4},
 		{"doc_iso_3", "ISO.CEILING(4.3,2)", 6},

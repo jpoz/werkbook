@@ -59,7 +59,7 @@ all: help
 .PHONY: help
 help: ## Show this help
 	@echo ""
-	@echo "$(BOLD)Werkbook$(NC) — Go library & CLI for reading and writing Excel XLSX files"
+	@echo "$(BOLD)Werkbook$(NC) — Go library & CLI for reading and writing XLSX spreadsheet files"
 	$(call print_targets)
 
 # ============================================================================

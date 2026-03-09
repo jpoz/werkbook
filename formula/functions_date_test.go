@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func excelDateSerial(year int, month time.Month, day int) float64 {
+func dateSerial(year int, month time.Month, day int) float64 {
 	return math.Floor(TimeToSerial(time.Date(year, month, day, 0, 0, 0, 0, time.UTC)))
 }
 
@@ -277,8 +277,8 @@ func TestYEARComprehensive(t *testing.T) {
 		// Beyond max serial → #NUM!
 		{"beyond_max_serial", "YEAR(2958466)", 0, true, ErrValNUM},
 		// Doc examples via DATEVALUE
-		{"excel_doc_2023", `YEAR(DATEVALUE("7/5/2023"))`, 2023, false, 0},
-		{"excel_doc_2025", `YEAR(DATEVALUE("7/5/2025"))`, 2025, false, 0},
+		{"doc_2023", `YEAR(DATEVALUE("7/5/2023"))`, 2023, false, 0},
+		{"doc_2025", `YEAR(DATEVALUE("7/5/2025"))`, 2025, false, 0},
 		// Fractional serial (should use integer part): 45306.75 → 2024
 		{"fractional_serial", "YEAR(45306.75)", 2024, false, 0},
 		// Last day of 1900: serial 366 = Dec 31, 1900
@@ -463,7 +463,7 @@ func TestDAYS(t *testing.T) {
 		{"ignores_time_components", "DAYS(DATE(2025,1,2)+TIME(23,59,59),DATE(2025,1,1)+TIME(12,0,0))", 1, false, 0},
 		{"truncates_fractional_serials", "DAYS(10.9,8.1)", 2, false, 0},
 		{"string_numbers", `DAYS("10","8")`, 2, false, 0},
-		{"excel_1900_leap_bug_gap", "DAYS(DATE(1900,3,1),DATE(1900,2,28))", 2, false, 0},
+		{"doc_1900_leap_bug_gap", "DAYS(DATE(1900,3,1),DATE(1900,2,28))", 2, false, 0},
 		{"far_future", "DAYS(DATE(9999,12,31),DATE(9999,1,1))", 364, false, 0},
 		{"no_args", "DAYS()", 0, true, ErrValVALUE},
 		{"one_arg", "DAYS(1)", 0, true, ErrValVALUE},
@@ -506,19 +506,19 @@ func TestEDATE(t *testing.T) {
 		isErr   bool
 		errVal  ErrorValue
 	}{
-		{"doc_plus_one", "EDATE(DATE(2011,1,15),1)", excelDateSerial(2011, time.February, 15), false, 0},
-		{"doc_minus_one", "EDATE(DATE(2011,1,15),-1)", excelDateSerial(2010, time.December, 15), false, 0},
-		{"doc_plus_two", "EDATE(DATE(2011,1,15),2)", excelDateSerial(2011, time.March, 15), false, 0},
-		{"month_end_non_leap", "EDATE(DATE(2025,1,31),1)", excelDateSerial(2025, time.February, 28), false, 0},
-		{"month_end_leap", "EDATE(DATE(2024,1,31),1)", excelDateSerial(2024, time.February, 29), false, 0},
-		{"cross_year_forward", "EDATE(DATE(2024,11,30),3)", excelDateSerial(2025, time.February, 28), false, 0},
-		{"cross_year_backward", "EDATE(DATE(2025,1,31),-2)", excelDateSerial(2024, time.November, 30), false, 0},
-		{"zero_months", "EDATE(DATE(2025,1,15),0)", excelDateSerial(2025, time.January, 15), false, 0},
-		{"truncates_positive_fraction", "EDATE(DATE(2025,1,15),1.9)", excelDateSerial(2025, time.February, 15), false, 0},
-		{"truncates_negative_fraction", "EDATE(DATE(2025,1,15),-1.9)", excelDateSerial(2024, time.December, 15), false, 0},
-		{"ignores_time_component", "EDATE(DATE(2025,1,15)+TIME(12,0,0),1)", excelDateSerial(2025, time.February, 15), false, 0},
-		{"leap_back_one_month", "EDATE(DATE(2024,3,31),-1)", excelDateSerial(2024, time.February, 29), false, 0},
-		{"string_months", `EDATE(DATE(2025,1,15),"2")`, excelDateSerial(2025, time.March, 15), false, 0},
+		{"doc_plus_one", "EDATE(DATE(2011,1,15),1)", dateSerial(2011, time.February, 15), false, 0},
+		{"doc_minus_one", "EDATE(DATE(2011,1,15),-1)", dateSerial(2010, time.December, 15), false, 0},
+		{"doc_plus_two", "EDATE(DATE(2011,1,15),2)", dateSerial(2011, time.March, 15), false, 0},
+		{"month_end_non_leap", "EDATE(DATE(2025,1,31),1)", dateSerial(2025, time.February, 28), false, 0},
+		{"month_end_leap", "EDATE(DATE(2024,1,31),1)", dateSerial(2024, time.February, 29), false, 0},
+		{"cross_year_forward", "EDATE(DATE(2024,11,30),3)", dateSerial(2025, time.February, 28), false, 0},
+		{"cross_year_backward", "EDATE(DATE(2025,1,31),-2)", dateSerial(2024, time.November, 30), false, 0},
+		{"zero_months", "EDATE(DATE(2025,1,15),0)", dateSerial(2025, time.January, 15), false, 0},
+		{"truncates_positive_fraction", "EDATE(DATE(2025,1,15),1.9)", dateSerial(2025, time.February, 15), false, 0},
+		{"truncates_negative_fraction", "EDATE(DATE(2025,1,15),-1.9)", dateSerial(2024, time.December, 15), false, 0},
+		{"ignores_time_component", "EDATE(DATE(2025,1,15)+TIME(12,0,0),1)", dateSerial(2025, time.February, 15), false, 0},
+		{"leap_back_one_month", "EDATE(DATE(2024,3,31),-1)", dateSerial(2024, time.February, 29), false, 0},
+		{"string_months", `EDATE(DATE(2025,1,15),"2")`, dateSerial(2025, time.March, 15), false, 0},
 		{"too_few_args", "EDATE(DATE(2025,1,15))", 0, true, ErrValVALUE},
 		{"too_many_args", "EDATE(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
 		{"invalid_start", `EDATE("abc",1)`, 0, true, ErrValVALUE},
@@ -559,19 +559,19 @@ func TestEOMONTH(t *testing.T) {
 		isErr   bool
 		errVal  ErrorValue
 	}{
-		{"doc_plus_one", "EOMONTH(DATE(2011,1,1),1)", excelDateSerial(2011, time.February, 28), false, 0},
-		{"doc_minus_three", "EOMONTH(DATE(2011,1,1),-3)", excelDateSerial(2010, time.October, 31), false, 0},
-		{"same_month", "EOMONTH(DATE(2025,1,15),0)", excelDateSerial(2025, time.January, 31), false, 0},
-		{"leap_february", "EOMONTH(DATE(2024,1,15),1)", excelDateSerial(2024, time.February, 29), false, 0},
-		{"month_end_self", "EOMONTH(DATE(2025,1,31),0)", excelDateSerial(2025, time.January, 31), false, 0},
-		{"previous_month_end", "EOMONTH(DATE(2025,1,31),-1)", excelDateSerial(2024, time.December, 31), false, 0},
-		{"cross_year_forward", "EOMONTH(DATE(2024,11,5),2)", excelDateSerial(2025, time.January, 31), false, 0},
-		{"truncates_positive_fraction", "EOMONTH(DATE(2025,1,15),1.9)", excelDateSerial(2025, time.February, 28), false, 0},
-		{"truncates_negative_fraction", "EOMONTH(DATE(2025,1,15),-1.9)", excelDateSerial(2024, time.December, 31), false, 0},
-		{"ignores_time_component", "EOMONTH(DATE(2025,1,15)+TIME(18,30,0),1)", excelDateSerial(2025, time.February, 28), false, 0},
-		{"leap_plus_twelve", "EOMONTH(DATE(2024,2,29),12)", excelDateSerial(2025, time.February, 28), false, 0},
-		{"leap_minus_twelve", "EOMONTH(DATE(2024,2,29),-12)", excelDateSerial(2023, time.February, 28), false, 0},
-		{"string_months", `EOMONTH(DATE(2025,1,15),"2")`, excelDateSerial(2025, time.March, 31), false, 0},
+		{"doc_plus_one", "EOMONTH(DATE(2011,1,1),1)", dateSerial(2011, time.February, 28), false, 0},
+		{"doc_minus_three", "EOMONTH(DATE(2011,1,1),-3)", dateSerial(2010, time.October, 31), false, 0},
+		{"same_month", "EOMONTH(DATE(2025,1,15),0)", dateSerial(2025, time.January, 31), false, 0},
+		{"leap_february", "EOMONTH(DATE(2024,1,15),1)", dateSerial(2024, time.February, 29), false, 0},
+		{"month_end_self", "EOMONTH(DATE(2025,1,31),0)", dateSerial(2025, time.January, 31), false, 0},
+		{"previous_month_end", "EOMONTH(DATE(2025,1,31),-1)", dateSerial(2024, time.December, 31), false, 0},
+		{"cross_year_forward", "EOMONTH(DATE(2024,11,5),2)", dateSerial(2025, time.January, 31), false, 0},
+		{"truncates_positive_fraction", "EOMONTH(DATE(2025,1,15),1.9)", dateSerial(2025, time.February, 28), false, 0},
+		{"truncates_negative_fraction", "EOMONTH(DATE(2025,1,15),-1.9)", dateSerial(2024, time.December, 31), false, 0},
+		{"ignores_time_component", "EOMONTH(DATE(2025,1,15)+TIME(18,30,0),1)", dateSerial(2025, time.February, 28), false, 0},
+		{"leap_plus_twelve", "EOMONTH(DATE(2024,2,29),12)", dateSerial(2025, time.February, 28), false, 0},
+		{"leap_minus_twelve", "EOMONTH(DATE(2024,2,29),-12)", dateSerial(2023, time.February, 28), false, 0},
+		{"string_months", `EOMONTH(DATE(2025,1,15),"2")`, dateSerial(2025, time.March, 31), false, 0},
 		{"too_few_args", "EOMONTH(DATE(2025,1,15))", 0, true, ErrValVALUE},
 		{"too_many_args", "EOMONTH(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
 		{"invalid_months", `EOMONTH(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
@@ -774,7 +774,7 @@ func TestDATEDIF(t *testing.T) {
 		{"YD_within_year", `DATEDIF(45307,45672,"YD")`, 365},
 		{"YD_same_date", `DATEDIF(45307,45307,"YD")`, 0},
 
-		// YD unit — leap year boundary cases (excel-audit edge cases)
+		// YD unit — leap year boundary cases (audit edge cases)
 		{"YD_leap_mar1_to_mar1", `DATEDIF(DATE(2000,3,1),DATE(2004,3,1),"YD")`, 0},
 		{"YD_leap_jan1_to_jan1", `DATEDIF(DATE(2000,1,1),DATE(2008,1,1),"YD")`, 0},
 		{"YD_leap_feb28_to_mar1", `DATEDIF(DATE(2000,2,28),DATE(2004,3,1),"YD")`, 2},
@@ -1227,9 +1227,9 @@ func TestWORKDAY(t *testing.T) {
 
 		// --- Doc examples ---
 		// WORKDAY(10/1/2008, 151) = 4/30/2009 = 39933
-		{"excel_doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
+		{"doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
 		// WORKDAY(10/1/2008, 151, {11/26/2008,12/4/2008,1/21/2009}) = 5/5/2009 = 39938
-		{"excel_doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
+		{"doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
 	}
 
 	for _, tc := range tests {
@@ -1486,11 +1486,11 @@ func TestNETWORKDAYS(t *testing.T) {
 
 		// Doc examples:
 		// NETWORKDAYS(10/1/2012, 3/1/2013) = 110
-		{"excel_doc_no_holidays", "NETWORKDAYS(41183,41334)", 110, false, 0},
+		{"doc_no_holidays", "NETWORKDAYS(41183,41334)", 110, false, 0},
 		// NETWORKDAYS(10/1/2012, 3/1/2013, 11/22/2012) = 109
-		{"excel_doc_one_holiday", "NETWORKDAYS(41183,41334,41235)", 109, false, 0},
+		{"doc_one_holiday", "NETWORKDAYS(41183,41334,41235)", 109, false, 0},
 		// NETWORKDAYS(10/1/2012, 3/1/2013, {11/22/2012,12/4/2012,1/21/2013}) = 107
-		{"excel_doc_three_holidays", "NETWORKDAYS(41183,41334,{41235,41247,41295})", 107, false, 0},
+		{"doc_three_holidays", "NETWORKDAYS(41183,41334,{41235,41247,41295})", 107, false, 0},
 
 		// Too few args → error
 		{"too_few_args_zero", "NETWORKDAYS()", 0, true, ErrValVALUE},
@@ -1732,9 +1732,9 @@ func TestISOWEEKNUM(t *testing.T) {
 		errVal  ErrorValue
 	}{
 		// Documentation example: March 9, 2012 = ISO week 10
-		{"excel_doc_mar_9_2012", "ISOWEEKNUM(40977)", 10, false, 0},
+		{"doc_mar_9_2012", "ISOWEEKNUM(40977)", 10, false, 0},
 		// Using DATE() to construct the same date
-		{"excel_doc_via_date", "ISOWEEKNUM(DATE(2012,3,9))", 10, false, 0},
+		{"doc_via_date", "ISOWEEKNUM(DATE(2012,3,9))", 10, false, 0},
 
 		// Jan 1 that falls in ISO week 1 (Thu Jan 1, 2015)
 		{"jan1_week1_2015", "ISOWEEKNUM(42005)", 1, false, 0},

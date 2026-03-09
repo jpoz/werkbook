@@ -4371,7 +4371,7 @@ func TestIMSEC(t *testing.T) {
 			formula string
 			want    string
 		}{
-			// Known Excel result: IMSEC("4+3i")
+			// known result: IMSEC("4+3i")
 			{`IMSEC("4+3i")`, "-0.0652940278579471-0.0752249603027732i"},
 
 			// Pure real: zero → sec(0) = 1/cos(0) = 1

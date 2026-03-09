@@ -727,7 +727,7 @@ func fnXLOOKUP(args []Value) (Value, error) {
 	case 2:
 		// Wildcard match: * matches any sequence, ? matches single char, ~ escapes.
 		pattern := ValueToString(lookup)
-		re, err := excelPatternToRegexp(pattern)
+		re, err := patternToRegexp(pattern)
 		if err != nil {
 			return ErrorVal(ErrValVALUE), nil
 		}
@@ -2071,7 +2071,7 @@ func xmatchExact(lookup Value, values []Value, searchMode int) Value {
 // xmatchWildcard performs wildcard match (match_mode 2) with the given search_mode.
 func xmatchWildcard(lookup Value, values []Value, searchMode int) Value {
 	pattern := ValueToString(lookup)
-	re, err := excelPatternToRegexp(pattern)
+	re, err := patternToRegexp(pattern)
 	if err != nil {
 		return ErrorVal(ErrValVALUE)
 	}

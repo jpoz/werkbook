@@ -75,17 +75,17 @@ func TestPMT_Comprehensive(t *testing.T) {
 	}{
 		// --- Doc examples ---
 		{
-			name: "Excel doc: monthly payment 8%/12, 10 months, $10000",
+			name: "doc: monthly payment 8%/12, 10 months, $10000",
 			args: numArgs(0.08/12, 10, 10000),
 			want: -1037.03,
 		},
 		{
-			name: "Excel doc: payment at beginning of period (type=1)",
+			name: "doc: payment at beginning of period (type=1)",
 			args: numArgs(0.08/12, 10, 10000, 0, 1),
 			want: -1030.16,
 		},
 		{
-			name: "Excel doc: saving for $50k over 18 years at 6%",
+			name: "doc: saving for $50k over 18 years at 6%",
 			args: numArgs(0.06/12, 18*12, 0, 50000),
 			want: -129.08,
 		},
@@ -380,25 +380,25 @@ func TestFV_Comprehensive(t *testing.T) {
 		},
 		// --- Doc example 1: FV(0.06/12, 10, -200, -500, 1) = 2581.40 ---
 		{
-			name: "Excel doc example 1",
+			name: "doc example 1",
 			args: numArgs(0.06/12, 10, -200, -500, 1),
 			want: 2581.40,
 		},
 		// --- Doc example 2: FV(0.12/12, 12, -1000) = 12682.50 ---
 		{
-			name: "Excel doc example 2",
+			name: "doc example 2",
 			args: numArgs(0.12/12, 12, -1000),
 			want: 12682.50,
 		},
 		// --- Doc example 3: FV(0.11/12, 35, -2000, 0, 1) = 82846.25 ---
 		{
-			name: "Excel doc example 3",
+			name: "doc example 3",
 			args: numArgs(0.11/12, 35, -2000, 0, 1),
 			want: 82846.25,
 		},
 		// --- Doc example 4: FV(0.06/12, 12, -100, -1000, 1) = 2301.40 ---
 		{
-			name: "Excel doc example 4",
+			name: "doc example 4",
 			args: numArgs(0.06/12, 12, -100, -1000, 1),
 			want: 2301.40,
 		},
@@ -604,7 +604,7 @@ func TestPV_Comprehensive(t *testing.T) {
 		// --- Doc example: PV(0.08/12, 12*20, 500, , 0) = -59777.15 ---
 		// (sign convention: positive pmt = receiving money, so PV is negative)
 		{
-			name: "Excel doc example annuity payout",
+			name: "doc example annuity payout",
 			args: numArgs(0.08/12, 12*20, 500, 0, 0),
 			want: -59777.15,
 		},
@@ -748,17 +748,17 @@ func TestNPER_Comprehensive(t *testing.T) {
 	}{
 		// --- Doc examples ---
 		{
-			name: "Excel doc: type=1, rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			name: "doc: type=1, rate=12%/12, pmt=-100, pv=-1000, fv=10000",
 			args: numArgs(0.12/12, -100, -1000, 10000, 1),
 			want: 59.67,
 		},
 		{
-			name: "Excel doc: type=0 (default), rate=12%/12, pmt=-100, pv=-1000, fv=10000",
+			name: "doc: type=0 (default), rate=12%/12, pmt=-100, pv=-1000, fv=10000",
 			args: numArgs(0.12/12, -100, -1000, 10000),
 			want: 60.08,
 		},
 		{
-			name: "Excel doc: no fv, rate=12%/12, pmt=-100, pv=-1000",
+			name: "doc: no fv, rate=12%/12, pmt=-100, pv=-1000",
 			args: numArgs(0.12/12, -100, -1000),
 			want: -9.58,
 		},
@@ -938,7 +938,7 @@ func TestRATE_Comprehensive(t *testing.T) {
 		},
 		// --- Doc example ---
 		{
-			name: "Excel doc: 4yr loan monthly, RATE(48, -200, 8000)",
+			name: "doc: 4yr loan monthly, RATE(48, -200, 8000)",
 			// Expected ~1% per month
 			args: numArgs(48, -200, 8000),
 			want: 0.0077,
@@ -1167,13 +1167,13 @@ func TestIPMT_Comprehensive(t *testing.T) {
 
 		// --- Documentation examples ---
 		{
-			name: "Excel doc example 1 monthly",
+			name: "doc example 1 monthly",
 			// IPMT(0.1/12, 1, 36, 8000) — from docs
 			args: numArgs(0.1/12, 1, 36, 8000),
 			want: -66.67,
 		},
 		{
-			name: "Excel doc example 2 annual",
+			name: "doc example 2 annual",
 			// IPMT(0.1, 3, 3, 8000) — from docs, annual payments, last year
 			args: numArgs(0.1, 3, 3, 8000),
 			want: -292.45,
@@ -1349,13 +1349,13 @@ func TestPPMT_Comprehensive(t *testing.T) {
 
 		// --- Documentation examples ---
 		{
-			name: "Excel doc example 1: 10% 2yr loan month 1",
+			name: "doc example 1: 10% 2yr loan month 1",
 			// PPMT(0.10/12, 1, 2*12, 2000) = -75.62
 			args: numArgs(0.10/12, 1, 24, 2000),
 			want: -75.62,
 		},
 		{
-			name: "Excel doc example 2: 8% 10yr loan year 10",
+			name: "doc example 2: 8% 10yr loan year 10",
 			// PPMT(0.08, 10, 10, 200000) = -27598.05
 			args: numArgs(0.08, 10, 10, 200000),
 			want: -27598.05,
@@ -1675,7 +1675,7 @@ func TestNPV_NonNumericValue(t *testing.T) {
 	assertError(t, "NPV non-numeric value", v)
 }
 
-func TestNPV_ExcelExample2(t *testing.T) {
+func TestNPV_DocExample2(t *testing.T) {
 	// Doc example 2: NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000)
 	// = NPV(0.08, 8000, 9200, 10000, 12000, 14500) + (-40000) = 1922.06
 	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500)...))
@@ -1683,17 +1683,17 @@ func TestNPV_ExcelExample2(t *testing.T) {
 		t.Fatal(err)
 	}
 	// NPV alone is 41922.06, then + (-40000) = 1922.06
-	assertClose(t, "NPV excel example 2", v, 41922.06)
+	assertClose(t, "NPV doc example 2", v, 41922.06)
 }
 
-func TestNPV_ExcelExample2WithLoss(t *testing.T) {
+func TestNPV_DocExample2WithLoss(t *testing.T) {
 	// Doc example 2 with loss: NPV(0.08, 8000, 9200, 10000, 12000, 14500, -9000) + (-40000)
 	// = -3749.47, so NPV alone = -3749.47 + 40000 = 36250.53
 	v, err := fnNPV(append(numArgs(0.08), numArgs(8000, 9200, 10000, 12000, 14500, -9000)...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "NPV excel example 2 with loss", v, 36250.53)
+	assertClose(t, "NPV doc example 2 with loss", v, 36250.53)
 }
 
 func TestNPV_InitialInvestmentPattern(t *testing.T) {
@@ -1968,7 +1968,7 @@ func TestIRR_TooManyArgs(t *testing.T) {
 	assertError(t, "IRR too many args", v)
 }
 
-func TestIRR_ExcelDocExample1(t *testing.T) {
+func TestIRR_DocExample1(t *testing.T) {
 	// Doc: IRR({-70000, 12000, 15000, 18000, 21000}) = -2.1% (-0.021)
 	arr := Value{
 		Type: ValueArray,
@@ -1980,10 +1980,10 @@ func TestIRR_ExcelDocExample1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "IRR excel doc 4yr", v, -0.02)
+	assertClose(t, "IRR doc 4yr", v, -0.02)
 }
 
-func TestIRR_ExcelDocExample2(t *testing.T) {
+func TestIRR_DocExample2(t *testing.T) {
 	// Doc: IRR({-70000, 12000, 15000, 18000, 21000, 26000}) = 8.7% (0.087)
 	arr := Value{
 		Type: ValueArray,
@@ -1995,10 +1995,10 @@ func TestIRR_ExcelDocExample2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "IRR excel doc 5yr", v, 0.087)
+	assertClose(t, "IRR doc 5yr", v, 0.087)
 }
 
-func TestIRR_ExcelDocExample3(t *testing.T) {
+func TestIRR_DocExample3(t *testing.T) {
 	// Doc: IRR({-70000, 12000, 15000}, -10%) = -44.4% (-0.444)
 	arr := Value{
 		Type: ValueArray,
@@ -2010,7 +2010,7 @@ func TestIRR_ExcelDocExample3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "IRR excel doc 2yr with guess", v, -0.44)
+	assertClose(t, "IRR doc 2yr with guess", v, -0.44)
 }
 
 func TestIRR_EmptyGuessIgnored(t *testing.T) {
@@ -2052,7 +2052,7 @@ func TestSLN_Comprehensive(t *testing.T) {
 		wantErr bool
 	}{
 		// Documentation example
-		{"excel doc example", numArgs(30000, 7500, 10), 2250, false},
+		{"doc example", numArgs(30000, 7500, 10), 2250, false},
 		// Zero salvage value
 		{"zero salvage", numArgs(30000, 0, 10), 3000, false},
 		// Salvage equals cost → zero depreciation
@@ -2169,7 +2169,7 @@ func TestXNPV_Basic(t *testing.T) {
 	assertClose(t, "XNPV basic", v, 2086.65)
 }
 
-func TestXNPV_ExcelDocExample(t *testing.T) {
+func TestXNPV_DocExample(t *testing.T) {
 	// From documentation: XNPV(0.09, {-10000, 2750, 4250, 3250, 2750}, dates) = $2,086.65
 	vals := Value{
 		Type: ValueArray,
@@ -2187,7 +2187,7 @@ func TestXNPV_ExcelDocExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "XNPV excel doc", v, 2086.65)
+	assertClose(t, "XNPV doc", v, 2086.65)
 }
 
 func TestXNPV_ZeroRate(t *testing.T) {
@@ -2570,7 +2570,7 @@ func TestXIRR_DateStrings(t *testing.T) {
 
 // === DB ===
 
-func TestDB_ExcelExample_Period1(t *testing.T) {
+func TestDB_DocExample_Period1(t *testing.T) {
 	// DB(1000000, 100000, 6, 1, 7) = 186083.33
 	v, err := fnDB(numArgs(1000000, 100000, 6, 1, 7))
 	if err != nil {
@@ -2579,7 +2579,7 @@ func TestDB_ExcelExample_Period1(t *testing.T) {
 	assertClose(t, "DB period 1", v, 186083.33)
 }
 
-func TestDB_ExcelExample_Period2(t *testing.T) {
+func TestDB_DocExample_Period2(t *testing.T) {
 	// DB(1000000, 100000, 6, 2, 7) = 259639.42
 	v, err := fnDB(numArgs(1000000, 100000, 6, 2, 7))
 	if err != nil {
@@ -2588,7 +2588,7 @@ func TestDB_ExcelExample_Period2(t *testing.T) {
 	assertClose(t, "DB period 2", v, 259639.42)
 }
 
-func TestDB_ExcelExample_Period3(t *testing.T) {
+func TestDB_DocExample_Period3(t *testing.T) {
 	// DB(1000000, 100000, 6, 3, 7) = 176814.44
 	v, err := fnDB(numArgs(1000000, 100000, 6, 3, 7))
 	if err != nil {
@@ -2597,7 +2597,7 @@ func TestDB_ExcelExample_Period3(t *testing.T) {
 	assertClose(t, "DB period 3", v, 176814.44)
 }
 
-func TestDB_ExcelExample_Period4(t *testing.T) {
+func TestDB_DocExample_Period4(t *testing.T) {
 	// DB(1000000, 100000, 6, 4, 7) = 120410.64
 	v, err := fnDB(numArgs(1000000, 100000, 6, 4, 7))
 	if err != nil {
@@ -2606,7 +2606,7 @@ func TestDB_ExcelExample_Period4(t *testing.T) {
 	assertClose(t, "DB period 4", v, 120410.64)
 }
 
-func TestDB_ExcelExample_Period5(t *testing.T) {
+func TestDB_DocExample_Period5(t *testing.T) {
 	// DB(1000000, 100000, 6, 5, 7) = 81999.64
 	v, err := fnDB(numArgs(1000000, 100000, 6, 5, 7))
 	if err != nil {
@@ -2615,7 +2615,7 @@ func TestDB_ExcelExample_Period5(t *testing.T) {
 	assertClose(t, "DB period 5", v, 81999.64)
 }
 
-func TestDB_ExcelExample_Period6(t *testing.T) {
+func TestDB_DocExample_Period6(t *testing.T) {
 	// DB(1000000, 100000, 6, 6, 7) = 55841.76
 	v, err := fnDB(numArgs(1000000, 100000, 6, 6, 7))
 	if err != nil {
@@ -2624,7 +2624,7 @@ func TestDB_ExcelExample_Period6(t *testing.T) {
 	assertClose(t, "DB period 6", v, 55841.76)
 }
 
-func TestDB_ExcelExample_Period7_LastFractional(t *testing.T) {
+func TestDB_DocExample_Period7_LastFractional(t *testing.T) {
 	// DB(1000000, 100000, 6, 7, 7) = 15845.10
 	v, err := fnDB(numArgs(1000000, 100000, 6, 7, 7))
 	if err != nil {
@@ -2812,7 +2812,7 @@ func TestDB_Month1(t *testing.T) {
 
 // === DDB ===
 
-func TestDDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
+func TestDDB_DocExample_FirstDayDepreciation(t *testing.T) {
 	// DDB(2400, 300, 10*365, 1) = 1.32 (first day's depreciation)
 	v, err := fnDDB(numArgs(2400, 300, 10*365, 1))
 	if err != nil {
@@ -2821,7 +2821,7 @@ func TestDDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
 	assertClose(t, "DDB first day", v, 1.32)
 }
 
-func TestDDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
+func TestDDB_DocExample_FirstMonthDepreciation(t *testing.T) {
 	// DDB(2400, 300, 10*12, 1, 2) = 40.00
 	v, err := fnDDB(numArgs(2400, 300, 10*12, 1, 2))
 	if err != nil {
@@ -2830,7 +2830,7 @@ func TestDDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
 	assertClose(t, "DDB first month", v, 40.00)
 }
 
-func TestDDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
+func TestDDB_DocExample_FirstYearDepreciation(t *testing.T) {
 	// DDB(2400, 300, 10, 1, 2) = 480.00
 	v, err := fnDDB(numArgs(2400, 300, 10, 1, 2))
 	if err != nil {
@@ -2839,7 +2839,7 @@ func TestDDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
 	assertClose(t, "DDB first year", v, 480.00)
 }
 
-func TestDDB_ExcelExample_SecondYearFactor15(t *testing.T) {
+func TestDDB_DocExample_SecondYearFactor15(t *testing.T) {
 	// DDB(2400, 300, 10, 2, 1.5) = 306.00
 	v, err := fnDDB(numArgs(2400, 300, 10, 2, 1.5))
 	if err != nil {
@@ -2848,7 +2848,7 @@ func TestDDB_ExcelExample_SecondYearFactor15(t *testing.T) {
 	assertClose(t, "DDB second year factor 1.5", v, 306.00)
 }
 
-func TestDDB_ExcelExample_TenthYear(t *testing.T) {
+func TestDDB_DocExample_TenthYear(t *testing.T) {
 	// DDB(2400, 300, 10, 10) = 22.12
 	v, err := fnDDB(numArgs(2400, 300, 10, 10))
 	if err != nil {
@@ -3021,7 +3021,7 @@ func TestDDB_ErrorFactorZero(t *testing.T) {
 
 // === DOLLARDE ===
 
-func TestDOLLARDE_ExcelExample1(t *testing.T) {
+func TestDOLLARDE_DocExample1(t *testing.T) {
 	// DOLLARDE(1.02, 16) = 1.125
 	v, err := fnDOLLARDE(numArgs(1.02, 16))
 	if err != nil {
@@ -3030,7 +3030,7 @@ func TestDOLLARDE_ExcelExample1(t *testing.T) {
 	assertClose(t, "DOLLARDE(1.02,16)", v, 1.125)
 }
 
-func TestDOLLARDE_ExcelExample2(t *testing.T) {
+func TestDOLLARDE_DocExample2(t *testing.T) {
 	// DOLLARDE(1.1, 32) = 1.3125
 	v, err := fnDOLLARDE(numArgs(1.1, 32))
 	if err != nil {
@@ -3157,7 +3157,7 @@ func TestDOLLARDE_NegativeWithFraction8(t *testing.T) {
 
 // === DOLLARFR ===
 
-func TestDOLLARFR_ExcelExample1(t *testing.T) {
+func TestDOLLARFR_DocExample1(t *testing.T) {
 	// DOLLARFR(1.125, 16) = 1.02
 	v, err := fnDOLLARFR(numArgs(1.125, 16))
 	if err != nil {
@@ -3166,7 +3166,7 @@ func TestDOLLARFR_ExcelExample1(t *testing.T) {
 	assertClose(t, "DOLLARFR(1.125,16)", v, 1.02)
 }
 
-func TestDOLLARFR_ExcelExample2(t *testing.T) {
+func TestDOLLARFR_DocExample2(t *testing.T) {
 	// DOLLARFR(1.125, 32) = 1.04
 	v, err := fnDOLLARFR(numArgs(1.125, 32))
 	if err != nil {
@@ -3306,13 +3306,13 @@ func TestDOLLARDE_DOLLARFR_RoundTrip(t *testing.T) {
 
 // === EFFECT ===
 
-func TestEFFECT_ExcelExample(t *testing.T) {
+func TestEFFECT_DocExample(t *testing.T) {
 	// EFFECT(0.0525, 4) = 0.0535427
 	v, err := fnEFFECT(numArgs(0.0525, 4))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "EFFECT excel example", v, 0.0535427)
+	assertClose(t, "EFFECT doc example", v, 0.0535427)
 }
 
 func TestEFFECT_Monthly(t *testing.T) {
@@ -3448,13 +3448,13 @@ func TestEFFECT_ErrorTooManyArgs(t *testing.T) {
 
 // === NOMINAL ===
 
-func TestNOMINAL_ExcelExample(t *testing.T) {
+func TestNOMINAL_DocExample(t *testing.T) {
 	// NOMINAL(0.053543, 4) ≈ 0.0525003
 	v, err := fnNOMINAL(numArgs(0.053543, 4))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "NOMINAL excel example", v, 0.0525003)
+	assertClose(t, "NOMINAL doc example", v, 0.0525003)
 }
 
 func TestNOMINAL_Monthly(t *testing.T) {
@@ -3604,22 +3604,22 @@ func TestEFFECT_NOMINAL_RoundTrip(t *testing.T) {
 
 // === CUMIPMT ===
 
-func TestCUMIPMT_ExcelDocExample_SecondYear(t *testing.T) {
+func TestCUMIPMT_DocExample_SecondYear(t *testing.T) {
 	// From docs: CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0) = -11135.23
 	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 13, 24, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "CUMIPMT excel doc second year", v, -11135.23)
+	assertClose(t, "CUMIPMT doc second year", v, -11135.23)
 }
 
-func TestCUMIPMT_ExcelDocExample_FirstMonth(t *testing.T) {
+func TestCUMIPMT_DocExample_FirstMonth(t *testing.T) {
 	// From docs: CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0) = -937.50
 	v, err := fnCumipmt(numArgs(0.09/12, 360, 125000, 1, 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "CUMIPMT excel doc first month", v, -937.50)
+	assertClose(t, "CUMIPMT doc first month", v, -937.50)
 }
 
 func TestCUMIPMT_TotalInterest30YrMortgage(t *testing.T) {
@@ -3907,7 +3907,7 @@ func TestXIRR_NegativeRate(t *testing.T) {
 	}
 }
 
-func TestXIRR_ExcelDocExample(t *testing.T) {
+func TestXIRR_DocExample(t *testing.T) {
 	// Documentation example: XIRR(A3:A7, B3:B7, 0.1) = 0.373362535
 	// Values: -10000, 2750, 4250, 3250, 2750
 	// Dates: 1-Jan-08, 1-Mar-08, 30-Oct-08, 15-Feb-09, 1-Apr-09
@@ -3928,10 +3928,10 @@ func TestXIRR_ExcelDocExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	if v.Type != ValueNumber {
-		t.Fatalf("XIRR excel doc: expected number, got type %v", v.Type)
+		t.Fatalf("XIRR doc: expected number, got type %v", v.Type)
 	}
 	if math.Abs(v.Num-0.373362535) > 0.0001 {
-		t.Errorf("XIRR excel doc: got %f, want ~0.3734", v.Num)
+		t.Errorf("XIRR doc: got %f, want ~0.3734", v.Num)
 	}
 }
 
@@ -4557,17 +4557,17 @@ func mirrArray(vals ...float64) Value {
 	return Value{Type: ValueArray, Array: [][]Value{row}}
 }
 
-func TestMIRR_ExcelExample(t *testing.T) {
+func TestMIRR_DocExample(t *testing.T) {
 	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.12) ≈ 0.126094
 	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.12)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.Type != ValueNumber {
-		t.Fatalf("MIRR Excel example: expected number, got %v", v.Type)
+		t.Fatalf("MIRR doc example: expected number, got %v", v.Type)
 	}
 	if math.Abs(v.Num-0.126094) > 0.0001 {
-		t.Errorf("MIRR Excel example: got %f, want ~0.126094", v.Num)
+		t.Errorf("MIRR doc example: got %f, want ~0.126094", v.Num)
 	}
 }
 
@@ -4755,17 +4755,17 @@ func TestMIRR_SmallValues(t *testing.T) {
 	}
 }
 
-func TestMIRR_ExcelExample2(t *testing.T) {
+func TestMIRR_DocExample2(t *testing.T) {
 	// MIRR({-120000,39000,30000,21000,37000,46000}, 0.10, 0.14) ≈ 0.134759
 	v, err := fnMirr([]Value{mirrArray(-120000, 39000, 30000, 21000, 37000, 46000), NumberVal(0.10), NumberVal(0.14)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.Type != ValueNumber {
-		t.Fatalf("MIRR Excel example 2: expected number, got %v", v.Type)
+		t.Fatalf("MIRR doc example 2: expected number, got %v", v.Type)
 	}
 	if math.Abs(v.Num-0.134759) > 0.0001 {
-		t.Errorf("MIRR Excel example 2: got %f, want ~0.134759", v.Num)
+		t.Errorf("MIRR doc example 2: got %f, want ~0.134759", v.Num)
 	}
 }
 
@@ -5107,7 +5107,7 @@ func boolArg(b bool) Value {
 	return Value{Type: ValueBool, Bool: b}
 }
 
-func TestVDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
+func TestVDB_DocExample_FirstDayDepreciation(t *testing.T) {
 	// VDB(2400, 300, 10*365, 0, 1) = 1.32
 	v, err := fnVdb(numArgs(2400, 300, 10*365, 0, 1))
 	if err != nil {
@@ -5116,7 +5116,7 @@ func TestVDB_ExcelExample_FirstDayDepreciation(t *testing.T) {
 	assertClose(t, "VDB first day", v, 1.32)
 }
 
-func TestVDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
+func TestVDB_DocExample_FirstMonthDepreciation(t *testing.T) {
 	// VDB(2400, 300, 10*12, 0, 1) = 40.00
 	v, err := fnVdb(numArgs(2400, 300, 10*12, 0, 1))
 	if err != nil {
@@ -5125,7 +5125,7 @@ func TestVDB_ExcelExample_FirstMonthDepreciation(t *testing.T) {
 	assertClose(t, "VDB first month", v, 40.00)
 }
 
-func TestVDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
+func TestVDB_DocExample_FirstYearDepreciation(t *testing.T) {
 	// VDB(2400, 300, 10, 0, 1) = 480.00
 	v, err := fnVdb(numArgs(2400, 300, 10, 0, 1))
 	if err != nil {
@@ -5134,7 +5134,7 @@ func TestVDB_ExcelExample_FirstYearDepreciation(t *testing.T) {
 	assertClose(t, "VDB first year", v, 480.00)
 }
 
-func TestVDB_ExcelExample_Month6To18(t *testing.T) {
+func TestVDB_DocExample_Month6To18(t *testing.T) {
 	// VDB(2400, 300, 10*12, 6, 18) = 396.31
 	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18))
 	if err != nil {
@@ -5143,7 +5143,7 @@ func TestVDB_ExcelExample_Month6To18(t *testing.T) {
 	assertClose(t, "VDB month 6-18", v, 396.31)
 }
 
-func TestVDB_ExcelExample_Month6To18_Factor15(t *testing.T) {
+func TestVDB_DocExample_Month6To18_Factor15(t *testing.T) {
 	// VDB(2400, 300, 10*12, 6, 18, 1.5) = 311.81
 	v, err := fnVdb(numArgs(2400, 300, 10*12, 6, 18, 1.5))
 	if err != nil {
@@ -5152,7 +5152,7 @@ func TestVDB_ExcelExample_Month6To18_Factor15(t *testing.T) {
 	assertClose(t, "VDB month 6-18 factor 1.5", v, 311.81)
 }
 
-func TestVDB_ExcelExample_FractionalPeriod(t *testing.T) {
+func TestVDB_DocExample_FractionalPeriod(t *testing.T) {
 	// VDB(2400, 300, 10, 0, 0.875, 1.5) = 315.00
 	v, err := fnVdb(numArgs(2400, 300, 10, 0, 0.875, 1.5))
 	if err != nil {
@@ -5396,7 +5396,7 @@ func TestVDB_ErrorFactorZero(t *testing.T) {
 
 // === SYD ===
 
-func TestSYD_ExcelExample_Period1(t *testing.T) {
+func TestSYD_DocExample_Period1(t *testing.T) {
 	// SYD(30000, 7500, 10, 1) = 4090.909090...
 	v, err := fnSYD(numArgs(30000, 7500, 10, 1))
 	if err != nil {
@@ -5405,7 +5405,7 @@ func TestSYD_ExcelExample_Period1(t *testing.T) {
 	assertClose(t, "SYD period 1", v, 4090.91)
 }
 
-func TestSYD_ExcelExample_Period10(t *testing.T) {
+func TestSYD_DocExample_Period10(t *testing.T) {
 	// SYD(30000, 7500, 10, 10) = 409.090909...
 	v, err := fnSYD(numArgs(30000, 7500, 10, 10))
 	if err != nil {
@@ -5577,14 +5577,14 @@ func TestSYD_ErrorPerGreaterThanLife(t *testing.T) {
 
 // === ISPMT ===
 
-func TestISPMT_ExcelDocExample(t *testing.T) {
+func TestISPMT_DocExample(t *testing.T) {
 	// ISPMT(0.1/12, 1, 36, 8000000) ≈ -64814.81
 	// Monthly payment on 8M loan at 10% annual for 3 years, period 1
 	v, err := fnIspmt(numArgs(0.1/12, 1, 36, 8000000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "ISPMT excel doc", v, -64814.81)
+	assertClose(t, "ISPMT doc", v, -64814.81)
 }
 
 func TestISPMT_FirstPeriod(t *testing.T) {
@@ -5713,7 +5713,7 @@ func TestISPMT_Comprehensive(t *testing.T) {
 		wantErr bool
 	}{
 		// Doc example
-		{"excel doc example", numArgs(0.1/12, 1, 36, 8000000), -64814.81, false},
+		{"doc example", numArgs(0.1/12, 1, 36, 8000000), -64814.81, false},
 		// First period (per=0)
 		{"per=0", numArgs(0.1/12, 0, 36, 8000000), -66666.67, false},
 		// Last period (per=nper-1)
@@ -5838,7 +5838,7 @@ func TestTBILLPRICE_Comprehensive(t *testing.T) {
 		// Doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9%
 		// DSM=62, price = 100*(1-0.09*62/360) = 98.45
 		{
-			name: "Excel doc example",
+			name: "doc example",
 			args: numArgs(39538, 39600, 0.09),
 			want: 98.45,
 		},
@@ -6014,7 +6014,7 @@ func TestTBILLYIELD_Comprehensive(t *testing.T) {
 		// Doc example: settlement=3/31/2008, maturity=6/1/2008, pr=$98.45
 		// DSM=62, yield = ((100-98.45)/98.45)*(360/62) = 0.09141...
 		{
-			name: "Excel doc example",
+			name: "doc example",
 			args: numArgs(39538, 39600, 98.45),
 			want: 0.09141,
 		},
@@ -6194,7 +6194,7 @@ func TestTBILLEQ_Comprehensive(t *testing.T) {
 		// Doc example: settlement=3/31/2008, maturity=6/1/2008, discount=9.14%
 		// DSM=62, TBILLEQ = (365*0.0914)/(360-0.0914*62) = 33.361/(360-5.6668) = 33.361/354.3332 = 0.09415
 		{
-			name: "Excel doc example",
+			name: "doc example",
 			args: numArgs(39538, 39600, 0.0914),
 			want: 0.09415,
 		},
@@ -9759,9 +9759,9 @@ func TestFVSchedule_Comprehensive(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		// Basic usage — Excel documentation example
+		// Basic usage — documentation example
 		{
-			name: "Excel doc example: FVSCHEDULE(1,{0.09,0.11,0.1})",
+			name: "doc example: FVSCHEDULE(1,{0.09,0.11,0.1})",
 			args: []Value{NumberVal(1), mkArr(NumberVal(0.09), NumberVal(0.11), NumberVal(0.1))},
 			want: 1.33089,
 		},
@@ -9859,13 +9859,13 @@ func TestFVSchedule_Comprehensive(t *testing.T) {
 			args: []Value{NumberVal(1000), mkArr(NumberVal(-1.0))},
 			want: 0.0,
 		},
-		// Boolean FALSE in schedule → #VALUE! (Excel rejects booleans)
+		// Boolean FALSE in schedule → #VALUE! (spreadsheet rejects booleans)
 		{
 			name:    "boolean FALSE in schedule is #VALUE!",
 			args:    []Value{NumberVal(1000), mkArr(BoolVal(false), NumberVal(0.10))},
 			wantErr: true,
 		},
-		// Boolean TRUE in schedule → #VALUE! (Excel rejects booleans)
+		// Boolean TRUE in schedule → #VALUE! (spreadsheet rejects booleans)
 		{
 			name:    "boolean TRUE in schedule is #VALUE!",
 			args:    []Value{NumberVal(1000), mkArr(BoolVal(true))},

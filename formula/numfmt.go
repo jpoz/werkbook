@@ -248,8 +248,8 @@ func sectionHasUnquotedLetters(section string) bool {
 	return false
 }
 
-// excelColorCodes is the set of color names recognised inside square brackets.
-var excelColorCodes = map[string]bool{
+// colorCodes is the set of color names recognised inside square brackets.
+var colorCodes = map[string]bool{
 	"BLACK":   true,
 	"BLUE":    true,
 	"CYAN":    true,
@@ -276,7 +276,7 @@ func stripColorCodes(format string) string {
 				inner := format[i+1 : j]
 				upperInner := strings.ToUpper(strings.TrimSpace(inner))
 				// Check for named colors or "Color N" syntax.
-				if excelColorCodes[upperInner] || strings.HasPrefix(upperInner, "COLOR ") || strings.HasPrefix(upperInner, "COLOR") && len(upperInner) > 5 && upperInner[5] >= '0' && upperInner[5] <= '9' {
+				if colorCodes[upperInner] || strings.HasPrefix(upperInner, "COLOR ") || strings.HasPrefix(upperInner, "COLOR") && len(upperInner) > 5 && upperInner[5] >= '0' && upperInner[5] <= '9' {
 					i = j + 1 // skip past ']'
 					continue
 				}

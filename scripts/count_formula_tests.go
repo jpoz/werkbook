@@ -443,7 +443,7 @@ func generateMarkdown(supported map[string]funcInfo, unsupported []funcInfo) str
 	})
 
 	b.WriteString("# Supported Formulas\n\n")
-	b.WriteString(fmt.Sprintf("Werkbook supports **%d** Excel formula functions.\n\n", len(funcs)))
+	b.WriteString(fmt.Sprintf("Werkbook supports **%d** spreadsheet formula functions.\n\n", len(funcs)))
 	b.WriteString("| Function | Category | Tests |\n")
 	b.WriteString("|----------|----------|------:|\n")
 	for _, fi := range funcs {
@@ -459,7 +459,7 @@ func generateMarkdown(supported map[string]funcInfo, unsupported []funcInfo) str
 			return unsupported[i].Name < unsupported[j].Name
 		})
 		b.WriteString(fmt.Sprintf("\n# Unsupported Formulas\n\n"))
-		b.WriteString(fmt.Sprintf("The following **%d** Excel functions are not yet supported.\n\n", len(unsupported)))
+		b.WriteString(fmt.Sprintf("The following **%d** functions are not yet supported.\n\n", len(unsupported)))
 		b.WriteString("| Function | Category |\n")
 		b.WriteString("|----------|----------|\n")
 		for _, fi := range unsupported {

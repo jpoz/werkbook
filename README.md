@@ -89,9 +89,7 @@ Werkbook includes a formula engine with 198 built-in functions. See [FORMULAS.md
 
 ## Compatibility
 
-Werkbook targets `.xlsx` workbook interoperability and formula behavior compatibility with Microsoft Excel.
-
-Excel is a trademark of Microsoft Corporation. Werkbook is not affiliated with or endorsed by Microsoft.
+Werkbook targets `.xlsx` workbook interoperability and spreadsheet formula behavior compatibility.
 
 ## License
 

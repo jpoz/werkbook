@@ -44,6 +44,7 @@ func init() {
 	Register("MINA", NoCtx(fnMINA))
 	Register("MINIFS", NoCtx(fnMINIFS))
 	Register("MODE", NoCtx(fnMODE))
+	Register("MODE.MULT", NoCtx(fnModeMult))
 	Register("MODE.SNGL", NoCtx(fnMODE))
 	Register("PERMUTATIONA", NoCtx(fnPERMUTATIONA))
 	Register("PEARSON", NoCtx(fnCORREL))
@@ -1412,6 +1413,54 @@ func fnMODE(args []Value) (Value, error) {
 		return ErrorVal(ErrValNA), nil
 	}
 	return NumberVal(bestVal), nil
+}
+
+func fnModeMult(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nums, e := collectNumeric(args)
+	if e != nil {
+		return *e, nil
+	}
+	if len(nums) == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Count frequency and track insertion order.
+	freq := make(map[float64]int)
+	for _, n := range nums {
+		freq[n]++
+	}
+
+	// Find the maximum frequency.
+	maxFreq := 0
+	for _, c := range freq {
+		if c > maxFreq {
+			maxFreq = c
+		}
+	}
+	if maxFreq < 2 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// Collect all values with the maximum frequency.
+	modes := make([]float64, 0)
+	for v, c := range freq {
+		if c == maxFreq {
+			modes = append(modes, v)
+		}
+	}
+
+	// Sort in ascending order (matches Excel behaviour).
+	sort.Float64s(modes)
+
+	// Return as a vertical array (each mode in its own row).
+	result := make([][]Value, len(modes))
+	for i, m := range modes {
+		result[i] = []Value{NumberVal(m)}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnPERCENTILE(args []Value) (Value, error) {

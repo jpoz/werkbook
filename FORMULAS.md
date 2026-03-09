@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **410** Excel formula functions.
+Werkbook supports **411** spreadsheet formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -242,6 +242,7 @@ Werkbook supports **410** Excel formula functions.
 | MMULT | Math & Trig | 38 |
 | MOD | Math & Trig | 16 |
 | MODE | Statistical | 19 |
+| MODE.MULT | Statistical | 22 |
 | MODE.SNGL | Statistical | 19 |
 | MONTH | Date & Time | 5 |
 | MROUND | Math & Trig | 38 |
@@ -417,7 +418,7 @@ Werkbook supports **410** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **60** Excel functions are not yet supported.
+The following **59** functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -465,7 +466,6 @@ The following **60** Excel functions are not yet supported.
 | MAKEARRAY | Logical |
 | MAP | Logical |
 | MIDB | Text |
-| MODE.MULT | Statistical |
 | ODDFPRICE | Financial |
 | ODDFYIELD | Financial |
 | ODDLPRICE | Financial |

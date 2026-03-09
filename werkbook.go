@@ -378,7 +378,7 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
 	case "str", "inlineStr":
 		return Value{Type: TypeString, String: cd.Value}
 	case "d":
-		n, err := excelDateStringToSerial(cd.Value, date1904)
+		n, err := dateStringToSerial(cd.Value, date1904)
 		if err == nil {
 			return Value{Type: TypeNumber, Number: n}
 		}
