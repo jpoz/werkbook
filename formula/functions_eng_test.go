@@ -4910,3 +4910,139 @@ func TestIMCSCH(t *testing.T) {
 		}
 	})
 }
+
+func TestBESSELI(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("returns number", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    float64
+			tol     float64
+		}{
+			// Excel documentation example
+			{"BESSELI(1.5,1)", 0.981666428, 1e-6},
+
+			// x = 0 cases
+			{"BESSELI(0,0)", 1, 0},
+			{"BESSELI(0,1)", 0, 0},
+			{"BESSELI(0,5)", 0, 0},
+
+			// Known values for n=0
+			{"BESSELI(1,0)", 1.2660658777, 1e-9},
+			{"BESSELI(2,0)", 2.2795853024, 1e-9},
+
+			// Known values for n=1
+			{"BESSELI(1,1)", 0.5651591040, 1e-9},
+			{"BESSELI(2,1)", 1.5906368546, 1e-9},
+
+			// Negative x, odd n → negative result
+			{"BESSELI(-1.5,1)", -0.981666428, 1e-6},
+			{"BESSELI(-1,1)", -0.5651591040, 1e-9},
+
+			// Negative x, even n → positive result
+			{"BESSELI(-1.5,0)", 1.6467232006, 1e-6},
+			{"BESSELI(-1.5,2)", 0.3378346183, 1e-6},
+			{"BESSELI(-2,0)", 2.2795853024, 1e-9},
+
+			// n truncated: BESSELI(1.5, 1.9) same as BESSELI(1.5, 1)
+			{"BESSELI(1.5,1.9)", 0.981666428, 1e-6},
+			{"BESSELI(1.5,1.1)", 0.981666428, 1e-6},
+
+			// Larger n
+			{"BESSELI(1,5)", 0.0002714631559, 1e-9},
+			{"BESSELI(1,10)", 2.752948e-10, 1e-15},
+
+			// Larger x
+			{"BESSELI(5,0)", 27.2398718236, 1e-6},
+			{"BESSELI(5,2)", 17.505614966, 1e-6},
+			{"BESSELI(20,0)", 4.355828256e7, 1e2},
+
+			// Boolean coercion (TRUE=1, FALSE=0)
+			{"BESSELI(TRUE,0)", 1.2660658777, 1e-9},
+			{"BESSELI(1,FALSE)", 1.2660658777, 1e-9},
+		}
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueNumber {
+					t.Fatalf("Eval(%q) = %v (type %d), want number", tt.formula, got, got.Type)
+				}
+				diff := math.Abs(got.Num - tt.want)
+				if tt.tol == 0 {
+					if got.Num != tt.want {
+						t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want)
+					}
+				} else if diff > tt.tol {
+					t.Errorf("Eval(%q) = %v, want %v (diff=%e, tol=%e)", tt.formula, got.Num, tt.want, diff, tt.tol)
+				}
+			})
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		errTests := []struct {
+			formula string
+			wantErr ErrorValue
+		}{
+			// n < 0 → #NUM!
+			{"BESSELI(1,-1)", ErrValNUM},
+			{"BESSELI(1,-5)", ErrValNUM},
+
+			// Non-numeric x → #VALUE!
+			{`BESSELI("abc",1)`, ErrValVALUE},
+
+			// Non-numeric n → #VALUE!
+			{`BESSELI(1,"abc")`, ErrValVALUE},
+
+			// Both non-numeric → #VALUE!
+			{`BESSELI("a","b")`, ErrValVALUE},
+		}
+		for _, tt := range errTests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected error %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("Eval(%q) = %v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count", func(t *testing.T) {
+		for _, formula := range []string{"BESSELI()", "BESSELI(1)", "BESSELI(1,2,3)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", formula, err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		for _, formula := range []string{"BESSELI(1/0,1)", "BESSELI(1,1/0)"} {
+			t.Run(formula, func(t *testing.T) {
+				cf := evalCompile(t, formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", formula, err)
+				}
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", formula, got)
+				}
+			})
+		}
+	})
+}

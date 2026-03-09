@@ -8,6 +8,7 @@ import (
 )
 
 func init() {
+	Register("BESSELI", NoCtx(fnBesselI))
 	Register("BIN2DEC", NoCtx(fnBin2Dec))
 	Register("BIN2HEX", NoCtx(fnBin2Hex))
 	Register("BIN2OCT", NoCtx(fnBin2Oct))
@@ -49,6 +50,74 @@ func init() {
 	Register("OCT2BIN", NoCtx(fnOct2Bin))
 	Register("OCT2DEC", NoCtx(fnOct2Dec))
 	Register("OCT2HEX", NoCtx(fnOct2Hex))
+}
+
+// fnBesselI implements the BESSELI function.
+// BESSELI(X, N) — returns the modified Bessel function of the first kind, I_n(x).
+// N is truncated to an integer. If N < 0, returns #NUM!.
+// Uses the series expansion: I_n(x) = Σ (x/2)^(n+2k) / (k! * (n+k)!)
+// with incremental term computation to avoid factorial overflow.
+func fnBesselI(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValNA), nil
+	}
+
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+
+	nf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+
+	// Truncate n to integer.
+	n := int(math.Trunc(nf))
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Handle x = 0 specially.
+	if x == 0 {
+		if n == 0 {
+			return NumberVal(1), nil
+		}
+		return NumberVal(0), nil
+	}
+
+	// Handle negative x: I_n(-x) = (-1)^n * I_n(x) for integer n.
+	sign := 1.0
+	if x < 0 {
+		if n%2 != 0 {
+			sign = -1
+		}
+		x = -x
+	}
+
+	// Compute I_n(x) using incremental series.
+	// term_0 = (x/2)^n / n!
+	halfX := x / 2.0
+	term := 1.0
+	for i := 1; i <= n; i++ {
+		term *= halfX / float64(i)
+	}
+
+	sum := term
+	halfXSq := halfX * halfX
+
+	const maxIter = 200
+	const epsilon = 1e-15
+	for k := 1; k <= maxIter; k++ {
+		// term_{k} = term_{k-1} * (x/2)^2 / (k * (n+k))
+		term *= halfXSq / (float64(k) * float64(n+k))
+		sum += term
+		if math.Abs(term) <= math.Abs(sum)*epsilon {
+			break
+		}
+	}
+
+	return NumberVal(sign * sum), nil
 }
 
 // fnBin2Dec implements the BIN2DEC function.
