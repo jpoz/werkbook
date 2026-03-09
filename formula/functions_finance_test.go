@@ -5575,6 +5575,40 @@ func TestSYD_ErrorPerGreaterThanLife(t *testing.T) {
 	assertError(t, "SYD per > life", v)
 }
 
+func TestSYD_ViaEval_ThreeArgError(t *testing.T) {
+	// SYD with 3 args should error; IFERROR should catch it and return "err".
+	cf := evalCompile(t, `IFERROR(SYD(10000,1000,5),"err")`)
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueString || v.Str != "err" {
+		t.Fatalf("IFERROR(SYD(3 args)) = %#v, want string:err", v)
+	}
+}
+
+func TestSYD_ViaEval_FiveArgError(t *testing.T) {
+	// SYD with 5 args should error; IFERROR should catch it and return "err".
+	cf := evalCompile(t, `IFERROR(SYD(10000,1000,5,1,1),"err")`)
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueString || v.Str != "err" {
+		t.Fatalf("IFERROR(SYD(5 args)) = %#v, want string:err", v)
+	}
+}
+
+func TestSYD_ViaEval_SumAllPeriods(t *testing.T) {
+	// Sum of SYD over all periods should equal cost - salvage = 10000 - 2000 = 8000.
+	cf := evalCompile(t, "SYD(10000,2000,5,1)+SYD(10000,2000,5,2)+SYD(10000,2000,5,3)+SYD(10000,2000,5,4)+SYD(10000,2000,5,5)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "SYD sum all periods", v, 8000)
+}
+
 // === ISPMT ===
 
 func TestISPMT_DocExample(t *testing.T) {

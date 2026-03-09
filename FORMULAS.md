@@ -183,7 +183,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 23 |
-| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 51 |
+| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 53 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 5 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
 | IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
@@ -377,7 +377,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | SUMX2PY2 | Returns the sum of the sum of squares of paired arrays. | Math & Trig | 31 |
 | SUMXMY2 | Returns the sum of squares of differences of paired arrays. | Math & Trig | 31 |
 | SWITCH | Matches an expression against a list of values and returns the corresponding result. | Logical | 28 |
-| SYD | Returns sum-of-years'-digits depreciation for a period. | Financial | 23 |
+| SYD | Returns sum-of-years'-digits depreciation for a period. | Financial | 27 |
 | T | Returns text when a value is text, otherwise an empty string. | Text | 17 |
 | T.DIST | Returns the Student's t-distribution. | Statistical | 41 |
 | T.DIST.2T | Returns the two-tailed Student's t-distribution. | Statistical | 19 |
