@@ -1139,6 +1139,460 @@ func TestINDEXMATCHCombo(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// INDEX comprehensive table-driven tests
+// ---------------------------------------------------------------------------
+
+func TestINDEX_Comprehensive(t *testing.T) {
+	// Set up a resolver with a variety of cell data for range-based tests.
+	// Layout:
+	//       A        B        C        D        E
+	// 1     10       20       30       40       50
+	// 2     60       70       80       90       100
+	// 3     110      120      130      140      150
+	// 4     "hello"  TRUE     (empty)  #N/A     200
+	// 5     1.5      2.5      3.5      4.5      5.5
+	//
+	// Also: lookup data for INDEX/MATCH
+	// F1="apple", F2="banana", F3="cherry"
+	// G1=100, G2=200, G3=300
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			// 3x5 numeric block (rows 1-3, cols A-E)
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 4, Row: 1}: NumberVal(40),
+			{Col: 5, Row: 1}: NumberVal(50),
+
+			{Col: 1, Row: 2}: NumberVal(60),
+			{Col: 2, Row: 2}: NumberVal(70),
+			{Col: 3, Row: 2}: NumberVal(80),
+			{Col: 4, Row: 2}: NumberVal(90),
+			{Col: 5, Row: 2}: NumberVal(100),
+
+			{Col: 1, Row: 3}: NumberVal(110),
+			{Col: 2, Row: 3}: NumberVal(120),
+			{Col: 3, Row: 3}: NumberVal(130),
+			{Col: 4, Row: 3}: NumberVal(140),
+			{Col: 5, Row: 3}: NumberVal(150),
+
+			// Row 4: mixed types
+			{Col: 1, Row: 4}: StringVal("hello"),
+			{Col: 2, Row: 4}: BoolVal(true),
+			// Col 3 Row 4 intentionally empty
+			{Col: 4, Row: 4}: ErrorVal(ErrValNA),
+			{Col: 5, Row: 4}: NumberVal(200),
+
+			// Row 5: fractional numbers
+			{Col: 1, Row: 5}: NumberVal(1.5),
+			{Col: 2, Row: 5}: NumberVal(2.5),
+			{Col: 3, Row: 5}: NumberVal(3.5),
+			{Col: 4, Row: 5}: NumberVal(4.5),
+			{Col: 5, Row: 5}: NumberVal(5.5),
+
+			// Lookup data in cols F-G
+			{Col: 6, Row: 1}: StringVal("apple"),
+			{Col: 6, Row: 2}: StringVal("banana"),
+			{Col: 6, Row: 3}: StringVal("cherry"),
+			{Col: 7, Row: 1}: NumberVal(100),
+			{Col: 7, Row: 2}: NumberVal(200),
+			{Col: 7, Row: 3}: NumberVal(300),
+		},
+	}
+
+	// -----------------------------------------------------------------------
+	// Scalar return tests (exact value checks)
+	// -----------------------------------------------------------------------
+	type scalarTest struct {
+		name    string
+		formula string
+		want    Value
+	}
+
+	scalarTests := []scalarTest{
+		// Basic lookups in a 2D array
+		{
+			name:    "basic_first_cell",
+			formula: "INDEX(A1:E5,1,1)",
+			want:    NumberVal(10),
+		},
+		{
+			name:    "basic_last_cell_3x5",
+			formula: "INDEX(A1:E3,3,5)",
+			want:    NumberVal(150),
+		},
+		{
+			name:    "basic_middle",
+			formula: "INDEX(A1:E3,2,3)",
+			want:    NumberVal(80),
+		},
+		{
+			name:    "basic_row2_col4",
+			formula: "INDEX(A1:E3,2,4)",
+			want:    NumberVal(90),
+		},
+
+		// Single column array: 2-arg form picks row
+		{
+			name:    "single_column_2arg",
+			formula: "INDEX(A1:A5,3)",
+			want:    NumberVal(110),
+		},
+		{
+			name:    "single_column_3arg",
+			formula: "INDEX(A1:A5,3,1)",
+			want:    NumberVal(110),
+		},
+
+		// Single row array: 2-arg form picks column
+		{
+			name:    "single_row_2arg_col_select",
+			formula: "INDEX(A1:E1,3)",
+			want:    NumberVal(30),
+		},
+		{
+			name:    "single_row_3arg",
+			formula: "INDEX(A1:E1,1,3)",
+			want:    NumberVal(30),
+		},
+
+		// Array constant input
+		{
+			name:    "array_constant_2x3",
+			formula: "INDEX({1,2,3;4,5,6},2,3)",
+			want:    NumberVal(6),
+		},
+		{
+			name:    "array_constant_1x3_col_select",
+			formula: "INDEX({10,20,30},2)",
+			want:    NumberVal(20),
+		},
+		{
+			name:    "array_constant_first_element",
+			formula: "INDEX({1,2,3;4,5,6},1,1)",
+			want:    NumberVal(1),
+		},
+
+		// Single cell reference: INDEX(A1,1,1)
+		{
+			name:    "single_cell_ref",
+			formula: "INDEX(A1:A1,1,1)",
+			want:    NumberVal(10),
+		},
+
+		// Fractional row/col — truncated to int
+		{
+			name:    "fractional_row",
+			formula: "INDEX(A1:E3,1.9,1)",
+			want:    NumberVal(10), // int(1.9) = 1
+		},
+		{
+			name:    "fractional_col",
+			formula: "INDEX(A1:E3,2,2.7)",
+			want:    NumberVal(70), // int(2.7) = 2
+		},
+		{
+			name:    "fractional_both",
+			formula: "INDEX(A1:E3,2.9,3.9)",
+			want:    NumberVal(80), // int(2.9)=2, int(3.9)=3
+		},
+
+		// Mixed types in array
+		{
+			name:    "string_value",
+			formula: "INDEX(A1:E5,4,1)",
+			want:    StringVal("hello"),
+		},
+		{
+			name:    "bool_value",
+			formula: "INDEX(A1:E5,4,2)",
+			want:    BoolVal(true),
+		},
+
+		// Empty cell in array
+		{
+			name:    "empty_cell",
+			formula: "INDEX(A1:E5,4,3)",
+			want:    EmptyVal(),
+		},
+
+		// Error value at target position
+		{
+			name:    "error_at_target",
+			formula: "INDEX(A1:E5,4,4)",
+			want:    ErrorVal(ErrValNA),
+		},
+
+		// Large array (10+ elements), picking last
+		{
+			name:    "large_array_last_row",
+			formula: "INDEX(A1:E5,5,5)",
+			want:    NumberVal(5.5),
+		},
+
+		// Out of range row → #REF!
+		{
+			name:    "row_out_of_range",
+			formula: "INDEX(A1:E3,4,1)",
+			want:    ErrorVal(ErrValREF),
+		},
+		{
+			name:    "row_out_of_range_large",
+			formula: "INDEX(A1:E3,100,1)",
+			want:    ErrorVal(ErrValREF),
+		},
+
+		// Out of range column → #REF!
+		{
+			name:    "col_out_of_range",
+			formula: "INDEX(A1:E3,1,6)",
+			want:    ErrorVal(ErrValREF),
+		},
+		{
+			name:    "col_out_of_range_large",
+			formula: "INDEX(A1:E3,1,100)",
+			want:    ErrorVal(ErrValREF),
+		},
+
+		// Negative row → #VALUE!
+		{
+			name:    "negative_row",
+			formula: "INDEX(A1:E3,-1,1)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+
+		// Negative col → #VALUE!
+		{
+			name:    "negative_col",
+			formula: "INDEX(A1:E3,1,-1)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+
+		// Negative both → #VALUE!
+		{
+			name:    "negative_both",
+			formula: "INDEX(A1:E3,-1,-1)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+
+		// Wrong arg count: 1 arg → #VALUE!
+		{
+			name:    "one_arg_error",
+			formula: "INDEX(A1:E3)",
+			want:    ErrorVal(ErrValVALUE),
+		},
+
+		// INDEX combined with MATCH (INDEX/MATCH pattern)
+		{
+			name:    "index_match_banana",
+			formula: `INDEX(G1:G3,MATCH("banana",F1:F3,0))`,
+			want:    NumberVal(200),
+		},
+		{
+			name:    "index_match_cherry",
+			formula: `INDEX(G1:G3,MATCH("cherry",F1:F3,0))`,
+			want:    NumberVal(300),
+		},
+
+		// String values looked up by index
+		{
+			name:    "string_array_constant",
+			formula: `INDEX({"cat","dog","bird"},2)`,
+			want:    StringVal("dog"),
+		},
+		{
+			name:    "string_from_range",
+			formula: "INDEX(F1:F3,2)",
+			want:    StringVal("banana"),
+		},
+
+		// 2-arg form on multi-row, multi-col array defaults col to 1
+		{
+			name:    "2arg_multirow_multicol",
+			formula: "INDEX(A1:E3,2)",
+			want:    NumberVal(60),
+		},
+
+		// Single row array constant with 2-arg form
+		{
+			name:    "single_row_constant_2arg",
+			formula: `INDEX({"OUT","IN"},2)`,
+			want:    StringVal("IN"),
+		},
+	}
+
+	for _, tt := range scalarTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.Type {
+				t.Fatalf("Eval(%q): type = %v, want %v (got %v)", tt.formula, got.Type, tt.want.Type, got)
+			}
+			switch tt.want.Type {
+			case ValueNumber:
+				if got.Num != tt.want.Num {
+					t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want.Num)
+				}
+			case ValueString:
+				if got.Str != tt.want.Str {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want.Str)
+				}
+			case ValueBool:
+				if got.Bool != tt.want.Bool {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want.Bool)
+				}
+			case ValueError:
+				if got.Err != tt.want.Err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.Err)
+				}
+			case ValueEmpty:
+				// just matching type is sufficient
+			}
+		})
+	}
+
+	// -----------------------------------------------------------------------
+	// Array return tests (row=0 or col=0)
+	// -----------------------------------------------------------------------
+	t.Run("row0_returns_full_column", func(t *testing.T) {
+		cf := evalCompile(t, "INDEX(A1:E3,0,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("expected ValueArray, got %v", got.Type)
+		}
+		// Should be 3 rows x 1 col (column B: 20, 70, 120)
+		if len(got.Array) != 3 {
+			t.Fatalf("expected 3 rows, got %d", len(got.Array))
+		}
+		for _, row := range got.Array {
+			if len(row) != 1 {
+				t.Fatalf("expected 1 col per row, got %d", len(row))
+			}
+		}
+		if got.Array[0][0].Num != 20 || got.Array[1][0].Num != 70 || got.Array[2][0].Num != 120 {
+			t.Errorf("INDEX(A1:E3,0,2) = %v, want [20,70,120]", got.Array)
+		}
+	})
+
+	t.Run("col0_returns_full_row", func(t *testing.T) {
+		cf := evalCompile(t, "INDEX(A1:E3,2,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("expected ValueArray, got %v", got.Type)
+		}
+		// Should be 1 row x 5 cols (row 2: 60, 70, 80, 90, 100)
+		if len(got.Array) != 1 || len(got.Array[0]) != 5 {
+			t.Fatalf("expected 1x5 array, got %dx%d", len(got.Array), len(got.Array[0]))
+		}
+		expected := []float64{60, 70, 80, 90, 100}
+		for i, want := range expected {
+			if got.Array[0][i].Num != want {
+				t.Errorf("col[%d] = %g, want %g", i, got.Array[0][i].Num, want)
+			}
+		}
+	})
+
+	t.Run("both0_returns_full_array", func(t *testing.T) {
+		cf := evalCompile(t, "INDEX(A1:E3,0,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("expected ValueArray, got %v", got.Type)
+		}
+		if len(got.Array) != 3 || len(got.Array[0]) != 5 {
+			t.Fatalf("expected 3x5 array, got %dx%d", len(got.Array), len(got.Array[0]))
+		}
+		// Spot check corners
+		if got.Array[0][0].Num != 10 {
+			t.Errorf("top-left = %g, want 10", got.Array[0][0].Num)
+		}
+		if got.Array[2][4].Num != 150 {
+			t.Errorf("bottom-right = %g, want 150", got.Array[2][4].Num)
+		}
+	})
+
+	t.Run("single_row_array_0_returns_full_row", func(t *testing.T) {
+		cf := evalCompile(t, `INDEX({"a","b","c"},0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("expected ValueArray, got %v", got.Type)
+		}
+		if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+			t.Fatalf("expected 1x3 array, got %dx%d", len(got.Array), len(got.Array[0]))
+		}
+		if got.Array[0][0].Str != "a" || got.Array[0][1].Str != "b" || got.Array[0][2].Str != "c" {
+			t.Errorf("got %v, want [a,b,c]", got.Array)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// INDEX returning subarray used with SUM
+	// -----------------------------------------------------------------------
+	t.Run("sum_of_index_col0", func(t *testing.T) {
+		// SUM(INDEX(A1:E3,2,0)) should sum row 2: 60+70+80+90+100 = 400
+		cf := evalCompile(t, "SUM(INDEX(A1:E3,2,0))")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 400 {
+			t.Errorf("SUM(INDEX(A1:E3,2,0)) = %v, want 400", got)
+		}
+	})
+
+	t.Run("sum_of_index_row0", func(t *testing.T) {
+		// SUM(INDEX(A1:E3,0,3)) should sum column C: 30+80+130 = 240
+		cf := evalCompile(t, "SUM(INDEX(A1:E3,0,3))")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 240 {
+			t.Errorf("SUM(INDEX(A1:E3,0,3)) = %v, want 240", got)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// Row/col out of range for array return
+	// -----------------------------------------------------------------------
+	t.Run("row0_col_out_of_range", func(t *testing.T) {
+		cf := evalCompile(t, "INDEX(A1:E3,0,10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Errorf("INDEX(A1:E3,0,10) = %v, want #REF!", got)
+		}
+	})
+
+	t.Run("col0_row_out_of_range", func(t *testing.T) {
+		cf := evalCompile(t, "INDEX(A1:E3,10,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Errorf("INDEX(A1:E3,10,0) = %v, want #REF!", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // INDIRECT tests
 // ---------------------------------------------------------------------------
 
