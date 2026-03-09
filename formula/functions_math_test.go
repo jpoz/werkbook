@@ -9869,3 +9869,125 @@ func TestSUBTOTAL(t *testing.T) {
 		})
 	}
 }
+
+func TestISOCEILING(t *testing.T) {
+	resolver := &mockResolver{}
+
+	numTests := []struct {
+		name    string
+		formula string
+		wantNum float64
+	}{
+		// Excel documented examples
+		{"doc_iso_1", "ISO.CEILING(4.3)", 5},
+		{"doc_iso_2", "ISO.CEILING(-4.3)", -4},
+		{"doc_iso_3", "ISO.CEILING(4.3,2)", 6},
+		{"doc_iso_4", "ISO.CEILING(4.3,-2)", 6},
+		{"doc_iso_5", "ISO.CEILING(-4.3,2)", -4},
+		{"doc_iso_6", "ISO.CEILING(-4.3,-2)", -4},
+
+		// Default significance (omitted = 1)
+		{"pos_default", "ISO.CEILING(4.3)", 5},
+		{"neg_default", "ISO.CEILING(-4.3)", -4},
+		{"pos_exact_default", "ISO.CEILING(7)", 7},
+
+		// Zero number returns 0
+		{"zero_number", "ISO.CEILING(0)", 0},
+		{"zero_with_sig", "ISO.CEILING(0,5)", 0},
+		{"zero_with_neg_sig", "ISO.CEILING(0,-3)", 0},
+
+		// Zero significance returns 0
+		{"sig_zero_pos", "ISO.CEILING(6.3,0)", 0},
+		{"sig_zero_neg", "ISO.CEILING(-6.3,0)", 0},
+
+		// Positive number, positive significance
+		{"pos_sig_2", "ISO.CEILING(4.3,2)", 6},
+		{"pos_sig_5", "ISO.CEILING(24.3,5)", 25},
+		{"pos_sig_3", "ISO.CEILING(7,3)", 9},
+		{"pos_sig_exact", "ISO.CEILING(6,3)", 6},
+
+		// Negative number, positive significance (rounds toward +inf)
+		{"neg_sig_pos_2", "ISO.CEILING(-4.3,2)", -4},
+		{"neg_sig_pos_1", "ISO.CEILING(-4.1,1)", -4},
+		{"neg_sig_pos_5", "ISO.CEILING(-8.1,5)", -5},
+
+		// Positive number, negative significance (uses abs, same as positive sig)
+		{"pos_neg_sig_2", "ISO.CEILING(4.3,-2)", 6},
+		{"pos_neg_sig_5", "ISO.CEILING(24.3,-5)", 25},
+
+		// Negative number, negative significance (uses abs)
+		{"neg_neg_sig_2", "ISO.CEILING(-4.3,-2)", -4},
+		{"neg_neg_sig_5", "ISO.CEILING(-8.1,-5)", -5},
+
+		// Fractional significance
+		{"frac_sig_0.1", "ISO.CEILING(6.31,0.1)", 6.4},
+		{"frac_sig_0.5", "ISO.CEILING(6.3,0.5)", 6.5},
+		{"frac_sig_0.1_neg", "ISO.CEILING(-6.31,0.1)", -6.3},
+		{"frac_sig_0.5_neg", "ISO.CEILING(-6.3,0.5)", -6},
+
+		// Large numbers
+		{"large_pos", "ISO.CEILING(1234567,1000)", 1235000},
+		{"large_neg", "ISO.CEILING(-1234567,1000)", -1234000},
+
+		// Very small numbers
+		{"small_pos", "ISO.CEILING(0.001,0.01)", 0.01},
+		{"small_neg", "ISO.CEILING(-0.001,0.01)", 0},
+		{"small_frac", "ISO.CEILING(0.1)", 1},
+		{"neg_small_frac", "ISO.CEILING(-0.1)", 0},
+
+		// Already-rounded numbers (exact multiples)
+		{"exact_multiple_pos", "ISO.CEILING(6,3)", 6},
+		{"exact_multiple_neg", "ISO.CEILING(-6,3)", -6},
+		{"exact_multiple_neg_sig", "ISO.CEILING(6,-3)", 6},
+
+		// String coercion of numeric strings
+		{"string_num", "ISO.CEILING(\"4.3\")", 5},
+		{"string_num_neg", "ISO.CEILING(\"-4.3\")", -4},
+		{"string_sig", "ISO.CEILING(4.3,\"2\")", 6},
+
+		// Boolean coercion (TRUE = 1, FALSE = 0)
+		{"bool_true", "ISO.CEILING(TRUE)", 1},
+		{"bool_false", "ISO.CEILING(FALSE)", 0},
+		{"bool_true_sig", "ISO.CEILING(2.3,TRUE)", 3},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) = type %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-10 {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		{"no_args", "ISO.CEILING()", ErrValVALUE},
+		{"too_many_args", "ISO.CEILING(1,2,3)", ErrValVALUE},
+		{"non_numeric", "ISO.CEILING(\"abc\")", ErrValVALUE},
+		{"non_numeric_sig", "ISO.CEILING(1,\"abc\")", ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}

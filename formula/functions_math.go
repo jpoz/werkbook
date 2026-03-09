@@ -34,6 +34,7 @@ func init() {
 	Register("CEILING", NoCtx(fnCEILING))
 	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
 	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
+	Register("ISO.CEILING", NoCtx(fnCEILINGPRECISE))
 	Register("COMBIN", NoCtx(fnCOMBIN))
 	Register("COMBINA", NoCtx(fnCOMBINA))
 	Register("COS", NoCtx(fnCOS))

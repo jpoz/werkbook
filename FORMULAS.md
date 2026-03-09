@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **401** Excel formula functions.
+Werkbook supports **402** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -202,6 +202,7 @@ Werkbook supports **401** Excel formula functions.
 | ISNA | Information | 22 |
 | ISNONTEXT | Information | 26 |
 | ISNUMBER | Information | 23 |
+| ISO.CEILING | Math & Trig | 48 |
 | ISODD | Information | 4 |
 | ISOWEEKNUM | Date & Time | 26 |
 | ISPMT | Financial | 17 |
@@ -408,7 +409,7 @@ Werkbook supports **401** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **69** Excel functions are not yet supported.
+The following **68** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -452,7 +453,6 @@ The following **69** Excel functions are not yet supported.
 | GROWTH | Statistical |
 | HYPERLINK | Lookup & Reference |
 | INFO | Information |
-| ISO.CEILING | Math & Trig |
 | LAMBDA | Logical |
 | LEFTB | Text |
 | LENB | Text |
