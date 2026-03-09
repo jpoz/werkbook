@@ -26,6 +26,7 @@ var xlfnPrefix = map[string]string{
 	"CHISQ.DIST.RT":   "_xlfn.",
 	"CHISQ.INV":       "_xlfn.",
 	"CHISQ.INV.RT":    "_xlfn.",
+	"CHISQ.TEST":      "_xlfn.",
 	"CEILING.MATH":    "_xlfn.",
 	"CEILING.PRECISE": "_xlfn.",
 	"CONFIDENCE.NORM": "_xlfn.",

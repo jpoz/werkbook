@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **407** Excel formula functions.
+Werkbook supports **408** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -49,6 +49,7 @@ Werkbook supports **407** Excel formula functions.
 | CHISQ.DIST.RT | Statistical | 19 |
 | CHISQ.INV | Statistical | 36 |
 | CHISQ.INV.RT | Statistical | 20 |
+| CHISQ.TEST | Statistical | 23 |
 | CHOOSE | Text | 24 |
 | CHOOSECOLS | Lookup & Reference | 7 |
 | CHOOSEROWS | Lookup & Reference | 7 |
@@ -161,7 +162,7 @@ Werkbook supports **407** Excel formula functions.
 | HSTACK | Lookup & Reference | 18 |
 | HYPGEOM.DIST | Statistical | 37 |
 | IF | Logical | 23 |
-| IFERROR | Logical | 49 |
+| IFERROR | Logical | 50 |
 | IFNA | Information | 5 |
 | IFS | Logical | 32 |
 | IMABS | Engineering | 38 |
@@ -414,7 +415,7 @@ Werkbook supports **407** Excel formula functions.
 
 # Unsupported Formulas
 
-The following **63** Excel functions are not yet supported.
+The following **62** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -430,7 +431,6 @@ The following **63** Excel functions are not yet supported.
 | BYCOL | Logical |
 | BYROW | Logical |
 | CELL | Information |
-| CHISQ.TEST | Statistical |
 | DAVERAGE | Database |
 | DBCS | Text |
 | DCOUNT | Database |

@@ -110,6 +110,7 @@ func init() {
 	Register("BETA.INV", NoCtx(fnBetaInv))
 	Register("CHISQ.DIST.RT", NoCtx(fnChisqDistRT))
 	Register("CHISQ.INV.RT", NoCtx(fnChisqInvRT))
+	Register("CHISQ.TEST", NoCtx(fnChisqTest))
 	Register("F.DIST", NoCtx(fnFDist))
 	Register("F.DIST.RT", NoCtx(fnFDistRT))
 	Register("F.INV", NoCtx(fnFInv))
@@ -3742,6 +3743,71 @@ func fnChisqInvRT(args []Value) (Value, error) {
 
 	// Delegate to CHISQ.INV(1-p, df) = GAMMA.INV(1-p, df/2, 2).
 	return fnGammaInv([]Value{NumberVal(1 - p), NumberVal(df / 2), NumberVal(2)})
+}
+
+// ---------------------------------------------------------------------------
+// CHISQ.TEST — Chi-squared test for independence
+// ---------------------------------------------------------------------------
+// CHISQ.TEST(actual_range, expected_range)
+//   actual_range   – observed data (2D range)
+//   expected_range – expected data (2D range, same dimensions)
+// Returns the p-value from the chi-squared goodness-of-fit test.
+//   χ² = Σ (Aij - Eij)² / Eij
+//   df = (r-1)(c-1) when both r>1 and c>1; otherwise max(r,c)-1.
+//   p  = 1 - regLowerGamma(df/2, χ²/2)
+
+func fnChisqTest(args []Value) (Value, error) {
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	actual, ev := normalizeToGrid(args[0])
+	if ev != nil {
+		return *ev, nil
+	}
+	expected, ev := normalizeToGrid(args[1])
+	if ev != nil {
+		return *ev, nil
+	}
+	ar, ac := gridDims(actual)
+	er, ec := gridDims(expected)
+	if ar != er || ac != ec {
+		return ErrorVal(ErrValNA), nil
+	}
+	if ar == 1 && ac == 1 {
+		return ErrorVal(ErrValNA), nil
+	}
+	// Compute chi-squared statistic.
+	chiSq := 0.0
+	for i := 0; i < ar; i++ {
+		for j := 0; j < ac; j++ {
+			a, e1 := CoerceNum(actual[i][j])
+			if e1 != nil {
+				return *e1, nil
+			}
+			e, e2 := CoerceNum(expected[i][j])
+			if e2 != nil {
+				return *e2, nil
+			}
+			if e == 0 {
+				return ErrorVal(ErrValDIV0), nil
+			}
+			d := a - e
+			chiSq += d * d / e
+		}
+	}
+	// Degrees of freedom.
+	var df int
+	if ar > 1 && ac > 1 {
+		df = (ar - 1) * (ac - 1)
+	} else if ar == 1 {
+		df = ac - 1
+	} else {
+		df = ar - 1
+	}
+	// Right-tail probability using regularized lower incomplete gamma.
+	alpha := float64(df) / 2.0
+	p := 1 - regLowerGamma(alpha, chiSq/2.0)
+	return NumberVal(p), nil
 }
 
 // ---------------------------------------------------------------------------

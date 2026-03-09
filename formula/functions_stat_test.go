@@ -24051,3 +24051,206 @@ func TestZTEST_LargeDataset(t *testing.T) {
 		t.Errorf("large dataset: got %g, want ~%g", got.Num, want)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CHISQ.TEST
+// ---------------------------------------------------------------------------
+
+func TestCHISQ_TEST(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-5
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr bool
+		errVal  ErrorValue
+	}{
+		// Documented example: 3x2 contingency table.
+		{"doc_example", "CHISQ.TEST({58,35;11,25;10,23},{45.35,47.65;17.56,18.44;16.09,16.91})", 0.000308, false, 0},
+
+		// Simple 2x2 contingency table.
+		{"2x2_basic", "CHISQ.TEST({10,20;30,40},{15,15;25,45})", 0.027030, false, 0},
+
+		// 1xN row vector (df = N-1).
+		{"row_1x3", "CHISQ.TEST({10,20,30},{20,20,20})", 0.006738, false, 0},
+
+		// 1x2 row vector (df = 1).
+		{"row_1x2", "CHISQ.TEST({50,50},{40,60})", 0.041227, false, 0},
+
+		// Nx1 column vector (df = N-1).
+		{"col_3x1", "CHISQ.TEST({10;20;30},{20;20;20})", 0.006738, false, 0},
+
+		// 2x1 column vector (df = 1).
+		{"col_2x1", "CHISQ.TEST({50;50},{40;60})", 0.041227, false, 0},
+
+		// Perfect fit: actual equals expected, chiSq = 0, p = 1.
+		{"perfect_fit", "CHISQ.TEST({10,20;30,40},{10,20;30,40})", 1.0, false, 0},
+
+		// Very large chi-squared → p ≈ 0.
+		{"large_chi", "CHISQ.TEST({1000,1;1,1000},{1,1000;1000,1})", 0.0, false, 0},
+
+		// 4x4 large table.
+		{"4x4_table", "CHISQ.TEST({10,20,30,40;15,25,35,45;20,30,40,50;25,35,45,55},{17.5,27.5,37.5,47.5;17.5,27.5,37.5,47.5;17.5,27.5,37.5,47.5;17.5,27.5,37.5,47.5})", 0.039417, false, 0},
+
+		// Single row with 5 columns (df = 4).
+		{"row_1x5", "CHISQ.TEST({5,10,15,20,25},{15,15,15,15,15})", 0.002243, false, 0},
+
+		// 2x3 table.
+		{"2x3_table", "CHISQ.TEST({10,20,30;40,50,60},{25,35,15;25,35,75})", 2.45927e-11, false, 0},
+
+		// Symmetric 2x2 table.
+		{"symmetric_2x2", "CHISQ.TEST({100,100;100,100},{100,100;100,100})", 1.0, false, 0},
+
+		// 1x1 → #N/A error.
+		{"err_1x1", "CHISQ.TEST({5},{5})", 0, true, ErrValNA},
+
+		// Mismatched dimensions → #N/A.
+		{"err_dim_mismatch", "CHISQ.TEST({1,2;3,4},{1,2,3;4,5,6})", 0, true, ErrValNA},
+
+		// Different row count → #N/A.
+		{"err_row_mismatch", "CHISQ.TEST({1,2;3,4;5,6},{1,2;3,4})", 0, true, ErrValNA},
+
+		// Expected value = 0 → #DIV/0!
+		{"err_div0", "CHISQ.TEST({10,20;30,40},{0,20;30,40})", 0, true, ErrValDIV0},
+
+		// Non-numeric in actual → #VALUE!
+		{"err_nonnumeric_actual", `CHISQ.TEST({"abc",20;30,40},{10,20;30,40})`, 0, true, ErrValVALUE},
+
+		// Non-numeric in expected → #VALUE!
+		{"err_nonnumeric_expected", `CHISQ.TEST({10,20;30,40},{"abc",20;30,40})`, 0, true, ErrValVALUE},
+
+		// Wrong arg count: too few.
+		{"err_too_few_args", "CHISQ.TEST({1,2})", 0, true, ErrValVALUE},
+
+		// Wrong arg count: too many.
+		{"err_too_many_args", "CHISQ.TEST({1,2},{1,2},{1,2})", 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError {
+					t.Fatalf("%s: want error %v, got type=%d val=%v", tt.formula, tt.errVal, got.Type, got)
+				}
+				if got.Err != tt.errVal {
+					t.Errorf("%s: want error %v, got %v", tt.formula, tt.errVal, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.want) > tol {
+				t.Errorf("%s = %g, want %g (diff=%g)", tt.formula, got.Num, tt.want, math.Abs(got.Num-tt.want))
+			}
+		})
+	}
+}
+
+func TestCHISQ_TEST_withResolver(t *testing.T) {
+	// Test using mockResolver for range references.
+	// Actual range A1:B3 = {58,35; 11,25; 10,23}
+	// Expected range C1:D3 = {45.35,47.65; 17.56,18.44; 16.09,16.91}
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(58),
+			{Col: 2, Row: 1}: NumberVal(35),
+			{Col: 1, Row: 2}: NumberVal(11),
+			{Col: 2, Row: 2}: NumberVal(25),
+			{Col: 1, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(23),
+			{Col: 3, Row: 1}: NumberVal(45.35),
+			{Col: 4, Row: 1}: NumberVal(47.65),
+			{Col: 3, Row: 2}: NumberVal(17.56),
+			{Col: 4, Row: 2}: NumberVal(18.44),
+			{Col: 3, Row: 3}: NumberVal(16.09),
+			{Col: 4, Row: 3}: NumberVal(16.91),
+		},
+	}
+
+	cf := evalCompile(t, "CHISQ.TEST(A1:B3,C1:D3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	want := 0.000308
+	if math.Abs(got.Num-want) > 1e-5 {
+		t.Errorf("CHISQ.TEST(A1:B3,C1:D3) = %g, want ~%g", got.Num, want)
+	}
+}
+
+func TestCHISQ_TEST_resolverRowVector(t *testing.T) {
+	// 1x4 row vector via cell references.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+			{Col: 4, Row: 1}: NumberVal(40),
+			{Col: 1, Row: 2}: NumberVal(25),
+			{Col: 2, Row: 2}: NumberVal(25),
+			{Col: 3, Row: 2}: NumberVal(25),
+			{Col: 4, Row: 2}: NumberVal(25),
+		},
+	}
+
+	cf := evalCompile(t, "CHISQ.TEST(A1:D1,A2:D2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// χ² = (10-25)²/25 + (20-25)²/25 + (30-25)²/25 + (40-25)²/25 = 9+1+1+9 = 20
+	// df = 3, p = 1 - regLowerGamma(1.5, 10) ≈ 0.000170
+	want := 0.000170
+	if math.Abs(got.Num-want) > 1e-4 {
+		t.Errorf("CHISQ.TEST row vector = %g, want ~%g", got.Num, want)
+	}
+}
+
+func TestCHISQ_TEST_errorPropagation(t *testing.T) {
+	// Error value in range should propagate.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(10),
+			{Col: 4, Row: 1}: NumberVal(20),
+		},
+	}
+
+	cf := evalCompile(t, "CHISQ.TEST(A1:B1,C1:D1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Fatalf("want error, got type=%d", got.Type)
+	}
+}
+
+func TestCHISQ_TEST_iferror(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// 1x1 case wrapped in IFERROR should catch #N/A.
+	cf := evalCompile(t, `IFERROR(CHISQ.TEST({5},{5}),"caught")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "caught" {
+		t.Errorf(`IFERROR(CHISQ.TEST({5},{5}),"caught") = %v, want "caught"`, got)
+	}
+}
