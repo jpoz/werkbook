@@ -57,7 +57,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | CHISQ.INV.RT | Returns the inverse of the right-tailed chi-square distribution. | Statistical | 20 |
 | CHISQ.TEST | Returns the result of a chi-square test. | Statistical | 23 |
 | CHOOSE | Returns the value at a position from a supplied list of choices. | Text | 24 |
-| CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 7 |
+| CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 16 |
 | CHOOSEROWS | Returns selected rows from an array. | Lookup & Reference | 7 |
 | CLEAN | Removes non-printing characters from text. | Text | 25 |
 | CODE | Returns the numeric code for the first character in text. | Text | 13 |
@@ -211,7 +211,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 30 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 32 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 17 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
