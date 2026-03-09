@@ -3256,19 +3256,19 @@ func TestSLN_Comprehensive(t *testing.T) {
 	}{
 		// Documentation example
 		{"doc example", numArgs(30000, 7500, 10), 2250, false},
-		// Zero salvage value
+		// Zero salvage value (full depreciation)
 		{"zero salvage", numArgs(30000, 0, 10), 3000, false},
 		// Salvage equals cost → zero depreciation
 		{"salvage equals cost", numArgs(10000, 10000, 5), 0, false},
 		// Salvage > cost → negative depreciation
 		{"salvage greater than cost", numArgs(5000, 8000, 10), -300, false},
-		// Life = 1
+		// Life = 1 (single period depreciation)
 		{"life is 1", numArgs(10000, 2000, 1), 8000, false},
-		// Large values
+		// Large values (expensive assets)
 		{"large values", numArgs(1e9, 1e6, 20), 4.995e7, false},
-		// Small decimals
+		// Small decimals (cheap assets)
 		{"small decimals", numArgs(0.50, 0.10, 4), 0.10, false},
-		// Zero cost
+		// Zero cost, zero salvage
 		{"zero cost", numArgs(0, 0, 10), 0, false},
 		// Zero cost with salvage → negative
 		{"zero cost with salvage", numArgs(0, 5000, 10), -500, false},
@@ -3276,10 +3276,39 @@ func TestSLN_Comprehensive(t *testing.T) {
 		{"negative cost", numArgs(-10000, 2000, 5), -2400, false},
 		// Fractional life
 		{"fractional life", numArgs(10000, 0, 2.5), 4000, false},
-		// Large life
+		// Large life (100+ periods)
 		{"large life", numArgs(10000, 0, 1000), 10, false},
 		// Negative salvage
 		{"negative salvage", numArgs(10000, -2000, 5), 2400, false},
+
+		// --- Additional cases ---
+
+		// Very large life (200 periods)
+		{"very large life 200", numArgs(50000, 5000, 200), 225, false},
+		// Both cost and salvage negative
+		{"both negative", numArgs(-5000, -2000, 10), -300, false},
+		// Negative life (computes normally, just negative result sign flip)
+		{"negative life", numArgs(10000, 2000, -5), -1600, false},
+		// Fractional life less than 1
+		{"fractional life less than 1", numArgs(1000, 0, 0.5), 2000, false},
+		// Fractional cost and salvage
+		{"fractional cost and salvage", numArgs(1234.56, 234.56, 5), 200, false},
+		// Very small positive life
+		{"very small life", numArgs(1000, 0, 0.001), 1e6, false},
+		// Cost much larger than salvage
+		{"cost much larger", numArgs(1e10, 0, 10), 1e9, false},
+		// Salvage much larger than cost
+		{"salvage much larger", numArgs(0, 1e10, 10), -1e9, false},
+		// Life with many decimal places
+		{"life many decimals", numArgs(10000, 0, 3.333), 3000.30003000, false},
+		// Typical car depreciation
+		{"car depreciation", numArgs(25000, 5000, 5), 4000, false},
+		// Typical equipment depreciation
+		{"equipment depreciation", numArgs(50000, 10000, 7), 5714.285714, false},
+		// Penny values
+		{"penny values", numArgs(0.01, 0.001, 1), 0.009, false},
+		// Life = cost (unusual but valid)
+		{"life equals cost", numArgs(100, 0, 100), 1, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3345,6 +3374,69 @@ func TestSLN_BoolCoercion(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertClose(t, "SLN bool coercion", v, 1)
+}
+
+func TestSLN_MixedCoercion(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+		want float64
+	}{
+		// Mix of number and string args
+		{"number and string mix", []Value{NumberVal(10000), StringVal("2000"), NumberVal(5)}, 1600},
+		// Bool as cost, number as others
+		{"bool cost true", []Value{boolArg(true), NumberVal(0), NumberVal(1)}, 1},
+		// Bool as salvage
+		{"bool salvage false", []Value{NumberVal(10), boolArg(false), NumberVal(2)}, 5},
+		// Bool as life (TRUE = 1)
+		{"bool life true", []Value{NumberVal(100), NumberVal(0), boolArg(true)}, 100},
+		// String with decimal
+		{"string decimal cost", []Value{StringVal("1500.50"), NumberVal(500.50), NumberVal(10)}, 100},
+		// All bools
+		{"all true", []Value{boolArg(true), boolArg(true), boolArg(true)}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertClose(t, tc.name, v, tc.want)
+		})
+	}
+}
+
+func TestSLN_BoolLifeZero(t *testing.T) {
+	// FALSE as life → life=0 → #DIV/0!
+	v, err := fnSLN([]Value{NumberVal(1000), NumberVal(0), boolArg(false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertError(t, "SLN bool life false div0", v)
+}
+
+func TestSLN_NonNumericStrings(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{"empty string cost", []Value{StringVal(""), NumberVal(0), NumberVal(10)}},
+		{"empty string salvage", []Value{NumberVal(1000), StringVal(""), NumberVal(10)}},
+		{"empty string life", []Value{NumberVal(1000), NumberVal(0), StringVal("")}},
+		{"alpha cost", []Value{StringVal("cost"), NumberVal(0), NumberVal(10)}},
+		{"alpha salvage", []Value{NumberVal(1000), StringVal("salvage"), NumberVal(10)}},
+		{"alpha life", []Value{NumberVal(1000), NumberVal(0), StringVal("years")}},
+		{"special chars", []Value{StringVal("#$%"), NumberVal(0), NumberVal(10)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnSLN(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
 }
 
 // === XNPV ===

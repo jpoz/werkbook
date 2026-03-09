@@ -351,7 +351,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | SINH | Returns the hyperbolic sine of a number. | Math & Trig | 23 |
 | SKEW | Returns the sample skewness of a data set. | Statistical | 23 |
 | SKEW.P | Returns the population skewness of a data set. | Statistical | 27 |
-| SLN | Returns straight-line depreciation for one period. | Financial | 6 |
+| SLN | Returns straight-line depreciation for one period. | Financial | 9 |
 | SLOPE | Returns the slope of a linear regression line. | Statistical | 16 |
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 28 |
 | SORT | Sorts an array by row or column order. | Logical | 25 |
