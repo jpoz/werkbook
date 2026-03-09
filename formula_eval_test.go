@@ -213,6 +213,26 @@ func TestWholeColumnRefCrossSheet(t *testing.T) {
 	}
 }
 
+func TestOversizedCrossSheetRangeReturnsREF(t *testing.T) {
+	f := werkbook.New()
+	s1 := f.Sheet("Sheet1")
+	s2, err := f.NewSheet("Sheet2")
+	if err != nil {
+		t.Fatalf("NewSheet: %v", err)
+	}
+
+	s1.SetValue("B524289", 1)
+	s2.SetFormula("A1", "SUM(Sheet1!A:B)")
+
+	val, err := s2.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeError || val.String != "#REF!" {
+		t.Errorf("SUM(Sheet1!A:B) = %#v, want #REF!", val)
+	}
+}
+
 // TestCrossSheetEmptyRefReturnsZero verifies that a cross-sheet reference to
 // an empty cell returns 0, not empty. This matches expected behavior where
 // formulas like ='Sheet2'!A1 (with A1 empty) cache 0.

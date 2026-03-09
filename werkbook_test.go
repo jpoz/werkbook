@@ -79,6 +79,86 @@ func TestSaveAsCreatesFile(t *testing.T) {
 	}
 }
 
+func TestSetDate1904(t *testing.T) {
+	f := werkbook.New()
+
+	// Default should be false.
+	if f.Date1904() {
+		t.Error("Date1904 should default to false")
+	}
+
+	// Enable.
+	f.SetDate1904(true)
+	if !f.Date1904() {
+		t.Error("Date1904 should be true after SetDate1904(true)")
+	}
+
+	// Setting to same value should be a no-op (early return path).
+	f.SetDate1904(true)
+	if !f.Date1904() {
+		t.Error("Date1904 should still be true")
+	}
+
+	// Disable.
+	f.SetDate1904(false)
+	if f.Date1904() {
+		t.Error("Date1904 should be false after SetDate1904(false)")
+	}
+}
+
+func TestCellFormula(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	if err := s.SetFormula("A1", "1+2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetValue("B1", "plain"); err != nil {
+		t.Fatal(err)
+	}
+
+	for row := range s.Rows() {
+		for _, cell := range row.Cells() {
+			switch cell.Col() {
+			case 1: // A1
+				if cell.Formula() != "1+2" {
+					t.Errorf("A1.Formula() = %q, want '1+2'", cell.Formula())
+				}
+			case 2: // B1
+				if cell.Formula() != "" {
+					t.Errorf("B1.Formula() = %q, want empty", cell.Formula())
+				}
+			}
+		}
+	}
+}
+
+func TestCalcProperties(t *testing.T) {
+	f := werkbook.New()
+
+	// Default should be zero value.
+	cp := f.CalcProperties()
+	if cp.Mode != "" || cp.ID != 0 {
+		t.Error("default CalcProperties should be zero value")
+	}
+
+	// Set and get.
+	f.SetCalcProperties(werkbook.CalcProperties{
+		Mode:           "auto",
+		ID:             12345,
+		FullCalcOnLoad: true,
+	})
+	cp = f.CalcProperties()
+	if cp.Mode != "auto" {
+		t.Errorf("Mode = %q, want auto", cp.Mode)
+	}
+	if cp.ID != 12345 {
+		t.Errorf("ID = %d, want 12345", cp.ID)
+	}
+	if !cp.FullCalcOnLoad {
+		t.Error("FullCalcOnLoad should be true")
+	}
+}
+
 func TestWriteToAndOpenReader(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

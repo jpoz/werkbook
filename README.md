@@ -85,7 +85,7 @@ fmt.Println(v)
 
 ## Formula Engine
 
-Werkbook includes a formula engine with 198 built-in functions. See [FORMULAS.md](FORMULAS.md) for the full list of supported and unsupported functions.
+Werkbook includes a built-in formula engine. See [FORMULAS.md](FORMULAS.md) for the current list of supported and unsupported functions.
 
 ## Compatibility
 
