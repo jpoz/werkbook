@@ -10259,3 +10259,361 @@ func TestAMORDEGRC_ErrorPropagation(t *testing.T) {
 		assertError(t, "error basis", v)
 	})
 }
+
+// === AMORLINC ===
+
+func TestAMORLINC_Comprehensive(t *testing.T) {
+	// Serial numbers for reference dates:
+	// DATE(2008,8,18)  = 39679
+	// DATE(2008,12,30) = 39813
+	// DATE(2010,1,1)   = 40179
+	// DATE(2010,6,30)  = 40359
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Doc example: AMORLINC(2400, 39679, 39813, 300, 1, 0.15, 1) = 360 ---
+		{
+			name: "doc example period 1 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.15, 1),
+			want: 360,
+		},
+		// --- Period 0 (prorated first period) ---
+		// basis 1: dsm=134, bYear=366, yearFrac=134/366
+		// dep0 = 2400 * 0.15 * 134/366 = 131.803279...
+		{
+			name: "doc example period 0 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.15, 1),
+			want: 131.80327868852460,
+		},
+		// --- Multiple periods ---
+		// nper = ceil(1/0.15) = 7
+		// Periods 1..6: normalDep = 2400 * 0.15 = 360
+		{
+			name: "doc example period 2 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 2, 0.15, 1),
+			want: 360,
+		},
+		{
+			name: "doc example period 3 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 3, 0.15, 1),
+			want: 360,
+		},
+		{
+			name: "doc example period 4 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 4, 0.15, 1),
+			want: 360,
+		},
+		{
+			name: "doc example period 5 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 5, 0.15, 1),
+			want: 360,
+		},
+		{
+			name: "doc example period 6 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 6, 0.15, 1),
+			want: 360,
+		},
+		// Period 7 (last = nper): rest = 2400 - 300 - 131.803 - 6*360 = -191.803 → clamped to 0
+		{
+			name: "doc example period 7 last period",
+			args: numArgs(2400, 39679, 39813, 300, 7, 0.15, 1),
+			want: 0,
+		},
+		// Period 8: beyond asset life, return 0
+		{
+			name: "doc example period 8 beyond life",
+			args: numArgs(2400, 39679, 39813, 300, 8, 0.15, 1),
+			want: 0,
+		},
+		// --- Basis 0 (US NASD 30/360) ---
+		// dsm=132, bYear=360, dep0 = 2400 * 0.15 * 132/360 = 132
+		{
+			name: "basis 0 period 0",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.15, 0),
+			want: 132,
+		},
+		{
+			name: "basis 0 period 1",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.15, 0),
+			want: 360,
+		},
+		// --- Basis 3 (actual/365) ---
+		// dsm=134, bYear=365, dep0 = 2400 * 0.15 * 134/365 = 132.164383...
+		{
+			name: "basis 3 period 0",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.15, 3),
+			want: 132.16438356164384,
+		},
+		// --- Basis 4 (European 30/360) ---
+		// dsm=131, bYear=360, dep0 = 2400 * 0.15 * 131/360 = 131.0
+		{
+			name: "basis 4 period 0",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.15, 4),
+			want: 131.0,
+		},
+		// --- Default basis (omitted, should default to 0) ---
+		{
+			name: "default basis omitted 6 args",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.15),
+			want: 132,
+		},
+		// --- Rate = 0.25, cost=10000, salvage=500, basis=3 ---
+		// datePurchased=40179 (2010-01-01), firstPeriod=40359 (2010-06-30)
+		// nper = ceil(1/0.25) = 4
+		// dsm = 180, bYear = 365
+		// dep0 = 10000 * 0.25 * 180/365 = 1232.876712...
+		// normalDep = 10000 * 0.25 = 2500
+		// period 4 (last): 10000 - 500 - 1232.876712 - 3*2500 = 767.123288...
+		{
+			name: "rate 0.25 period 0 basis 3",
+			args: numArgs(10000, 40179, 40359, 500, 0, 0.25, 3),
+			want: 1232.8767123287671,
+		},
+		{
+			name: "rate 0.25 period 1 basis 3",
+			args: numArgs(10000, 40179, 40359, 500, 1, 0.25, 3),
+			want: 2500,
+		},
+		{
+			name: "rate 0.25 period 3 basis 3",
+			args: numArgs(10000, 40179, 40359, 500, 3, 0.25, 3),
+			want: 2500,
+		},
+		{
+			name: "rate 0.25 period 4 last basis 3",
+			args: numArgs(10000, 40179, 40359, 500, 4, 0.25, 3),
+			want: 767.1232876712329,
+		},
+		{
+			name: "rate 0.25 period 5 beyond life",
+			args: numArgs(10000, 40179, 40359, 500, 5, 0.25, 3),
+			want: 0,
+		},
+		// --- Rate = 0.5, cost=2400, salvage=300, basis=1 ---
+		// nper = ceil(1/0.5) = 2
+		// dep0 = 2400 * 0.5 * 134/366 = 439.344262...
+		// normalDep = 2400 * 0.5 = 1200
+		// period 2 (last): 2400 - 300 - 439.344 - 1*1200 = 460.655738...
+		{
+			name: "rate 0.5 period 0 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 0, 0.5, 1),
+			want: 439.34426229508197,
+		},
+		{
+			name: "rate 0.5 period 1 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.5, 1),
+			want: 1200,
+		},
+		{
+			name: "rate 0.5 period 2 last basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 2, 0.5, 1),
+			want: 460.65573770491803,
+		},
+		// --- Rate = 1.0 ---
+		// nper = ceil(1/1) = 1
+		// dep0 = 2400 * 1.0 * 134/366 = 878.688525...
+		// period 1 (last): 2400 - 300 - 878.688525 - 0*2400 = 1221.311475...
+		{
+			name: "rate 1.0 period 0 basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 0, 1.0, 1),
+			want: 878.68852459016393,
+		},
+		{
+			name: "rate 1.0 period 1 last basis 1",
+			args: numArgs(2400, 39679, 39813, 300, 1, 1.0, 1),
+			want: 1221.3114754098361,
+		},
+		// --- Zero cost ---
+		{
+			name: "zero cost period 0",
+			args: numArgs(0, 39679, 39813, 0, 0, 0.15, 1),
+			want: 0,
+		},
+		{
+			name: "zero cost period 1",
+			args: numArgs(0, 39679, 39813, 0, 1, 0.15, 1),
+			want: 0,
+		},
+		// --- Salvage = cost ---
+		// dep0 = 2400 * 0.15 * yearFrac (still computed)
+		// normalDep = 360
+		// But last period rest = 2400 - 2400 - dep0 - ... is very negative → 0
+		{
+			name: "salvage equals cost period 0",
+			args: numArgs(2400, 39679, 39813, 2400, 0, 0.15, 1),
+			want: 131.80327868852460,
+		},
+		{
+			name: "salvage equals cost period 1",
+			args: numArgs(2400, 39679, 39813, 2400, 1, 0.15, 1),
+			want: 360,
+		},
+		// --- Error cases ---
+		// Negative cost
+		{
+			name: "negative cost NUM error",
+			args: numArgs(-2400, 39679, 39813, 300, 1, 0.15, 1),
+			wantErr: true,
+		},
+		// Negative salvage
+		{
+			name: "negative salvage NUM error",
+			args: numArgs(2400, 39679, 39813, -300, 1, 0.15, 1),
+			wantErr: true,
+		},
+		// Salvage > cost
+		{
+			name: "salvage exceeds cost NUM error",
+			args: numArgs(2400, 39679, 39813, 3000, 1, 0.15, 1),
+			wantErr: true,
+		},
+		// Negative period
+		{
+			name: "negative period NUM error",
+			args: numArgs(2400, 39679, 39813, 300, -1, 0.15, 1),
+			wantErr: true,
+		},
+		// Negative rate
+		{
+			name: "negative rate NUM error",
+			args: numArgs(2400, 39679, 39813, 300, 1, -0.15, 1),
+			wantErr: true,
+		},
+		// Zero rate
+		{
+			name: "zero rate NUM error",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0, 1),
+			wantErr: true,
+		},
+		// Invalid basis 2
+		{
+			name: "basis 2 invalid NUM error",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.15, 2),
+			wantErr: true,
+		},
+		// Invalid basis 5
+		{
+			name: "basis 5 invalid NUM error",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.15, 5),
+			wantErr: true,
+		},
+		// Invalid basis -1
+		{
+			name: "basis negative invalid NUM error",
+			args: numArgs(2400, 39679, 39813, 300, 1, 0.15, -1),
+			wantErr: true,
+		},
+		// Period far beyond life
+		{
+			name: "period 100 beyond life returns 0",
+			args: numArgs(2400, 39679, 39813, 300, 100, 0.15, 1),
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := fnAmorlinc(tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr {
+				assertError(t, tt.name, v)
+				return
+			}
+			if v.Type != ValueNumber {
+				t.Fatalf("%s: expected number, got type %v (str=%q)", tt.name, v.Type, v.Str)
+			}
+			if math.Abs(v.Num-tt.want) > 1e-9 {
+				t.Errorf("%s: got %.15f, want %.15f", tt.name, v.Num, tt.want)
+			}
+		})
+	}
+}
+
+func TestAMORLINC_WrongArgCount(t *testing.T) {
+	t.Run("too few args", func(t *testing.T) {
+		v, err := fnAmorlinc(numArgs(2400, 39679, 39813, 300, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "too few args", v)
+	})
+
+	t.Run("too many args", func(t *testing.T) {
+		v, err := fnAmorlinc(numArgs(2400, 39679, 39813, 300, 1, 0.15, 1, 99))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "too many args", v)
+	})
+}
+
+func TestAMORLINC_ErrorPropagation(t *testing.T) {
+	errVal := ErrorVal(ErrValDIV0)
+
+	t.Run("error in cost", func(t *testing.T) {
+		v, err := fnAmorlinc([]Value{errVal, NumberVal(39679), NumberVal(39813), NumberVal(300), NumberVal(1), NumberVal(0.15), NumberVal(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "error cost", v)
+	})
+
+	t.Run("error in rate", func(t *testing.T) {
+		v, err := fnAmorlinc([]Value{NumberVal(2400), NumberVal(39679), NumberVal(39813), NumberVal(300), NumberVal(1), errVal, NumberVal(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "error rate", v)
+	})
+
+	t.Run("error in basis", func(t *testing.T) {
+		v, err := fnAmorlinc([]Value{NumberVal(2400), NumberVal(39679), NumberVal(39813), NumberVal(300), NumberVal(1), NumberVal(0.15), errVal})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertError(t, "error basis", v)
+	})
+}
+
+func TestAMORLINC_StringCoercion(t *testing.T) {
+	// String "2400" should coerce to number 2400.
+	v, err := fnAmorlinc([]Value{
+		StringVal("2400"),
+		NumberVal(39679), NumberVal(39813),
+		NumberVal(300), NumberVal(1), NumberVal(0.15), NumberVal(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-360) > 1e-9 {
+		t.Errorf("got %f, want 360", v.Num)
+	}
+}
+
+func TestAMORLINC_BoolCoercion(t *testing.T) {
+	// TRUE coerces to 1 for cost, so cost=1, rate=0.15
+	// normalDep = 1 * 0.15 = 0.15
+	v, err := fnAmorlinc([]Value{
+		BoolVal(true),
+		NumberVal(39679), NumberVal(39813),
+		NumberVal(0), NumberVal(1), NumberVal(0.15), NumberVal(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got type %v", v.Type)
+	}
+	if math.Abs(v.Num-0.15) > 1e-9 {
+		t.Errorf("got %f, want 0.15", v.Num)
+	}
+}

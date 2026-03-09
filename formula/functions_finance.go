@@ -58,6 +58,7 @@ func init() {
 	Register("YIELD", NoCtx(fnYield))
 	Register("FVSCHEDULE", NoCtx(fnFVSchedule))
 	Register("AMORDEGRC", NoCtx(fnAmordegrc))
+	Register("AMORLINC", NoCtx(fnAmorlinc))
 }
 
 // flattenValues extracts all numeric values from an arg that may be a scalar or array (range).
@@ -3378,4 +3379,106 @@ func fnAmordegrc(args []Value) (Value, error) {
 
 	// Should not be reached, but safeguard.
 	return NumberVal(0), nil
+}
+
+// fnAmorlinc implements AMORLINC(cost, date_purchased, first_period, salvage, period, rate, [basis]).
+// Returns the depreciation for each accounting period using straight-line (linear) depreciation,
+// prorated for the first period. Used in the French accounting system.
+func fnAmorlinc(args []Value) (Value, error) {
+	if len(args) < 6 || len(args) > 7 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	cost, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	datePurchasedRaw, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	firstPeriodRaw, e := CoerceNum(args[2])
+	if e != nil {
+		return *e, nil
+	}
+	salvage, e := CoerceNum(args[3])
+	if e != nil {
+		return *e, nil
+	}
+	periodRaw, e := CoerceNum(args[4])
+	if e != nil {
+		return *e, nil
+	}
+	rate, e := CoerceNum(args[5])
+	if e != nil {
+		return *e, nil
+	}
+
+	basis := 0
+	if len(args) == 7 {
+		b, e := CoerceNum(args[6])
+		if e != nil {
+			return *e, nil
+		}
+		basis = int(b)
+	}
+
+	datePurchased := math.Trunc(datePurchasedRaw)
+	firstPeriod := math.Trunc(firstPeriodRaw)
+	period := int(math.Trunc(periodRaw))
+
+	// Validate inputs.
+	if cost < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if salvage < 0 || salvage > cost {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if period < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if rate <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	// Basis 2 is not supported for AMORLINC.
+	if basis != 0 && basis != 1 && basis != 3 && basis != 4 {
+		return ErrorVal(ErrValNUM), nil
+	}
+
+	// Compute year fraction for the prorated first period.
+	dsm, bYear := dayCountBasis(datePurchased, firstPeriod, basis)
+	if bYear == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	yearFrac := dsm / bYear
+
+	// Total number of depreciation periods = ceil(1/rate).
+	nper := int(math.Ceil(1.0 / rate))
+
+	// Period 0: prorated depreciation.
+	dep0 := cost * rate * yearFrac
+
+	if period == 0 {
+		return NumberVal(dep0), nil
+	}
+
+	// Normal period depreciation (flat amount).
+	normalDep := cost * rate
+
+	// Last period index is nper (period 0 is prorated, periods 1..nper-1 are normal, period nper is remainder).
+	if period > nper {
+		return NumberVal(0), nil
+	}
+
+	if period == nper {
+		// Last period: remaining amount after salvage and all prior depreciation.
+		rest := cost - salvage - dep0 - float64(nper-1)*normalDep
+		if rest < 0 {
+			return NumberVal(0), nil
+		}
+		return NumberVal(rest), nil
+	}
+
+	// Normal periods 1 through nper-1.
+	return NumberVal(normalDep), nil
 }
