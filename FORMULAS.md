@@ -359,11 +359,11 @@ Werkbook supports **437** spreadsheet formula functions.
 | SQRT | Returns the square root of a number. | Math & Trig | 29 |
 | SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
 | STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 16 |
-| STDEV | Returns the sample standard deviation. | Statistical | 24 |
-| STDEV.P | Returns the population standard deviation. | Statistical | 15 |
+| STDEV | Returns the sample standard deviation. | Statistical | 25 |
+| STDEV.P | Returns the population standard deviation. | Statistical | 32 |
 | STDEV.S | Returns the sample standard deviation. | Statistical | 45 |
 | STDEVA | Returns the sample standard deviation including logical values and text coercions. | Statistical | 28 |
-| STDEVP | Returns the population standard deviation. | Statistical | 4 |
+| STDEVP | Returns the population standard deviation. | Statistical | 9 |
 | STDEVPA | Returns the population standard deviation including logical values and text coercions. | Statistical | 29 |
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 23 |
@@ -415,7 +415,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | VALUE | Converts text that looks like a number into a numeric value. | Text | 31 |
 | VALUETOTEXT | Converts a value to a text representation. | Text | 26 |
 | VAR | Returns the sample variance. | Statistical | 24 |
-| VAR.P | Returns the population variance. | Statistical | 22 |
+| VAR.P | Returns the population variance. | Statistical | 23 |
 | VAR.S | Returns the sample variance. | Statistical | 4 |
 | VARA | Returns the sample variance including logical values and text coercions. | Statistical | 22 |
 | VARP | Returns the population variance. | Statistical | 4 |

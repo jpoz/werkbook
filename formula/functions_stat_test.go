@@ -21025,6 +21025,314 @@ func TestSTDEVP(t *testing.T) {
 		}
 	})
 
+	// --- Additional comprehensive STDEV.P / STDEVP tests ---
+
+	t.Run("negative numbers", func(t *testing.T) {
+		// STDEV.P(-2,0,2): mean=0, ssq=8, var=8/3, stdev=sqrt(8/3)
+		cf := evalCompile(t, "STDEV.P(-2,0,2)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := math.Sqrt(8.0 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("all zeros", func(t *testing.T) {
+		cf := evalCompile(t, "STDEV.P(0,0,0,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("decimal values", func(t *testing.T) {
+		// STDEV.P(1.5,2.5,3.5): mean=2.5, ssq=2, var=2/3, stdev=sqrt(2/3)
+		cf := evalCompile(t, "STDEV.P(1.5,2.5,3.5)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := math.Sqrt(2.0 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("large values", func(t *testing.T) {
+		// STDEV.P(1000000,2000000,3000000): mean=2e6, ssq=2e12, var=2e12/3
+		cf := evalCompile(t, "STDEV.P(1000000,2000000,3000000)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := math.Sqrt(2e12 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-6 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("empty cells in range ignored", func(t *testing.T) {
+		// A1=2, A2=empty, A3=4 -> only {2,4}, mean=3, ssq=2, stdev=1
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4),
+		}}
+		cf := evalCompile(t, "STDEV.P(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-1) > 1e-10 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("boolean FALSE as direct arg coerces to 0", func(t *testing.T) {
+		// STDEV.P(FALSE,4): {0,4}, mean=2, ssq=8, var=4, stdev=2
+		cf := evalCompile(t, "STDEV.P(FALSE,4)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-2) > 1e-10 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("numeric string as direct arg coerced", func(t *testing.T) {
+		// STDEV.P("5",15): {5,15}, mean=10, ssq=50, var=25, stdev=5
+		cf := evalCompile(t, `STDEV.P("5",15)`)
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-5) > 1e-10 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("mixed types in range numbers only", func(t *testing.T) {
+		// Range with number, bool, text, number: only numbers counted.
+		// {10, TRUE, "abc", 30} -> only {10,30}, mean=20, ssq=200, var=100, stdev=10
+		resolver := valResolver(
+			NumberVal(10),
+			BoolVal(true),
+			StringVal("abc"),
+			NumberVal(30),
+		)
+		cf := evalCompile(t, "STDEV.P(A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-10) > 1e-10 {
+			t.Errorf("got %v, want 10", got)
+		}
+	})
+
+	t.Run("range with only text gives DIV/0", func(t *testing.T) {
+		// Text in ranges is ignored for STDEV.P (unlike STDEVPA), so no numbers -> DIV/0
+		resolver := valResolver(StringVal("hello"), StringVal("world"))
+		cf := evalCompile(t, "STDEV.P(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("range with only booleans gives DIV/0", func(t *testing.T) {
+		// Booleans in ranges are ignored for STDEV.P, so no numbers -> DIV/0
+		resolver := valResolver(BoolVal(true), BoolVal(false))
+		cf := evalCompile(t, "STDEV.P(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("relationship to VARP: STDEVP equals sqrt of VARP", func(t *testing.T) {
+		// STDEV.P(2,4,6,8) should equal sqrt(VAR.P(2,4,6,8))
+		cfStdev := evalCompile(t, "STDEV.P(2,4,6,8)")
+		gotStdev, err := Eval(cfStdev, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval STDEV.P: %v", err)
+		}
+		cfVarp := evalCompile(t, "VAR.P(2,4,6,8)")
+		gotVarp, err := Eval(cfVarp, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval VAR.P: %v", err)
+		}
+		if gotStdev.Type != ValueNumber || gotVarp.Type != ValueNumber {
+			t.Fatalf("unexpected types: stdevp=%v varp=%v", gotStdev.Type, gotVarp.Type)
+		}
+		wantStdev := math.Sqrt(gotVarp.Num)
+		if math.Abs(gotStdev.Num-wantStdev) > 1e-10 {
+			t.Errorf("STDEV.P=%g != sqrt(VAR.P)=%g", gotStdev.Num, wantStdev)
+		}
+	})
+
+	t.Run("STDEV.P and STDEVP alias produce same result", func(t *testing.T) {
+		resolver := numResolver(3, 7, 11, 15, 19)
+		cf1 := evalCompile(t, "STDEV.P(A1:A5)")
+		got1, err := Eval(cf1, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval STDEV.P: %v", err)
+		}
+		cf2 := evalCompile(t, "STDEVP(A1:A5)")
+		got2, err := Eval(cf2, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval STDEVP: %v", err)
+		}
+		if got1.Type != ValueNumber || got2.Type != ValueNumber {
+			t.Fatalf("unexpected types: STDEV.P=%v STDEVP=%v", got1.Type, got2.Type)
+		}
+		if math.Abs(got1.Num-got2.Num) > 1e-15 {
+			t.Errorf("STDEV.P=%g != STDEVP=%g", got1.Num, got2.Num)
+		}
+	})
+
+	t.Run("STDEVP no args returns VALUE error", func(t *testing.T) {
+		cf := evalCompile(t, "STDEVP()")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	t.Run("five identical values returns 0", func(t *testing.T) {
+		cf := evalCompile(t, "STDEV.P(9,9,9,9,9)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("multiple range arguments", func(t *testing.T) {
+		// STDEV.P(A1:A2,B1:B2) with A={1,3} B={5,7}
+		// All values: {1,3,5,7}, mean=4, ssq=20, var=5, stdev=sqrt(5)
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(5),
+			{Col: 2, Row: 2}: NumberVal(7),
+		}}
+		cf := evalCompile(t, "STDEV.P(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := math.Sqrt(5.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("STDEVP with range reference", func(t *testing.T) {
+		// Using STDEVP alias with range reference
+		resolver := numResolver(10, 20, 30)
+		cf := evalCompile(t, "STDEVP(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// mean=20, ssq=200, var=200/3, stdev=sqrt(200/3)
+		want := math.Sqrt(200.0 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("STDEVP negative numbers", func(t *testing.T) {
+		cf := evalCompile(t, "STDEVP(-10,-20,-30)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Same stdev as {10,20,30}: mean=-20, ssq=200, var=200/3, stdev=sqrt(200/3)
+		want := math.Sqrt(200.0 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("STDEVP all zeros", func(t *testing.T) {
+		cf := evalCompile(t, "STDEVP(0,0,0)")
+		got, err := Eval(cf, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("population stdev always <= sample stdev", func(t *testing.T) {
+		// For {2,4,6,8,10}: STDEV.P should be strictly less than STDEV (sample)
+		cf1 := evalCompile(t, "STDEV.P(2,4,6,8,10)")
+		pop, err := Eval(cf1, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval STDEV.P: %v", err)
+		}
+		cf2 := evalCompile(t, "STDEV(2,4,6,8,10)")
+		samp, err := Eval(cf2, &mockResolver{}, nil)
+		if err != nil {
+			t.Fatalf("Eval STDEV: %v", err)
+		}
+		if pop.Type != ValueNumber || samp.Type != ValueNumber {
+			t.Fatalf("unexpected types: pop=%v samp=%v", pop.Type, samp.Type)
+		}
+		if pop.Num >= samp.Num {
+			t.Errorf("population stdev %g should be < sample stdev %g", pop.Num, samp.Num)
+		}
+	})
+
+	t.Run("error in range cell ref propagates", func(t *testing.T) {
+		resolver := valResolver(
+			NumberVal(5),
+			ErrorVal(ErrValDIV0),
+		)
+		cf := evalCompile(t, "STDEV.P(A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("larger dataset 10 values via range", func(t *testing.T) {
+		resolver := numResolver(2, 4, 4, 4, 5, 5, 7, 9, 10, 14)
+		cf := evalCompile(t, "STDEV.P(A1:A10)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Known result: mean=6.4, ssq=118.4, var=118.4/10=11.84, stdevp=sqrt(11.84)
+		want := math.Sqrt(11.84)
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-8 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
 	_ = numResolver
 	_ = valResolver
 }
