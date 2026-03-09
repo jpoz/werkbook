@@ -119,7 +119,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | DOLLAR | Formats a number as currency text. | Text | 25 |
 | DOLLARDE | Converts a fractional dollar price to a decimal price. | Financial | 18 |
 | DOLLARFR | Converts a decimal dollar price to a fractional price. | Financial | 17 |
-| DPRODUCT | Returns the product of matching records in a database range. | Db | 1 |
+| DPRODUCT | Returns the product of matching records in a database range. | Db | 7 |
 | DROP | Drops rows or columns from the start or end of an array. | Lookup & Reference | 26 |
 | DSTDEV | Returns the sample standard deviation of matching database records. | Db | 1 |
 | DSTDEVP | Returns the population standard deviation of matching database records. | Db | 1 |

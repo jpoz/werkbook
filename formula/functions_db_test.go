@@ -4490,6 +4490,7 @@ func TestDPRODUCT(t *testing.T) {
 	db := standardDB()
 
 	tests := []dbTestCase{
+		// --- basic: product of numeric column with single text criteria ---
 		{
 			name: "product Apple yield",
 			db:   db,
@@ -4513,15 +4514,7 @@ func TestDPRODUCT(t *testing.T) {
 			wantNum:  80, // 10*8
 		},
 		{
-			name:     "product no matches returns 0",
-			db:       db,
-			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Orange")}},
-			field:    `"Yield"`,
-			wantType: ValueNumber,
-			wantNum:  0,
-		},
-		{
-			name: "product single match",
+			name: "product Cherry yield single record equals that value",
 			db:   db,
 			crit: [][]Value{
 				{StringVal("Tree")},
@@ -4531,8 +4524,288 @@ func TestDPRODUCT(t *testing.T) {
 			wantType: ValueNumber,
 			wantNum:  9,
 		},
+
+		// --- field by column number ---
 		{
-			name: "product ignores text",
+			name: "field by column number",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "4", // 4th column = Yield
+			wantType: ValueNumber,
+			wantNum:  840,
+		},
+
+		// --- no matching records returns 0 ---
+		{
+			name:     "no matches returns 0",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Orange")}},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+
+		// --- blank criteria matches all records ---
+		{
+			name: "blank criteria matches all - product of all yields",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  604800, // 14*10*9*10*8*6
+		},
+
+		// --- no criteria rows matches all records ---
+		{
+			name: "no criteria rows matches all",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  604800,
+		},
+
+		// --- multiple criteria rows = OR logic ---
+		{
+			name: "OR logic - Apple OR Pear yield",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+				{StringVal("Pear")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  67200, // 14*10*6 * 10*8 = 840*80
+		},
+
+		// --- multiple criteria columns = AND logic ---
+		{
+			name: "AND logic - Apple with Height>10",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  140, // Apple h=18 yield=14, Apple h=14 yield=10 → 14*10
+		},
+
+		// --- combined AND/OR criteria ---
+		{
+			name: "combined AND/OR - Apple Height>10 OR Pear",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10")},
+				{StringVal("Pear"), StringVal("")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  11200, // (14*10) * (10*8) = 140*80
+		},
+
+		// --- numeric comparison criteria ---
+		{
+			name: "greater than on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">13")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  140, // h=18→14, h=14→10 → 14*10
+		},
+		{
+			name: "less than on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<10")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  48, // h=9→8, h=8→6 → 8*6
+		},
+		{
+			name: "greater or equal on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">=13")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  1260, // h=18→14, h=13→9, h=14→10 → 14*9*10
+		},
+		{
+			name: "less or equal on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<=12")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  480, // h=12→10, h=9→8, h=8→6 → 10*8*6
+		},
+		{
+			name: "not equal on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("<>13")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  67200, // all except Cherry (h=13): 14*10*10*8*6
+		},
+		{
+			name: "exact numeric match =14 on Height",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal("=14")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  10, // only Apple h=14, yield=10
+		},
+
+		// --- wildcard criteria ---
+		{
+			name: "wildcard * matches Apple",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("A*")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  840, // 14*10*6
+		},
+		{
+			name: "wildcard ? matches Pear",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Pea?")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  80, // 10*8
+		},
+
+		// --- case-insensitive text criteria ---
+		{
+			name: "case-insensitive text match",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("apple")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  840,
+		},
+
+		// --- product with zero in data → 0 ---
+		{
+			name: "product with zero in data",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(5)},
+				{StringVal("B"), NumberVal(0)},
+				{StringVal("C"), NumberVal(3)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0, // 5*0*3
+		},
+
+		// --- product with negative numbers ---
+		{
+			name: "product with negative numbers",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-3)},
+				{StringVal("B"), NumberVal(4)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  -12, // -3*4
+		},
+		{
+			name: "product of two negatives is positive",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-2)},
+				{StringVal("B"), NumberVal(-5)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  10, // -2*-5
+		},
+
+		// --- product with all ones → 1 ---
+		{
+			name: "product all ones",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(1)},
+				{StringVal("B"), NumberVal(1)},
+				{StringVal("C"), NumberVal(1)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1,
+		},
+
+		// --- decimal values ---
+		{
+			name: "product with decimal values",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(2.5)},
+				{StringVal("B"), NumberVal(4.0)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  10, // 2.5*4.0
+		},
+
+		// --- text column (non-numeric field values) → product ignores text ---
+		{
+			name: "text-only field column returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), StringVal("foo")},
+				{StringVal("B"), StringVal("bar")},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+
+		// --- mixed types: product ignores text, uses numbers ---
+		{
+			name: "mixed types - product ignores text cells",
 			db: [][]Value{
 				{StringVal("Name"), StringVal("Value")},
 				{StringVal("A"), NumberVal(3)},
@@ -4544,18 +4817,208 @@ func TestDPRODUCT(t *testing.T) {
 			wantType: ValueNumber,
 			wantNum:  15, // 3*5
 		},
+
+		// --- empty cells in field column are ignored ---
+		{
+			name: "empty cells in field are ignored",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(7)},
+				{StringVal("B"), EmptyVal()},
+				{StringVal("C"), NumberVal(3)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  21, // 7*3
+		},
+
+		// --- large product values ---
+		{
+			name: "large product",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(1000)},
+				{StringVal("B"), NumberVal(2000)},
+				{StringVal("C"), NumberVal(3000)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  6e9, // 1000*2000*3000
+		},
+
+		// --- cross-column criteria ---
+		{
+			name: "cross-column criteria on different columns",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Age")},
+				{StringVal("Apple"), StringVal(">14")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  7875, // Apple age=20 profit=105, Apple age=15 profit=75 → 105*75
+		},
+
+		// --- field name not found → #VALUE! ---
+		{
+			name:     "field name not found returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    `"NonExistent"`,
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+
+		// --- field index out of range → #VALUE! ---
+		{
+			name:     "field index out of range returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "99",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+
+		// --- field index 0 → #VALUE! ---
+		{
+			name:     "field index 0 returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "0",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+
+		// --- product of profit column ---
+		{
+			name: "product of Apple profit",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  354375, // 105*75*45
+		},
+
+		// --- Excel documentation example ---
+		// DPRODUCT(database, "Yield", criteria) where criteria selects
+		// Apple with Height>10 AND Height<16 (row 1) OR Pear (row 2).
+		// Apple h=14, yield=10; Pear h=12 yield=10, h=9 yield=8 → 10*10*8=800
+		{
+			name: "Excel doc example - Apple h>10 h<16 OR Pear",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Height"), StringVal("Height")},
+				{StringVal("Apple"), StringVal(">10"), StringVal("<16")},
+				{StringVal("Pear"), StringVal(""), StringVal("")},
+			},
+			field:    `"Yield"`,
+			wantType: ValueNumber,
+			wantNum:  800, // Apple h=14 yield=10; Pear yields 10,8 → 10*10*8
+		},
 	}
 
 	runDBTests(t, "DPRODUCT", tests)
 }
 
 func TestDPRODUCT_WrongArgCount(t *testing.T) {
-	result, err := fnDProduct(nil)
-	if err != nil {
-		t.Fatalf("fnDProduct error: %v", err)
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{"zero args", nil},
+		{"one arg", []Value{NumberVal(1)}},
+		{"two args", []Value{NumberVal(1), NumberVal(2)}},
+		{"four args", []Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4)}},
 	}
-	if result.Type != ValueError || result.Err != ErrValVALUE {
-		t.Errorf("fnDProduct(nil) = %+v, want #VALUE!", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := fnDProduct(tt.args)
+			if err != nil {
+				t.Fatalf("fnDProduct error: %v", err)
+			}
+			if result.Type != ValueError || result.Err != ErrValVALUE {
+				t.Errorf("fnDProduct(%d args) = %+v, want #VALUE!", len(tt.args), result)
+			}
+		})
+	}
+}
+
+func TestDPRODUCT_ErrorPropagation(t *testing.T) {
+	// If the database contains an error in the field column, propagate it.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Value")},
+		{StringVal("A"), NumberVal(10)},
+		{StringVal("B"), ErrorVal(ErrValDIV0)},
+		{StringVal("C"), NumberVal(20)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")}, // match all
+	}
+
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	formula := `DPRODUCT(A1:B4,"Value",G1:G2)`
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("DPRODUCT with error cell = %+v, want #DIV/0!", got)
+	}
+}
+
+func TestDPRODUCT_ErrorInNonFieldColumn(t *testing.T) {
+	// Error in a non-field column should not affect the result.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Score"), StringVal("Value")},
+		{StringVal("A"), NumberVal(100), NumberVal(2)},
+		{StringVal("B"), ErrorVal(ErrValNA), NumberVal(3)},
+		{StringVal("C"), NumberVal(300), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")},
+	}
+
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	formula := `DPRODUCT(A1:C4,"Value",G1:G2)`
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("DPRODUCT = %+v, want 30", got)
+	}
+}
+
+func TestDPRODUCT_FieldCaseInsensitive(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Name"), StringVal("VALUE")},
+		{StringVal("A"), NumberVal(4)},
+		{StringVal("B"), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")},
+	}
+
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	// Field name uses different case
+	formula := `DPRODUCT(A1:B3,"value",G1:G2)`
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("DPRODUCT case-insensitive field = %+v, want 20", got)
 	}
 }
 
