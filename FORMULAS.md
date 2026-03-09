@@ -284,7 +284,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
 | NOT | Returns the opposite of a logical value. | Logical | 12 |
 | NOW | Returns the current date and time. | Date & Time | 2 |
-| NPER | Returns the number of periods for an investment or loan. | Financial | 3 |
+| NPER | Returns the number of periods for an investment or loan. | Financial | 5 |
 | NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
 | NUMBERVALUE | Converts locale-formatted text to a number. | Text | 27 |
 | OCT2BIN | Converts a octal number to binary. | Engineering | 38 |

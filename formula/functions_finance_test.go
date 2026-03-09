@@ -1784,6 +1784,87 @@ func TestNPER_Comprehensive(t *testing.T) {
 			args:    numArgs(0, 0, 1000, 5000),
 			wantErr: true,
 		},
+
+		// --- Additional requested scenarios ---
+
+		// Pay off $30k at 6% annual with $500/month payments
+		{
+			name: "loan payoff: $30k at 6%, $500/mo",
+			args: numArgs(0.06/12, -500, 30000),
+			want: 71.5132,
+		},
+		// Months to save $50k with $200/month at 5% annual
+		{
+			name: "savings goal: $50k at 5%, $200/mo",
+			args: numArgs(0.05/12, -200, 0, 50000),
+			want: 171.6606,
+		},
+		// Save to $25k with $300/month at 8% annual
+		{
+			name: "savings: $25k target at 8%, $300/mo",
+			args: numArgs(0.08/12, -300, 0, 25000),
+			want: 66.4956,
+		},
+		// Annual payments with both pv and fv
+		{
+			name: "annual: pv=-5000, fv=50000 at 5%, $1000/yr",
+			args: numArgs(0.05, -1000, -5000, 50000),
+			want: 21.1030,
+		},
+		// Beginning of period savings
+		{
+			name: "savings type=1: $25k target at 8%, $300/mo",
+			args: numArgs(0.08/12, -300, 0, 25000, 1),
+			want: 66.1392,
+		},
+		// Beginning of period loan payoff
+		{
+			name: "loan type=1: $30k at 6%, $500/mo",
+			args: numArgs(0.06/12, -500, 30000, 0, 1),
+			want: 71.0861,
+		},
+		// Zero rate with fv only (no pv)
+		{
+			name: "zero rate: fv only, $100/period to $5000",
+			args: numArgs(0, -100, 0, 5000),
+			want: 50,
+		},
+		// Zero rate with both pv and fv
+		{
+			name: "zero rate: pv=1000, fv=3000, $200/period",
+			args: numArgs(0, -200, 1000, 3000),
+			want: 20,
+		},
+		// Single period needed
+		{
+			name: "single period: NPER(0.1, -1100, 1000)",
+			args: numArgs(0.1, -1100, 1000),
+			want: 1.0,
+		},
+		// Large payment relative to pv
+		{
+			name: "large pmt: $10000/mo on $50k at 5%",
+			args: numArgs(0.05/12, -10000, 50000),
+			want: 5.0633,
+		},
+		// Very small rate (0.01%)
+		{
+			name: "very small rate: 0.01% per period",
+			args: numArgs(0.0001, -100, 10000),
+			want: 100.5084,
+		},
+		// High rate (24% annual = 2% monthly)
+		{
+			name: "high rate: 24%/yr, $500/mo, $10k loan",
+			args: numArgs(0.24/12, -500, 10000),
+			want: 25.7959,
+		},
+		// String coercion with 5% rate
+		{
+			name: "string coercion: NPER(\"0.05\", \"-100\", \"1000\")",
+			args: []Value{StringVal("0.05"), StringVal("-100"), StringVal("1000")},
+			want: 14.2067,
+		},
 	}
 
 	for _, tc := range tests {
