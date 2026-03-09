@@ -150,7 +150,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
 | FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 31 |
-| FIND | Returns the position of one text value inside another, case-sensitive. | Text | 7 |
+| FIND | Returns the position of one text value inside another, case-sensitive. | Text | 48 |
 | FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
 | FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
 | FIXED | Formats a number as text with a fixed number of decimals. | Text | 32 |

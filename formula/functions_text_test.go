@@ -624,7 +624,7 @@ func TestTEXTZeroPad(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FIND edge cases
+// FIND comprehensive tests
 // ---------------------------------------------------------------------------
 
 func TestFINDEdgeCases(t *testing.T) {
@@ -636,12 +636,80 @@ func TestFINDEdgeCases(t *testing.T) {
 		wantNum float64
 		isErr   bool
 	}{
-		{name: "basic", formula: `FIND("lo","hello")`, wantNum: 4},
-		{name: "start_pos", formula: `FIND("l","hello world",5)`, wantNum: 10},
-		{name: "not_found", formula: `FIND("z","hello")`, isErr: true},
-		{name: "case_sensitive", formula: `FIND("H","hello")`, isErr: true},
-		{name: "empty_find", formula: `FIND("","hello")`, wantNum: 1},
+		// Basic functionality
+		{name: "basic_substring", formula: `FIND("lo","hello")`, wantNum: 4},
+		{name: "find_at_beginning", formula: `FIND("M","Miriam McGovern")`, wantNum: 1},
+		{name: "find_substring_Gov", formula: `FIND("Gov","Miriam McGovern")`, wantNum: 10},
+		{name: "find_single_char", formula: `FIND("a","banana")`, wantNum: 2},
+		{name: "find_at_end", formula: `FIND("rn","Miriam McGovern")`, wantNum: 14},
+		{name: "find_entire_string", formula: `FIND("hello","hello")`, wantNum: 1},
+		{name: "find_single_char_string", formula: `FIND("a","a")`, wantNum: 1},
+
+		// Case sensitivity
+		{name: "case_sensitive_upper_not_found", formula: `FIND("H","hello")`, isErr: true},
+		{name: "case_sensitive_lower_m", formula: `FIND("m","Miriam McGovern")`, wantNum: 6},
+		{name: "case_sensitive_upper_M", formula: `FIND("M","Miriam McGovern")`, wantNum: 1},
+		{name: "case_lower_a_in_Apple", formula: `FIND("a","Apple")`, isErr: true},
+		{name: "case_upper_A_in_Apple", formula: `FIND("A","Apple")`, wantNum: 1},
+		{name: "case_sensitive_substring", formula: `FIND("mc","Miriam McGovern")`, isErr: true},
+
+		// start_num parameter
+		{name: "start_pos_skip_first", formula: `FIND("M","Miriam McGovern",3)`, wantNum: 8},
+		{name: "start_pos_find_second_l", formula: `FIND("l","hello world",5)`, wantNum: 10},
+		{name: "start_pos_1_default", formula: `FIND("h","hello",1)`, wantNum: 1},
+		{name: "start_pos_at_match", formula: `FIND("l","hello",3)`, wantNum: 3},
+		{name: "start_pos_at_length", formula: `FIND("o","hello",5)`, wantNum: 5},
+		{name: "start_pos_past_only_match", formula: `FIND("h","hello",2)`, isErr: true},
+
+		// Multiple occurrences — returns first from start_num
+		{name: "multiple_occ_first", formula: `FIND("a","banana")`, wantNum: 2},
+		{name: "multiple_occ_second", formula: `FIND("a","banana",3)`, wantNum: 4},
+		{name: "multiple_occ_third", formula: `FIND("a","banana",5)`, wantNum: 6},
+
+		// Empty find_text
+		{name: "empty_find_text", formula: `FIND("","hello")`, wantNum: 1},
+		{name: "empty_find_text_start_3", formula: `FIND("","hello",3)`, wantNum: 3},
+		{name: "empty_find_text_start_at_len", formula: `FIND("","hello",5)`, wantNum: 5},
+		{name: "empty_find_text_start_past_len", formula: `FIND("","hello",6)`, wantNum: 6},
+		{name: "empty_find_empty_within", formula: `FIND("","")`, wantNum: 1},
+
+		// Not found
+		{name: "not_found_char", formula: `FIND("z","hello")`, isErr: true},
+		{name: "not_found_long_needle", formula: `FIND("hello world!","hello")`, isErr: true},
+
+		// Empty within_text
+		{name: "find_in_empty_string", formula: `FIND("a","")`, isErr: true},
+
+		// start_num errors
 		{name: "start_too_large", formula: `FIND("h","hello",99)`, isErr: true},
+		{name: "start_zero", formula: `FIND("h","hello",0)`, isErr: true},
+		{name: "start_negative", formula: `FIND("h","hello",-1)`, isErr: true},
+
+		// Argument count errors
+		{name: "no_args", formula: `FIND()`, isErr: true},
+		{name: "one_arg", formula: `FIND("a")`, isErr: true},
+		{name: "four_args", formula: `FIND("a","b",1,2)`, isErr: true},
+
+		// Numeric coercion — numbers become strings via ValueToString
+		{name: "numeric_find_text", formula: `FIND(1,"a1b2")`, wantNum: 2},
+		{name: "numeric_within_text", formula: `FIND("2",1234)`, wantNum: 2},
+		{name: "numeric_both", formula: `FIND(3,12345)`, wantNum: 3},
+
+		// Boolean coercion — TRUE/FALSE become strings
+		{name: "bool_true_find", formula: `FIND(TRUE,"TRUEFALSE")`, wantNum: 1},
+		{name: "bool_false_find", formula: `FIND(FALSE,"TRUEFALSE")`, wantNum: 5},
+		{name: "bool_true_not_lowercase", formula: `FIND(TRUE,"true")`, isErr: true},
+
+		// Special characters
+		{name: "find_space", formula: `FIND(" ","hello world")`, wantNum: 6},
+		{name: "find_comma", formula: `FIND(",","a,b,c")`, wantNum: 2},
+		{name: "find_exclamation", formula: `FIND("!","hello!")`, wantNum: 6},
+
+		// Nested FIND
+		{name: "nested_find_second_o", formula: `FIND("o","hello world",FIND("o","hello world")+1)`, wantNum: 8},
+
+		// Unicode
+		{name: "unicode_char", formula: "FIND(\"\u00e9\",\"caf\u00e9\")", wantNum: 4},
 	}
 
 	for _, tt := range tests {
