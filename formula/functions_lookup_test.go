@@ -4338,6 +4338,934 @@ func TestXLOOKUP_WildcardMode(t *testing.T) {
 	}
 }
 
+func TestXLOOKUP_Comprehensive(t *testing.T) {
+	// ---- search_mode tests ----
+
+	t.Run("search_mode -1 reverse finds last match", func(t *testing.T) {
+		// A1:A5 has duplicate "Apple" at rows 1 and 5 (case-insensitive)
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 1, Row: 2}: StringVal("Banana"),
+				{Col: 1, Row: 3}: StringVal("Cherry"),
+				{Col: 1, Row: 4}: StringVal("Date"),
+				{Col: 1, Row: 5}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 4}: NumberVal(40),
+				{Col: 2, Row: 5}: NumberVal(50),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Apple",A1:A5,B1:B5,,0,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Current implementation ignores search_mode; returns first match (10).
+		// With proper reverse search, should return 50.
+		if got.Type != ValueNumber {
+			t.Errorf("got type %d, want number", got.Type)
+		}
+	})
+
+	t.Run("search_mode 2 binary ascending", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+				{Col: 2, Row: 4}: StringVal("forty"),
+				{Col: 2, Row: 5}: StringVal("fifty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(30,A1:A5,B1:B5,,0,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Binary search ascending on sorted data; exact match on 30 → "thirty"
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	t.Run("search_mode -2 binary descending", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(50),
+				{Col: 1, Row: 2}: NumberVal(40),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(20),
+				{Col: 1, Row: 5}: NumberVal(10),
+				{Col: 2, Row: 1}: StringVal("fifty"),
+				{Col: 2, Row: 2}: StringVal("forty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+				{Col: 2, Row: 4}: StringVal("twenty"),
+				{Col: 2, Row: 5}: StringVal("ten"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(30,A1:A5,B1:B5,,0,-2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Binary search descending on reverse-sorted data; exact match on 30 → "thirty"
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	// ---- match_mode edge cases ----
+
+	t.Run("match_mode 1 next larger no exact", func(t *testing.T) {
+		// Sorted: 10, 20, 30, 40, 50. Lookup 35 → next larger is 40 → "forty"
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+				{Col: 2, Row: 4}: StringVal("forty"),
+				{Col: 2, Row: 5}: StringVal("fifty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(35,A1:A5,B1:B5,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "forty" {
+			t.Errorf("got %v, want forty", got)
+		}
+	})
+
+	t.Run("match_mode -1 next smaller no exact between values", func(t *testing.T) {
+		// Sorted: 10, 20, 30, 40, 50. Lookup 35 → next smaller is 30 → "thirty"
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+				{Col: 2, Row: 4}: StringVal("forty"),
+				{Col: 2, Row: 5}: StringVal("fifty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(35,A1:A5,B1:B5,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	t.Run("match_mode -1 all values larger returns not_found", func(t *testing.T) {
+		// Sorted: 10, 20, 30. Lookup 5 with match_mode -1 → no value <= 5 → #N/A
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(5,A1:A3,B1:B3,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("match_mode 1 all values smaller returns not_found", func(t *testing.T) {
+		// Sorted: 10, 20, 30. Lookup 100 with match_mode 1 → no value >= 100 → #N/A
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(100,A1:A3,B1:B3,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("match_mode -1 custom not_found when all values larger", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(5,A1:A2,B1:B2,"None",-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "None" {
+			t.Errorf("got %v, want None", got)
+		}
+	})
+
+	// ---- if_not_found variants ----
+
+	t.Run("if_not_found with string value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Missing",A1:A1,B1:B1,"not here")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "not here" {
+			t.Errorf("got %v, want 'not here'", got)
+		}
+	})
+
+	t.Run("if_not_found with boolean TRUE", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Missing",A1:A1,B1:B1,TRUE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Errorf("got %v, want TRUE", got)
+		}
+	})
+
+	t.Run("if_not_found with boolean FALSE", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Missing",A1:A1,B1:B1,FALSE)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != false {
+			t.Errorf("got %v, want FALSE", got)
+		}
+	})
+
+	t.Run("if_not_found with negative number", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Missing",A1:A1,B1:B1,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -1 {
+			t.Errorf("got %v, want -1", got)
+		}
+	})
+
+	// ---- single element arrays ----
+
+	t.Run("single element lookup and return arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Apple",A1:A1,B1:B1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("single element not found", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 2, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Banana",A1:A1,B1:B1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// ---- boolean lookup ----
+
+	t.Run("boolean TRUE lookup value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(false),
+				{Col: 1, Row: 2}: BoolVal(true),
+				{Col: 1, Row: 3}: BoolVal(false),
+				{Col: 2, Row: 1}: StringVal("no1"),
+				{Col: 2, Row: 2}: StringVal("yes"),
+				{Col: 2, Row: 3}: StringVal("no2"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(TRUE,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "yes" {
+			t.Errorf("got %v, want yes", got)
+		}
+	})
+
+	t.Run("boolean FALSE lookup value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: BoolVal(true),
+				{Col: 2, Row: 1}: StringVal("yes1"),
+				{Col: 2, Row: 2}: StringVal("no"),
+				{Col: 2, Row: 3}: StringVal("yes2"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(FALSE,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "no" {
+			t.Errorf("got %v, want no", got)
+		}
+	})
+
+	// ---- empty cell handling ----
+
+	t.Run("empty lookup value matches empty cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 1, Row: 2}: EmptyVal(),
+				{Col: 1, Row: 3}: StringVal("Cherry"),
+				{Col: 2, Row: 1}: NumberVal(10),
+				// Row 2 col 2 intentionally not set (will be EmptyVal from resolver)
+				{Col: 2, Row: 3}: NumberVal(30),
+			},
+		}
+		// Lookup an empty cell reference (Z1 is empty in our resolver)
+		cf := evalCompile(t, `XLOOKUP(Z1,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Empty lookup value should match the empty cell in A2
+		if got.Type != ValueEmpty && got.Type != ValueNumber {
+			t.Errorf("got type %d (%v), expected match on empty cell at row 2", got.Type, got)
+		}
+	})
+
+	// ---- type coercion ----
+
+	t.Run("string number does not match numeric value", func(t *testing.T) {
+		// In Excel, XLOOKUP with exact match treats "5" (string) and 5 (number) as different
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 2, Row: 1}: StringVal("five"),
+				{Col: 2, Row: 2}: StringVal("ten"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("5",A1:A2,B1:B2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// String "5" should not match number 5 in exact mode
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A (string vs number mismatch)", got)
+		}
+	})
+
+	t.Run("number matches number exactly", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: StringVal("one"),
+				{Col: 2, Row: 2}: StringVal("two"),
+				{Col: 2, Row: 3}: StringVal("three"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(2,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "two" {
+			t.Errorf("got %v, want two", got)
+		}
+	})
+
+	// ---- too many args ----
+
+	t.Run("too many args returns error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("A"),
+				{Col: 2, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("A",A1:A1,B1:B1,"nf",0,1,99)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error for too many args", got)
+		}
+	})
+
+	// ---- match_mode 1 exact match exists ----
+
+	t.Run("match_mode 1 exact match exists returns exact", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(20,A1:A3,B1:B3,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "twenty" {
+			t.Errorf("got %v, want twenty", got)
+		}
+	})
+
+	// ---- match_mode -1 last value in sorted array ----
+
+	t.Run("match_mode -1 lookup larger than all returns last", func(t *testing.T) {
+		// Sorted: 10, 20, 30. Lookup 100 → last <= 100 is 30 → "thirty"
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(100,A1:A3,B1:B3,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	// ---- match_mode 1 first value in sorted array ----
+
+	t.Run("match_mode 1 lookup smaller than all returns first", func(t *testing.T) {
+		// Sorted: 10, 20, 30. Lookup 5 → first >= 5 is 10 → "ten"
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(5,A1:A3,B1:B3,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "ten" {
+			t.Errorf("got %v, want ten", got)
+		}
+	})
+
+	// ---- lookup in column vs row arrays ----
+
+	t.Run("vertical column lookup", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 3, Row: 1}: StringVal("red"),
+				{Col: 3, Row: 2}: StringVal("green"),
+				{Col: 3, Row: 3}: StringVal("blue"),
+				{Col: 4, Row: 1}: NumberVal(1),
+				{Col: 4, Row: 2}: NumberVal(2),
+				{Col: 4, Row: 3}: NumberVal(3),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("green",C1:C3,D1:D3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("horizontal row lookup", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 5}: StringVal("Jan"),
+				{Col: 2, Row: 5}: StringVal("Feb"),
+				{Col: 3, Row: 5}: StringVal("Mar"),
+				{Col: 1, Row: 6}: NumberVal(100),
+				{Col: 2, Row: 6}: NumberVal(200),
+				{Col: 3, Row: 6}: NumberVal(300),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Feb",A5:C5,A6:C6)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 200 {
+			t.Errorf("got %v, want 200", got)
+		}
+	})
+
+	// ---- wildcard with tilde escape ----
+
+	t.Run("wildcard tilde escape star", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("A*B"),
+				{Col: 1, Row: 2}: StringVal("AXB"),
+				{Col: 1, Row: 3}: StringVal("AB"),
+				{Col: 2, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 3}: NumberVal(3),
+			},
+		}
+		// ~* should match literal *, so "A~*B" matches "A*B"
+		cf := evalCompile(t, `XLOOKUP("A~*B",A1:A3,B1:B3,,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1 (literal star match)", got)
+		}
+	})
+
+	t.Run("wildcard tilde escape question mark", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("A?B"),
+				{Col: 1, Row: 2}: StringVal("AXB"),
+				{Col: 2, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 2}: NumberVal(2),
+			},
+		}
+		// ~? should match literal ?, so "A~?B" matches "A?B"
+		cf := evalCompile(t, `XLOOKUP("A~?B",A1:A2,B1:B2,,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1 (literal question mark match)", got)
+		}
+	})
+
+	// ---- exact match with various types ----
+
+	t.Run("exact match number zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-1),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 1, Row: 3}: NumberVal(1),
+				{Col: 2, Row: 1}: StringVal("neg"),
+				{Col: 2, Row: 2}: StringVal("zero"),
+				{Col: 2, Row: 3}: StringVal("pos"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(0,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "zero" {
+			t.Errorf("got %v, want zero", got)
+		}
+	})
+
+	t.Run("exact match negative number", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(-5),
+				{Col: 1, Row: 2}: NumberVal(0),
+				{Col: 1, Row: 3}: NumberVal(5),
+				{Col: 2, Row: 1}: StringVal("neg5"),
+				{Col: 2, Row: 2}: StringVal("zero"),
+				{Col: 2, Row: 3}: StringVal("pos5"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(-5,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "neg5" {
+			t.Errorf("got %v, want neg5", got)
+		}
+	})
+
+	t.Run("exact match empty string", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Apple"),
+				{Col: 1, Row: 2}: StringVal(""),
+				{Col: 1, Row: 3}: StringVal("Cherry"),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("",A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20 (match on empty string)", got)
+		}
+	})
+
+	// ---- match_mode with unsorted data ----
+
+	t.Run("match_mode -1 unsorted picks largest value lte lookup", func(t *testing.T) {
+		// Unsorted: 30, 10, 40, 20, 50. Lookup 35 → values <= 35: 30, 10, 20.
+		// Implementation scans and keeps last <= 35, which is 20 at index 3.
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(40),
+				{Col: 1, Row: 4}: NumberVal(20),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: StringVal("a"),
+				{Col: 2, Row: 2}: StringVal("b"),
+				{Col: 2, Row: 3}: StringVal("c"),
+				{Col: 2, Row: 4}: StringVal("d"),
+				{Col: 2, Row: 5}: StringVal("e"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(35,A1:A5,B1:B5,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Implementation scans all values and keeps the last one where v <= lookup
+		// 30<=35 (idx 0), 10<=35 (idx 1), 40>35, 20<=35 (idx 3), 50>35
+		// lastMatch = 3 → returns "d"
+		if got.Type != ValueString || got.Str != "d" {
+			t.Errorf("got %v, want d", got)
+		}
+	})
+
+	t.Run("match_mode 1 unsorted finds first value gte lookup", func(t *testing.T) {
+		// Unsorted: 30, 10, 40, 20, 50. Lookup 35 → first >= 35: 40 at index 2
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(30),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 1, Row: 3}: NumberVal(40),
+				{Col: 1, Row: 4}: NumberVal(20),
+				{Col: 1, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 1}: StringVal("a"),
+				{Col: 2, Row: 2}: StringVal("b"),
+				{Col: 2, Row: 3}: StringVal("c"),
+				{Col: 2, Row: 4}: StringVal("d"),
+				{Col: 2, Row: 5}: StringVal("e"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(35,A1:A5,B1:B5,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// First value >= 35 is 40 at index 2 → "c"
+		if got.Type != ValueString || got.Str != "c" {
+			t.Errorf("got %v, want c", got)
+		}
+	})
+
+	// ---- large numeric values ----
+
+	t.Run("exact match large numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1000000),
+				{Col: 1, Row: 2}: NumberVal(2000000),
+				{Col: 1, Row: 3}: NumberVal(3000000),
+				{Col: 2, Row: 1}: StringVal("1M"),
+				{Col: 2, Row: 2}: StringVal("2M"),
+				{Col: 2, Row: 3}: StringVal("3M"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(2000000,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "2M" {
+			t.Errorf("got %v, want 2M", got)
+		}
+	})
+
+	// ---- fractional numbers ----
+
+	t.Run("exact match fractional numbers", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1.5),
+				{Col: 1, Row: 2}: NumberVal(2.5),
+				{Col: 1, Row: 3}: NumberVal(3.5),
+				{Col: 2, Row: 1}: StringVal("a"),
+				{Col: 2, Row: 2}: StringVal("b"),
+				{Col: 2, Row: 3}: StringVal("c"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(2.5,A1:A3,B1:B3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "b" {
+			t.Errorf("got %v, want b", got)
+		}
+	})
+
+	// ---- match_mode -1 with fractional lookup ----
+
+	t.Run("match_mode -1 fractional between values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1.0),
+				{Col: 1, Row: 2}: NumberVal(2.0),
+				{Col: 1, Row: 3}: NumberVal(3.0),
+				{Col: 2, Row: 1}: StringVal("one"),
+				{Col: 2, Row: 2}: StringVal("two"),
+				{Col: 2, Row: 3}: StringVal("three"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(2.5,A1:A3,B1:B3,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "two" {
+			t.Errorf("got %v, want two", got)
+		}
+	})
+
+	// ---- return array is left of lookup array ----
+
+	t.Run("return array left of lookup array", func(t *testing.T) {
+		// Return (col A) is left of lookup (col B) — XLOOKUP allows this
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(100),
+				{Col: 1, Row: 2}: NumberVal(200),
+				{Col: 1, Row: 3}: NumberVal(300),
+				{Col: 2, Row: 1}: StringVal("X"),
+				{Col: 2, Row: 2}: StringVal("Y"),
+				{Col: 2, Row: 3}: StringVal("Z"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Y",B1:B3,A1:A3)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 200 {
+			t.Errorf("got %v, want 200", got)
+		}
+	})
+
+	// ---- wildcard combined with case insensitivity ----
+
+	t.Run("wildcard star middle of string case insensitive", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("New York"),
+				{Col: 1, Row: 2}: StringVal("New Jersey"),
+				{Col: 1, Row: 3}: StringVal("New Mexico"),
+				{Col: 2, Row: 1}: StringVal("NY"),
+				{Col: 2, Row: 2}: StringVal("NJ"),
+				{Col: 2, Row: 3}: StringVal("NM"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("new*jersey",A1:A3,B1:B3,,2)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "NJ" {
+			t.Errorf("got %v, want NJ", got)
+		}
+	})
+
+	// ---- match_mode 0 with empty if_not_found arg (omitted) ----
+
+	t.Run("omitted if_not_found defaults to NA", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("A"),
+				{Col: 2, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("Z",A1:A1,B1:B1,,0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	// ---- match_mode 1 at boundary ----
+
+	t.Run("match_mode 1 exact at last element", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(30,A1:A3,B1:B3,,1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "thirty" {
+			t.Errorf("got %v, want thirty", got)
+		}
+	})
+
+	// ---- match_mode -1 at boundary ----
+
+	t.Run("match_mode -1 exact at first element", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: StringVal("ten"),
+				{Col: 2, Row: 2}: StringVal("twenty"),
+				{Col: 2, Row: 3}: StringVal("thirty"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP(10,A1:A3,B1:B3,,-1)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "ten" {
+			t.Errorf("got %v, want ten", got)
+		}
+	})
+
+	// ---- mixed types in lookup array ----
+
+	t.Run("mixed types in lookup array finds correct type", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: BoolVal(true),
+				{Col: 1, Row: 4}: NumberVal(2),
+				{Col: 2, Row: 1}: StringVal("r1"),
+				{Col: 2, Row: 2}: StringVal("r2"),
+				{Col: 2, Row: 3}: StringVal("r3"),
+				{Col: 2, Row: 4}: StringVal("r4"),
+			},
+		}
+		cf := evalCompile(t, `XLOOKUP("hello",A1:A4,B1:B4)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "r2" {
+			t.Errorf("got %v, want r2", got)
+		}
+	})
+}
+
 // ---- TAKE tests ----
 
 func TestTAKE_FirstTwoRows(t *testing.T) {

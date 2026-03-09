@@ -431,7 +431,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
 | WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |
 | XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 19 |
-| XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 22 |
+| XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 64 |
 | XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 35 |
 | XNPV | Returns the net present value of cash flows on irregular dates. | Financial | 18 |
 | XOR | Returns TRUE when an odd number of supplied conditions are TRUE. | Logical | 34 |

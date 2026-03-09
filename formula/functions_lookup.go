@@ -716,7 +716,7 @@ func fnXLOOKUP(args []Value) (Value, error) {
 	returnArr := args[2]
 
 	notFound := ErrorVal(ErrValNA)
-	if len(args) >= 4 {
+	if len(args) >= 4 && args[3].Type != ValueEmpty {
 		notFound = args[3]
 	}
 
