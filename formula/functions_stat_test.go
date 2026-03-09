@@ -27437,7 +27437,7 @@ func TestLOGEST(t *testing.T) {
 		v, err := fnLOGEST([]Value{
 			rowArray(15, 75, 375, 1875, 9375),
 			rowArray(1, 2, 3, 4, 5),
-			Value{Type: ValueEmpty},
+			{Type: ValueEmpty},
 			BoolVal(true),
 		})
 		if err != nil {
