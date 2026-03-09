@@ -408,7 +408,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | TRUE | Returns the logical value TRUE. | Logical | 10 |
 | TRUNC | Truncates a number to an integer or fixed precision. | Math & Trig | 34 |
 | TYPE | Returns a numeric code describing a value's type. | Information | 25 |
-| UNICHAR | Returns the Unicode character for a code point. | Text | 37 |
+| UNICHAR | Returns the Unicode character for a code point. | Text | 46 |
 | UNICODE | Returns the Unicode code point for the first character in text. | Text | 36 |
 | UNIQUE | Returns distinct rows or columns from an array. | Lookup & Reference | 29 |
 | UPPER | Converts text to uppercase. | Text | 27 |

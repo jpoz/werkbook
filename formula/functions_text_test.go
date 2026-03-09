@@ -2255,8 +2255,10 @@ func TestUNICHAR(t *testing.T) {
 		{"lowercase_z", `UNICHAR(122)`, "z"},
 		{"tilde", `UNICHAR(126)`, "~"},
 
-		// Smallest valid code point
-		{"code_1", `UNICHAR(1)`, "\x01"},
+		// Tab, LF, CR are the only control chars Excel allows
+		{"tab", `UNICHAR(9)`, "\t"},
+		{"line_feed", `UNICHAR(10)`, "\n"},
+		{"carriage_return", `UNICHAR(13)`, "\r"},
 
 		// Unicode characters beyond ASCII
 		{"copyright", `UNICHAR(169)`, "\u00A9"},     // ©
@@ -2283,8 +2285,7 @@ func TestUNICHAR(t *testing.T) {
 		{"string_65", `UNICHAR("65")`, "A"},
 		{"string_66", `UNICHAR("66")`, "B"},
 
-		// Boolean TRUE = 1
-		{"bool_true", `UNICHAR(TRUE)`, "\x01"},
+		// Boolean TRUE = 1 → now #VALUE! since code 1 is a control char
 	}
 
 	for _, tt := range strTests {
@@ -2314,10 +2315,20 @@ func TestUNICHAR(t *testing.T) {
 		// Above max Unicode code point
 		{"too_large", `UNICHAR(1114112)`, ErrValVALUE},
 		{"very_large", `UNICHAR(9999999)`, ErrValVALUE},
-		// Surrogate code points → #N/A
-		{"surrogate_start", `UNICHAR(55296)`, ErrValNA}, // 0xD800
-		{"surrogate_mid", `UNICHAR(56000)`, ErrValNA},   // 0xDAC0
-		{"surrogate_end", `UNICHAR(57343)`, ErrValNA},   // 0xDFFF
+		// Control characters → #VALUE!
+		{"control_1", `UNICHAR(1)`, ErrValVALUE},
+		{"control_31", `UNICHAR(31)`, ErrValVALUE},
+		{"bool_true", `UNICHAR(TRUE)`, ErrValVALUE}, // TRUE=1, control char
+		{"del", `UNICHAR(127)`, ErrValVALUE},         // 0x7F
+		{"c1_control", `UNICHAR(159)`, ErrValVALUE},  // 0x9F
+		// Unicode noncharacters → #VALUE!
+		{"nonchar_ffff", `UNICHAR(65535)`, ErrValVALUE},  // U+FFFF
+		{"nonchar_fffe", `UNICHAR(65534)`, ErrValVALUE},  // U+FFFE
+		{"nonchar_fdd0", `UNICHAR(64976)`, ErrValVALUE},  // U+FDD0
+		// Surrogate code points → #VALUE!
+		{"surrogate_start", `UNICHAR(55296)`, ErrValVALUE}, // 0xD800
+		{"surrogate_mid", `UNICHAR(56000)`, ErrValVALUE},   // 0xDAC0
+		{"surrogate_end", `UNICHAR(57343)`, ErrValVALUE},   // 0xDFFF
 		// Non-numeric string → #VALUE!
 		{"non_numeric_string", `UNICHAR("hello")`, ErrValVALUE},
 		// Wrong number of args

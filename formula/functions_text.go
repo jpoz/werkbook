@@ -452,7 +452,19 @@ func fnUnichar(args []Value) (Value, error) {
 	}
 	// Surrogate code points (U+D800–U+DFFF) are not valid Unicode characters.
 	if code >= 0xD800 && code <= 0xDFFF {
-		return ErrorVal(ErrValNA), nil
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Excel returns #VALUE! for Unicode noncharacters (U+FFFE, U+FFFF, U+FDD0–U+FDEF)
+	// and for C0/C1 control characters (U+0001–U+001F, U+007F–U+009F) except tab (9),
+	// line feed (10), and carriage return (13).
+	if code == 0xFFFE || code == 0xFFFF || (code >= 0xFDD0 && code <= 0xFDEF) {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if code <= 0x1F && code != 9 && code != 10 && code != 13 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if code >= 0x7F && code <= 0x9F {
+		return ErrorVal(ErrValVALUE), nil
 	}
 	return StringVal(string(rune(code))), nil
 }

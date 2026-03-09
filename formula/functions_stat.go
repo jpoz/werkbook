@@ -2991,7 +2991,7 @@ func normSInv(p float64) float64 {
 			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q + 1)
 	}
 
-	// One Halley step closes the remaining gap to the expected float64 results.
+	// One Halley step closes the remaining gap to full float64 precision.
 	e := 0.5*math.Erfc(-x/math.Sqrt2) - p
 	u := e * math.Sqrt(2*math.Pi) * math.Exp(x*x/2)
 	x = x - u/(1+x*u/2)
@@ -5479,7 +5479,8 @@ func fnZTEST(args []Value) (Value, error) {
 		return ErrorVal(ErrValDIV0), nil
 	}
 	z := (mean - x) / (sigma / math.Sqrt(float64(n)))
-	return NumberVal(1 - normSDistCDF(z)), nil
+	// Use Erfc directly to avoid precision loss from 1 - CDF when CDF ≈ 1.
+	return NumberVal(0.5 * math.Erfc(z/math.Sqrt(2))), nil
 }
 
 // ---------------------------------------------------------------------------
