@@ -262,8 +262,8 @@ func TestYEARComprehensive(t *testing.T) {
 		{"serial_60", "YEAR(60)", 1900, false, 0},
 		// String date input via DATEVALUE: YEAR(DATEVALUE("1/1/2023"))
 		{"string_date_via_datevalue", `YEAR(DATEVALUE("1/1/2023"))`, 2023, false, 0},
-		// String date input directly: CoerceNum cannot parse date strings → #VALUE!
-		{"string_date_direct", `YEAR("1/1/2023")`, 0, true, ErrValVALUE},
+		// String date input directly: coerceDateNum parses date strings
+		{"string_date_direct", `YEAR("1/1/2023")`, 2023, false, 0},
 		// Negative serial → #NUM!
 		{"negative_serial", "YEAR(-1)", 0, true, ErrValNUM},
 		// Too few args → error

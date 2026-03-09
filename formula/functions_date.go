@@ -234,7 +234,7 @@ func fnDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -257,7 +257,7 @@ func fnMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -296,7 +296,7 @@ func fnYEARWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
