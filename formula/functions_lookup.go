@@ -282,11 +282,37 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		return table.Array[lastMatch][ci-1], nil
 	}
 
+	// Determine if wildcard matching is needed (only for string lookups).
+	useWildcard := false
+	if lookup.Type == ValueString {
+		wm := classifyWildcard(lookup.Str)
+		if wm == wildcardFull {
+			useWildcard = true
+		} else if wm == wildcardEscape {
+			// Tilde escapes with no unescaped wildcards: compare against
+			// the unescaped literal string.
+			lookup = StringVal(unescapePattern(lookup.Str))
+		}
+	}
+
 	for _, row := range table.Array {
 		if len(row) == 0 {
 			continue
 		}
-		if CompareValuesExact(row[0], lookup) == 0 {
+		cell := row[0]
+		// In Excel, VLOOKUP exact match skips truly empty cells.
+		if cell.Type == ValueEmpty {
+			continue
+		}
+		matched := false
+		if useWildcard {
+			if cell.Type == ValueString {
+				matched = WildcardMatch(cell.Str, lookup.Str)
+			}
+		} else {
+			matched = CompareValuesExact(cell, lookup) == 0
+		}
+		if matched {
 			if ci > len(row) {
 				return ErrorVal(ErrValREF), nil
 			}
