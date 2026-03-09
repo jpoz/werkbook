@@ -18069,38 +18069,321 @@ func TestPERCENTILE_INC(t *testing.T) {
 }
 
 func TestQUARTILE_INC(t *testing.T) {
-	// QUARTILE.INC is an alias for QUARTILE — verify it works identically
-	resolver := &mockResolver{
+	// Docs example dataset: {1,2,4,7,8,9,10,12} in A1:A8
+	docsResolver := &mockResolver{
 		cells: map[CellAddr]Value{
 			{Col: 1, Row: 1}: NumberVal(1),
 			{Col: 1, Row: 2}: NumberVal(2),
-			{Col: 1, Row: 3}: NumberVal(3),
-			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(4),
+			{Col: 1, Row: 4}: NumberVal(7),
+			{Col: 1, Row: 5}: NumberVal(8),
+			{Col: 1, Row: 6}: NumberVal(9),
+			{Col: 1, Row: 7}: NumberVal(10),
+			{Col: 1, Row: 8}: NumberVal(12),
 		},
 	}
-	tests := []struct {
-		name    string
-		formula string
-		want    float64
-	}{
-		{"q0", "QUARTILE.INC(A1:A4,0)", 1},
-		{"q1", "QUARTILE.INC(A1:A4,1)", 1.75},
-		{"q2", "QUARTILE.INC(A1:A4,2)", 2.5},
-		{"q3", "QUARTILE.INC(A1:A4,3)", 3.25},
-		{"q4", "QUARTILE.INC(A1:A4,4)", 4},
+
+	// Even count dataset: {1,2,3,4} in B1:B4
+	evenResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 4}: NumberVal(4),
+		},
 	}
+
+	// Odd count dataset: {1,3,5,7,9} in C1:C5
+	oddResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 3, Row: 1}: NumberVal(1),
+			{Col: 3, Row: 2}: NumberVal(3),
+			{Col: 3, Row: 3}: NumberVal(5),
+			{Col: 3, Row: 4}: NumberVal(7),
+			{Col: 3, Row: 5}: NumberVal(9),
+		},
+	}
+
+	// Single element in D1
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 4, Row: 1}: NumberVal(42),
+		},
+	}
+
+	// Two elements in E1:E2
+	twoResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 5, Row: 1}: NumberVal(5),
+			{Col: 5, Row: 2}: NumberVal(15),
+		},
+	}
+
+	// Negative numbers in F1:F4
+	negResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 6, Row: 1}: NumberVal(-10),
+			{Col: 6, Row: 2}: NumberVal(-5),
+			{Col: 6, Row: 3}: NumberVal(0),
+			{Col: 6, Row: 4}: NumberVal(5),
+		},
+	}
+
+	// All same values in G1:G4
+	sameResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 7, Row: 1}: NumberVal(7),
+			{Col: 7, Row: 2}: NumberVal(7),
+			{Col: 7, Row: 3}: NumberVal(7),
+			{Col: 7, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Unsorted data in H1:H5: {9,1,5,3,7}
+	unsortedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 8, Row: 1}: NumberVal(9),
+			{Col: 8, Row: 2}: NumberVal(1),
+			{Col: 8, Row: 3}: NumberVal(5),
+			{Col: 8, Row: 4}: NumberVal(3),
+			{Col: 8, Row: 5}: NumberVal(7),
+		},
+	}
+
+	// Mixed types in I1:I5: numbers, strings, booleans
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 9, Row: 1}: NumberVal(10),
+			{Col: 9, Row: 2}: StringVal("hello"),
+			{Col: 9, Row: 3}: NumberVal(20),
+			{Col: 9, Row: 4}: BoolVal(true),
+			{Col: 9, Row: 5}: NumberVal(30),
+		},
+	}
+
+	// Duplicate values in J1:J6: {3,3,5,5,8,8}
+	dupResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 10, Row: 1}: NumberVal(3),
+			{Col: 10, Row: 2}: NumberVal(3),
+			{Col: 10, Row: 3}: NumberVal(5),
+			{Col: 10, Row: 4}: NumberVal(5),
+			{Col: 10, Row: 5}: NumberVal(8),
+			{Col: 10, Row: 6}: NumberVal(8),
+		},
+	}
+
+	// Large dataset in K1:K20: {1..20}
+	largeResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+	for i := 1; i <= 20; i++ {
+		largeResolver.cells[CellAddr{Col: 11, Row: i}] = NumberVal(float64(i))
+	}
+
+	// Empty range
+	emptyResolver := &mockResolver{
+		cells: map[CellAddr]Value{},
+	}
+
+	// Error in array: L1=1, L2=#REF!, L3=3
+	errResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 12, Row: 1}: NumberVal(1),
+			{Col: 12, Row: 2}: ErrorVal(ErrValREF),
+			{Col: 12, Row: 3}: NumberVal(3),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		resolver *mockResolver
+		wantNum  float64
+		wantErr  ErrorValue
+	}{
+		// --- Docs example: {1,2,4,7,8,9,10,12} ---
+		{"docs_q0_min", "QUARTILE.INC(A1:A8,0)", docsResolver, 1, 0},
+		{"docs_q1_25th", "QUARTILE.INC(A1:A8,1)", docsResolver, 3.5, 0},
+		{"docs_q2_median", "QUARTILE.INC(A1:A8,2)", docsResolver, 7.5, 0},
+		{"docs_q3_75th", "QUARTILE.INC(A1:A8,3)", docsResolver, 9.25, 0},
+		{"docs_q4_max", "QUARTILE.INC(A1:A8,4)", docsResolver, 12, 0},
+
+		// --- Even count dataset: {1,2,3,4} ---
+		{"even_q0", "QUARTILE.INC(B1:B4,0)", evenResolver, 1, 0},
+		{"even_q1", "QUARTILE.INC(B1:B4,1)", evenResolver, 1.75, 0},
+		{"even_q2", "QUARTILE.INC(B1:B4,2)", evenResolver, 2.5, 0},
+		{"even_q3", "QUARTILE.INC(B1:B4,3)", evenResolver, 3.25, 0},
+		{"even_q4", "QUARTILE.INC(B1:B4,4)", evenResolver, 4, 0},
+
+		// --- Odd count dataset: {1,3,5,7,9} ---
+		{"odd_q0", "QUARTILE.INC(C1:C5,0)", oddResolver, 1, 0},
+		{"odd_q1", "QUARTILE.INC(C1:C5,1)", oddResolver, 3, 0},
+		{"odd_q2", "QUARTILE.INC(C1:C5,2)", oddResolver, 5, 0},
+		{"odd_q3", "QUARTILE.INC(C1:C5,3)", oddResolver, 7, 0},
+		{"odd_q4", "QUARTILE.INC(C1:C5,4)", oddResolver, 9, 0},
+
+		// --- Single element: all quartiles return same value ---
+		{"single_q0", "QUARTILE.INC(D1:D1,0)", singleResolver, 42, 0},
+		{"single_q1", "QUARTILE.INC(D1:D1,1)", singleResolver, 42, 0},
+		{"single_q2", "QUARTILE.INC(D1:D1,2)", singleResolver, 42, 0},
+		{"single_q3", "QUARTILE.INC(D1:D1,3)", singleResolver, 42, 0},
+		{"single_q4", "QUARTILE.INC(D1:D1,4)", singleResolver, 42, 0},
+
+		// --- Two element array: {5,15} ---
+		{"two_q0", "QUARTILE.INC(E1:E2,0)", twoResolver, 5, 0},
+		{"two_q1", "QUARTILE.INC(E1:E2,1)", twoResolver, 7.5, 0},
+		{"two_q2", "QUARTILE.INC(E1:E2,2)", twoResolver, 10, 0},
+		{"two_q3", "QUARTILE.INC(E1:E2,3)", twoResolver, 12.5, 0},
+		{"two_q4", "QUARTILE.INC(E1:E2,4)", twoResolver, 15, 0},
+
+		// --- Negative numbers: {-10,-5,0,5} ---
+		{"neg_q0", "QUARTILE.INC(F1:F4,0)", negResolver, -10, 0},
+		{"neg_q1", "QUARTILE.INC(F1:F4,1)", negResolver, -6.25, 0},
+		{"neg_q2", "QUARTILE.INC(F1:F4,2)", negResolver, -2.5, 0},
+		{"neg_q3", "QUARTILE.INC(F1:F4,3)", negResolver, 1.25, 0},
+		{"neg_q4", "QUARTILE.INC(F1:F4,4)", negResolver, 5, 0},
+
+		// --- All same values: {7,7,7,7} ---
+		{"same_q0", "QUARTILE.INC(G1:G4,0)", sameResolver, 7, 0},
+		{"same_q1", "QUARTILE.INC(G1:G4,1)", sameResolver, 7, 0},
+		{"same_q2", "QUARTILE.INC(G1:G4,2)", sameResolver, 7, 0},
+		{"same_q3", "QUARTILE.INC(G1:G4,3)", sameResolver, 7, 0},
+		{"same_q4", "QUARTILE.INC(G1:G4,4)", sameResolver, 7, 0},
+
+		// --- Unsorted data: {9,1,5,3,7} should still work ---
+		{"unsorted_q0", "QUARTILE.INC(H1:H5,0)", unsortedResolver, 1, 0},
+		{"unsorted_q1", "QUARTILE.INC(H1:H5,1)", unsortedResolver, 3, 0},
+		{"unsorted_q2", "QUARTILE.INC(H1:H5,2)", unsortedResolver, 5, 0},
+		{"unsorted_q3", "QUARTILE.INC(H1:H5,3)", unsortedResolver, 7, 0},
+		{"unsorted_q4", "QUARTILE.INC(H1:H5,4)", unsortedResolver, 9, 0},
+
+		// --- Duplicate values: {3,3,5,5,8,8} ---
+		{"dup_q0", "QUARTILE.INC(J1:J6,0)", dupResolver, 3, 0},
+		{"dup_q1", "QUARTILE.INC(J1:J6,1)", dupResolver, 3.5, 0},
+		{"dup_q2", "QUARTILE.INC(J1:J6,2)", dupResolver, 5, 0},
+		{"dup_q3", "QUARTILE.INC(J1:J6,3)", dupResolver, 7.25, 0},
+		{"dup_q4", "QUARTILE.INC(J1:J6,4)", dupResolver, 8, 0},
+
+		// --- Large dataset: {1..20} ---
+		{"large_q0", "QUARTILE.INC(K1:K20,0)", largeResolver, 1, 0},
+		{"large_q1", "QUARTILE.INC(K1:K20,1)", largeResolver, 5.75, 0},
+		{"large_q2", "QUARTILE.INC(K1:K20,2)", largeResolver, 10.5, 0},
+		{"large_q3", "QUARTILE.INC(K1:K20,3)", largeResolver, 15.25, 0},
+		{"large_q4", "QUARTILE.INC(K1:K20,4)", largeResolver, 20, 0},
+
+		// --- Mixed types: strings/booleans ignored, only {10,20,30} ---
+		{"mixed_q1", "QUARTILE.INC(I1:I5,1)", mixedResolver, 15, 0},
+		{"mixed_q2", "QUARTILE.INC(I1:I5,2)", mixedResolver, 20, 0},
+		{"mixed_q3", "QUARTILE.INC(I1:I5,3)", mixedResolver, 25, 0},
+
+		// --- Fractional quart truncated to integer ---
+		{"frac_1.7_truncates_to_1", "QUARTILE.INC(A1:A8,1.7)", docsResolver, 3.5, 0},
+		{"frac_3.9_truncates_to_3", "QUARTILE.INC(A1:A8,3.9)", docsResolver, 9.25, 0},
+		{"frac_0.5_truncates_to_0", "QUARTILE.INC(A1:A8,0.5)", docsResolver, 1, 0},
+
+		// --- quart out of range ---
+		{"q_negative", "QUARTILE.INC(A1:A8,-1)", docsResolver, 0, ErrValNUM},
+		{"q_over_4", "QUARTILE.INC(A1:A8,5)", docsResolver, 0, ErrValNUM},
+		// -0.5 truncates to 0, which is valid (returns min)
+		{"q_negative_frac_truncates_to_0", "QUARTILE.INC(A1:A8,-0.5)", docsResolver, 1, 0},
+
+		// --- Empty array ---
+		{"empty_array", "QUARTILE.INC(Z1:Z3,1)", emptyResolver, 0, ErrValNUM},
+
+		// --- Error propagation from array ---
+		{"error_in_array", "QUARTILE.INC(L1:L3,1)", errResolver, 0, ErrValREF},
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cf := evalCompile(t, tt.formula)
-			got, err := Eval(cf, resolver, nil)
+			got, err := Eval(cf, tt.resolver, nil)
 			if err != nil {
 				t.Fatalf("Eval: %v", err)
 			}
-			if got.Type != ValueNumber || math.Abs(got.Num-tt.want) > 1e-9 {
-				t.Errorf("%s = %v, want %g", tt.formula, got, tt.want)
+			if tt.wantErr != 0 {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("got %v, want error %v", got, tt.wantErr)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("got type %d (%v), want number", got.Type, got)
+			}
+			if math.Abs(got.Num-tt.wantNum) > 1e-9 {
+				t.Errorf("got %g, want %g", got.Num, tt.wantNum)
 			}
 		})
 	}
+
+	// QUARTILE.INC(x,q) == QUARTILE(x,q) equivalence check (alias)
+	t.Run("equivalence_with_QUARTILE", func(t *testing.T) {
+		for q := 0; q <= 4; q++ {
+			qs := string(rune('0' + q))
+			incF := evalCompile(t, "QUARTILE.INC(A1:A8,"+qs+")")
+			incV, err := Eval(incF, docsResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval QUARTILE.INC q=%d: %v", q, err)
+			}
+
+			compatF := evalCompile(t, "QUARTILE(A1:A8,"+qs+")")
+			compatV, err := Eval(compatF, docsResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval QUARTILE q=%d: %v", q, err)
+			}
+
+			if math.Abs(incV.Num-compatV.Num) > 1e-9 {
+				t.Errorf("QUARTILE.INC(q=%d)=%g != QUARTILE(q=%d)=%g", q, incV.Num, q, compatV.Num)
+			}
+		}
+	})
+
+	// QUARTILE.INC(x,q) == PERCENTILE.INC(x, q*0.25) equivalence check
+	t.Run("equivalence_with_PERCENTILE_INC", func(t *testing.T) {
+		for q := 0; q <= 4; q++ {
+			qs := string(rune('0' + q))
+			qf := evalCompile(t, "QUARTILE.INC(A1:A8,"+qs+")")
+			qv, err := Eval(qf, docsResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval QUARTILE.INC q=%d: %v", q, err)
+			}
+
+			pctStr := []string{"0", "0.25", "0.5", "0.75", "1"}[q]
+			pf := evalCompile(t, "PERCENTILE.INC(A1:A8,"+pctStr+")")
+			pv, err := Eval(pf, docsResolver, nil)
+			if err != nil {
+				t.Fatalf("Eval PERCENTILE.INC q=%d: %v", q, err)
+			}
+
+			if math.Abs(qv.Num-pv.Num) > 1e-9 {
+				t.Errorf("QUARTILE.INC(q=%d)=%g != PERCENTILE.INC(k=%s)=%g", q, qv.Num, pctStr, pv.Num)
+			}
+		}
+	})
+
+	// Wrong number of arguments
+	t.Run("too_few_args", func(t *testing.T) {
+		cf := evalCompile(t, "QUARTILE.INC(A1:A8)")
+		got, err := Eval(cf, docsResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, "QUARTILE.INC(A1:A8,1,2)")
+		got, err := Eval(cf, docsResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

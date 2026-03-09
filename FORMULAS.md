@@ -297,7 +297,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | PEARSON | Returns the Pearson correlation coefficient. | Statistical | 23 |
 | PERCENTILE | Returns the percentile of a data set. | Statistical | 33 |
 | PERCENTILE.EXC | Returns the exclusive percentile of a data set. | Statistical | 31 |
-| PERCENTILE.INC | Returns the inclusive percentile of a data set. | Statistical | 45 |
+| PERCENTILE.INC | Returns the inclusive percentile of a data set. | Statistical | 46 |
 | PERCENTRANK | Returns the rank of a value as a percentage of a data set. | Statistical | 26 |
 | PERCENTRANK.EXC | Returns the exclusive percentage rank of a value in a data set. | Statistical | 29 |
 | PERCENTRANK.INC | Returns the inclusive percentage rank of a value in a data set. | Statistical | 52 |
@@ -316,9 +316,9 @@ Werkbook supports **437** spreadsheet formula functions.
 | PRODUCT | Returns the product of supplied numbers. | Math & Trig | 36 |
 | PROPER | Capitalizes words in text. | Text | 25 |
 | PV | Returns the present value of an investment or loan. | Financial | 3 |
-| QUARTILE | Returns a quartile of a data set. | Statistical | 36 |
+| QUARTILE | Returns a quartile of a data set. | Statistical | 37 |
 | QUARTILE.EXC | Returns the exclusive quartile of a data set. | Statistical | 27 |
-| QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 5 |
+| QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 65 |
 | QUOTIENT | Returns the integer portion of a division. | Math & Trig | 43 |
 | RADIANS | Converts degrees to radians. | Math & Trig | 30 |
 | RAND | Returns a random number between 0 and 1. | Math & Trig | 1 |
