@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **406** Excel formula functions.
+Werkbook supports **407** Excel formula functions.
 
 | Function | Category | Tests |
 |----------|----------|------:|
@@ -410,10 +410,11 @@ Werkbook supports **406** Excel formula functions.
 | YIELD | Financial | 2 |
 | YIELDDISC | Financial | 3 |
 | YIELDMAT | Financial | 3 |
+| Z.TEST | Statistical | 22 |
 
 # Unsupported Formulas
 
-The following **64** Excel functions are not yet supported.
+The following **63** Excel functions are not yet supported.
 
 | Function | Category |
 |----------|----------|
@@ -480,4 +481,3 @@ The following **64** Excel functions are not yet supported.
 | T.TEST | Statistical |
 | TREND | Statistical |
 | WEBSERVICE | Web |
-| Z.TEST | Statistical |

@@ -119,6 +119,7 @@ func init() {
 	Register("NEGBINOM.DIST", NoCtx(fnNegbinomDist))
 	Register("PHI", NoCtx(fnPhi))
 	Register("PROB", NoCtx(fnPROB))
+	Register("Z.TEST", NoCtx(fnZTEST))
 	Register("AGGREGATE", NoCtx(fnAggregate))
 }
 
@@ -5128,4 +5129,55 @@ func fnAggregate(args []Value) (Value, error) {
 		callArgs = []Value{arr}
 	}
 	return CallFunc(id, callArgs, nil)
+}
+
+// fnZTEST implements Z.TEST(array, x, [sigma]).
+// Returns the one-tailed p-value of a z-test.
+func fnZTEST(args []Value) (Value, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Collect numeric values from the array (first arg only).
+	nums, ev := collectNumeric(args[:1])
+	if ev != nil {
+		return *ev, nil
+	}
+	n := len(nums)
+	if n == 0 {
+		return ErrorVal(ErrValNA), nil
+	}
+	x, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	// Compute mean.
+	sum := 0.0
+	for _, v := range nums {
+		sum += v
+	}
+	mean := sum / float64(n)
+
+	var sigma float64
+	if len(args) == 3 {
+		sigma, e = CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+	} else {
+		// Sample standard deviation.
+		if n < 2 {
+			return ErrorVal(ErrValDIV0), nil
+		}
+		ssq := 0.0
+		for _, v := range nums {
+			d := v - mean
+			ssq += d * d
+		}
+		sigma = math.Sqrt(ssq / float64(n-1))
+	}
+	if sigma == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
+	z := (mean - x) / (sigma / math.Sqrt(float64(n)))
+	return NumberVal(1 - normSDistCDF(z)), nil
 }

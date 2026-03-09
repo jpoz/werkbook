@@ -132,6 +132,7 @@ var xlfnPrefix = map[string]string{
 	"XLOOKUP":         "_xlfn.",
 	"XMATCH":          "_xlfn.",
 	"XOR":             "_xlfn.",
+	"Z.TEST":          "_xlfn.",
 }
 
 var dynamicArrayFunctions = map[string]struct{}{

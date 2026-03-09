@@ -23806,3 +23806,248 @@ func TestAGGREGATE(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Z.TEST
+// ---------------------------------------------------------------------------
+
+func TestZTEST(t *testing.T) {
+	const tol = 1e-4
+
+	// Shared resolver with data {3,6,7,8,6,5,4,2,1,9} in A1:A10.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:  NumberVal(3),
+			{Col: 1, Row: 2}:  NumberVal(6),
+			{Col: 1, Row: 3}:  NumberVal(7),
+			{Col: 1, Row: 4}:  NumberVal(8),
+			{Col: 1, Row: 5}:  NumberVal(6),
+			{Col: 1, Row: 6}:  NumberVal(5),
+			{Col: 1, Row: 7}:  NumberVal(4),
+			{Col: 1, Row: 8}:  NumberVal(2),
+			{Col: 1, Row: 9}:  NumberVal(1),
+			{Col: 1, Row: 10}: NumberVal(9),
+		},
+	}
+
+	tests := []struct {
+		name      string
+		formula   string
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Documented Excel examples.
+		{"doc_x4", "Z.TEST(A1:A10,4)", 0.090574, false, 0},
+		{"doc_x6", "Z.TEST(A1:A10,6)", 0.863043, false, 0},
+
+		// x equals mean → 0.5 (mean of {3..9} = 5.1).
+		{"x_equals_mean", "Z.TEST(A1:A10,5.1)", 0.5, false, 0},
+
+		// x much larger than mean → near 1 (z very negative, CDF≈0, 1-CDF≈1).
+		{"x_large", "Z.TEST(A1:A10,100)", 1.0, false, 0},
+
+		// x much smaller than mean → near 0 (z very positive, CDF≈1, 1-CDF≈0).
+		{"x_small", "Z.TEST(A1:A10,-100)", 0.0, false, 0},
+
+		// With explicit sigma.
+		{"explicit_sigma", "Z.TEST(A1:A10,4,2.5)", 0.082052, false, 0},
+
+		// x equals mean with explicit sigma → 0.5.
+		{"explicit_sigma_mean", "Z.TEST(A1:A10,5.1,3)", 0.5, false, 0},
+
+		// sigma = 0 → #DIV/0!
+		{"sigma_zero", "Z.TEST(A1:A10,4,0)", 0, true, ErrValDIV0},
+
+		// Wrong arg count: 1 arg → #VALUE!
+		{"too_few_args", "Z.TEST(A1:A10)", 0, true, ErrValVALUE},
+
+		// Wrong arg count: 4 args → #VALUE!
+		{"too_many_args", "Z.TEST(A1:A10,4,2,1)", 0, true, ErrValVALUE},
+
+		// Non-numeric x → #VALUE!
+		{"nonnumeric_x", `Z.TEST(A1:A10,"abc")`, 0, true, ErrValVALUE},
+
+		// Non-numeric sigma → #VALUE!
+		{"nonnumeric_sigma", `Z.TEST(A1:A10,4,"abc")`, 0, true, ErrValVALUE},
+
+		// Boolean coercion for x: TRUE → 1.
+		{"bool_x_true", "Z.TEST(A1:A10,TRUE)", 3.1107e-07, false, 0},
+
+		// String-numeric coercion for x.
+		{"string_x", `Z.TEST(A1:A10,"4")`, 0.090574, false, 0},
+
+		// String-numeric coercion for sigma.
+		{"string_sigma", `Z.TEST(A1:A10,4,"2.5")`, 0.082052, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError {
+					t.Errorf("%s: want error %d, got type=%d num=%g", tt.formula, tt.wantErr, got.Type, got.Num)
+				} else if got.Err != tt.wantErr {
+					t.Errorf("%s: want err=%d, got err=%d", tt.formula, tt.wantErr, got.Err)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: want number, got type=%d err=%v", tt.formula, got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
+			}
+		})
+	}
+}
+
+func TestZTEST_EmptyArray(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "Z.TEST(A1:A3,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("empty array: want #N/A, got type=%d err=%v num=%g", got.Type, got.Err, got.Num)
+	}
+}
+
+func TestZTEST_SingleElement(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+		},
+	}
+
+	// Without sigma: single element means n<2, so stdev can't be computed → #DIV/0!
+	t.Run("no_sigma", func(t *testing.T) {
+		cf := evalCompile(t, "Z.TEST(A1:A1,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("want #DIV/0!, got type=%d err=%v", got.Type, got.Err)
+		}
+	})
+
+	// With sigma: single element is fine.
+	t.Run("with_sigma", func(t *testing.T) {
+		cf := evalCompile(t, "Z.TEST(A1:A1,4,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval error: %v", err)
+		}
+		if got.Type != ValueNumber {
+			t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+		}
+		// mean=5, x=4, sigma=2, n=1 → z=(5-4)/(2/1)=0.5 → 1-normSDistCDF(0.5)≈0.3085
+		want := 0.3085
+		if math.Abs(got.Num-want) > 1e-3 {
+			t.Errorf("got %g, want ~%g", got.Num, want)
+		}
+	})
+}
+
+func TestZTEST_AllSameValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(5),
+		},
+	}
+	// All same values → stdev=0 → #DIV/0!
+	cf := evalCompile(t, "Z.TEST(A1:A3,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("all same values: want #DIV/0!, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestZTEST_ErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: ErrorVal(ErrValREF),
+			{Col: 1, Row: 3}: NumberVal(7),
+		},
+	}
+	cf := evalCompile(t, "Z.TEST(A1:A3,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("error propagation: want #REF!, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestZTEST_MixedTypes(t *testing.T) {
+	// Text values in ranges are ignored by collectNumeric.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: StringVal("hello"),
+			{Col: 1, Row: 3}: NumberVal(7),
+			{Col: 1, Row: 4}: NumberVal(8),
+			{Col: 1, Row: 5}: NumberVal(6),
+			{Col: 1, Row: 6}: NumberVal(5),
+			{Col: 1, Row: 7}: NumberVal(4),
+			{Col: 1, Row: 8}: NumberVal(2),
+			{Col: 1, Row: 9}: NumberVal(1),
+			{Col: 1, Row: 10}: NumberVal(9),
+			{Col: 1, Row: 11}: BoolVal(true), // booleans ignored in ranges
+		},
+	}
+
+	cf := evalCompile(t, "Z.TEST(A1:A11,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// Numeric values are {3,7,8,6,5,4,2,1,9} (same as without text/bool minus 6 from row 2).
+	// mean=5, n=9, stdev_s ≈ 2.7386, z=(5-4)/(2.7386/3) ≈ 1.0954, p ≈ 1-normSDistCDF(1.0954) ≈ 0.1367
+	// Just check it produces a number in (0,1).
+	if got.Num <= 0 || got.Num >= 1 {
+		t.Errorf("Z.TEST with mixed types: result %g not in (0,1)", got.Num)
+	}
+}
+
+func TestZTEST_LargeDataset(t *testing.T) {
+	// Build a large dataset in cells.
+	cells := make(map[CellAddr]Value)
+	n := 200
+	for i := 1; i <= n; i++ {
+		cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+	}
+	resolver := &mockResolver{cells: cells}
+
+	// mean = 100.5, stdev_s = 57.879..., n=200
+	// z = (100.5 - 100) / (57.879 / sqrt(200)) ≈ 0.1222
+	// p = 1 - normSDistCDF(0.1222) ≈ 0.4514
+	cf := evalCompile(t, fmt.Sprintf("Z.TEST(A1:A%d,100)", n))
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	want := 0.4514
+	if math.Abs(got.Num-want) > 0.01 {
+		t.Errorf("large dataset: got %g, want ~%g", got.Num, want)
+	}
+}
