@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/jpoz/werkbook.svg)](https://pkg.go.dev/github.com/jpoz/werkbook)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/werkbook)](https://goreportcard.com/report/github.com/jpoz/werkbook)
 
-A Go library for reading and writing `.xlsx` workbooks with a built-in formula engine. Zero external dependencies.
+A Go library for reading, writing and calculating spreadsheets (.xlsx) with a built-in formula engine. Zero external dependencies.
 
 ## Install
 
