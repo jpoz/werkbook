@@ -106,7 +106,7 @@ func toValueWithDate1904(v any, date1904 bool) (Value, error) {
 		}
 		return Value{Type: TypeNumber, Number: val}, nil
 	case time.Time:
-		serial := timeToExcelSerialForDateSystem(val, date1904)
+		serial := timeToSerialForDateSystem(val, date1904)
 		return Value{Type: TypeNumber, Number: serial}, nil
 	case Value:
 		return val, nil

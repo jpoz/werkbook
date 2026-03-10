@@ -24,7 +24,7 @@ type xlsxR struct {
 
 // MarshalXML serializes an xlsxSI item, adding xml:space="preserve" on the <t>
 // element when the string has leading or trailing whitespace. Without this
-// attribute, Excel (and other OOXML-compliant readers) strip the whitespace
+// attribute, OOXML-compliant readers strip the whitespace
 // when loading the shared string table.
 func (si xlsxSI) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	if err := e.EncodeToken(start); err != nil {

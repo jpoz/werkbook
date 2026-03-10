@@ -6,6 +6,7 @@
 *.dylib
 *.xlsx
 /wb
+/count_formula_tests
 
 # Test binary
 *.test

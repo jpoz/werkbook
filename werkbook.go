@@ -15,7 +15,7 @@ import (
 type File struct {
 	sheets         []*Sheet
 	sheetNames     []string
-	date1904       bool // true if the workbook uses the 1904 date system (Mac Excel)
+	date1904       bool // true if the workbook uses the 1904 date system
 	calcProps      CalcProperties
 	coreProps      CoreProperties
 	corePropsRaw   []byte
@@ -69,7 +69,7 @@ func New(opts ...Option) *File {
 	return f
 }
 
-// Date1904 reports whether the workbook uses the 1904 date system (Mac Excel).
+// Date1904 reports whether the workbook uses the 1904 date system.
 func (f *File) Date1904() bool {
 	return f.date1904
 }
@@ -375,18 +375,15 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
 	switch cd.Type {
 	case "s":
-		// Shared-string cells are always strings. In Excel, a cell stored
+		// Shared-string cells are always strings. A cell stored
 		// as a shared string is text even if the content looks numeric —
 		// e.g. the string "1" is not equal to the number 1 via the = operator.
 		// Arithmetic operations will coerce via CoerceNum as needed.
 		return Value{Type: TypeString, String: cd.Value}
 	case "str", "inlineStr":
-		if cd.Formula != "" && (cd.IsDynamicArray || cd.IsArrayFormula || cd.FormulaType == "array") && isFormulaErrorString(cd.Value) {
-			return Value{Type: TypeError, String: cd.Value}
-		}
 		return Value{Type: TypeString, String: cd.Value}
 	case "d":
-		n, err := excelDateStringToSerial(cd.Value, date1904)
+		n, err := dateStringToSerial(cd.Value, date1904)
 		if err == nil {
 			return Value{Type: TypeNumber, Number: n}
 		}
@@ -479,7 +476,7 @@ func (f *File) rebuildFormulaState() {
 // expandFormula expands table refs and defined names in a formula string.
 func (f *File) expandFormula(src string, sheetName string, row int) string {
 	src = formula.ExpandTableRefs(src, f.tables, row)
-	src = formula.ExpandDefinedNames(src, f.definedNames, f.SheetIndex(sheetName))
+	src = formula.ExpandDefinedNames(src, f.definedNames, f.SheetIndex(sheetName), f.sheetNames)
 	return src
 }
 

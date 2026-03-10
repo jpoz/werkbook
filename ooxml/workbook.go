@@ -76,7 +76,7 @@ func (s *xlsxSheet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 // We use the raw "r:id" local name to match the xmlns:r prefix declared
 // on the parent <workbook> element. Go's encoding/xml would otherwise
 // re-declare the namespace with a different prefix on every <sheet>,
-// which is semantically valid XML but triggers Excel's file-repair dialog.
+// which is semantically valid XML but triggers the file-repair dialog in spreadsheet applications.
 func (s xlsxSheet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	start.Name = xml.Name{Local: "sheet"}
 	start.Attr = []xml.Attr{
@@ -102,7 +102,7 @@ type DefinedName struct {
 
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Date1904     bool // true if the workbook uses the 1904 date system (Mac Excel)
+	Date1904     bool // true if the workbook uses the 1904 date system
 	CalcProps    CalcPropertiesData
 	CoreProps    CorePropertiesData
 	CorePropsRaw []byte
@@ -156,7 +156,7 @@ type StyleData struct {
 	NumFmt   string // custom format string
 }
 
-// TableDef holds the definition of an Excel table (ListObject).
+// TableDef holds the definition of a table (ListObject).
 type TableDef struct {
 	Name            string   // internal name
 	DisplayName     string   // display name (used in structured references)
@@ -212,6 +212,6 @@ type CellData struct {
 	FormulaType    string // OOXML formula type, e.g. "array"
 	FormulaRef     string // OOXML formula ref attribute for array/shared formulas
 	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
-	IsDynamicArray bool   // true if the formula uses Excel dynamic-array spill semantics
+	IsDynamicArray bool   // true if the formula uses dynamic-array spill semantics
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

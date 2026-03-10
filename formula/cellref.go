@@ -52,7 +52,7 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		}
 		s = s[idx+1:]
 	} else if idx := findDotSheetSeparator(s); idx > 0 {
-		// Dot notation: Sheet1.A1 (LibreOffice style; Excel returns #NAME? for this)
+		// Dot notation: Sheet1.A1 (LibreOffice style; returns #NAME? in standard mode)
 		ref.Sheet = s[:idx]
 		ref.DotNotation = true
 		s = s[idx+1:]
@@ -76,7 +76,7 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		return nil, fmt.Errorf("expected column letters in %q", raw)
 	}
 	ref.Col = colLettersToNumber(s[colStart:i])
-	if ref.Col > 16384 { // XFD = 16384, max Excel column
+	if ref.Col > 16384 { // XFD = 16384, max column
 		return nil, fmt.Errorf("column out of range in %q", raw)
 	}
 
@@ -99,7 +99,7 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		for _, c := range s[rowStart:i] {
 			row = row*10 + int(c-'0')
 		}
-		if row > 1048576 { // max Excel row
+		if row > 1048576 { // max row
 			return nil, fmt.Errorf("row out of range in %q", raw)
 		}
 		ref.Row = row

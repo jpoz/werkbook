@@ -12,7 +12,7 @@ type Node interface {
 	nodeMarker()
 }
 
-// ErrorCode represents an Excel error value.
+// ErrorCode represents a formula error value.
 type ErrorCode string
 
 const (
@@ -88,7 +88,7 @@ type CellRef struct {
 	Row         int    // 1-based row number
 	AbsCol      bool   // true if column is absolute ($A)
 	AbsRow      bool   // true if row is absolute ($1)
-	DotNotation bool   // true if parsed with LibreOffice dot separator (Sheet1.A1); Excel returns #NAME?
+	DotNotation bool   // true if parsed with LibreOffice dot separator (Sheet1.A1); returns #NAME? in standard mode
 }
 
 func (n *CellRef) nodeMarker() {}

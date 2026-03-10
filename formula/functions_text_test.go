@@ -101,7 +101,7 @@ func TestSUBSTITUTE(t *testing.T) {
 		{name: "replace_1st", formula: `SUBSTITUTE("abab","a","X",1)`, want: "Xbab"},
 		// No match — return original
 		{name: "no_match", formula: `SUBSTITUTE("hello","z","X")`, want: "hello"},
-		// Empty old_text — Excel returns original text unchanged
+		// Empty old_text — returns original text unchanged
 		{name: "empty_old", formula: `SUBSTITUTE("hello","","X")`, want: "hello"},
 		// Empty new_text — delete occurrences
 		{name: "delete_all", formula: `SUBSTITUTE("hello","l","")`, want: "heo"},
@@ -122,12 +122,12 @@ func TestSUBSTITUTE(t *testing.T) {
 		{name: "multi_replace_all", formula: `SUBSTITUTE("aaaa","aa","X")`, want: "XX"},
 		// Delete specific instance
 		{name: "delete_2nd", formula: `SUBSTITUTE("abab","a","",2)`, want: "abb"},
-		// Excel doc example: replace "Sales" with "Cost"
-		{name: "excel_example_1", formula: `SUBSTITUTE("Sales Data","Sales","Cost")`, want: "Cost Data"},
-		// Excel doc example: replace 1st "1" with "2"
-		{name: "excel_example_2", formula: `SUBSTITUTE("Quarter 1, 2008","1","2",1)`, want: "Quarter 2, 2008"},
-		// Excel doc example: replace 3rd "1" with "2"
-		{name: "excel_example_3", formula: `SUBSTITUTE("Quarter 1, 2011","1","2",3)`, want: "Quarter 1, 2012"},
+		// Doc example: replace "Sales" with "Cost"
+		{name: "doc_example_1", formula: `SUBSTITUTE("Sales Data","Sales","Cost")`, want: "Cost Data"},
+		// Doc example: replace 1st "1" with "2"
+		{name: "doc_example_2", formula: `SUBSTITUTE("Quarter 1, 2008","1","2",1)`, want: "Quarter 2, 2008"},
+		// Doc example: replace 3rd "1" with "2"
+		{name: "doc_example_3", formula: `SUBSTITUTE("Quarter 1, 2011","1","2",3)`, want: "Quarter 1, 2012"},
 	}
 
 	for _, tt := range tests {
@@ -234,7 +234,7 @@ func TestTEXTDateTimeFormats(t *testing.T) {
 		formula string
 		want    string
 	}{
-		// Date formatting from Excel serial numbers
+		// Date formatting from date serial numbers
 		{name: "mm-dd-yy", formula: `TEXT(17816.607951388887, "mm-dd-yy")`, want: "10-10-48"},
 		{name: "yyyy-mm-dd", formula: `TEXT(44197, "yyyy-mm-dd")`, want: "2021-01-01"},
 		{name: "mm/dd/yyyy", formula: `TEXT(44197, "mm/dd/yyyy")`, want: "01/01/2021"},
@@ -458,7 +458,7 @@ func TestTEXTScientific(t *testing.T) {
 func TestTEXTLowercaseEReturnsVALUE(t *testing.T) {
 	resolver := &mockResolver{}
 
-	// Excel only recognises uppercase E for scientific notation.
+	// Only uppercase E is recognised for scientific notation.
 	// Lowercase e+/e- in format strings → #VALUE!.
 	formats := []string{
 		`"|#,e-#|"`,
@@ -624,7 +624,7 @@ func TestTEXTZeroPad(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FIND edge cases
+// FIND comprehensive tests
 // ---------------------------------------------------------------------------
 
 func TestFINDEdgeCases(t *testing.T) {
@@ -636,12 +636,80 @@ func TestFINDEdgeCases(t *testing.T) {
 		wantNum float64
 		isErr   bool
 	}{
-		{name: "basic", formula: `FIND("lo","hello")`, wantNum: 4},
-		{name: "start_pos", formula: `FIND("l","hello world",5)`, wantNum: 10},
-		{name: "not_found", formula: `FIND("z","hello")`, isErr: true},
-		{name: "case_sensitive", formula: `FIND("H","hello")`, isErr: true},
-		{name: "empty_find", formula: `FIND("","hello")`, wantNum: 1},
+		// Basic functionality
+		{name: "basic_substring", formula: `FIND("lo","hello")`, wantNum: 4},
+		{name: "find_at_beginning", formula: `FIND("M","Miriam McGovern")`, wantNum: 1},
+		{name: "find_substring_Gov", formula: `FIND("Gov","Miriam McGovern")`, wantNum: 10},
+		{name: "find_single_char", formula: `FIND("a","banana")`, wantNum: 2},
+		{name: "find_at_end", formula: `FIND("rn","Miriam McGovern")`, wantNum: 14},
+		{name: "find_entire_string", formula: `FIND("hello","hello")`, wantNum: 1},
+		{name: "find_single_char_string", formula: `FIND("a","a")`, wantNum: 1},
+
+		// Case sensitivity
+		{name: "case_sensitive_upper_not_found", formula: `FIND("H","hello")`, isErr: true},
+		{name: "case_sensitive_lower_m", formula: `FIND("m","Miriam McGovern")`, wantNum: 6},
+		{name: "case_sensitive_upper_M", formula: `FIND("M","Miriam McGovern")`, wantNum: 1},
+		{name: "case_lower_a_in_Apple", formula: `FIND("a","Apple")`, isErr: true},
+		{name: "case_upper_A_in_Apple", formula: `FIND("A","Apple")`, wantNum: 1},
+		{name: "case_sensitive_substring", formula: `FIND("mc","Miriam McGovern")`, isErr: true},
+
+		// start_num parameter
+		{name: "start_pos_skip_first", formula: `FIND("M","Miriam McGovern",3)`, wantNum: 8},
+		{name: "start_pos_find_second_l", formula: `FIND("l","hello world",5)`, wantNum: 10},
+		{name: "start_pos_1_default", formula: `FIND("h","hello",1)`, wantNum: 1},
+		{name: "start_pos_at_match", formula: `FIND("l","hello",3)`, wantNum: 3},
+		{name: "start_pos_at_length", formula: `FIND("o","hello",5)`, wantNum: 5},
+		{name: "start_pos_past_only_match", formula: `FIND("h","hello",2)`, isErr: true},
+
+		// Multiple occurrences — returns first from start_num
+		{name: "multiple_occ_first", formula: `FIND("a","banana")`, wantNum: 2},
+		{name: "multiple_occ_second", formula: `FIND("a","banana",3)`, wantNum: 4},
+		{name: "multiple_occ_third", formula: `FIND("a","banana",5)`, wantNum: 6},
+
+		// Empty find_text
+		{name: "empty_find_text", formula: `FIND("","hello")`, wantNum: 1},
+		{name: "empty_find_text_start_3", formula: `FIND("","hello",3)`, wantNum: 3},
+		{name: "empty_find_text_start_at_len", formula: `FIND("","hello",5)`, wantNum: 5},
+		{name: "empty_find_text_start_past_len", formula: `FIND("","hello",6)`, wantNum: 6},
+		{name: "empty_find_empty_within", formula: `FIND("","")`, wantNum: 1},
+
+		// Not found
+		{name: "not_found_char", formula: `FIND("z","hello")`, isErr: true},
+		{name: "not_found_long_needle", formula: `FIND("hello world!","hello")`, isErr: true},
+
+		// Empty within_text
+		{name: "find_in_empty_string", formula: `FIND("a","")`, isErr: true},
+
+		// start_num errors
 		{name: "start_too_large", formula: `FIND("h","hello",99)`, isErr: true},
+		{name: "start_zero", formula: `FIND("h","hello",0)`, isErr: true},
+		{name: "start_negative", formula: `FIND("h","hello",-1)`, isErr: true},
+
+		// Argument count errors
+		{name: "no_args", formula: `FIND()`, isErr: true},
+		{name: "one_arg", formula: `FIND("a")`, isErr: true},
+		{name: "four_args", formula: `FIND("a","b",1,2)`, isErr: true},
+
+		// Numeric coercion — numbers become strings via ValueToString
+		{name: "numeric_find_text", formula: `FIND(1,"a1b2")`, wantNum: 2},
+		{name: "numeric_within_text", formula: `FIND("2",1234)`, wantNum: 2},
+		{name: "numeric_both", formula: `FIND(3,12345)`, wantNum: 3},
+
+		// Boolean coercion — TRUE/FALSE become strings
+		{name: "bool_true_find", formula: `FIND(TRUE,"TRUEFALSE")`, wantNum: 1},
+		{name: "bool_false_find", formula: `FIND(FALSE,"TRUEFALSE")`, wantNum: 5},
+		{name: "bool_true_not_lowercase", formula: `FIND(TRUE,"true")`, isErr: true},
+
+		// Special characters
+		{name: "find_space", formula: `FIND(" ","hello world")`, wantNum: 6},
+		{name: "find_comma", formula: `FIND(",","a,b,c")`, wantNum: 2},
+		{name: "find_exclamation", formula: `FIND("!","hello!")`, wantNum: 6},
+
+		// Nested FIND
+		{name: "nested_find_second_o", formula: `FIND("o","hello world",FIND("o","hello world")+1)`, wantNum: 8},
+
+		// Unicode
+		{name: "unicode_char", formula: "FIND(\"\u00e9\",\"caf\u00e9\")", wantNum: 4},
 	}
 
 	for _, tt := range tests {
@@ -1209,8 +1277,8 @@ func TestCHOOSEComprehensive(t *testing.T) {
 		// Boolean as index (TRUE=1)
 		{name: "bool_true_index", formula: `CHOOSE(TRUE,"a","b","c")`, want: want{typ: ValueString, str: "a"}},
 
-		// Excel doc examples
-		{name: "excel_doc_example", formula: `CHOOSE(3,"Wide",115,"world",8)`, want: want{typ: ValueString, str: "world"}},
+		// Doc examples
+		{name: "doc_example", formula: `CHOOSE(3,"Wide",115,"world",8)`, want: want{typ: ValueString, str: "world"}},
 
 		// Error: index out of range (too high)
 		{name: "index_too_high", formula: `CHOOSE(5,"a","b","c")`, want: want{typ: ValueError, err: ErrValVALUE}},
@@ -2167,10 +2235,114 @@ func TestCODE_Windows1252(t *testing.T) {
 	}
 }
 
+func TestUNICHAR(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// String result tests
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic ASCII characters
+		{"space", `UNICHAR(32)`, " "},
+		{"exclamation", `UNICHAR(33)`, "!"},
+		{"digit_0", `UNICHAR(48)`, "0"},
+		{"uppercase_A", `UNICHAR(65)`, "A"},
+		{"uppercase_B", `UNICHAR(66)`, "B"},
+		{"uppercase_Z", `UNICHAR(90)`, "Z"},
+		{"lowercase_a", `UNICHAR(97)`, "a"},
+		{"lowercase_z", `UNICHAR(122)`, "z"},
+		{"tilde", `UNICHAR(126)`, "~"},
+
+		// Smallest valid code point
+		{"code_1", `UNICHAR(1)`, "\x01"},
+
+		// Unicode characters beyond ASCII
+		{"copyright", `UNICHAR(169)`, "\u00A9"},     // ©
+		{"euro_sign", `UNICHAR(8364)`, "\u20AC"},    // €
+		{"snowman", `UNICHAR(9731)`, "\u2603"},      // ☃
+		{"greek_alpha", `UNICHAR(945)`, "\u03B1"},   // α
+		{"cjk_char", `UNICHAR(20013)`, "\u4E2D"},    // 中
+		{"musical_note", `UNICHAR(9834)`, "\u266A"}, // ♪
+		{"infinity", `UNICHAR(8734)`, "\u221E"},     // ∞
+		{"check_mark", `UNICHAR(10003)`, "\u2713"},  // ✓
+
+		// Emoji (supplementary plane)
+		{"grinning_face", `UNICHAR(128512)`, "\U0001F600"}, // 😀
+
+		// Max valid Unicode code point
+		{"max_unicode", `UNICHAR(1114111)`, "\U0010FFFF"},
+
+		// Non-integer inputs should truncate
+		{"truncate_65.1", `UNICHAR(65.1)`, "A"},
+		{"truncate_65.9", `UNICHAR(65.9)`, "A"},
+		{"truncate_66.5", `UNICHAR(66.5)`, "B"},
+
+		// String coercion
+		{"string_65", `UNICHAR("65")`, "A"},
+		{"string_66", `UNICHAR("66")`, "B"},
+
+		// Boolean TRUE = 1
+		{"bool_true", `UNICHAR(TRUE)`, "\x01"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (type %d), want %q", tt.formula, got, got.Type, tt.want)
+			}
+		})
+	}
+
+	// Error result tests
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Zero is invalid
+		{"zero", `UNICHAR(0)`, ErrValVALUE},
+		// Negative values
+		{"negative_1", `UNICHAR(-1)`, ErrValVALUE},
+		{"negative_100", `UNICHAR(-100)`, ErrValVALUE},
+		// Above max Unicode code point
+		{"too_large", `UNICHAR(1114112)`, ErrValVALUE},
+		{"very_large", `UNICHAR(9999999)`, ErrValVALUE},
+		// Surrogate code points → #N/A
+		{"surrogate_start", `UNICHAR(55296)`, ErrValNA}, // 0xD800
+		{"surrogate_mid", `UNICHAR(56000)`, ErrValNA},   // 0xDAC0
+		{"surrogate_end", `UNICHAR(57343)`, ErrValNA},   // 0xDFFF
+		// Non-numeric string → #VALUE!
+		{"non_numeric_string", `UNICHAR("hello")`, ErrValVALUE},
+		// Wrong number of args
+		{"no_args", `UNICHAR()`, ErrValVALUE},
+		{"two_args", `UNICHAR(65,66)`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v (type %d, err %d), want error %d", tt.formula, got, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCHAR_Windows1252(t *testing.T) {
 	resolver := &mockResolver{}
 
-	tests := []struct {
+	strTests := []struct {
 		name    string
 		formula string
 		want    string
@@ -2188,9 +2360,61 @@ func TestCHAR_Windows1252(t *testing.T) {
 		// Latin-1 supplement — same in both encodings
 		{"CHAR(192) = A-grave", `CHAR(192)`, "À"},
 		{"CHAR(167) = Section", `CHAR(167)`, "§"},
+
+		// Minimum valid code
+		{"CHAR(1) = SOH", `CHAR(1)`, "\x01"},
+
+		// Control characters
+		{"CHAR(9) = tab", `CHAR(9)`, "\t"},
+		{"CHAR(10) = newline", `CHAR(10)`, "\n"},
+		{"CHAR(13) = carriage_return", `CHAR(13)`, "\r"},
+
+		// Space
+		{"CHAR(32) = space", `CHAR(32)`, " "},
+
+		// Common punctuation
+		{"CHAR(33) = exclamation", `CHAR(33)`, "!"},
+		{"CHAR(63) = question_mark", `CHAR(63)`, "?"},
+		{"CHAR(64) = at_sign", `CHAR(64)`, "@"},
+
+		// Digit boundaries
+		{"CHAR(48) = digit_0", `CHAR(48)`, "0"},
+		{"CHAR(57) = digit_9", `CHAR(57)`, "9"},
+
+		// Uppercase boundaries
+		{"CHAR(65) = uppercase_A", `CHAR(65)`, "A"},
+		{"CHAR(90) = uppercase_Z", `CHAR(90)`, "Z"},
+
+		// Lowercase boundaries
+		{"CHAR(97) = lowercase_a", `CHAR(97)`, "a"},
+		{"CHAR(122) = lowercase_z", `CHAR(122)`, "z"},
+
+		// High codes (Latin-1 supplement)
+		{"CHAR(200) = E-grave", `CHAR(200)`, "È"},
+		{"CHAR(255) = y-diaeresis", `CHAR(255)`, "ÿ"},
+
+		// Additional Windows-1252 special characters
+		{"CHAR(130) = single_low_quote", `CHAR(130)`, "‚"},
+		{"CHAR(145) = left_single_quote", `CHAR(145)`, "\u2018"},
+		{"CHAR(146) = right_single_quote", `CHAR(146)`, "\u2019"},
+
+		// Decimal truncation: int(65.9) = 65
+		{"CHAR(65.9) = truncate_to_A", `CHAR(65.9)`, "A"},
+		{"CHAR(65.1) = truncate_to_A", `CHAR(65.1)`, "A"},
+		{"CHAR(66.5) = truncate_to_B", `CHAR(66.5)`, "B"},
+
+		// String coercion
+		{"CHAR_string_65", `CHAR("65")`, "A"},
+		{"CHAR_string_97", `CHAR("97")`, "a"},
+
+		// Boolean coercion: TRUE = 1
+		{"CHAR_bool_true", `CHAR(TRUE)`, "\x01"},
+
+		// Concatenation with CHAR
+		{"CHAR_concat_AB", `CHAR(65)&CHAR(66)`, "AB"},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range strTests {
 		t.Run(tt.name, func(t *testing.T) {
 			cf := evalCompile(t, tt.formula)
 			got, err := Eval(cf, resolver, nil)
@@ -2202,6 +2426,51 @@ func TestCHAR_Windows1252(t *testing.T) {
 			}
 		})
 	}
+
+	// Error result tests
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Zero is invalid (valid range is 1-255)
+		{"zero", `CHAR(0)`, ErrValVALUE},
+		// Negative values
+		{"negative_1", `CHAR(-1)`, ErrValVALUE},
+		// Above max code 255
+		{"code_256", `CHAR(256)`, ErrValVALUE},
+		{"code_1000", `CHAR(1000)`, ErrValVALUE},
+		// Non-numeric string
+		{"non_numeric_string", `CHAR("abc")`, ErrValVALUE},
+		// Wrong number of arguments
+		{"no_args", `CHAR()`, ErrValVALUE},
+		{"two_args", `CHAR(65,66)`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) = %v (type %d, err %d), want error %d", tt.formula, got, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+
+	// CODE(CHAR(65)) roundtrip should return 65
+	t.Run("CODE_CHAR_roundtrip", func(t *testing.T) {
+		cf := evalCompile(t, `CODE(CHAR(65))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(CODE(CHAR(65))): %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 65 {
+			t.Errorf("Eval(CODE(CHAR(65))) = %v, want 65", got)
+		}
+	})
 }
 
 func TestROMAN(t *testing.T) {
@@ -3698,4 +3967,1120 @@ func TestUPPER(t *testing.T) {
 			t.Errorf("got %v, want %q", got, "HELLO WORLD")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// CLEAN
+// ---------------------------------------------------------------------------
+
+func TestCLEAN(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic: remove tab (CHAR 9) and newline (CHAR 10)
+		{name: "tab_and_newline", formula: `CLEAN(CHAR(9)&"Monthly report"&CHAR(10))`, want: "Monthly report"},
+		// Empty string input
+		{name: "empty_string", formula: `CLEAN("")`, want: ""},
+		// String with no non-printable characters (unchanged)
+		{name: "no_control_chars", formula: `CLEAN("hello world")`, want: "hello world"},
+		// Printable string with punctuation and digits
+		{name: "printable_mixed", formula: `CLEAN("abc 123 !@#")`, want: "abc 123 !@#"},
+		// Only non-printable characters → empty string
+		{name: "only_control_chars", formula: `CLEAN(CHAR(1)&CHAR(2)&CHAR(3))`, want: ""},
+		// SOH character (CHAR 1)
+		{name: "soh_char", formula: `CLEAN(CHAR(1)&"test")`, want: "test"},
+		// Bell character (CHAR 7)
+		{name: "bell_char", formula: `CLEAN("before"&CHAR(7)&"after")`, want: "beforeafter"},
+		// Backspace character (CHAR 8)
+		{name: "backspace_char", formula: `CLEAN("data"&CHAR(8))`, want: "data"},
+		// Horizontal tab (CHAR 9)
+		{name: "tab_only", formula: `CLEAN(CHAR(9))`, want: ""},
+		// Line feed (CHAR 10)
+		{name: "linefeed", formula: `CLEAN("line1"&CHAR(10)&"line2")`, want: "line1line2"},
+		// Carriage return (CHAR 13)
+		{name: "carriage_return", formula: `CLEAN("line1"&CHAR(13)&"line2")`, want: "line1line2"},
+		// CRLF combination (CHAR 13 + CHAR 10)
+		{name: "crlf", formula: `CLEAN("line1"&CHAR(13)&CHAR(10)&"line2")`, want: "line1line2"},
+		// Escape character (CHAR 27)
+		{name: "escape_char", formula: `CLEAN(CHAR(27)&"text")`, want: "text"},
+		// Character 31 (last non-printable, unit separator)
+		{name: "char_31", formula: `CLEAN("a"&CHAR(31)&"b")`, want: "ab"},
+		// Character 32 (space) should NOT be removed
+		{name: "space_preserved", formula: `CLEAN("a"&CHAR(32)&"b")`, want: "a b"},
+		// Multiple control chars interspersed
+		{name: "multiple_control_mixed", formula: `CLEAN(CHAR(1)&"a"&CHAR(2)&"b"&CHAR(3)&"c")`, want: "abc"},
+		// Multiple low control chars surrounding text
+		{name: "all_low_controls_prefix", formula: `CLEAN(CHAR(1)&CHAR(5)&CHAR(15)&CHAR(31)&"keep")`, want: "keep"},
+		// Number coercion (42 → "42", no control chars)
+		{name: "number_coercion", formula: `CLEAN(42)`, want: "42"},
+		// Boolean coercion (TRUE → "TRUE")
+		{name: "bool_true_coercion", formula: `CLEAN(TRUE)`, want: "TRUE"},
+		// Boolean coercion (FALSE → "FALSE")
+		{name: "bool_false_coercion", formula: `CLEAN(FALSE)`, want: "FALSE"},
+		// Error value coerced to string (ValueToString converts error)
+		{name: "error_coerced", formula: `CLEAN(1/0)`, want: "#DIV/0!"},
+		// High ASCII characters (>= 32) preserved
+		{name: "high_ascii_preserved", formula: `CLEAN(CHAR(65)&CHAR(90)&CHAR(126))`, want: "AZ~"},
+		// Printable special characters preserved
+		{name: "special_chars_preserved", formula: `CLEAN("$100.00 (USD)")`, want: "$100.00 (USD)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestCLEANErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No arguments → #VALUE!
+	t.Run("no_args", func(t *testing.T) {
+		cf := evalCompile(t, `CLEAN()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(CLEAN()): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("CLEAN() = %v, want #VALUE!", got)
+		}
+	})
+
+	// Too many arguments → #VALUE!
+	t.Run("too_many_args", func(t *testing.T) {
+		cf := evalCompile(t, `CLEAN("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(CLEAN(a,b)): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("CLEAN(a,b) = %v, want #VALUE!", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// REPT
+// ---------------------------------------------------------------------------
+
+func TestREPT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic usage (docs examples)
+		{name: "doc_example_star_dash", formula: `REPT("*-",3)`, want: "*-*-*-"},
+		{name: "doc_example_dash_10", formula: `REPT("-",10)`, want: "----------"},
+
+		// Simple repetition
+		{name: "single_char_repeat", formula: `REPT("a",5)`, want: "aaaaa"},
+		{name: "multi_char_repeat", formula: `REPT("hello",2)`, want: "hellohello"},
+		{name: "single_repetition", formula: `REPT("abc",1)`, want: "abc"},
+
+		// Zero repeats returns empty string
+		{name: "zero_repeats", formula: `REPT("hello",0)`, want: ""},
+
+		// Empty string repeated
+		{name: "empty_string_repeated", formula: `REPT("",5)`, want: ""},
+		{name: "empty_string_zero", formula: `REPT("",0)`, want: ""},
+
+		// Decimal number_times is truncated (floored)
+		{name: "decimal_truncated_2.9", formula: `REPT("a",2.9)`, want: "aa"},
+		{name: "decimal_truncated_3.1", formula: `REPT("a",3.1)`, want: "aaa"},
+		{name: "decimal_truncated_1.5", formula: `REPT("xy",1.5)`, want: "xy"},
+
+		// Number coerced to string for text arg
+		{name: "number_as_text", formula: `REPT(123,2)`, want: "123123"},
+		{name: "decimal_as_text", formula: `REPT(1.5,3)`, want: "1.51.51.5"},
+
+		// Boolean coercion for text arg
+		{name: "true_as_text", formula: `REPT(TRUE,2)`, want: "TRUETRUE"},
+		{name: "false_as_text", formula: `REPT(FALSE,3)`, want: "FALSEFALSEFALSE"},
+
+		// Boolean coercion for number_times arg (TRUE=1, FALSE=0)
+		{name: "true_as_count", formula: `REPT("x",TRUE)`, want: "x"},
+		{name: "false_as_count", formula: `REPT("x",FALSE)`, want: ""},
+
+		// Special characters
+		{name: "space_repeated", formula: `REPT(" ",4)`, want: "    "},
+		{name: "newline_repeated", formula: "REPT(\"\n\",3)", want: "\n\n\n"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestREPTErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		// Wrong argument count
+		{name: "no_args", formula: `REPT()`},
+		{name: "one_arg", formula: `REPT("a")`},
+		{name: "three_args", formula: `REPT("a",2,3)`},
+
+		// Negative number_times
+		{name: "negative_count", formula: `REPT("a",-1)`},
+		{name: "negative_large", formula: `REPT("a",-100)`},
+
+		// Non-numeric string for number_times
+		{name: "string_count", formula: `REPT("a","b")`},
+		{name: "empty_string_count", formula: `REPT("a","")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): unexpected error: %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want #VALUE!", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// REPLACE comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestREPLACEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Documentation examples
+		{name: "doc_example_1", formula: `REPLACE("abcdefghijk",6,5,"*")`, want: "abcde*k"},
+		{name: "doc_example_2", formula: `REPLACE("2009",3,2,"10")`, want: "2010"},
+
+		// Replace at beginning of string
+		{name: "replace_at_start", formula: `REPLACE("123456",1,3,"A")`, want: "A456"},
+		{name: "replace_first_char", formula: `REPLACE("hello",1,1,"H")`, want: "Hello"},
+		{name: "replace_all_from_start", formula: `REPLACE("abc",1,3,"XYZ")`, want: "XYZ"},
+
+		// Replace at end of string
+		{name: "replace_at_end", formula: `REPLACE("hello",5,1,"!")`, want: "hell!"},
+		{name: "replace_last_two", formula: `REPLACE("hello",4,2,"p!")`, want: "help!"},
+		{name: "replace_entire_end", formula: `REPLACE("abcdef",4,3,"XY")`, want: "abcXY"},
+
+		// Replace in middle
+		{name: "replace_middle", formula: `REPLACE("abcdef",3,2,"XX")`, want: "abXXef"},
+		{name: "replace_single_middle", formula: `REPLACE("abcdef",3,1,"X")`, want: "abXdef"},
+
+		// num_chars=0 (insert without removing)
+		{name: "insert_at_start", formula: `REPLACE("abc",1,0,"X")`, want: "Xabc"},
+		{name: "insert_at_middle", formula: `REPLACE("abc",2,0,"X")`, want: "aXbc"},
+		{name: "insert_at_end", formula: `REPLACE("abc",4,0,"X")`, want: "abcX"},
+		{name: "insert_empty", formula: `REPLACE("abc",2,0,"")`, want: "abc"},
+
+		// Replace with longer/shorter new_text
+		{name: "longer_replacement", formula: `REPLACE("abc",2,1,"XXXX")`, want: "aXXXXc"},
+		{name: "shorter_replacement", formula: `REPLACE("abcdef",2,4,"X")`, want: "aXf"},
+
+		// Empty old_text
+		{name: "empty_old_text", formula: `REPLACE("",1,0,"hello")`, want: "hello"},
+		{name: "empty_old_text_replace", formula: `REPLACE("",1,0,"")`, want: ""},
+
+		// Empty new_text (deletion)
+		{name: "delete_chars", formula: `REPLACE("hello",2,3,"")`, want: "ho"},
+		{name: "delete_first", formula: `REPLACE("hello",1,1,"")`, want: "ello"},
+		{name: "delete_all", formula: `REPLACE("hello",1,5,"")`, want: ""},
+
+		// num_chars exceeds remaining string length (clamps to end)
+		{name: "num_chars_exceeds", formula: `REPLACE("abc",2,100,"X")`, want: "aX"},
+		{name: "num_chars_exceeds_from_start", formula: `REPLACE("hi",1,50,"bye")`, want: "bye"},
+
+		// start_num beyond string length (appends)
+		{name: "start_beyond_length", formula: `REPLACE("abc",10,1,"X")`, want: "abcX"},
+		{name: "start_just_beyond", formula: `REPLACE("abc",4,0,"X")`, want: "abcX"},
+
+		// Numeric coercion for old_text
+		{name: "numeric_old_text", formula: `REPLACE(12345,2,3,"X")`, want: "1X5"},
+		{name: "numeric_zero", formula: `REPLACE(0,1,1,"X")`, want: "X"},
+
+		// Boolean coercion for old_text
+		{name: "bool_true", formula: `REPLACE(TRUE,1,2,"X")`, want: "XUE"},
+		{name: "bool_false", formula: `REPLACE(FALSE,3,3,"X")`, want: "FAX"},
+
+		// Float args for start_num and num_chars (truncated to int)
+		{name: "float_start_num", formula: `REPLACE("hello",2.9,3,"X")`, want: "hXo"},
+		{name: "float_num_chars", formula: `REPLACE("hello",1,2.7,"X")`, want: "Xllo"},
+
+		// Negative start_num or num_chars (should error)
+		{name: "negative_start", formula: `REPLACE("hello",-1,3,"X")`, isErr: true},
+		{name: "zero_start", formula: `REPLACE("hello",0,3,"X")`, isErr: true},
+		{name: "negative_num_chars", formula: `REPLACE("hello",1,-1,"X")`, isErr: true},
+
+		// Non-numeric start_num or num_chars (should error)
+		{name: "non_numeric_start", formula: `REPLACE("hello","abc",3,"X")`, isErr: true},
+		{name: "non_numeric_num_chars", formula: `REPLACE("hello",1,"abc","X")`, isErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestREPLACEWrongArgCount(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Too few args
+	cf := evalCompile(t, `REPLACE("hello",2,3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("REPLACE with 3 args: got %v, want error", got)
+	}
+
+	// Too many args
+	cf = evalCompile(t, `REPLACE("hello",2,3,"X","extra")`)
+	got, err = Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("REPLACE with 5 args: got %v, want error", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PROPER
+// ---------------------------------------------------------------------------
+
+func TestPROPER(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic capitalization
+		{"lowercase words", `PROPER("hello world")`, "Hello World"},
+		{"all uppercase", `PROPER("HELLO")`, "Hello"},
+		{"all lowercase", `PROPER("hello")`, "Hello"},
+		{"already proper", `PROPER("Hello World")`, "Hello World"},
+
+		// Non-letter separators trigger capitalization (expected behavior)
+		{"apostrophe separator", `PROPER("2-cent's worth")`, "2-Cent'S Worth"},
+		{"number prefix", `PROPER("76BudGet")`, "76Budget"},
+		{"hyphen separator", `PROPER("2-way street")`, "2-Way Street"},
+		{"this is a TITLE", `PROPER("this is a TITLE")`, "This Is A Title"},
+
+		// Edge cases with strings
+		{"empty string", `PROPER("")`, ""},
+		{"single lowercase", `PROPER("a")`, "A"},
+		{"single uppercase", `PROPER("A")`, "A"},
+		{"spaces only", `PROPER("   ")`, "   "},
+		{"special characters", `PROPER("!@#$%")`, "!@#$%"},
+		{"digits only", `PROPER("12345")`, "12345"},
+
+		// Multiple non-letter separators
+		{"multiple hyphens", `PROPER("one--two")`, "One--Two"},
+		{"dot separator", `PROPER("john.doe")`, "John.Doe"},
+		{"mixed punctuation", `PROPER("hello,world!foo")`, "Hello,World!Foo"},
+
+		// Unicode / accented characters
+		{"accented lowercase", `PROPER("café résumé")`, "Café Résumé"},
+
+		// Number coercion (ValueToString converts number to string)
+		{"number coerced", `PROPER(100)`, "100"},
+		{"negative number", `PROPER(-42.5)`, "-42.5"},
+
+		// Boolean coercion
+		{"boolean TRUE", `PROPER(TRUE)`, "True"},
+		{"boolean FALSE", `PROPER(FALSE)`, "False"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (type %d), want %q", tt.formula, got, got.Type, tt.want)
+			}
+		})
+	}
+
+	// Error: no arguments
+	t.Run("no args", func(t *testing.T) {
+		cf := evalCompile(t, `PROPER()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	// Error: too many arguments
+	t.Run("too many args", func(t *testing.T) {
+		cf := evalCompile(t, `PROPER("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	// Cell reference
+	t.Run("cell reference", func(t *testing.T) {
+		cellResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello world"),
+			},
+		}
+		cf := evalCompile(t, `PROPER(A1)`)
+		got, err := Eval(cf, cellResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "Hello World" {
+			t.Errorf("got %v, want %q", got, "Hello World")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// EXACT comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestEXACT(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    bool
+	}{
+		// Identical strings
+		{name: "same_lowercase", formula: `EXACT("hello","hello")`, want: true},
+		{name: "same_uppercase", formula: `EXACT("HELLO","HELLO")`, want: true},
+		{name: "same_mixed_case", formula: `EXACT("AbCd","AbCd")`, want: true},
+		// Case sensitivity — EXACT is case-sensitive unlike =
+		{name: "case_differs_first_char", formula: `EXACT("Hello","hello")`, want: false},
+		{name: "case_differs_all_caps", formula: `EXACT("ABC","abc")`, want: false},
+		{name: "case_differs_last_char", formula: `EXACT("hellO","hello")`, want: false},
+		// Empty strings
+		{name: "both_empty", formula: `EXACT("","")`, want: true},
+		{name: "first_empty", formula: `EXACT("","a")`, want: false},
+		{name: "second_empty", formula: `EXACT("a","")`, want: false},
+		// Different strings of same length
+		{name: "different_same_len", formula: `EXACT("a","b")`, want: false},
+		// Substrings (different lengths)
+		{name: "substring_prefix", formula: `EXACT("hello","hell")`, want: false},
+		{name: "substring_reversed", formula: `EXACT("hell","hello")`, want: false},
+		// Whitespace matters
+		{name: "leading_space", formula: `EXACT(" hello","hello")`, want: false},
+		{name: "trailing_space", formula: `EXACT("hello ","hello")`, want: false},
+		{name: "both_with_spaces", formula: `EXACT(" hello "," hello ")`, want: true},
+		// Number coercion — numbers are converted to their string form
+		{name: "same_integers", formula: `EXACT(1,1)`, want: true},
+		{name: "number_vs_string", formula: `EXACT(1,"1")`, want: true},
+		{name: "string_vs_number", formula: `EXACT("1",1)`, want: true},
+		{name: "different_numbers", formula: `EXACT(1,2)`, want: false},
+		{name: "decimal_match", formula: `EXACT(1.5,"1.5")`, want: true},
+		{name: "integer_vs_decimal_string", formula: `EXACT(1,"1.0")`, want: false},
+		{name: "zero_vs_zero", formula: `EXACT(0,0)`, want: true},
+		// Boolean coercion — TRUE→"TRUE", FALSE→"FALSE"
+		{name: "bool_true_vs_string_TRUE", formula: `EXACT(TRUE,"TRUE")`, want: true},
+		{name: "bool_false_vs_string_FALSE", formula: `EXACT(FALSE,"FALSE")`, want: true},
+		{name: "bool_true_vs_lowercase_true", formula: `EXACT(TRUE,"true")`, want: false},
+		{name: "bool_false_vs_lowercase_false", formula: `EXACT(FALSE,"false")`, want: false},
+		{name: "both_true", formula: `EXACT(TRUE,TRUE)`, want: true},
+		{name: "both_false", formula: `EXACT(FALSE,FALSE)`, want: true},
+		{name: "true_vs_false", formula: `EXACT(TRUE,FALSE)`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueBool || got.Bool != tt.want {
+				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEXACTErrors(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// No arguments → #VALUE!
+	t.Run("no_args", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT()): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT() = %v, want #VALUE!", got)
+		}
+	})
+
+	// One argument → #VALUE!
+	t.Run("one_arg", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT("hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT(hello)): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT(hello) = %v, want #VALUE!", got)
+		}
+	})
+
+	// Three arguments → #VALUE!
+	t.Run("three_args", func(t *testing.T) {
+		cf := evalCompile(t, `EXACT("a","b","c")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval(EXACT(a,b,c)): unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("EXACT(a,b,c) = %v, want #VALUE!", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// FIXED comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestFIXED(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Basic with commas (default no_commas=FALSE)
+		{name: "basic_one_decimal", formula: `FIXED(1234.567, 1)`, want: "1,234.6"},
+		{name: "basic_two_decimals", formula: `FIXED(1234.567, 2)`, want: "1,234.57"},
+		{name: "default_decimals", formula: `FIXED(44.332)`, want: "44.33"},
+		{name: "zero_decimals", formula: `FIXED(1234.567, 0)`, want: "1,235"},
+
+		// no_commas = TRUE
+		{name: "no_commas_true", formula: `FIXED(1234.567, 1, TRUE)`, want: "1234.6"},
+		{name: "no_commas_two_dec", formula: `FIXED(1234.567, 2, TRUE)`, want: "1234.57"},
+
+		// no_commas = FALSE (explicit)
+		{name: "no_commas_false", formula: `FIXED(1234.567, 2, FALSE)`, want: "1,234.57"},
+
+		// Negative decimals (rounds to the left of decimal point)
+		{name: "neg_dec_minus1", formula: `FIXED(1234.567, -1)`, want: "1,230"},
+		{name: "neg_dec_minus2", formula: `FIXED(1234.567, -2)`, want: "1,200"},
+		{name: "neg_dec_minus3", formula: `FIXED(1234.567, -3)`, want: "1,000"},
+		{name: "neg_dec_no_commas", formula: `FIXED(-1234.567, -1, TRUE)`, want: "-1230"},
+
+		// Negative numbers
+		{name: "negative_number", formula: `FIXED(-1234.567, 2)`, want: "-1,234.57"},
+		{name: "negative_zero_dec", formula: `FIXED(-1234.567, 0)`, want: "-1,235"},
+		{name: "negative_no_commas", formula: `FIXED(-1234.567, 2, TRUE)`, want: "-1234.57"},
+
+		// Zero
+		{name: "zero_two_dec", formula: `FIXED(0, 2)`, want: "0.00"},
+		{name: "zero_default", formula: `FIXED(0)`, want: "0.00"},
+		{name: "zero_zero_dec", formula: `FIXED(0, 0)`, want: "0"},
+
+		// Small values
+		{name: "small_positive", formula: `FIXED(0.5, 2)`, want: "0.50"},
+		{name: "small_negative", formula: `FIXED(-0.5, 2)`, want: "-0.50"},
+
+		// Large numbers with comma grouping
+		{name: "millions", formula: `FIXED(1234567.89, 2)`, want: "1,234,567.89"},
+		{name: "millions_no_dec", formula: `FIXED(1000000, 0)`, want: "1,000,000"},
+
+		// Many decimal places
+		{name: "many_decimals", formula: `FIXED(1.5, 5)`, want: "1.50000"},
+
+		// Boolean coercion
+		{name: "bool_true", formula: `FIXED(TRUE, 2)`, want: "1.00"},
+		{name: "bool_false", formula: `FIXED(FALSE, 2)`, want: "0.00"},
+
+		// String coercion
+		{name: "string_number", formula: `FIXED("1234.567", 2)`, want: "1,234.57"},
+
+		// Negative zero edge case: -0.001 with 2 decimals produces "-0.00"
+		// (Go's math.Round preserves the sign of -0.0)
+		{name: "neg_zero_round", formula: `FIXED(-0.001, 2)`, want: "-0.00"},
+
+		// Rounding up at boundary
+		{name: "round_up_boundary", formula: `FIXED(1250, -2)`, want: "1,300"},
+		{name: "round_down", formula: `FIXED(1249, -2)`, want: "1,200"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+			}
+		})
+	}
+
+	// Error cases
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "no_args", formula: `FIXED()`},
+		{name: "too_many_args", formula: `FIXED(1,2,TRUE,4)`},
+		{name: "non_numeric_string", formula: `FIXED("abc")`},
+		{name: "non_numeric_decimals", formula: `FIXED(1234, "abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VALUE
+// ---------------------------------------------------------------------------
+
+func TestVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	type want struct {
+		typ ValueType
+		num float64
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Basic integer strings
+		{name: "integer", formula: `VALUE("123")`, want: want{typ: ValueNumber, num: 123}},
+		{name: "zero", formula: `VALUE("0")`, want: want{typ: ValueNumber, num: 0}},
+		{name: "negative_integer", formula: `VALUE("-50")`, want: want{typ: ValueNumber, num: -50}},
+		{name: "large_number", formula: `VALUE("1000000")`, want: want{typ: ValueNumber, num: 1000000}},
+
+		// Decimal strings
+		{name: "decimal", formula: `VALUE("3.14")`, want: want{typ: ValueNumber, num: 3.14}},
+		{name: "negative_decimal", formula: `VALUE("-2.5")`, want: want{typ: ValueNumber, num: -2.5}},
+		{name: "leading_zero_decimal", formula: `VALUE("0.001")`, want: want{typ: ValueNumber, num: 0.001}},
+
+		// Whitespace handling
+		{name: "leading_spaces", formula: `VALUE("  42")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "trailing_spaces", formula: `VALUE("42  ")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "surrounded_spaces", formula: `VALUE("  7.5  ")`, want: want{typ: ValueNumber, num: 7.5}},
+
+		// Currency formatting ($ stripped)
+		{name: "dollar_sign", formula: `VALUE("$100")`, want: want{typ: ValueNumber, num: 100}},
+		{name: "dollar_with_decimals", formula: `VALUE("$19.99")`, want: want{typ: ValueNumber, num: 19.99}},
+		{name: "dollar_with_commas", formula: `VALUE("$1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "dollar_commas_decimals", formula: `VALUE("$1,234.56")`, want: want{typ: ValueNumber, num: 1234.56}},
+
+		// Comma-separated thousands
+		{name: "thousands_comma", formula: `VALUE("1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "millions_comma", formula: `VALUE("1,000,000")`, want: want{typ: ValueNumber, num: 1000000}},
+
+		// Percent handling
+		{name: "percent_integer", formula: `VALUE("50%")`, want: want{typ: ValueNumber, num: 0.5}},
+		{name: "percent_decimal", formula: `VALUE("12.5%")`, want: want{typ: ValueNumber, num: 0.125}},
+		{name: "percent_100", formula: `VALUE("100%")`, want: want{typ: ValueNumber, num: 1}},
+		{name: "percent_zero", formula: `VALUE("0%")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Number argument passed directly (not a string)
+		{name: "number_passthrough", formula: `VALUE(42)`, want: want{typ: ValueNumber, num: 42}},
+		{name: "number_decimal_passthrough", formula: `VALUE(3.14)`, want: want{typ: ValueNumber, num: 3.14}},
+		{name: "number_negative_passthrough", formula: `VALUE(-10)`, want: want{typ: ValueNumber, num: -10}},
+
+		// Non-numeric strings → #VALUE!
+		{name: "alpha_string", formula: `VALUE("abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "mixed_alpha_num", formula: `VALUE("12abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "empty_string", formula: `VALUE("")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Boolean coercion (becomes "TRUE"/"FALSE" strings → not numeric)
+		{name: "bool_true", formula: `VALUE(TRUE)`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "bool_false", formula: `VALUE(FALSE)`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Wrong argument count
+		{name: "no_args", formula: `VALUE()`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "two_args", formula: `VALUE("1","2")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error argument (error value is coerced to string, which is not numeric)
+		{name: "error_arg_div0", formula: `VALUE(1/0)`, want: want{typ: ValueError, err: ErrValVALUE}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
+
+func TestNUMBERVALUE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	type want struct {
+		typ ValueType
+		num float64
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Documentation example: European format
+		{name: "european_format", formula: `NUMBERVALUE("2.500,27",",",".")`, want: want{typ: ValueNumber, num: 2500.27}},
+
+		// Documentation example: simple decimal
+		{name: "simple_decimal_explicit_seps", formula: `NUMBERVALUE("3.5",".",",")`, want: want{typ: ValueNumber, num: 3.5}},
+
+		// Simple number, no separators needed
+		{name: "simple_integer", formula: `NUMBERVALUE("123")`, want: want{typ: ValueNumber, num: 123}},
+		{name: "simple_zero", formula: `NUMBERVALUE("0")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Percent suffix
+		{name: "percent_single", formula: `NUMBERVALUE("3.5%")`, want: want{typ: ValueNumber, num: 0.035}},
+		{name: "percent_double", formula: `NUMBERVALUE("9%%")`, want: want{typ: ValueNumber, num: 0.0009}},
+		{name: "percent_integer", formula: `NUMBERVALUE("50%")`, want: want{typ: ValueNumber, num: 0.5}},
+		{name: "percent_100", formula: `NUMBERVALUE("100%")`, want: want{typ: ValueNumber, num: 1}},
+
+		// Default separators (decimal_separator=".", group_separator=",")
+		{name: "default_group_separator", formula: `NUMBERVALUE("1,000")`, want: want{typ: ValueNumber, num: 1000}},
+		{name: "default_millions", formula: `NUMBERVALUE("1,000,000.50")`, want: want{typ: ValueNumber, num: 1000000.50}},
+		{name: "default_with_decimals", formula: `NUMBERVALUE("1,234.56")`, want: want{typ: ValueNumber, num: 1234.56}},
+
+		// Negative numbers
+		{name: "negative_integer", formula: `NUMBERVALUE("-42")`, want: want{typ: ValueNumber, num: -42}},
+		{name: "negative_decimal", formula: `NUMBERVALUE("-3.14")`, want: want{typ: ValueNumber, num: -3.14}},
+		{name: "negative_with_groups", formula: `NUMBERVALUE("-1,000.5")`, want: want{typ: ValueNumber, num: -1000.5}},
+
+		// Leading/trailing spaces are stripped
+		{name: "leading_spaces", formula: `NUMBERVALUE("  42")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "trailing_spaces", formula: `NUMBERVALUE("42  ")`, want: want{typ: ValueNumber, num: 42}},
+		{name: "surrounded_spaces", formula: `NUMBERVALUE("  7.5  ")`, want: want{typ: ValueNumber, num: 7.5}},
+		{name: "spaces_in_middle", formula: `NUMBERVALUE(" 3 000 ", ".", " ")`, want: want{typ: ValueNumber, num: 3000}},
+
+		// Empty string returns 0
+		{name: "empty_string", formula: `NUMBERVALUE("")`, want: want{typ: ValueNumber, num: 0}},
+		{name: "only_spaces", formula: `NUMBERVALUE("   ")`, want: want{typ: ValueNumber, num: 0}},
+
+		// Custom separators
+		{name: "semicolon_group_sep", formula: `NUMBERVALUE("1;000.5",".",";")`, want: want{typ: ValueNumber, num: 1000.5}},
+
+		// Error: group separator after decimal separator
+		{name: "err_group_after_decimal", formula: `NUMBERVALUE("1.000,5",".",",")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: multiple decimal separators
+		{name: "err_multiple_decimals", formula: `NUMBERVALUE("1.2.3")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: invalid characters
+		{name: "err_alpha_string", formula: `NUMBERVALUE("abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "err_mixed_alpha_num", formula: `NUMBERVALUE("12abc")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Error: wrong argument count
+		{name: "err_no_args", formula: `NUMBERVALUE()`, want: want{typ: ValueError, err: ErrValVALUE}},
+		{name: "err_too_many_args", formula: `NUMBERVALUE("1",".",",","x")`, want: want{typ: ValueError, err: ErrValVALUE}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
+
+func TestUNICODE(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Number result tests
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// Basic ASCII characters
+		{"uppercase_A", `UNICODE("A")`, 65},
+		{"uppercase_B", `UNICODE("B")`, 66},
+		{"uppercase_Z", `UNICODE("Z")`, 90},
+		{"lowercase_a", `UNICODE("a")`, 97},
+		{"lowercase_z", `UNICODE("z")`, 122},
+		{"space", `UNICODE(" ")`, 32},
+		{"digit_0", `UNICODE("0")`, 48},
+		{"digit_9", `UNICODE("9")`, 57},
+		{"exclamation", `UNICODE("!")`, 33},
+		{"tilde", `UNICODE("~")`, 126},
+		{"at_sign", `UNICODE("@")`, 64},
+
+		// Multi-character strings (first char only)
+		{"hello", `UNICODE("Hello")`, 72},
+		{"world", `UNICODE("World")`, 87},
+		{"abc", `UNICODE("abc")`, 97},
+
+		// Unicode characters beyond ASCII
+		{"copyright", `UNICODE("©")`, 169},
+		{"euro_sign", `UNICODE("€")`, 8364},
+		{"greek_alpha", `UNICODE("α")`, 945},
+		{"greek_beta", `UNICODE("β")`, 946},
+		{"snowman", `UNICODE("☃")`, 9731},
+		{"musical_note", `UNICODE("♪")`, 9834},
+		{"infinity", `UNICODE("∞")`, 8734},
+		{"check_mark", `UNICODE("✓")`, 10003},
+		{"cjk_char", `UNICODE("中")`, 20013},
+
+		// Emoji (supplementary plane / high code point)
+		{"grinning_face", `UNICODE("😀")`, 128512},
+
+		// Number coercion: numbers are converted to string first
+		{"number_1", `UNICODE(1)`, 49},     // "1" → 49
+		{"number_123", `UNICODE(123)`, 49}, // "123" → first char "1" → 49
+		{"number_0", `UNICODE(0)`, 48},     // "0" → 48
+		{"number_9", `UNICODE(9)`, 57},     // "9" → 57
+		{"number_neg", `UNICODE(-5)`, 45},  // "-5" → first char "-" → 45
+
+		// Boolean coercion: TRUE → "TRUE", FALSE → "FALSE"
+		{"bool_true", `UNICODE(TRUE)`, 84},   // "TRUE" → "T" → 84
+		{"bool_false", `UNICODE(FALSE)`, 70}, // "FALSE" → "F" → 70
+
+		// Single character strings
+		{"single_newline_char", `UNICODE(CHAR(10))`, 10},
+		{"single_tab_char", `UNICODE(CHAR(9))`, 9},
+	}
+
+	for _, tt := range numTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("Eval(%q) type = %v, want ValueNumber", tt.formula, got.Type)
+			}
+			if got.Num != tt.want {
+				t.Errorf("Eval(%q) = %g, want %g", tt.formula, got.Num, tt.want)
+			}
+		})
+	}
+
+	// Error result tests
+	errTests := []struct {
+		name    string
+		formula string
+		wantErr ErrorValue
+	}{
+		// Empty string → #VALUE!
+		{"empty_string", `UNICODE("")`, ErrValVALUE},
+		// Wrong number of args
+		{"no_args", `UNICODE()`, ErrValVALUE},
+		{"two_args", `UNICODE("A","B")`, ErrValVALUE},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Fatalf("Eval(%q) type = %v, want ValueError", tt.formula, got.Type)
+			}
+			if got.Err != tt.wantErr {
+				t.Errorf("Eval(%q) error = %v, want %v", tt.formula, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestENCODEURL(t *testing.T) {
+	resolver := &mockResolver{}
+
+	strTests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Documented doc example
+		{"doc example URL", `ENCODEURL("http://contoso.sharepoint.com/Finance/Profit and Loss Statement.xlsx")`, "http%3A%2F%2Fcontoso.sharepoint.com%2FFinance%2FProfit%20and%20Loss%20Statement.xlsx"},
+		// Empty string
+		{"empty string", `ENCODEURL("")`, ""},
+		// Plain text (no special chars) unchanged
+		{"plain alpha", `ENCODEURL("hello")`, "hello"},
+		{"plain alphanum", `ENCODEURL("abc123")`, "abc123"},
+		// Unreserved chars stay unchanged
+		{"unreserved hyphen", `ENCODEURL("a-b")`, "a-b"},
+		{"unreserved underscore", `ENCODEURL("a_b")`, "a_b"},
+		{"unreserved dot", `ENCODEURL("a.b")`, "a.b"},
+		{"unreserved tilde", `ENCODEURL("a~b")`, "a~b"},
+		{"all unreserved", `ENCODEURL("AZaz09-_.~")`, "AZaz09-_.~"},
+		// Spaces
+		{"space", `ENCODEURL("hello world")`, "hello%20world"},
+		{"multiple spaces", `ENCODEURL("a  b")`, "a%20%20b"},
+		// Special chars: colon, slash, question, equals, ampersand, hash, at, bang, dollar, plus, comma, semicolon
+		{"colon", `ENCODEURL("a:b")`, "a%3Ab"},
+		{"slash", `ENCODEURL("a/b")`, "a%2Fb"},
+		{"question mark", `ENCODEURL("a?b")`, "a%3Fb"},
+		{"equals", `ENCODEURL("a=b")`, "a%3Db"},
+		{"ampersand", `ENCODEURL("a&b")`, "a%26b"},
+		{"hash", `ENCODEURL("a#b")`, "a%23b"},
+		{"at sign", `ENCODEURL("a@b")`, "a%40b"},
+		{"exclamation", `ENCODEURL("a!b")`, "a%21b"},
+		{"dollar sign", `ENCODEURL("a$b")`, "a%24b"},
+		{"plus sign", `ENCODEURL("a+b")`, "a%2Bb"},
+		{"comma", `ENCODEURL("a,b")`, "a%2Cb"},
+		{"semicolon", `ENCODEURL("a;b")`, "a%3Bb"},
+		// Percent sign itself
+		{"percent sign", `ENCODEURL("100%")`, "100%25"},
+		// Number input coerced to string
+		{"number input", `ENCODEURL(42)`, "42"},
+		{"decimal number", `ENCODEURL(3.14)`, "3.14"},
+		// Boolean input coerced
+		{"boolean TRUE", `ENCODEURL(TRUE)`, "TRUE"},
+		{"boolean FALSE", `ENCODEURL(FALSE)`, "FALSE"},
+		// Mixed characters
+		{"mixed url chars", `ENCODEURL("key=val&foo=bar")`, "key%3Dval%26foo%3Dbar"},
+		// URL with query parameters
+		{"url with query", `ENCODEURL("https://example.com/path?q=hello&lang=en")`, "https%3A%2F%2Fexample.com%2Fpath%3Fq%3Dhello%26lang%3Den"},
+		// Unicode/UTF-8 characters (multi-byte)
+		{"unicode e-acute", `ENCODEURL("caf` + "\xc3\xa9" + `")`, "caf%C3%A9"},
+		{"unicode n-tilde", `ENCODEURL("` + "\xc3\xb1" + `")`, "%C3%B1"},
+		// Brackets and braces
+		{"left bracket", `ENCODEURL("[")`, "%5B"},
+		{"right bracket", `ENCODEURL("]")`, "%5D"},
+		{"left brace", `ENCODEURL("{")`, "%7B"},
+		{"right brace", `ENCODEURL("}")`, "%7D"},
+		// Tab and newline
+		{"tab char", `ENCODEURL("a` + "\t" + `b")`, "a%09b"},
+		{"newline char", `ENCODEURL("a` + "\n" + `b")`, "a%0Ab"},
+	}
+
+	for _, tt := range strTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (type %d), want %q", tt.formula, got, got.Type, tt.want)
+			}
+		})
+	}
+
+	// Error: wrong arg count
+	t.Run("no args", func(t *testing.T) {
+		cf := evalCompile(t, `ENCODEURL()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	t.Run("too many args", func(t *testing.T) {
+		cf := evalCompile(t, `ENCODEURL("a","b")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE! error", got)
+		}
+	})
+
+	// Error propagation
+	t.Run("error propagation DIV0", func(t *testing.T) {
+		cf := evalCompile(t, `ENCODEURL(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got %v, want #DIV/0! error", got)
+		}
+	})
+
+	t.Run("error propagation NA", func(t *testing.T) {
+		cf := evalCompile(t, `ENCODEURL(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A error", got)
+		}
+	})
+
+	// Array input (LiftUnary)
+	t.Run("array input", func(t *testing.T) {
+		cellResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("a b"),
+				{Col: 2, Row: 1}: StringVal("c/d"),
+			},
+		}
+		cf := evalCompile(t, `ENCODEURL(A1:B1)`)
+		got, err := Eval(cf, cellResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("got type %d, want ValueArray", got.Type)
+		}
+		if len(got.Array) != 1 || len(got.Array[0]) != 2 {
+			t.Fatalf("got array shape %dx%d, want 1x2", len(got.Array), len(got.Array[0]))
+		}
+		if got.Array[0][0].Str != "a%20b" {
+			t.Errorf("array[0][0] = %q, want %q", got.Array[0][0].Str, "a%20b")
+		}
+		if got.Array[0][1].Str != "c%2Fd" {
+			t.Errorf("array[0][1] = %q, want %q", got.Array[0][1].Str, "c%2Fd")
+		}
+	})
+
+	// Cell reference
+	t.Run("cell reference", func(t *testing.T) {
+		cellResolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("hello world"),
+			},
+		}
+		cf := evalCompile(t, `ENCODEURL(A1)`)
+		got, err := Eval(cf, cellResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello%20world" {
+			t.Errorf("got %v, want %q", got, "hello%20world")
+		}
+	})
+}
+
+func TestT_ErrorCellRef(t *testing.T) {
+	// Regression test: T() with a cell reference to an error value must
+	// return the error, not a string representation of the error.
+	// This exercises the resolver path (cell ref → GetCellValue → fnT).
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValDIV0),
+		},
+	}
+	cf := evalCompile(t, `T(A1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("T(A1) where A1=#DIV/0! = %v, want error #DIV/0!", got)
+	}
 }

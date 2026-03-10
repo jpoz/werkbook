@@ -96,7 +96,7 @@ func (c xlsxC) IsArrayFormula() bool {
 	return c.FE != nil && c.FE.T == "array" && c.CM == 0
 }
 
-// IsDynamicArrayFormula reports whether the cell uses Excel dynamic-array metadata.
+// IsDynamicArrayFormula reports whether the cell uses dynamic-array metadata.
 func (c xlsxC) IsDynamicArrayFormula() bool {
 	return c.FE != nil && c.FE.T == "array" && c.CM != 0
 }

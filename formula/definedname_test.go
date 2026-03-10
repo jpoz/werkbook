@@ -37,7 +37,7 @@ func TestExpandDefinedNames(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := ExpandDefinedNames(tt.formula, names, tt.sheetIdx)
+		got := ExpandDefinedNames(tt.formula, names, tt.sheetIdx, nil)
 		if got != tt.want {
 			t.Errorf("ExpandDefinedNames(%q) = %q, want %q", tt.formula, got, tt.want)
 		}
@@ -46,39 +46,63 @@ func TestExpandDefinedNames(t *testing.T) {
 
 func TestExpandDefinedNamesLocalScope(t *testing.T) {
 	names := []DefinedNameInfo{
-		{Name: "Rate", Value: "0.05", LocalSheetID: 0},       // local to sheet 0
-		{Name: "Rate", Value: "0.10", LocalSheetID: 1},       // local to sheet 1
+		{Name: "Rate", Value: "0.05", LocalSheetID: 0},               // local to sheet 0
+		{Name: "Rate", Value: "0.10", LocalSheetID: 1},               // local to sheet 1
 		{Name: "GlobalName", Value: "Sheet1!$B$2", LocalSheetID: -1}, // global
 	}
 
 	// On sheet 0, should get the sheet-0-local value.
-	got := ExpandDefinedNames("A1*Rate", names, 0)
+	got := ExpandDefinedNames("A1*Rate", names, 0, nil)
 	if want := "A1*0.05"; got != want {
 		t.Errorf("sheet 0: got %q, want %q", got, want)
 	}
 
 	// On sheet 1, should get the sheet-1-local value.
-	got = ExpandDefinedNames("A1*Rate", names, 1)
+	got = ExpandDefinedNames("A1*Rate", names, 1, nil)
 	if want := "A1*0.10"; got != want {
 		t.Errorf("sheet 1: got %q, want %q", got, want)
 	}
 
 	// On sheet 2, no local Rate is visible, so Rate is not expanded.
-	got = ExpandDefinedNames("A1*Rate", names, 2)
+	got = ExpandDefinedNames("A1*Rate", names, 2, nil)
 	if want := "A1*Rate"; got != want {
 		t.Errorf("sheet 2: got %q, want %q", got, want)
 	}
 
 	// Global name should be visible on any sheet.
-	got = ExpandDefinedNames("GlobalName+1", names, 2)
+	got = ExpandDefinedNames("GlobalName+1", names, 2, nil)
 	if want := "Sheet1!$B$2+1"; got != want {
 		t.Errorf("global on sheet 2: got %q, want %q", got, want)
 	}
 }
 
+func TestExpandDefinedNamesQualifiedLocalScope(t *testing.T) {
+	names := []DefinedNameInfo{
+		{Name: "Rate", Value: "North!$K$2", LocalSheetID: 1},
+		{Name: "Rate", Value: "'South Ops'!$K$2", LocalSheetID: 2},
+		{Name: "DeskLabel", Value: "'South Ops'!$K$4", LocalSheetID: 2},
+	}
+	sheetNames := []string{"Controls", "North", "South Ops", "Summary"}
+
+	got := ExpandDefinedNames("'South Ops'!Rate+North!Rate", names, 3, sheetNames)
+	if want := "'South Ops'!$K$2+North!$K$2"; got != want {
+		t.Fatalf("qualified local names: got %q, want %q", got, want)
+	}
+
+	got = ExpandDefinedNames("IF(TRUE,'South Ops'!DeskLabel,\"x\")", names, 3, sheetNames)
+	if want := "IF(TRUE,'South Ops'!$K$4,\"x\")"; got != want {
+		t.Fatalf("quoted local string name: got %q, want %q", got, want)
+	}
+
+	got = ExpandDefinedNames("'South Ops'!B2:Rate", names, 3, sheetNames)
+	if want := "'South Ops'!B2:Rate"; got != want {
+		t.Fatalf("range endpoint should stay unchanged, got %q", got)
+	}
+}
+
 func TestExpandDefinedNamesEmpty(t *testing.T) {
 	// No names at all should return formula unchanged.
-	got := ExpandDefinedNames("A1+B1", nil, 0)
+	got := ExpandDefinedNames("A1+B1", nil, 0, nil)
 	if want := "A1+B1"; got != want {
 		t.Errorf("nil names: got %q, want %q", got, want)
 	}

@@ -13,7 +13,7 @@ import (
 
 // TestNumericValuesNoScientificNotation verifies that large and small numbers
 // are written in plain decimal notation (not scientific notation like "1e+06")
-// in the XLSX XML, which Excel requires.
+// in the XLSX XML, which OOXML-compliant readers require.
 func TestNumericValuesNoScientificNotation(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

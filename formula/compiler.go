@@ -111,7 +111,7 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *CellRef:
 		if n.DotNotation {
-			// Dot-notation (Sheet1.A1) is a LibreOffice extension; Excel returns #NAME?
+			// Dot-notation (Sheet1.A1) is a LibreOffice extension; returns #NAME?
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
@@ -132,16 +132,16 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *RangeRef:
 		if n.From.DotNotation || n.To.DotNotation {
-			// Dot-notation range (Sheet1.A1:Sheet1.A5) is a LibreOffice extension; Excel returns #NAME?
+			// Dot-notation range (Sheet1.A1:Sheet1.A5) is a LibreOffice extension; returns #NAME?
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
 		sheet := n.From.Sheet
 		sheetEnd := n.From.SheetEnd
 		addr := RangeAddr{
-			Sheet:   sheet,
+			Sheet:    sheet,
 			SheetEnd: sheetEnd,
-			FromCol: n.From.Col, FromRow: n.From.Row,
+			FromCol:  n.From.Col, FromRow: n.From.Row,
 			ToCol: n.To.Col, ToRow: n.To.Row,
 		}
 		idx := c.addRange(addr)
@@ -190,8 +190,8 @@ func (c *compiler) compileNode(node Node) error {
 
 	case *FuncCall:
 		name := strings.ToUpper(n.Name)
-		// The _xludf. prefix means "user-defined function" in Excel's
-		// saved formula format. These are not real Excel functions and
+		// The _xludf. prefix means "user-defined function" in the
+		// saved formula format. These are not real functions and
 		// must always produce #NAME?. We emit a runtime error instead of
 		// a compile error so that wrapping functions like IFERROR can
 		// catch the #NAME? value.
@@ -215,13 +215,63 @@ func (c *compiler) compileNode(node Node) error {
 		// COLUMN and ROW need the cell reference coordinates, not the resolved
 		// cell value.  When the single argument is a direct cell reference, push
 		// a ValueRef (address only) so the function can extract col/row.
-		if (name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY") && argc == 1 {
+		if (name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY" || name == "ISREF") && argc == 1 {
 			if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation {
 				idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 				c.emit(OpLoadCellRef, idx)
 				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
 				return nil
 			}
+			// For ISREF, range references are also references.
+			if name == "ISREF" {
+				if rr, ok := n.Args[0].(*RangeRef); ok {
+					idx := c.addRef(CellAddr{Sheet: rr.From.Sheet, Col: rr.From.Col, Row: rr.From.Row})
+					c.emit(OpLoadCellRef, idx)
+					c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+					return nil
+				}
+				// INDIRECT (and OFFSET) are ref-returning functions.
+				// When wrapped in ISREF, compile the inner call normally
+				// and then use OpRefResultToBool: non-error → TRUE,
+				// error → FALSE.
+				if fc, ok := n.Args[0].(*FuncCall); ok {
+					inner := strings.ToUpper(fc.Name)
+					inner = strings.TrimPrefix(inner, "_XLFN._XLWS.")
+					inner = strings.TrimPrefix(inner, "_XLFN.")
+					if inner == "INDIRECT" || inner == "OFFSET" {
+						if err := c.compileNode(fc); err != nil {
+							return err
+						}
+						c.emit(OpRefResultToBool, 0)
+						return nil
+					}
+				}
+			}
+		}
+		// OFFSET needs its first argument as a raw reference (ValueRef
+		// for single cells, ValueArray+RangeOrigin for ranges) so it can
+		// compute the offset address.  Remaining arguments are compiled
+		// normally.
+		if name == "OFFSET" && argc >= 1 {
+			first := n.Args[0]
+			switch ref := first.(type) {
+			case *CellRef:
+				idx := c.addRef(CellAddr{Sheet: ref.Sheet, Col: ref.Col, Row: ref.Row})
+				c.emit(OpLoadCellRef, idx)
+			default:
+				// Range references already produce ValueArray with RangeOrigin.
+				if err := c.compileNode(first); err != nil {
+					return err
+				}
+			}
+			for _, arg := range n.Args[1:] {
+				if err := c.compileNode(arg); err != nil {
+					return err
+				}
+			}
+			operand := uint32(funcID)<<8 | uint32(argc)
+			c.emit(OpCall, operand)
+			break
 		}
 		arrayCtx := IsArrayFunc(name)
 		if arrayCtx {

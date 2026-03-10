@@ -66,7 +66,7 @@ func NoCtx(fn func([]Value) (Value, error)) Func {
 
 // arrayForcingFuncs lists functions that evaluate their arguments in array
 // context, suppressing implicit intersection. In legacy (non-dynamic-array)
-// Excel, these functions treat expressions like range*range element-wise
+// these functions treat expressions like range*range element-wise
 // even when the formula is not entered as CSE (Ctrl+Shift+Enter).
 var arrayForcingFuncs = map[string]bool{
 	"SUMPRODUCT": true,

@@ -40,6 +40,11 @@ func captureRun(args []string) (stdout string, stderr string, exitCode int) {
 	return stdout, stderr, exitCode
 }
 
+func captureRunJSON(args ...string) (stdout string, stderr string, exitCode int) {
+	prefixed := append([]string{"--format", "json"}, args...)
+	return captureRun(prefixed)
+}
+
 func parseResponse(t *testing.T, s string) Response {
 	t.Helper()
 	var resp Response
@@ -68,10 +73,31 @@ func createTestFile(t *testing.T) string {
 	return path
 }
 
+func createSparseColumnsTestFile(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sparse.xlsx")
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	s := f.Sheet("Data")
+	s.SetValue("A1", "Values")
+	s.SetValue("C1", "Returns")
+	s.SetValue("E1", "Large")
+	s.SetValue("A2", 2.0)
+	s.SetValue("C2", 1.05)
+	s.SetValue("E2", 1000000.0)
+	s.SetValue("A3", 4.0)
+	s.SetValue("C3", 0.98)
+	s.SetValue("E3", 2000000.0)
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("failed to create sparse-column test file: %v", err)
+	}
+	return path
+}
+
 // --- Version ---
 
 func TestVersion(t *testing.T) {
-	stdout, _, code := captureRun([]string{"version"})
+	stdout, _, code := captureRunJSON("version")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -84,11 +110,24 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+func TestVersionTextDefault(t *testing.T) {
+	stdout, stderr, code := captureRun([]string{"version"})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+	if strings.TrimSpace(stdout) != version {
+		t.Fatalf("expected plain version output %q, got %q", version, strings.TrimSpace(stdout))
+	}
+}
+
 // --- Info ---
 
 func TestInfo(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"info", path})
+	stdout, _, code := captureRunJSON("info", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -122,7 +161,7 @@ func TestInfo(t *testing.T) {
 
 func TestInfoSheetFilter(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"info", "--sheet", "Sheet1", path})
+	stdout, _, code := captureRunJSON("info", "--sheet", "Sheet1", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -137,7 +176,7 @@ func TestInfoSheetFilter(t *testing.T) {
 
 func TestInfoSheetNotFound(t *testing.T) {
 	path := createTestFile(t)
-	_, stderr, code := captureRun([]string{"info", "--sheet", "Nope", path})
+	_, stderr, code := captureRunJSON("info", "--sheet", "Nope", path)
 	if code != ExitValidate {
 		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
 	}
@@ -151,7 +190,7 @@ func TestInfoSheetNotFound(t *testing.T) {
 }
 
 func TestInfoFileNotFound(t *testing.T) {
-	_, stderr, code := captureRun([]string{"info", "/tmp/no_such_file_xyz.xlsx"})
+	_, stderr, code := captureRunJSON("info", "/tmp/no_such_file_xyz.xlsx")
 	if code != ExitFileIO {
 		t.Fatalf("expected exit %d, got %d", ExitFileIO, code)
 	}
@@ -165,7 +204,7 @@ func TestInfoFileNotFound(t *testing.T) {
 
 func TestRead(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", path})
+	stdout, _, code := captureRunJSON("read", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -186,7 +225,7 @@ func TestRead(t *testing.T) {
 
 func TestReadRange(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--range", "A1:A3", path})
+	stdout, _, code := captureRunJSON("read", "--range", "A1:A3", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -209,7 +248,7 @@ func TestReadRange(t *testing.T) {
 
 func TestReadHeaders(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", path})
+	stdout, _, code := captureRunJSON("read", "--headers", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -233,7 +272,7 @@ func TestReadHeaders(t *testing.T) {
 
 func TestReadIncludeFormulas(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--include-formulas", path})
+	stdout, _, code := captureRunJSON("read", "--include-formulas", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -257,6 +296,39 @@ func TestReadIncludeFormulas(t *testing.T) {
 	}
 }
 
+func TestReadShowFormulasJSON(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRunJSON("read", "--show-formulas", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+
+	found := false
+	for _, row := range rd.Rows {
+		if row.Row != 4 {
+			continue
+		}
+		cd, ok := row.Cells["B4"]
+		if !ok {
+			continue
+		}
+		found = true
+		if cd.Display != "=SUM(B2:B3)" {
+			t.Fatalf("expected display formula, got %q", cd.Display)
+		}
+		if cd.Formula != "" {
+			t.Fatalf("did not expect formula field without --include-formulas, got %q", cd.Formula)
+		}
+	}
+	if !found {
+		t.Fatal("expected B4 in output")
+	}
+}
+
 func TestReadMarkdown(t *testing.T) {
 	path := createTestFile(t)
 	stdout, _, code := captureRun([]string{"read", "--format", "markdown", "--headers", path})
@@ -268,6 +340,38 @@ func TestReadMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "|---|---|") {
 		t.Errorf("expected markdown separator, got:\n%s", stdout)
+	}
+}
+
+func TestReadTextDefault(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRun([]string{"read", "--headers", path})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "Sheet: Sheet1") {
+		t.Errorf("expected sheet heading, got:\n%s", stdout)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) < 5 {
+		t.Fatalf("expected heading plus table, got:\n%s", stdout)
+	}
+	if lines[2] != "| Name  | Value |" {
+		t.Errorf("expected markdown header row, got %q", lines[2])
+	}
+	if lines[3] != "| ----- | ----- |" {
+		t.Errorf("expected markdown divider row, got %q", lines[3])
+	}
+}
+
+func TestReadShowFormulasText(t *testing.T) {
+	path := createTestFile(t)
+	stdout, _, code := captureRun([]string{"read", "--show-formulas", "--range", "B4:B4", path})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "=SUM(B2:B3)") {
+		t.Fatalf("expected formula text in rendered output, got:\n%s", stdout)
 	}
 }
 
@@ -290,7 +394,7 @@ func TestReadCSV(t *testing.T) {
 
 func TestEdit(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", `[{"cell":"A5","value":"Gamma"},{"cell":"B5","value":30}]`})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", `[{"cell":"A5","value":"Gamma"},{"cell":"B5","value":30}]`)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -306,7 +410,7 @@ func TestEdit(t *testing.T) {
 	}
 
 	// Verify by reading back.
-	stdout2, _, code2 := captureRun([]string{"read", "--range", "A5:B5", path})
+	stdout2, _, code2 := captureRunJSON("read", "--range", "A5:B5", path)
 	if code2 != 0 {
 		t.Fatalf("expected exit 0 on read, got %d", code2)
 	}
@@ -317,7 +421,7 @@ func TestEdit(t *testing.T) {
 
 func TestEditDryRun(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"edit", "--dry-run", path, "--patch", `[{"cell":"A1","value":"Changed"}]`})
+	stdout, _, code := captureRunJSON("edit", "--dry-run", path, "--patch", `[{"cell":"A1","value":"Changed"}]`)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -327,7 +431,7 @@ func TestEditDryRun(t *testing.T) {
 	}
 
 	// Verify file was NOT changed.
-	stdout2, _, _ := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, _ := captureRunJSON("read", "--range", "A1:A1", path)
 	if strings.Contains(stdout2, "Changed") {
 		t.Error("dry-run should not modify file")
 	}
@@ -335,7 +439,7 @@ func TestEditDryRun(t *testing.T) {
 
 func TestEditFormula(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", `[{"cell":"C1","formula":"SUM(B2:B3)"}]`})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", `[{"cell":"C1","formula":"SUM(B2:B3)"}]`)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -351,7 +455,7 @@ func TestEditFormula(t *testing.T) {
 func TestEditAddDeleteSheet(t *testing.T) {
 	path := createTestFile(t)
 	// Add a sheet.
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", `[{"add_sheet":"NewSheet"}]`})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", `[{"add_sheet":"NewSheet"}]`)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -361,13 +465,13 @@ func TestEditAddDeleteSheet(t *testing.T) {
 	}
 
 	// Verify it exists.
-	stdout2, _, _ := captureRun([]string{"info", path})
+	stdout2, _, _ := captureRunJSON("info", path)
 	if !strings.Contains(stdout2, "NewSheet") {
 		t.Error("expected NewSheet in info output")
 	}
 
 	// Delete it.
-	stdout3, _, code3 := captureRun([]string{"edit", path, "--patch", `[{"delete_sheet":"NewSheet"}]`})
+	stdout3, _, code3 := captureRunJSON("edit", path, "--patch", `[{"delete_sheet":"NewSheet"}]`)
 	if code3 != 0 {
 		t.Fatalf("expected exit 0, got %d", code3)
 	}
@@ -379,7 +483,7 @@ func TestEditAddDeleteSheet(t *testing.T) {
 
 func TestEditInvalidPatch(t *testing.T) {
 	path := createTestFile(t)
-	_, stderr, code := captureRun([]string{"edit", path, "--patch", `not json`})
+	_, stderr, code := captureRunJSON("edit", path, "--patch", `not json`)
 	if code != ExitValidate {
 		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
 	}
@@ -394,7 +498,7 @@ func TestEditInvalidPatch(t *testing.T) {
 func TestCreate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "new.xlsx")
-	stdout, _, code := captureRun([]string{"create", path, "--spec", `{"sheets":["Data","Summary"],"cells":[{"cell":"A1","value":"test","sheet":"Data"}]}`})
+	stdout, _, code := captureRunJSON("create", path, "--spec", `{"sheets":["Data","Summary"],"cells":[{"cell":"A1","value":"test","sheet":"Data"}]}`)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -413,7 +517,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	// Verify the file exists and is readable.
-	stdout2, _, code2 := captureRun([]string{"info", path})
+	stdout2, _, code2 := captureRunJSON("info", path)
 	if code2 != 0 {
 		t.Fatalf("expected exit 0 on info, got %d", code2)
 	}
@@ -426,7 +530,7 @@ func TestCreate(t *testing.T) {
 
 func TestCalc(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"calc", path})
+	stdout, _, code := captureRunJSON("calc", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -455,11 +559,29 @@ func TestCalc(t *testing.T) {
 	}
 }
 
+func TestCalcTextCompactsEmptyColumns(t *testing.T) {
+	path := createSparseColumnsTestFile(t)
+	stdout, _, code := captureRun([]string{"calc", path})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) < 5 {
+		t.Fatalf("expected heading plus compact table, got:\n%s", stdout)
+	}
+	if lines[2] != "| Values | Returns | Large   |" {
+		t.Errorf("expected empty columns to be removed, got header %q", lines[2])
+	}
+	if lines[3] != "| 2      | 1.05    | 1000000 |" {
+		t.Errorf("expected first data row to stay aligned, got %q", lines[3])
+	}
+}
+
 func TestCalcWithOutput(t *testing.T) {
 	path := createTestFile(t)
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "calced.xlsx")
-	_, _, code := captureRun([]string{"calc", path, "--output", outPath})
+	_, _, code := captureRunJSON("calc", path, "--output", outPath)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -472,7 +594,7 @@ func TestCalcWithOutput(t *testing.T) {
 // --- Formula List ---
 
 func TestFormulaList(t *testing.T) {
-	stdout, _, code := captureRun([]string{"formula", "list"})
+	stdout, _, code := captureRunJSON("formula", "list")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -505,7 +627,7 @@ func TestNoArgs(t *testing.T) {
 }
 
 func TestUnknownCommand(t *testing.T) {
-	_, stderr, code := captureRun([]string{"bogus"})
+	_, stderr, code := captureRunJSON("bogus")
 	if code != ExitUsage {
 		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
 	}
@@ -516,13 +638,38 @@ func TestUnknownCommand(t *testing.T) {
 }
 
 func TestInvalidFormat(t *testing.T) {
-	_, stderr, code := captureRun([]string{"--format", "xml", "version"})
+	stdout, stderr, code := captureRun([]string{"--mode", "agent", "--format", "xml", "version"})
+	if code != ExitUsage {
+		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+	resp := parseResponse(t, stdout)
+	if resp.Error.Code != ErrCodeInvalidFormat {
+		t.Errorf("expected error code %s, got %s", ErrCodeInvalidFormat, resp.Error.Code)
+	}
+}
+
+func TestMissingFlagValue(t *testing.T) {
+	_, stderr, code := captureRunJSON("read", "--sheet")
 	if code != ExitUsage {
 		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
 	}
 	resp := parseResponse(t, stderr)
-	if resp.Error.Code != ErrCodeInvalidFormat {
-		t.Errorf("expected error code %s, got %s", ErrCodeInvalidFormat, resp.Error.Code)
+	if resp.Error.Message != "--sheet requires a value" {
+		t.Fatalf("expected missing-value message, got %q", resp.Error.Message)
+	}
+}
+
+func TestFormulaUnknownSubcommand(t *testing.T) {
+	_, stderr, code := captureRunJSON("formula", "bogus")
+	if code != ExitUsage {
+		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
+	}
+	resp := parseResponse(t, stderr)
+	if resp.Error.Message != "unknown subcommand: bogus. Available: list" {
+		t.Fatalf("expected normalized subcommand error, got %q", resp.Error.Message)
 	}
 }
 
@@ -531,7 +678,7 @@ func TestInvalidFormat(t *testing.T) {
 func TestEditStyle(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","style":{"font":{"bold":true,"color":"FF0000"}}}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -550,7 +697,7 @@ func TestEditStyle(t *testing.T) {
 func TestEditColumnWidth(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A","column_width":25.0}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -569,7 +716,7 @@ func TestEditColumnWidth(t *testing.T) {
 func TestEditRowHeight(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"row":1,"row_height":30.0}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -588,7 +735,7 @@ func TestEditRowHeight(t *testing.T) {
 func TestEditClearCell(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","value":null}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -598,7 +745,7 @@ func TestEditClearCell(t *testing.T) {
 	}
 
 	// Verify A1 is now empty.
-	stdout2, _, _ := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, _ := captureRunJSON("read", "--range", "A1:A1", path)
 	resp2 := parseResponse(t, stdout2)
 	data, _ := json.Marshal(resp2.Data)
 	var rd readData
@@ -670,7 +817,7 @@ func TestAgentHelpCommandJSON(t *testing.T) {
 	if len(hd.Command.Path) != 1 || hd.Command.Path[0] != "read" {
 		t.Fatalf("expected path [read], got %v", hd.Command.Path)
 	}
-	if len(hd.Command.SupportedFormats) != 3 {
+	if len(hd.Command.SupportedFormats) != 4 {
 		t.Fatalf("expected supported formats for read, got %v", hd.Command.SupportedFormats)
 	}
 	if len(hd.GlobalFlags) == 0 {
@@ -679,7 +826,7 @@ func TestAgentHelpCommandJSON(t *testing.T) {
 }
 
 func TestCapabilitiesCommand(t *testing.T) {
-	stdout, stderr, code := captureRun([]string{"capabilities"})
+	stdout, stderr, code := captureRunJSON("capabilities")
 	if code != ExitSuccess {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -718,7 +865,7 @@ func TestCapabilitiesCommand(t *testing.T) {
 
 func TestReadHasFormula(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", path})
+	stdout, _, code := captureRunJSON("read", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -737,7 +884,7 @@ func TestReadHasFormula(t *testing.T) {
 func TestEditClearFlag(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","clear":true}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -753,7 +900,7 @@ func TestEditClearFlag(t *testing.T) {
 	}
 
 	// Verify A1 is now empty.
-	stdout2, _, _ := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, _ := captureRunJSON("read", "--range", "A1:A1", path)
 	resp2 := parseResponse(t, stdout2)
 	data2, _ := json.Marshal(resp2.Data)
 	var rd readData
@@ -768,7 +915,7 @@ func TestEditClearFlag(t *testing.T) {
 func TestEditClearRange(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1:B2","clear":true}]`
-	stdout, _, code := captureRun([]string{"edit", path, "--patch", patch})
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -778,7 +925,7 @@ func TestEditClearRange(t *testing.T) {
 	}
 
 	// Verify A1, B1, A2, B2 are cleared.
-	stdout2, _, _ := captureRun([]string{"read", "--range", "A1:B2", path})
+	stdout2, _, _ := captureRunJSON("read", "--range", "A1:B2", path)
 	resp2 := parseResponse(t, stdout2)
 	data2, _ := json.Marshal(resp2.Data)
 	var rd readData
@@ -794,7 +941,7 @@ func TestCreateWithRows(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rows.xlsx")
 	spec := `{"rows":[{"start":"A1","data":[["Name","Age"],["Alice",30],["Bob",25]]}]}`
-	stdout, _, code := captureRun([]string{"create", path, "--spec", spec})
+	stdout, _, code := captureRunJSON("create", path, "--spec", spec)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -810,7 +957,7 @@ func TestCreateWithRows(t *testing.T) {
 	}
 
 	// Verify content.
-	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:B3", path})
+	stdout2, _, code2 := captureRunJSON("read", "--range", "A1:B3", path)
 	if code2 != 0 {
 		t.Fatalf("expected exit 0 on read, got %d", code2)
 	}
@@ -825,7 +972,7 @@ func TestEditPartialFailure(t *testing.T) {
 	path := createTestFile(t)
 	// First op succeeds, second fails (delete non-existent sheet).
 	patch := `[{"cell":"A1","value":"OK"},{"delete_sheet":"NoSuchSheet"}]`
-	_, stderr, code := captureRun([]string{"edit", path, "--patch", patch})
+	_, stderr, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != ExitPartial {
 		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
 	}
@@ -853,7 +1000,7 @@ func TestEditPartialFailure(t *testing.T) {
 func TestEditAtomicDefaultSkipsSaveOnPartialFailure(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","value":"Changed"},{"delete_sheet":"NoSuchSheet"}]`
-	_, stderr, code := captureRun([]string{"edit", path, "--patch", patch})
+	_, stderr, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != ExitPartial {
 		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
 	}
@@ -866,7 +1013,7 @@ func TestEditAtomicDefaultSkipsSaveOnPartialFailure(t *testing.T) {
 	}
 
 	// A1 should remain unchanged because atomic mode skips save.
-	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, code2 := captureRunJSON("read", "--range", "A1:A1", path)
 	if code2 != 0 {
 		t.Fatalf("expected read exit 0, got %d", code2)
 	}
@@ -878,7 +1025,7 @@ func TestEditAtomicDefaultSkipsSaveOnPartialFailure(t *testing.T) {
 func TestEditNoAtomicAllowsPartialSave(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","value":"Changed"},{"delete_sheet":"NoSuchSheet"}]`
-	_, stderr, code := captureRun([]string{"edit", "--no-atomic", path, "--patch", patch})
+	_, stderr, code := captureRunJSON("edit", "--no-atomic", path, "--patch", patch)
 	if code != ExitPartial {
 		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
 	}
@@ -890,7 +1037,7 @@ func TestEditNoAtomicAllowsPartialSave(t *testing.T) {
 		t.Fatal("expected saved=true with --no-atomic")
 	}
 
-	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, code2 := captureRunJSON("read", "--range", "A1:A1", path)
 	if code2 != 0 {
 		t.Fatalf("expected read exit 0, got %d", code2)
 	}
@@ -901,7 +1048,7 @@ func TestEditNoAtomicAllowsPartialSave(t *testing.T) {
 
 func TestEditValidateOnlyDoesNotSave(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"edit", "--validate-only", path, "--patch", `[{"cell":"A1","value":"Changed"}]`})
+	stdout, _, code := captureRunJSON("edit", "--validate-only", path, "--patch", `[{"cell":"A1","value":"Changed"}]`)
 	if code != ExitSuccess {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -916,7 +1063,7 @@ func TestEditValidateOnlyDoesNotSave(t *testing.T) {
 		t.Fatal("expected saved=false with --validate-only")
 	}
 
-	stdout2, _, code2 := captureRun([]string{"read", "--range", "A1:A1", path})
+	stdout2, _, code2 := captureRunJSON("read", "--range", "A1:A1", path)
 	if code2 != 0 {
 		t.Fatalf("expected read exit 0, got %d", code2)
 	}
@@ -927,7 +1074,7 @@ func TestEditValidateOnlyDoesNotSave(t *testing.T) {
 
 func TestEditUnknownPatchFieldRejected(t *testing.T) {
 	path := createTestFile(t)
-	_, stderr, code := captureRun([]string{"edit", path, "--patch", `[{"cell":"A1","value":"x","bogus":1}]`})
+	_, stderr, code := captureRunJSON("edit", path, "--patch", `[{"cell":"A1","value":"x","bogus":1}]`)
 	if code != ExitValidate {
 		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
 	}
@@ -940,7 +1087,7 @@ func TestEditUnknownPatchFieldRejected(t *testing.T) {
 func TestEditUnknownStyleFieldRejected(t *testing.T) {
 	path := createTestFile(t)
 	patch := `[{"cell":"A1","style":{"font":{"bold":true,"bogus":1}}}]`
-	_, stderr, code := captureRun([]string{"edit", path, "--patch", patch})
+	_, stderr, code := captureRunJSON("edit", path, "--patch", patch)
 	if code != ExitPartial {
 		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
 	}
@@ -959,7 +1106,7 @@ func TestEditUnknownStyleFieldRejected(t *testing.T) {
 func TestCreateUnknownSpecFieldRejected(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.xlsx")
-	_, stderr, code := captureRun([]string{"create", path, "--spec", `{"sheets":["S1"],"bogus":1}`})
+	_, stderr, code := captureRunJSON("create", path, "--spec", `{"sheets":["S1"],"bogus":1}`)
 	if code != ExitValidate {
 		t.Fatalf("expected exit %d, got %d", ExitValidate, code)
 	}
@@ -973,7 +1120,7 @@ func TestCreatePartialFailureDoesNotSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "partial.xlsx")
 	spec := `{"cells":[{"cell":"A1","value":"ok"},{"cell":"ZZZ1","value":1}]}`
-	_, stderr, code := captureRun([]string{"create", path, "--spec", spec})
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
 	if code != ExitPartial {
 		t.Fatalf("expected exit %d, got %d", ExitPartial, code)
 	}
@@ -1017,7 +1164,7 @@ func TestModeAgentForcesJSONEnvelope(t *testing.T) {
 }
 
 func TestCompactJSON(t *testing.T) {
-	stdout, _, code := captureRun([]string{"--compact", "version"})
+	stdout, _, code := captureRun([]string{"--format", "json", "--compact", "version"})
 	if code != ExitSuccess {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1063,7 +1210,7 @@ func TestHelpNoArgsExitSuccess(t *testing.T) {
 
 func TestReadLimit(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--limit", "1", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--limit", "1", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1091,7 +1238,7 @@ func TestReadLimitMarkdown(t *testing.T) {
 
 func TestReadHeadAlias(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--head", "1", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--head", "1", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1127,7 +1274,7 @@ func createMultiSheetTestFile(t *testing.T) string {
 
 func TestReadAllSheetsJSON(t *testing.T) {
 	path := createMultiSheetTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--all-sheets", path})
+	stdout, _, code := captureRunJSON("read", "--all-sheets", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1179,7 +1326,7 @@ func TestReadAllSheetsCSV(t *testing.T) {
 
 func TestReadAllSheetsAndSheetMutuallyExclusive(t *testing.T) {
 	path := createMultiSheetTestFile(t)
-	_, stderr, code := captureRun([]string{"read", "--all-sheets", "--sheet", "Data", path})
+	_, stderr, code := captureRunJSON("read", "--all-sheets", "--sheet", "Data", path)
 	if code != ExitUsage {
 		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
 	}
@@ -1193,7 +1340,7 @@ func TestReadAllSheetsAndSheetMutuallyExclusive(t *testing.T) {
 
 func TestReadWhereEquals(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--where", "Name=Alpha", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--where", "Name=Alpha", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1211,7 +1358,7 @@ func TestReadWhereEquals(t *testing.T) {
 
 func TestReadWhereNotEquals(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--where", "Name!=Alpha", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--where", "Name!=Alpha", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1229,7 +1376,7 @@ func TestReadWhereNotEquals(t *testing.T) {
 
 func TestReadWhereNumericGt(t *testing.T) {
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--where", "Value>15", "--range", "A1:B3", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--where", "Value>15", "--range", "A1:B3", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1248,7 +1395,7 @@ func TestReadWhereNumericGt(t *testing.T) {
 func TestReadWhereByColumnLetter(t *testing.T) {
 	path := createTestFile(t)
 	// No --headers, use column letter A.
-	stdout, _, code := captureRun([]string{"read", "--where", "A=Alpha", path})
+	stdout, _, code := captureRunJSON("read", "--where", "A=Alpha", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1278,7 +1425,7 @@ func TestReadWhereMarkdown(t *testing.T) {
 func TestReadWhereWithLimit(t *testing.T) {
 	// Test that --limit applies after --where.
 	path := createTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--headers", "--where", "Value>=10", "--limit", "1", path})
+	stdout, _, code := captureRunJSON("read", "--headers", "--where", "Value>=10", "--limit", "1", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
@@ -1293,7 +1440,7 @@ func TestReadWhereWithLimit(t *testing.T) {
 
 func TestReadWhereInvalidExpr(t *testing.T) {
 	path := createTestFile(t)
-	_, stderr, code := captureRun([]string{"read", "--where", "badexpr", path})
+	_, stderr, code := captureRunJSON("read", "--where", "badexpr", path)
 	if code != ExitUsage {
 		t.Fatalf("expected exit %d, got %d", ExitUsage, code)
 	}
@@ -1336,7 +1483,7 @@ func createStyledTestFile(t *testing.T) string {
 
 func TestReadStyleSummaryJSON(t *testing.T) {
 	path := createStyledTestFile(t)
-	stdout, _, code := captureRun([]string{"read", "--style-summary", path})
+	stdout, _, code := captureRunJSON("read", "--style-summary", path)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}

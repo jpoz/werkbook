@@ -1,0 +1,2881 @@
+From 70ad930c192465825662414378bfa2b1f2ffa479 Mon Sep 17 00:00:00 2001
+From: James Pozdena <jpozdena@gmail.com>
+Date: Mon, 9 Mar 2026 11:53:22 -0600
+Subject: [PATCH] feat: add core properties support and range guards
+
+---
+ README.md                        |   2 +-
+ excel_probe.xlsx                 | Bin 0 -> 8752 bytes
+ formula/eval.go                  |  15 +-
+ formula/eval_test.go             |  29 ++
+ formula/functions_info.go        |  12 +
+ formula/functions_lookup.go      |  13 +-
+ formula/functions_lookup_test.go |  14 +
+ formula/range_limit.go           |  24 +
+ formula/types.go                 |  21 +-
+ formula_eval_test.go             |  20 +
+ ooxml/helpers_test.go            | 610 +++++++++++++++++++++++
+ ooxml/metadata.go                |  10 +-
+ ooxml/properties.go              | 296 +++++++++++
+ ooxml/reader.go                  |  32 +-
+ ooxml/roundtrip_test.go          | 825 +++++++++++++++++++++++++++++++
+ ooxml/workbook.go                |   2 +
+ ooxml/writer.go                  |  42 +-
+ properties.go                    |  75 +++
+ properties_roundtrip_test.go     | 139 ++++++
+ sheet.go                         |  34 +-
+ werkbook.go                      |  37 +-
+ werkbook_test.go                 |  80 +++
+ 22 files changed, 2275 insertions(+), 57 deletions(-)
+ create mode 100644 excel_probe.xlsx
+ create mode 100644 formula/range_limit.go
+ create mode 100644 ooxml/helpers_test.go
+ create mode 100644 ooxml/properties.go
+ create mode 100644 ooxml/roundtrip_test.go
+ create mode 100644 properties.go
+ create mode 100644 properties_roundtrip_test.go
+
+diff --git a/README.md b/README.md
+index 9f5cfe8..c46105c 100644
+--- a/README.md
++++ b/README.md
+@@ -85,7 +85,7 @@ fmt.Println(v)
+ 
+ ## Formula Engine
+ 
+-Werkbook includes a formula engine with 198 built-in functions. See [FORMULAS.md](FORMULAS.md) for the full list of supported and unsupported functions.
++Werkbook includes a built-in formula engine. See [FORMULAS.md](FORMULAS.md) for the current list of supported and unsupported functions.
+ 
+ ## Compatibility
+ 
+diff --git a/excel_probe.xlsx b/excel_probe.xlsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..91ce3afef4c43b0871fb2788a2d7a9aa85ab843c
+GIT binary patch
+literal 8752
+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
+Hpa1?35W{4>
+
+literal 0
+HcmV?d00001
+
+diff --git a/formula/eval.go b/formula/eval.go
+index 8bd866a..c8075c3 100644
+--- a/formula/eval.go
++++ b/formula/eval.go
+@@ -111,14 +111,14 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value,
+ 
+ 		case OpLoadRange:
+ 			addr := cf.Ranges[inst.Operand]
++			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
++			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
+ 			// Implicit intersection: when a full-column or full-row range is
+ 			// used in a non-array formula, reduce to the single cell at the
+ 			// formula's own row/column rather than loading the entire range.
+ 			// Skip implicit intersection when inside an array-forcing function
+ 			// (arrayCtxDepth > 0), since those functions need the full range.
+ 			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+-				isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+-				isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
+ 				if isFullCol && addr.FromCol == addr.ToCol && ctx.CurrentRow >= addr.FromRow {
+ 					// Full-column ref like F:F → intersect at current row
+ 					push(resolver.GetCellValue(CellAddr{
+@@ -138,13 +138,20 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value,
+ 					continue
+ 				}
+ 			}
++			if !isFullCol && !isFullRow &&
++				RangeCellCountExceedsLimit(addr.ToRow-addr.FromRow+1, addr.ToCol-addr.FromCol+1) {
++				push(ErrorVal(ErrValREF))
++				continue
++			}
+ 			rows := resolver.GetRangeValues(addr)
++			if isRangeOverflowMatrix(rows) {
++				push(ErrorVal(ErrValREF))
++				continue
++			}
+ 			// Pad trailing blank rows for bounded ranges. GetRangeValues
+ 			// clamps toRow to MaxRow to avoid huge allocations for
+ 			// full-column refs, but bounded ranges like A1:A5 need all
+ 			// requested rows so functions like COUNTBLANK see every blank.
+-			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+-			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
+ 			if !isFullCol && !isFullRow {
+ 				expectedRows := addr.ToRow - addr.FromRow + 1
+ 				cols := addr.ToCol - addr.FromCol + 1
+diff --git a/formula/eval_test.go b/formula/eval_test.go
+index b6f5884..6b33d68 100644
+--- a/formula/eval_test.go
++++ b/formula/eval_test.go
+@@ -10,6 +10,10 @@ type mockResolver struct {
+ 	cells map[CellAddr]Value
+ }
+ 
++type panicRangeResolver struct {
++	rangeCalls int
++}
++
+ func (m *mockResolver) GetCellValue(addr CellAddr) Value {
+ 	if v, ok := m.cells[addr]; ok {
+ 		return v
+@@ -32,6 +36,15 @@ func (m *mockResolver) GetRangeValues(addr RangeAddr) [][]Value {
+ 	return rows
+ }
+ 
++func (m *panicRangeResolver) GetCellValue(addr CellAddr) Value {
++	return EmptyVal()
++}
++
++func (m *panicRangeResolver) GetRangeValues(addr RangeAddr) [][]Value {
++	m.rangeCalls++
++	return nil
++}
++
+ func evalCompile(t *testing.T, formula string) *CompiledFormula {
+ 	t.Helper()
+ 	node, err := Parse(formula)
+@@ -1402,6 +1415,22 @@ func TestEvalCOUNTBLANKPadding(t *testing.T) {
+ 	}
+ }
+ 
++func TestEvalOversizedBoundedRangeReturnsREF(t *testing.T) {
++	resolver := &panicRangeResolver{}
++
++	cf := evalCompile(t, "SUM(A1:B524289)")
++	got, err := Eval(cf, resolver, nil)
++	if err != nil {
++		t.Fatalf("Eval(SUM(A1:B524289)): %v", err)
++	}
++	if resolver.rangeCalls != 0 {
++		t.Fatalf("GetRangeValues called %d times, want 0", resolver.rangeCalls)
++	}
++	if got.Type != ValueError || got.Err != ErrValREF {
++		t.Errorf("SUM(A1:B524289) = %v, want #REF!", got)
++	}
++}
++
+ // ---------------------------------------------------------------------------
+ // Implicit intersection for bounded ranges in non-array formulas
+ // ---------------------------------------------------------------------------
+diff --git a/formula/functions_info.go b/formula/functions_info.go
+index 6fc1961..a1be5a0 100644
+--- a/formula/functions_info.go
++++ b/formula/functions_info.go
+@@ -198,6 +198,9 @@ func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
+ 		}
+ 		return NumberVal(float64(ctx.CurrentCol)), nil
+ 	}
++	if len(args) == 1 && args[0].Type == ValueError {
++		return args[0], nil
++	}
+ 	if len(args) == 1 && args[0].Type == ValueRef {
+ 		col := int(args[0].Num) % 100_000
+ 		return NumberVal(float64(col)), nil
+@@ -212,6 +215,9 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
+ 		}
+ 		return NumberVal(float64(ctx.CurrentRow)), nil
+ 	}
++	if len(args) == 1 && args[0].Type == ValueError {
++		return args[0], nil
++	}
+ 	if len(args) == 1 && args[0].Type == ValueRef {
+ 		row := int(args[0].Num) / 100_000
+ 		return NumberVal(float64(row)), nil
+@@ -233,6 +239,9 @@ func fnCOLUMNS(args []Value) (Value, error) {
+ 	if len(args) != 1 {
+ 		return ErrorVal(ErrValVALUE), nil
+ 	}
++	if args[0].Type == ValueError {
++		return args[0], nil
++	}
+ 	if args[0].Type == ValueArray && len(args[0].Array) > 0 {
+ 		return NumberVal(float64(len(args[0].Array[0]))), nil
+ 	}
+@@ -243,6 +252,9 @@ func fnROWS(args []Value) (Value, error) {
+ 	if len(args) != 1 {
+ 		return ErrorVal(ErrValVALUE), nil
+ 	}
++	if args[0].Type == ValueError {
++		return args[0], nil
++	}
+ 	if args[0].Type == ValueArray {
+ 		return NumberVal(float64(len(args[0].Array))), nil
+ 	}
+diff --git a/formula/functions_lookup.go b/formula/functions_lookup.go
+index 6b73a87..85368bb 100644
+--- a/formula/functions_lookup.go
++++ b/formula/functions_lookup.go
+@@ -812,20 +812,23 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
+ 		}
+ 		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+ 		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
++		nRows := addr.ToRow - addr.FromRow + 1
++		nCols := addr.ToCol - addr.FromCol + 1
+ 		// For full-row or full-column ranges (e.g. "1:20", "A:C"), return
+ 		// only the RangeOrigin metadata without resolving cell values.
+ 		// Functions like ROW() and COLUMN() only need the metadata, and
+ 		// resolving all cells in such large ranges causes false circular
+ 		// reference errors when the calling cell falls within the range.
+ 		if isFullCol || isFullRow {
+-			nRows := addr.ToRow - addr.FromRow + 1
+-			nCols := addr.ToCol - addr.FromCol + 1
+ 			if isFullRow {
+ 				nCols = 1 // placeholder; actual columns determined by consumer
+ 			}
+ 			if isFullCol {
+ 				nRows = 1 // placeholder; actual rows determined by consumer
+ 			}
++			if RangeCellCountExceedsLimit(nRows, nCols) {
++				return ErrorVal(ErrValREF), nil
++			}
+ 			rows := make([][]Value, nRows)
+ 			for i := range rows {
+ 				rows[i] = make([]Value, nCols)
+@@ -835,7 +838,13 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
+ 			}
+ 			return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
+ 		}
++		if RangeCellCountExceedsLimit(nRows, nCols) {
++			return ErrorVal(ErrValREF), nil
++		}
+ 		rows := ctx.Resolver.GetRangeValues(addr)
++		if isRangeOverflowMatrix(rows) {
++			return ErrorVal(ErrValREF), nil
++		}
+ 		// Pad trailing blank rows for bounded ranges.
+ 		expectedRows := addr.ToRow - addr.FromRow + 1
+ 		cols := addr.ToCol - addr.FromCol + 1
+diff --git a/formula/functions_lookup_test.go b/formula/functions_lookup_test.go
+index 752002d..40ecd64 100644
+--- a/formula/functions_lookup_test.go
++++ b/formula/functions_lookup_test.go
+@@ -1290,6 +1290,20 @@ func TestINDIRECTEmptyString(t *testing.T) {
+ 	}
+ }
+ 
++func TestINDIRECTOversizedRangeReturnsREF(t *testing.T) {
++	resolver := &mockResolver{}
++	ctx := &EvalContext{Resolver: resolver}
++
++	cf := evalCompile(t, `INDIRECT("A1:B524289")`)
++	got, err := Eval(cf, resolver, ctx)
++	if err != nil {
++		t.Fatalf("Eval: %v", err)
++	}
++	if got.Type != ValueError || got.Err != ErrValREF {
++		t.Errorf("INDIRECT oversized range: got %v, want #REF!", got)
++	}
++}
++
+ func TestINDIRECTWithSheetName(t *testing.T) {
+ 	resolver := &mockResolver{
+ 		cells: map[CellAddr]Value{
+diff --git a/formula/range_limit.go b/formula/range_limit.go
+new file mode 100644
+index 0000000..b6d87ee
+--- /dev/null
++++ b/formula/range_limit.go
+@@ -0,0 +1,24 @@
++package formula
++
++// MaxMaterializedRangeCells caps how many worksheet cells the engine will
++// materialize into a dense array for range evaluation. The limit is set to
++// preserve a single full-column reference while rejecting wider ranges that
++// would otherwise allocate prohibitively large matrices.
++const MaxMaterializedRangeCells int64 = maxRows
++
++// RangeCellCountExceedsLimit reports whether a dense rows×cols materialization
++// would exceed the engine's allocation budget.
++func RangeCellCountExceedsLimit(rows, cols int) bool {
++	if rows <= 0 || cols <= 0 {
++		return false
++	}
++	return int64(rows)*int64(cols) > MaxMaterializedRangeCells
++}
++
++func isRangeOverflowMatrix(rows [][]Value) bool {
++	return len(rows) == 1 &&
++		len(rows[0]) == 1 &&
++		rows[0][0].Type == ValueError &&
++		rows[0][0].Err == ErrValREF &&
++		rows[0][0].RangeOverflow
++}
+diff --git a/formula/types.go b/formula/types.go
+index a39e37d..56f0f76 100644
+--- a/formula/types.go
++++ b/formula/types.go
+@@ -88,16 +88,17 @@ func errorCodeFromAST(code ErrorCode) ErrorValue {
+ 
+ // Value is a tagged union representing a formula engine value.
+ type Value struct {
+-	Type        ValueType
+-	Num         float64
+-	Str         string
+-	Bool        bool
+-	Err         ErrorValue
+-	Array       [][]Value  // used by ValueArray for range results
+-	RangeOrigin *RangeAddr // set on ValueArray when loaded from a worksheet range
+-	CellOrigin  *CellAddr  // set when a single-cell result carries its source address (e.g. OFFSET)
+-	FromCell    bool       // true when loaded from a cell reference (OpLoadCell)
+-	NoSpill     bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
++	Type          ValueType
++	Num           float64
++	Str           string
++	Bool          bool
++	Err           ErrorValue
++	Array         [][]Value  // used by ValueArray for range results
++	RangeOrigin   *RangeAddr // set on ValueArray when loaded from a worksheet range
++	CellOrigin    *CellAddr  // set when a single-cell result carries its source address (e.g. OFFSET)
++	FromCell      bool       // true when loaded from a cell reference (OpLoadCell)
++	NoSpill       bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
++	RangeOverflow bool       // true for synthetic #REF! cells used to signal that a range was too large to materialize
+ }
+ 
+ // NumberVal creates a Value holding a float64.
+diff --git a/formula_eval_test.go b/formula_eval_test.go
+index 2bb0f47..c03f542 100644
+--- a/formula_eval_test.go
++++ b/formula_eval_test.go
+@@ -213,6 +213,26 @@ func TestWholeColumnRefCrossSheet(t *testing.T) {
+ 	}
+ }
+ 
++func TestOversizedCrossSheetRangeReturnsREF(t *testing.T) {
++	f := werkbook.New()
++	s1 := f.Sheet("Sheet1")
++	s2, err := f.NewSheet("Sheet2")
++	if err != nil {
++		t.Fatalf("NewSheet: %v", err)
++	}
++
++	s1.SetValue("B524289", 1)
++	s2.SetFormula("A1", "SUM(Sheet1!A:B)")
++
++	val, err := s2.GetValue("A1")
++	if err != nil {
++		t.Fatalf("GetValue(A1): %v", err)
++	}
++	if val.Type != werkbook.TypeError || val.String != "#REF!" {
++		t.Errorf("SUM(Sheet1!A:B) = %#v, want #REF!", val)
++	}
++}
++
+ // TestCrossSheetEmptyRefReturnsZero verifies that a cross-sheet reference to
+ // an empty cell returns 0, not empty. This matches expected behavior where
+ // formulas like ='Sheet2'!A1 (with A1 empty) cache 0.
+diff --git a/ooxml/helpers_test.go b/ooxml/helpers_test.go
+new file mode 100644
+index 0000000..92e6aae
+--- /dev/null
++++ b/ooxml/helpers_test.go
+@@ -0,0 +1,610 @@
++package ooxml
++
++import (
++	"encoding/xml"
++	"strings"
++	"testing"
++)
++
++// ---------------------------------------------------------------------------
++// parseOOXMLBoolString
++// ---------------------------------------------------------------------------
++
++func TestParseOOXMLBoolString(t *testing.T) {
++	tests := []struct {
++		in   string
++		want bool
++	}{
++		{"1", true},
++		{"true", true},
++		{"on", true},
++		{"TRUE", true},
++		{"True", true},
++		{"ON", true},
++		{"0", false},
++		{"false", false},
++		{"off", false},
++		{"", false},
++		{"yes", false},   // not recognized → false
++		{"maybe", false}, // not recognized → false
++	}
++	for _, tt := range tests {
++		t.Run(tt.in, func(t *testing.T) {
++			if got := parseOOXMLBoolString(tt.in); got != tt.want {
++				t.Errorf("parseOOXMLBoolString(%q) = %v, want %v", tt.in, got, tt.want)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// decodeOOXMLEscapes
++// ---------------------------------------------------------------------------
++
++func TestDecodeOOXMLEscapes(t *testing.T) {
++	tests := []struct {
++		name string
++		in   string
++		want string
++	}{
++		{"no escapes", "hello", "hello"},
++		{"tab escape", "_x0009_", "\t"},
++		{"newline escape", "_x000A_", "\n"},
++		{"carriage return", "_x000D_", "\r"},
++		{"underscore literal", "_x005F_", "_"},
++		{"mid-string escape", "col_x000A_name", "col\nname"},
++		{"multiple escapes", "_x0009_a_x000A_b", "\ta\nb"},
++		{"incomplete escape", "_xZZZZ_", "_xZZZZ_"},
++		{"too short", "_x00_", "_x00_"},
++		{"no trailing underscore", "_x0009X", "_x0009X"},
++		{"empty string", "", ""},
++		{"space char", "_x0020_", " "},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := decodeOOXMLEscapes(tt.in); got != tt.want {
++				t.Errorf("decodeOOXMLEscapes(%q) = %q, want %q", tt.in, got, tt.want)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// encodeOOXMLEscapes
++// ---------------------------------------------------------------------------
++
++func TestEncodeOOXMLEscapes(t *testing.T) {
++	tests := []struct {
++		name string
++		in   string
++		want string
++	}{
++		{"plain text", "hello", "hello"},
++		{"tab", "\t", "_x0009_"},
++		{"newline", "\n", "_x000A_"},
++		{"carriage return", "\r", "_x000D_"},
++		{"control char", "\x01", "_x0001_"},
++		{"existing escape pattern gets escaped", "_x0009_", "_x005F__x0009_"},
++		{"normal underscore no hex", "a_b", "a_b"},
++		{"printable chars unchanged", "abc 123 !@#", "abc 123 !@#"},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := encodeOOXMLEscapes(tt.in); got != tt.want {
++				t.Errorf("encodeOOXMLEscapes(%q) = %q, want %q", tt.in, got, tt.want)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// encode/decode round-trip
++// ---------------------------------------------------------------------------
++
++func TestOOXMLEscapeRoundTrip(t *testing.T) {
++	values := []string{
++		"simple",
++		"has\ttab",
++		"has\nnewline",
++		"\x01\x02\x03 control chars",
++		"no special underscores_here",
++	}
++	for _, v := range values {
++		encoded := encodeOOXMLEscapes(v)
++		decoded := decodeOOXMLEscapes(encoded)
++		if decoded != v {
++			t.Errorf("round-trip failed for %q: encoded=%q decoded=%q", v, encoded, decoded)
++		}
++	}
++}
++
++// ---------------------------------------------------------------------------
++// looksLikeOOXMLEscape
++// ---------------------------------------------------------------------------
++
++func TestLooksLikeOOXMLEscape(t *testing.T) {
++	tests := []struct {
++		s    string
++		i    int
++		want bool
++	}{
++		{"_x0009_", 0, true},
++		{"_xABCD_", 0, true},
++		{"_xabcd_", 0, true},
++		{"_xGGGG_", 0, false}, // not hex
++		{"_x00_", 0, false},   // too short
++		{"hello", 0, false},
++		{"ab_x0009_cd", 2, true},
++	}
++	for _, tt := range tests {
++		if got := looksLikeOOXMLEscape(tt.s, tt.i); got != tt.want {
++			t.Errorf("looksLikeOOXMLEscape(%q, %d) = %v, want %v", tt.s, tt.i, got, tt.want)
++		}
++	}
++}
++
++// ---------------------------------------------------------------------------
++// resolveRelativePath
++// ---------------------------------------------------------------------------
++
++func TestResolveRelativePath(t *testing.T) {
++	tests := []struct {
++		base, target, want string
++	}{
++		{"xl/worksheets", "../tables/table1.xml", "xl/tables/table1.xml"},
++		{"xl/worksheets", "table1.xml", "xl/worksheets/table1.xml"},
++		{"xl", "../other/file.xml", "other/file.xml"},
++		{"", "tables/table1.xml", "tables/table1.xml"},
++		{"a/b/c", "../../d/e.xml", "a/d/e.xml"},
++	}
++	for _, tt := range tests {
++		t.Run(tt.base+"/"+tt.target, func(t *testing.T) {
++			if got := resolveRelativePath(tt.base, tt.target); got != tt.want {
++				t.Errorf("resolveRelativePath(%q, %q) = %q, want %q", tt.base, tt.target, got, tt.want)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// boolString
++// ---------------------------------------------------------------------------
++
++func TestBoolString(t *testing.T) {
++	if got := boolString(true); got != "1" {
++		t.Errorf("boolString(true) = %q, want \"1\"", got)
++	}
++	if got := boolString(false); got != "" {
++		t.Errorf("boolString(false) = %q, want \"\"", got)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// hasCalcProps
++// ---------------------------------------------------------------------------
++
++func TestHasCalcProps(t *testing.T) {
++	if hasCalcProps(CalcPropertiesData{}) {
++		t.Error("empty CalcPropertiesData should return false")
++	}
++	if !hasCalcProps(CalcPropertiesData{Mode: "auto"}) {
++		t.Error("CalcPropertiesData{Mode: auto} should return true")
++	}
++	if !hasCalcProps(CalcPropertiesData{ID: 1}) {
++		t.Error("CalcPropertiesData{ID: 1} should return true")
++	}
++	if !hasCalcProps(CalcPropertiesData{FullCalcOnLoad: true}) {
++		t.Error("CalcPropertiesData{FullCalcOnLoad: true} should return true")
++	}
++	if !hasCalcProps(CalcPropertiesData{ForceFullCalc: true}) {
++		t.Error("CalcPropertiesData{ForceFullCalc: true} should return true")
++	}
++	if !hasCalcProps(CalcPropertiesData{Completed: true}) {
++		t.Error("CalcPropertiesData{Completed: true} should return true")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// boolOOXML
++// ---------------------------------------------------------------------------
++
++func TestBoolOOXML(t *testing.T) {
++	if boolOOXML(true) != 1 {
++		t.Error("boolOOXML(true) should be 1")
++	}
++	if boolOOXML(false) != 0 {
++		t.Error("boolOOXML(false) should be 0")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// ooxmlBool UnmarshalXMLAttr
++// ---------------------------------------------------------------------------
++
++func TestOoxmlBoolUnmarshalXMLAttr(t *testing.T) {
++	tests := []struct {
++		val  string
++		want ooxmlBool
++		err  bool
++	}{
++		{"1", 1, false},
++		{"true", 1, false},
++		{"on", 1, false},
++		{"0", 0, false},
++		{"false", 0, false},
++		{"off", 0, false},
++		{"", 0, false},
++		{"2", 1, false},   // non-zero int → true
++		{"-1", 1, false},  // non-zero int → true
++		{"abc", 0, true},  // invalid → error
++	}
++	for _, tt := range tests {
++		t.Run(tt.val, func(t *testing.T) {
++			var b ooxmlBool
++			err := b.UnmarshalXMLAttr(xml.Attr{Value: tt.val})
++			if (err != nil) != tt.err {
++				t.Errorf("err = %v, wantErr = %v", err, tt.err)
++			}
++			if err == nil && b != tt.want {
++				t.Errorf("ooxmlBool = %d, want %d", b, tt.want)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// SharedStringTable
++// ---------------------------------------------------------------------------
++
++func TestSharedStringTable(t *testing.T) {
++	sst := NewSharedStringTable()
++
++	if sst.Len() != 0 {
++		t.Fatalf("new SST Len() = %d, want 0", sst.Len())
++	}
++
++	idx0 := sst.Add("hello")
++	idx1 := sst.Add("world")
++	idx2 := sst.Add("hello") // duplicate
++
++	if idx0 != 0 {
++		t.Errorf("first Add = %d, want 0", idx0)
++	}
++	if idx1 != 1 {
++		t.Errorf("second Add = %d, want 1", idx1)
++	}
++	if idx2 != 0 {
++		t.Errorf("duplicate Add = %d, want 0 (dedup)", idx2)
++	}
++	if sst.Len() != 2 {
++		t.Errorf("Len = %d, want 2", sst.Len())
++	}
++	if sst.Get(0) != "hello" {
++		t.Errorf("Get(0) = %q, want hello", sst.Get(0))
++	}
++	if sst.Get(1) != "world" {
++		t.Errorf("Get(1) = %q, want world", sst.Get(1))
++	}
++
++	strs := sst.Strings()
++	if len(strs) != 2 || strs[0] != "hello" || strs[1] != "world" {
++		t.Errorf("Strings() = %v, want [hello world]", strs)
++	}
++}
++
++func TestSharedStringTableToXML(t *testing.T) {
++	sst := NewSharedStringTable()
++	sst.Add("alpha")
++	sst.Add("beta")
++	sst.Add("alpha") // duplicate: count=3, uniqueCount=2
++
++	x := sst.ToXML()
++	if x.Count != 3 {
++		t.Errorf("Count = %d, want 3", x.Count)
++	}
++	if x.UniqueCount != 2 {
++		t.Errorf("UniqueCount = %d, want 2", x.UniqueCount)
++	}
++	if len(x.SI) != 2 {
++		t.Fatalf("len(SI) = %d, want 2", len(x.SI))
++	}
++	if *x.SI[0].T != "alpha" {
++		t.Errorf("SI[0].T = %q, want alpha", *x.SI[0].T)
++	}
++	if *x.SI[1].T != "beta" {
++		t.Errorf("SI[1].T = %q, want beta", *x.SI[1].T)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// xlsxSI MarshalXML – whitespace preservation
++// ---------------------------------------------------------------------------
++
++func TestSIMarshalXML_WhitespacePreserve(t *testing.T) {
++	tests := []struct {
++		name       string
++		value      string
++		wantPreserve bool
++	}{
++		{"no whitespace", "hello", false},
++		{"leading space", " hello", true},
++		{"trailing space", "hello ", true},
++		{"leading tab", "\thello", true},
++		{"trailing tab", "hello\t", true},
++		{"no special", "hello world", false},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			s := tt.value
++			si := xlsxSI{T: &s}
++			data, err := xml.Marshal(si)
++			if err != nil {
++				t.Fatal(err)
++			}
++			xmlStr := string(data)
++			hasPreserve := strings.Contains(xmlStr, `space="preserve"`)
++			if hasPreserve != tt.wantPreserve {
++				t.Errorf("xml:space=preserve present=%v, want %v; xml=%s", hasPreserve, tt.wantPreserve, xmlStr)
++			}
++		})
++	}
++}
++
++// ---------------------------------------------------------------------------
++// xlsxSheet MarshalXML / UnmarshalXML
++// ---------------------------------------------------------------------------
++
++func TestXlsxSheetMarshalRoundTrip(t *testing.T) {
++	original := xlsxSheet{
++		Name:    "Data",
++		SheetID: 3,
++		RID:     "rId3",
++		State:   "hidden",
++	}
++
++	data, err := xml.Marshal(original)
++	if err != nil {
++		t.Fatal(err)
++	}
++	xmlStr := string(data)
++
++	// Verify marshaled attributes.
++	if !strings.Contains(xmlStr, `name="Data"`) {
++		t.Errorf("missing name attr in %s", xmlStr)
++	}
++	if !strings.Contains(xmlStr, `sheetId="3"`) {
++		t.Errorf("missing sheetId attr in %s", xmlStr)
++	}
++	if !strings.Contains(xmlStr, `r:id="rId3"`) {
++		t.Errorf("missing r:id attr in %s", xmlStr)
++	}
++	if !strings.Contains(xmlStr, `state="hidden"`) {
++		t.Errorf("missing state attr in %s", xmlStr)
++	}
++}
++
++func TestXlsxSheetMarshalOmitsEmptyState(t *testing.T) {
++	s := xlsxSheet{Name: "Sheet1", SheetID: 1, RID: "rId1"}
++	data, err := xml.Marshal(s)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if strings.Contains(string(data), "state") {
++		t.Errorf("empty state should be omitted: %s", string(data))
++	}
++}
++
++func TestXlsxSheetUnmarshalTransitional(t *testing.T) {
++	xmlStr := `<sheet name="Sheet1" sheetId="1" xmlns:r="` + NSOfficeDocument + `" r:id="rId1" state="hidden"/>`
++	var s xlsxSheet
++	if err := xml.Unmarshal([]byte(xmlStr), &s); err != nil {
++		t.Fatal(err)
++	}
++	if s.Name != "Sheet1" {
++		t.Errorf("Name = %q, want Sheet1", s.Name)
++	}
++	if s.SheetID != 1 {
++		t.Errorf("SheetID = %d, want 1", s.SheetID)
++	}
++	if s.RID != "rId1" {
++		t.Errorf("RID = %q, want rId1", s.RID)
++	}
++	if s.State != "hidden" {
++		t.Errorf("State = %q, want hidden", s.State)
++	}
++}
++
++func TestXlsxSheetUnmarshalStrict(t *testing.T) {
++	xmlStr := `<sheet name="Data" sheetId="2" xmlns:r="` + NSOfficeDocumentStrict + `" r:id="rId2"/>`
++	var s xlsxSheet
++	if err := xml.Unmarshal([]byte(xmlStr), &s); err != nil {
++		t.Fatal(err)
++	}
++	if s.RID != "rId2" {
++		t.Errorf("RID = %q, want rId2 (strict namespace)", s.RID)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// xlsxTablePart MarshalXML
++// ---------------------------------------------------------------------------
++
++func TestXlsxTablePartMarshalXML(t *testing.T) {
++	tp := xlsxTablePart{RID: "rId5"}
++	data, err := xml.Marshal(tp)
++	if err != nil {
++		t.Fatal(err)
++	}
++	xmlStr := string(data)
++	if !strings.Contains(xmlStr, `r:id="rId5"`) {
++		t.Errorf("missing r:id attr in %s", xmlStr)
++	}
++	if !strings.Contains(xmlStr, "tablePart") {
++		t.Errorf("missing tablePart element in %s", xmlStr)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// buildTableWritePlan
++// ---------------------------------------------------------------------------
++
++func TestBuildTableWritePlan(t *testing.T) {
++	tables := []TableDef{
++		{Name: "T1", SheetIndex: 0},
++		{Name: "T2", SheetIndex: 1},
++		{Name: "T3", SheetIndex: 0},
++	}
++	plan := buildTableWritePlan(tables)
++
++	if len(plan[0]) != 2 {
++		t.Errorf("sheet 0 tables = %d, want 2", len(plan[0]))
++	}
++	if len(plan[1]) != 1 {
++		t.Errorf("sheet 1 tables = %d, want 1", len(plan[1]))
++	}
++	// PartNum is 1-based index into the global tables slice.
++	if plan[0][0].PartNum != 1 {
++		t.Errorf("plan[0][0].PartNum = %d, want 1", plan[0][0].PartNum)
++	}
++	if plan[0][1].PartNum != 3 {
++		t.Errorf("plan[0][1].PartNum = %d, want 3", plan[0][1].PartNum)
++	}
++	if plan[1][0].PartNum != 2 {
++		t.Errorf("plan[1][0].PartNum = %d, want 2", plan[1][0].PartNum)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// siToString
++// ---------------------------------------------------------------------------
++
++func TestSiToString(t *testing.T) {
++	plain := "hello"
++	si := xlsxSI{T: &plain}
++	if got := siToString(si); got != "hello" {
++		t.Errorf("siToString plain = %q, want hello", got)
++	}
++
++	// Rich text.
++	richSI := xlsxSI{R: []xlsxR{{T: "Hello "}, {T: "World"}}}
++	if got := siToString(richSI); got != "Hello World" {
++		t.Errorf("siToString rich = %q, want 'Hello World'", got)
++	}
++
++	// Empty.
++	emptySI := xlsxSI{}
++	if got := siToString(emptySI); got != "" {
++		t.Errorf("siToString empty = %q, want empty", got)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// formulaType / formulaRef
++// ---------------------------------------------------------------------------
++
++func TestFormulaTypeAndRef(t *testing.T) {
++	if got := formulaType(nil); got != "" {
++		t.Errorf("formulaType(nil) = %q, want empty", got)
++	}
++	if got := formulaRef(nil); got != "" {
++		t.Errorf("formulaRef(nil) = %q, want empty", got)
++	}
++
++	fe := &xlsxF{T: "array", Ref: "A1:B2"}
++	if got := formulaType(fe); got != "array" {
++		t.Errorf("formulaType = %q, want array", got)
++	}
++	if got := formulaRef(fe); got != "A1:B2" {
++		t.Errorf("formulaRef = %q, want A1:B2", got)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// parseCellData – additional cases
++// ---------------------------------------------------------------------------
++
++func TestParseCellData_InlineStr(t *testing.T) {
++	c := xlsxC{R: "A1", T: "inlineStr", IS: &xlsxIS{T: "inline text"}}
++	cd := parseCellData(c, nil)
++	if cd.Type != "inlineStr" || cd.Value != "inline text" {
++		t.Errorf("inlineStr: Type=%q Value=%q", cd.Type, cd.Value)
++	}
++}
++
++func TestParseCellData_StrType(t *testing.T) {
++	c := xlsxC{R: "A1", T: "str", V: "formula result"}
++	cd := parseCellData(c, nil)
++	if cd.Type != "str" || cd.Value != "formula result" {
++		t.Errorf("str: Type=%q Value=%q", cd.Type, cd.Value)
++	}
++}
++
++func TestParseCellData_ErrorType(t *testing.T) {
++	c := xlsxC{R: "A1", T: "e", V: "#DIV/0!"}
++	cd := parseCellData(c, nil)
++	if cd.Type != "e" || cd.Value != "#DIV/0!" {
++		t.Errorf("error: Type=%q Value=%q", cd.Type, cd.Value)
++	}
++}
++
++func TestParseCellData_DateType(t *testing.T) {
++	c := xlsxC{R: "A1", T: "d", V: "2024-01-01"}
++	cd := parseCellData(c, nil)
++	if cd.Type != "d" || cd.Value != "2024-01-01" {
++		t.Errorf("date: Type=%q Value=%q", cd.Type, cd.Value)
++	}
++}
++
++func TestParseCellData_WithFormula(t *testing.T) {
++	c := xlsxC{
++		R:  "A1",
++		FE: &xlsxF{Text: "SUM(B1:B10)", T: "array", Ref: "A1:A5"},
++		V:  "55",
++	}
++	cd := parseCellData(c, nil)
++	if cd.Formula != "SUM(B1:B10)" {
++		t.Errorf("Formula = %q, want SUM(B1:B10)", cd.Formula)
++	}
++	if cd.FormulaType != "array" {
++		t.Errorf("FormulaType = %q, want array", cd.FormulaType)
++	}
++	if cd.FormulaRef != "A1:A5" {
++		t.Errorf("FormulaRef = %q, want A1:A5", cd.FormulaRef)
++	}
++	if !cd.IsArrayFormula {
++		t.Error("expected IsArrayFormula=true")
++	}
++}
++
++func TestParseCellData_DynamicArray(t *testing.T) {
++	c := xlsxC{
++		R:  "A1",
++		CM: 1,
++		FE: &xlsxF{Text: "SORT(B1:B10)", T: "array", Ref: "A1:A10"},
++	}
++	cd := parseCellData(c, nil)
++	if !cd.IsDynamicArray {
++		t.Error("expected IsDynamicArray=true for CM=1 + array formula")
++	}
++	if cd.IsArrayFormula {
++		t.Error("expected IsArrayFormula=false for dynamic array (CM!=0)")
++	}
++}
++
++func TestParseCellData_StyleIdx(t *testing.T) {
++	c := xlsxC{R: "A1", S: 5, V: "42"}
++	cd := parseCellData(c, nil)
++	if cd.StyleIdx != 5 {
++		t.Errorf("StyleIdx = %d, want 5", cd.StyleIdx)
++	}
++}
++
++func TestParseCellData_InvalidSSTIndex(t *testing.T) {
++	sst := []string{"only one"}
++	c := xlsxC{R: "A1", T: "s", V: "99"} // out of range
++	cd := parseCellData(c, sst)
++	// Should fall through without setting value.
++	if cd.Value != "" {
++		t.Errorf("invalid SST index: Value = %q, want empty", cd.Value)
++	}
++}
+diff --git a/ooxml/metadata.go b/ooxml/metadata.go
+index 4c24efc..81f0f35 100644
+--- a/ooxml/metadata.go
++++ b/ooxml/metadata.go
+@@ -3,7 +3,6 @@ package ooxml
+ import (
+ 	"archive/zip"
+ 	"fmt"
+-	"io"
+ )
+ 
+ const dynamicArrayMetadataXML = `<metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray"><metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"></metadataType></metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"></xda:dynamicArrayProperties></ext></extLst></bk></futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"></rc></bk></cellMetadata></metadata>`
+@@ -13,13 +12,14 @@ func writeDynamicArrayMetadata(zw *zip.Writer) error {
+ }
+ 
+ func writeRawXML(zw *zip.Writer, name, body string) error {
++	return writeRawFile(zw, name, []byte(xmlHeader+body))
++}
++
++func writeRawFile(zw *zip.Writer, name string, body []byte) error {
+ 	w, err := zw.Create(name)
+ 	if err != nil {
+ 		return fmt.Errorf("create %s: %w", name, err)
+ 	}
+-	if _, err := io.WriteString(w, xmlHeader); err != nil {
+-		return err
+-	}
+-	_, err = io.WriteString(w, body)
++	_, err = w.Write(body)
+ 	return err
+ }
+diff --git a/ooxml/properties.go b/ooxml/properties.go
+new file mode 100644
+index 0000000..1e2b026
+--- /dev/null
++++ b/ooxml/properties.go
+@@ -0,0 +1,296 @@
++package ooxml
++
++import (
++	"archive/zip"
++	"encoding/xml"
++	"time"
++)
++
++const (
++	NSCoreProperties   = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
++	NSDublinCore       = "http://purl.org/dc/elements/1.1/"
++	NSDublinCoreTerms  = "http://purl.org/dc/terms/"
++	NSDublinCoreType   = "http://purl.org/dc/dcmitype/"
++	NSXMLSchemaInst    = "http://www.w3.org/2001/XMLSchema-instance"
++	NSExtendedProps    = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
++	NSDocPropsVTypes   = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
++	RelTypeCoreProps   = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
++	RelTypeExtendedApp = NSOfficeDocument + "/extended-properties"
++)
++
++// CorePropertiesData holds the supported OPC core properties from docProps/core.xml.
++type CorePropertiesData struct {
++	Title          string
++	Subject        string
++	Creator        string
++	Description    string
++	Identifier     string
++	Language       string
++	Keywords       string
++	Category       string
++	ContentStatus  string
++	Version        string
++	Revision       string
++	LastModifiedBy string
++	Created        time.Time
++	Modified       time.Time
++}
++
++type xlsxCorePropertiesRead struct {
++	XMLName        xml.Name        `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties coreProperties"`
++	Title          string          `xml:"http://purl.org/dc/elements/1.1/ title"`
++	Subject        string          `xml:"http://purl.org/dc/elements/1.1/ subject"`
++	Creator        string          `xml:"http://purl.org/dc/elements/1.1/ creator"`
++	Description    string          `xml:"http://purl.org/dc/elements/1.1/ description"`
++	Identifier     string          `xml:"http://purl.org/dc/elements/1.1/ identifier"`
++	Language       string          `xml:"http://purl.org/dc/elements/1.1/ language"`
++	Keywords       string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties keywords"`
++	Category       string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties category"`
++	ContentStatus  string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties contentStatus"`
++	Version        string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties version"`
++	Revision       string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties revision"`
++	LastModifiedBy string          `xml:"http://schemas.openxmlformats.org/package/2006/metadata/core-properties lastModifiedBy"`
++	Created        *xlsxW3CDTFRead `xml:"http://purl.org/dc/terms/ created"`
++	Modified       *xlsxW3CDTFRead `xml:"http://purl.org/dc/terms/ modified"`
++}
++
++type xlsxW3CDTFRead struct {
++	Type  string `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
++	Value string `xml:",chardata"`
++}
++
++type xlsxCorePropertiesWrite struct {
++	XMLName        xml.Name         `xml:"cp:coreProperties"`
++	XmlnsCP        string           `xml:"xmlns:cp,attr"`
++	XmlnsDC        string           `xml:"xmlns:dc,attr"`
++	XmlnsDCTerms   string           `xml:"xmlns:dcterms,attr"`
++	XmlnsDCMIType  string           `xml:"xmlns:dcmitype,attr"`
++	XmlnsXSI       string           `xml:"xmlns:xsi,attr"`
++	Title          string           `xml:"dc:title,omitempty"`
++	Subject        string           `xml:"dc:subject,omitempty"`
++	Creator        string           `xml:"dc:creator,omitempty"`
++	Description    string           `xml:"dc:description,omitempty"`
++	Identifier     string           `xml:"dc:identifier,omitempty"`
++	Language       string           `xml:"dc:language,omitempty"`
++	Keywords       string           `xml:"cp:keywords,omitempty"`
++	Category       string           `xml:"cp:category,omitempty"`
++	ContentStatus  string           `xml:"cp:contentStatus,omitempty"`
++	Version        string           `xml:"cp:version,omitempty"`
++	Revision       string           `xml:"cp:revision,omitempty"`
++	LastModifiedBy string           `xml:"cp:lastModifiedBy,omitempty"`
++	Created        *xlsxW3CDTFWrite `xml:"dcterms:created,omitempty"`
++	Modified       *xlsxW3CDTFWrite `xml:"dcterms:modified,omitempty"`
++}
++
++type xlsxW3CDTFWrite struct {
++	Type  string `xml:"xsi:type,attr,omitempty"`
++	Value string `xml:",chardata"`
++}
++
++type xlsxAppProperties struct {
++	XMLName           xml.Name          `xml:"Properties"`
++	Xmlns             string            `xml:"xmlns,attr"`
++	XmlnsVT           string            `xml:"xmlns:vt,attr"`
++	Application       string            `xml:"Application"`
++	DocSecurity       int               `xml:"DocSecurity"`
++	ScaleCrop         bool              `xml:"ScaleCrop"`
++	HeadingPairs      xlsxHeadingPairs  `xml:"HeadingPairs"`
++	TitlesOfParts     xlsxTitlesOfParts `xml:"TitlesOfParts"`
++	Company           string            `xml:"Company"`
++	LinksUpToDate     bool              `xml:"LinksUpToDate"`
++	SharedDoc         bool              `xml:"SharedDoc"`
++	HyperlinksChanged bool              `xml:"HyperlinksChanged"`
++	AppVersion        string            `xml:"AppVersion"`
++}
++
++type xlsxHeadingPairs struct {
++	Vector xlsxVTVectorVariants `xml:"vt:vector"`
++}
++
++type xlsxVTVectorVariants struct {
++	Size     int             `xml:"size,attr"`
++	BaseType string          `xml:"baseType,attr"`
++	Variant  []xlsxVTVariant `xml:"vt:variant"`
++}
++
++type xlsxVTVariant struct {
++	LPSTR *string `xml:"vt:lpstr,omitempty"`
++	I4    *int    `xml:"vt:i4,omitempty"`
++}
++
++type xlsxTitlesOfParts struct {
++	Vector xlsxVTVectorStrings `xml:"vt:vector"`
++}
++
++type xlsxVTVectorStrings struct {
++	Size     int      `xml:"size,attr"`
++	BaseType string   `xml:"baseType,attr"`
++	LPSTR    []string `xml:"vt:lpstr"`
++}
++
++func parseCoreProperties(data []byte) (CorePropertiesData, error) {
++	var x xlsxCorePropertiesRead
++	if err := xml.Unmarshal(data, &x); err != nil {
++		return CorePropertiesData{}, err
++	}
++
++	props := CorePropertiesData{
++		Title:          x.Title,
++		Subject:        x.Subject,
++		Creator:        x.Creator,
++		Description:    x.Description,
++		Identifier:     x.Identifier,
++		Language:       x.Language,
++		Keywords:       x.Keywords,
++		Category:       x.Category,
++		ContentStatus:  x.ContentStatus,
++		Version:        x.Version,
++		Revision:       x.Revision,
++		LastModifiedBy: x.LastModifiedBy,
++	}
++
++	var err error
++	if x.Created != nil && x.Created.Value != "" {
++		props.Created, err = parseW3CDTF(x.Created.Value)
++		if err != nil {
++			return CorePropertiesData{}, err
++		}
++	}
++	if x.Modified != nil && x.Modified.Value != "" {
++		props.Modified, err = parseW3CDTF(x.Modified.Value)
++		if err != nil {
++			return CorePropertiesData{}, err
++		}
++	}
++
++	return props, nil
++}
++
++func buildCoreProperties(props CorePropertiesData) xlsxCorePropertiesWrite {
++	x := xlsxCorePropertiesWrite{
++		XmlnsCP:        NSCoreProperties,
++		XmlnsDC:        NSDublinCore,
++		XmlnsDCTerms:   NSDublinCoreTerms,
++		XmlnsDCMIType:  NSDublinCoreType,
++		XmlnsXSI:       NSXMLSchemaInst,
++		Title:          props.Title,
++		Subject:        props.Subject,
++		Creator:        props.Creator,
++		Description:    props.Description,
++		Identifier:     props.Identifier,
++		Language:       props.Language,
++		Keywords:       props.Keywords,
++		Category:       props.Category,
++		ContentStatus:  props.ContentStatus,
++		Version:        props.Version,
++		Revision:       props.Revision,
++		LastModifiedBy: props.LastModifiedBy,
++	}
++	if !props.Created.IsZero() {
++		x.Created = &xlsxW3CDTFWrite{
++			Type:  "dcterms:W3CDTF",
++			Value: formatW3CDTF(props.Created),
++		}
++	}
++	if !props.Modified.IsZero() {
++		x.Modified = &xlsxW3CDTFWrite{
++			Type:  "dcterms:W3CDTF",
++			Value: formatW3CDTF(props.Modified),
++		}
++	}
++	return x
++}
++
++func buildAppProperties(sheetNames []string) xlsxAppProperties {
++	label := "Worksheets"
++	sheetCount := len(sheetNames)
++
++	return xlsxAppProperties{
++		Xmlns:       NSExtendedProps,
++		XmlnsVT:     NSDocPropsVTypes,
++		Application: "Werkbook",
++		DocSecurity: 0,
++		ScaleCrop:   false,
++		HeadingPairs: xlsxHeadingPairs{
++			Vector: xlsxVTVectorVariants{
++				Size:     2,
++				BaseType: "variant",
++				Variant: []xlsxVTVariant{
++					{LPSTR: stringPtr(label)},
++					{I4: intPtr(sheetCount)},
++				},
++			},
++		},
++		TitlesOfParts: xlsxTitlesOfParts{
++			Vector: xlsxVTVectorStrings{
++				Size:     sheetCount,
++				BaseType: "lpstr",
++				LPSTR:    append([]string(nil), sheetNames...),
++			},
++		},
++		Company:           "",
++		LinksUpToDate:     false,
++		SharedDoc:         false,
++		HyperlinksChanged: false,
++		AppVersion:        "1.0",
++	}
++}
++
++func writeAppProperties(zw *zip.Writer, data *WorkbookData) error {
++	sheetNames := make([]string, len(data.Sheets))
++	for i, sheet := range data.Sheets {
++		sheetNames[i] = sheet.Name
++	}
++	return writeXML(zw, "docProps/app.xml", buildAppProperties(sheetNames))
++}
++
++func writeCoreProperties(zw *zip.Writer, data *WorkbookData) error {
++	if len(data.CorePropsRaw) > 0 {
++		return writeRawFile(zw, "docProps/core.xml", data.CorePropsRaw)
++	}
++	return writeXML(zw, "docProps/core.xml", buildCoreProperties(data.CoreProps))
++}
++
++func hasCorePropertiesData(props CorePropertiesData) bool {
++	return props.Title != "" ||
++		props.Subject != "" ||
++		props.Creator != "" ||
++		props.Description != "" ||
++		props.Identifier != "" ||
++		props.Language != "" ||
++		props.Keywords != "" ||
++		props.Category != "" ||
++		props.ContentStatus != "" ||
++		props.Version != "" ||
++		props.Revision != "" ||
++		props.LastModifiedBy != "" ||
++		!props.Created.IsZero() ||
++		!props.Modified.IsZero()
++}
++
++func parseW3CDTF(v string) (time.Time, error) {
++	layouts := []string{
++		time.RFC3339Nano,
++		"2006-01-02T15:04:05",
++		"2006-01-02",
++		"2006-01",
++		"2006",
++	}
++	var err error
++	for _, layout := range layouts {
++		var t time.Time
++		t, err = time.Parse(layout, v)
++		if err == nil {
++			return t, nil
++		}
++	}
++	return time.Time{}, err
++}
++
++func formatW3CDTF(t time.Time) string {
++	return t.UTC().Format(time.RFC3339)
++}
++
++func stringPtr(v string) *string {
++	return &v
++}
+diff --git a/ooxml/reader.go b/ooxml/reader.go
+index ff63e76..bdd05d8 100644
+--- a/ooxml/reader.go
++++ b/ooxml/reader.go
+@@ -72,6 +72,12 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
+ 	styles := readStyles(files)
+ 
+ 	data := &WorkbookData{Styles: styles}
++	if corePropsRaw, err := readFile(files, "docProps/core.xml"); err == nil {
++		data.CorePropsRaw = corePropsRaw
++		if coreProps, err := parseCoreProperties(corePropsRaw); err == nil {
++			data.CoreProps = coreProps
++		}
++	}
+ 
+ 	// Check for the 1904 date system.
+ 	if wb.WorkbookPr != nil {
+@@ -514,20 +520,30 @@ func resolveRelativePath(baseDir, target string) string {
+ 
+ func readXML[T any](files map[string]*zip.File, name string) (T, error) {
+ 	var zero T
++	data, err := readFile(files, name)
++	if err != nil {
++		return zero, err
++	}
++	var v T
++	if err := xml.Unmarshal(data, &v); err != nil {
++		return zero, fmt.Errorf("unmarshal %s: %w", name, err)
++	}
++	return v, nil
++}
++
++func readFile(files map[string]*zip.File, name string) ([]byte, error) {
+ 	f, ok := files[name]
+ 	if !ok {
+-		return zero, fmt.Errorf("file %q not found in archive", name)
++		return nil, fmt.Errorf("file %q not found in archive", name)
+ 	}
+ 	rc, err := f.Open()
+ 	if err != nil {
+-		return zero, err
++		return nil, err
+ 	}
+ 	defer rc.Close()
+-
+-	var v T
+-	dec := xml.NewDecoder(rc)
+-	if err := dec.Decode(&v); err != nil {
+-		return zero, fmt.Errorf("decode %s: %w", name, err)
++	data, err := io.ReadAll(rc)
++	if err != nil {
++		return nil, fmt.Errorf("read %s: %w", name, err)
+ 	}
+-	return v, nil
++	return data, nil
+ }
+diff --git a/ooxml/roundtrip_test.go b/ooxml/roundtrip_test.go
+new file mode 100644
+index 0000000..abca082
+--- /dev/null
++++ b/ooxml/roundtrip_test.go
+@@ -0,0 +1,825 @@
++package ooxml
++
++import (
++	"bytes"
++	"testing"
++)
++
++// writeAndRead is a helper that writes WorkbookData to an in-memory XLSX
++// and reads it back, returning the parsed result.
++func writeAndRead(t *testing.T, data *WorkbookData) *WorkbookData {
++	t.Helper()
++	var buf bytes.Buffer
++	if err := WriteWorkbook(&buf, data); err != nil {
++		t.Fatalf("WriteWorkbook: %v", err)
++	}
++	r := bytes.NewReader(buf.Bytes())
++	got, err := ReadWorkbook(r, int64(buf.Len()))
++	if err != nil {
++		t.Fatalf("ReadWorkbook: %v", err)
++	}
++	return got
++}
++
++// ---------------------------------------------------------------------------
++// Basic round-trip: single sheet with string, number, bool, formula cells
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_BasicCells(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}}, // default style at index 0
++		Sheets: []SheetData{{
++			Name: "Sheet1",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{
++					{Ref: "A1", Type: "s", Value: "hello"},
++					{Ref: "B1", Value: "42"},
++					{Ref: "C1", Type: "b", Value: "1"},
++				}},
++				{Num: 2, Cells: []CellData{
++					{Ref: "A2", Type: "s", Value: "world"},
++					{Ref: "B2", Formula: "B1+1"},
++				}},
++			},
++		}},
++	}
++
++	got := writeAndRead(t, data)
++
++	if len(got.Sheets) != 1 {
++		t.Fatalf("Sheets = %d, want 1", len(got.Sheets))
++	}
++	s := got.Sheets[0]
++	if s.Name != "Sheet1" {
++		t.Errorf("Name = %q, want Sheet1", s.Name)
++	}
++	if len(s.Rows) != 2 {
++		t.Fatalf("Rows = %d, want 2", len(s.Rows))
++	}
++
++	// Row 1
++	r1 := s.Rows[0]
++	if len(r1.Cells) != 3 {
++		t.Fatalf("Row1 cells = %d, want 3", len(r1.Cells))
++	}
++	assertCell(t, r1.Cells[0], "A1", "s", "hello", "")
++	assertCell(t, r1.Cells[1], "B1", "", "42", "")
++	assertCell(t, r1.Cells[2], "C1", "b", "1", "")
++
++	// Row 2
++	r2 := s.Rows[1]
++	if len(r2.Cells) != 2 {
++		t.Fatalf("Row2 cells = %d, want 2", len(r2.Cells))
++	}
++	assertCell(t, r2.Cells[0], "A2", "s", "world", "")
++	if r2.Cells[1].Formula != "B1+1" {
++		t.Errorf("B2 formula = %q, want B1+1", r2.Cells[1].Formula)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Multiple sheets
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_MultipleSheets(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{
++			{Name: "First", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}}},
++			{Name: "Second", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Type: "s", Value: "two"}}}}},
++			{Name: "Third", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "3"}}}}},
++		},
++	}
++	got := writeAndRead(t, data)
++	if len(got.Sheets) != 3 {
++		t.Fatalf("Sheets = %d, want 3", len(got.Sheets))
++	}
++	names := []string{got.Sheets[0].Name, got.Sheets[1].Name, got.Sheets[2].Name}
++	want := []string{"First", "Second", "Third"}
++	for i := range names {
++		if names[i] != want[i] {
++			t.Errorf("Sheet[%d].Name = %q, want %q", i, names[i], want[i])
++		}
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Hidden sheet state
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_SheetState(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{
++			{Name: "Visible", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}}},
++			{Name: "Hidden", State: "hidden", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "2"}}}}},
++			{Name: "VeryHidden", State: "veryHidden", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "3"}}}}},
++		},
++	}
++	got := writeAndRead(t, data)
++	if got.Sheets[0].State != "" {
++		t.Errorf("Visible.State = %q, want empty", got.Sheets[0].State)
++	}
++	if got.Sheets[1].State != "hidden" {
++		t.Errorf("Hidden.State = %q, want hidden", got.Sheets[1].State)
++	}
++	if got.Sheets[2].State != "veryHidden" {
++		t.Errorf("VeryHidden.State = %q, want veryHidden", got.Sheets[2].State)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Date1904
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_Date1904(t *testing.T) {
++	data := &WorkbookData{
++		Date1904: true,
++		Styles:   []StyleData{{}},
++		Sheets:   []SheetData{{Name: "S1", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}}}},
++	}
++	got := writeAndRead(t, data)
++	if !got.Date1904 {
++		t.Error("Date1904 lost during round-trip")
++	}
++}
++
++func TestRoundTrip_Date1904_False(t *testing.T) {
++	data := &WorkbookData{
++		Date1904: false,
++		Styles:   []StyleData{{}},
++		Sheets:   []SheetData{{Name: "S1", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}}}},
++	}
++	got := writeAndRead(t, data)
++	if got.Date1904 {
++		t.Error("Date1904 should be false")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// CalcProperties
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_CalcProperties(t *testing.T) {
++	data := &WorkbookData{
++		CalcProps: CalcPropertiesData{
++			Mode:           "auto",
++			ID:             191029,
++			FullCalcOnLoad: true,
++			ForceFullCalc:  true,
++			Completed:      true,
++		},
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{Name: "S1", Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}}}},
++	}
++	got := writeAndRead(t, data)
++	if got.CalcProps.Mode != "auto" {
++		t.Errorf("CalcProps.Mode = %q, want auto", got.CalcProps.Mode)
++	}
++	if got.CalcProps.ID != 191029 {
++		t.Errorf("CalcProps.ID = %d, want 191029", got.CalcProps.ID)
++	}
++	if !got.CalcProps.FullCalcOnLoad {
++		t.Error("CalcProps.FullCalcOnLoad lost")
++	}
++	if !got.CalcProps.ForceFullCalc {
++		t.Error("CalcProps.ForceFullCalc lost")
++	}
++	if !got.CalcProps.Completed {
++		t.Error("CalcProps.Completed lost")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Column widths
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_ColumnWidths(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			ColWidths: []ColWidthData{
++				{Min: 1, Max: 1, Width: 20.5},
++				{Min: 3, Max: 5, Width: 15.0},
++			},
++			Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	cw := got.Sheets[0].ColWidths
++	if len(cw) != 2 {
++		t.Fatalf("ColWidths = %d, want 2", len(cw))
++	}
++	if cw[0].Min != 1 || cw[0].Max != 1 || cw[0].Width != 20.5 {
++		t.Errorf("ColWidth[0] = %+v", cw[0])
++	}
++	if cw[1].Min != 3 || cw[1].Max != 5 || cw[1].Width != 15.0 {
++		t.Errorf("ColWidth[1] = %+v", cw[1])
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Merge cells
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_MergeCells(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			MergeCells: []MergeCellData{
++				{StartAxis: "A1", EndAxis: "C1"},
++				{StartAxis: "B3", EndAxis: "D5"},
++			},
++			Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "merged"}}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	mc := got.Sheets[0].MergeCells
++	if len(mc) != 2 {
++		t.Fatalf("MergeCells = %d, want 2", len(mc))
++	}
++	if mc[0].StartAxis != "A1" || mc[0].EndAxis != "C1" {
++		t.Errorf("MergeCell[0] = %+v", mc[0])
++	}
++	if mc[1].StartAxis != "B3" || mc[1].EndAxis != "D5" {
++		t.Errorf("MergeCell[1] = %+v", mc[1])
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Row height and hidden rows
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_RowHeightAndHidden(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{
++				{Num: 1, Height: 30.0, Cells: []CellData{{Ref: "A1", Value: "tall"}}},
++				{Num: 2, Hidden: true, Cells: []CellData{{Ref: "A2", Value: "hidden"}}},
++				{Num: 3, Cells: []CellData{{Ref: "A3", Value: "normal"}}},
++			},
++		}},
++	}
++	got := writeAndRead(t, data)
++	rows := got.Sheets[0].Rows
++	if len(rows) != 3 {
++		t.Fatalf("Rows = %d, want 3", len(rows))
++	}
++	if rows[0].Height != 30.0 {
++		t.Errorf("Row1.Height = %f, want 30", rows[0].Height)
++	}
++	if !rows[1].Hidden {
++		t.Error("Row2 should be hidden")
++	}
++	if rows[2].Hidden {
++		t.Error("Row3 should not be hidden")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// DefinedNames
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_DefinedNames(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "Sheet1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}},
++		}},
++		DefinedNames: []DefinedName{
++			{Name: "GlobalName", Value: "Sheet1!$A$1:$A$10", LocalSheetID: -1},
++			{Name: "LocalName", Value: "Sheet1!$B$1", LocalSheetID: 0},
++		},
++	}
++	got := writeAndRead(t, data)
++	if len(got.DefinedNames) != 2 {
++		t.Fatalf("DefinedNames = %d, want 2", len(got.DefinedNames))
++	}
++	dn0 := got.DefinedNames[0]
++	if dn0.Name != "GlobalName" || dn0.Value != "Sheet1!$A$1:$A$10" || dn0.LocalSheetID != -1 {
++		t.Errorf("DefinedName[0] = %+v", dn0)
++	}
++	dn1 := got.DefinedNames[1]
++	if dn1.Name != "LocalName" || dn1.Value != "Sheet1!$B$1" || dn1.LocalSheetID != 0 {
++		t.Errorf("DefinedName[1] = %+v", dn1)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Styles round-trip
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_Styles(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{
++			{}, // index 0 = default
++			{
++				FontName:          "Arial",
++				FontSize:          14,
++				FontBold:          true,
++				FontItalic:        true,
++				FontColor:         "FFFF0000",
++				FillColor:         "FF00FF00",
++				BorderBottomStyle: "thin",
++				BorderBottomColor: "FF000000",
++				HAlign:            "center",
++				VAlign:            "top",
++				WrapText:          true,
++				NumFmt:            "#,##0.00",
++			},
++		},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{
++				{Ref: "A1", Value: "1"},
++				{Ref: "B1", Value: "2", StyleIdx: 1},
++			}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++
++	// The styled cell (B1) should have StyleIdx > 0.
++	b1 := got.Sheets[0].Rows[0].Cells[1]
++	if b1.StyleIdx == 0 {
++		t.Error("B1 StyleIdx should be non-zero")
++	}
++
++	// Verify the style at that index has our properties.
++	if b1.StyleIdx >= len(got.Styles) {
++		t.Fatalf("StyleIdx %d out of range (len=%d)", b1.StyleIdx, len(got.Styles))
++	}
++	sd := got.Styles[b1.StyleIdx]
++	if sd.FontName != "Arial" {
++		t.Errorf("FontName = %q, want Arial", sd.FontName)
++	}
++	if sd.FontSize != 14 {
++		t.Errorf("FontSize = %f, want 14", sd.FontSize)
++	}
++	if !sd.FontBold {
++		t.Error("FontBold should be true")
++	}
++	if !sd.FontItalic {
++		t.Error("FontItalic should be true")
++	}
++	if sd.FontColor != "FFFF0000" {
++		t.Errorf("FontColor = %q, want FFFF0000", sd.FontColor)
++	}
++	if sd.FillColor != "FF00FF00" {
++		t.Errorf("FillColor = %q, want FF00FF00", sd.FillColor)
++	}
++	if sd.BorderBottomStyle != "thin" {
++		t.Errorf("BorderBottomStyle = %q, want thin", sd.BorderBottomStyle)
++	}
++	if sd.HAlign != "center" {
++		t.Errorf("HAlign = %q, want center", sd.HAlign)
++	}
++	if sd.VAlign != "top" {
++		t.Errorf("VAlign = %q, want top", sd.VAlign)
++	}
++	if !sd.WrapText {
++		t.Error("WrapText should be true")
++	}
++	if sd.NumFmt != "#,##0.00" {
++		t.Errorf("NumFmt = %q, want #,##0.00", sd.NumFmt)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Tables
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_Tables(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "Data",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{
++					{Ref: "A1", Type: "s", Value: "Name"},
++					{Ref: "B1", Type: "s", Value: "Score"},
++				}},
++				{Num: 2, Cells: []CellData{
++					{Ref: "A2", Type: "s", Value: "Alice"},
++					{Ref: "B2", Value: "95"},
++				}},
++			},
++		}},
++		Tables: []TableDef{{
++			Name:           "SalesTable",
++			DisplayName:    "SalesTable",
++			Ref:            "A1:B2",
++			SheetIndex:     0,
++			Columns:        []string{"Name", "Score"},
++			HeaderRowCount: 1,
++			HasAutoFilter:  true,
++			Style: &TableStyleData{
++				Name:           "TableStyleMedium2",
++				ShowRowStripes: true,
++			},
++		}},
++	}
++	got := writeAndRead(t, data)
++	if len(got.Tables) != 1 {
++		t.Fatalf("Tables = %d, want 1", len(got.Tables))
++	}
++	td := got.Tables[0]
++	if td.Name != "SalesTable" {
++		t.Errorf("Name = %q", td.Name)
++	}
++	if td.DisplayName != "SalesTable" {
++		t.Errorf("DisplayName = %q", td.DisplayName)
++	}
++	if td.Ref != "A1:B2" {
++		t.Errorf("Ref = %q", td.Ref)
++	}
++	if td.SheetIndex != 0 {
++		t.Errorf("SheetIndex = %d", td.SheetIndex)
++	}
++	if len(td.Columns) != 2 || td.Columns[0] != "Name" || td.Columns[1] != "Score" {
++		t.Errorf("Columns = %v", td.Columns)
++	}
++	if td.HeaderRowCount != 1 {
++		t.Errorf("HeaderRowCount = %d", td.HeaderRowCount)
++	}
++	if !td.HasAutoFilter {
++		t.Error("HasAutoFilter should be true")
++	}
++	if td.Style == nil {
++		t.Fatal("Style is nil")
++	}
++	if td.Style.Name != "TableStyleMedium2" {
++		t.Errorf("Style.Name = %q", td.Style.Name)
++	}
++	if !td.Style.ShowRowStripes {
++		t.Error("ShowRowStripes should be true")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Table with escaped column names (newlines, tabs)
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_TableEscapedColumns(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{
++					{Ref: "A1", Type: "s", Value: "Col\nA"},
++					{Ref: "B1", Type: "s", Value: "Col\tB"},
++				}},
++				{Num: 2, Cells: []CellData{
++					{Ref: "A2", Value: "1"},
++					{Ref: "B2", Value: "2"},
++				}},
++			},
++		}},
++		Tables: []TableDef{{
++			Name:           "T1",
++			DisplayName:    "T1",
++			Ref:            "A1:B2",
++			SheetIndex:     0,
++			Columns:        []string{"Col\nA", "Col\tB"},
++			HeaderRowCount: 1,
++		}},
++	}
++	got := writeAndRead(t, data)
++	if len(got.Tables) != 1 {
++		t.Fatalf("Tables = %d, want 1", len(got.Tables))
++	}
++	cols := got.Tables[0].Columns
++	if len(cols) != 2 {
++		t.Fatalf("Columns = %d, want 2", len(cols))
++	}
++	if cols[0] != "Col\nA" {
++		t.Errorf("Column[0] = %q, want 'Col\\nA'", cols[0])
++	}
++	if cols[1] != "Col\tB" {
++		t.Errorf("Column[1] = %q, want 'Col\\tB'", cols[1])
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Table with totals row and no auto-filter
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_TableTotals(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{{Ref: "A1", Type: "s", Value: "X"}}},
++				{Num: 2, Cells: []CellData{{Ref: "A2", Value: "1"}}},
++				{Num: 3, Cells: []CellData{{Ref: "A3", Value: "1"}}},
++			},
++		}},
++		Tables: []TableDef{{
++			Name:           "T1",
++			DisplayName:    "T1",
++			Ref:            "A1:A3",
++			SheetIndex:     0,
++			Columns:        []string{"X"},
++			HeaderRowCount: 1,
++			TotalsRowCount: 1,
++			HasAutoFilter:  false,
++		}},
++	}
++	got := writeAndRead(t, data)
++	td := got.Tables[0]
++	if td.TotalsRowCount != 1 {
++		t.Errorf("TotalsRowCount = %d, want 1", td.TotalsRowCount)
++	}
++	if td.HasAutoFilter {
++		t.Error("HasAutoFilter should be false")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Table with HeaderRowCount=0 (no header)
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_TableNoHeader(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}}},
++		}},
++		Tables: []TableDef{{
++			Name:           "T1",
++			DisplayName:    "T1",
++			Ref:            "A1:A1",
++			SheetIndex:     0,
++			Columns:        []string{"X"},
++			HeaderRowCount: 0,
++			HasAutoFilter:  true,
++		}},
++	}
++	got := writeAndRead(t, data)
++	td := got.Tables[0]
++	if td.HeaderRowCount != 0 {
++		t.Errorf("HeaderRowCount = %d, want 0", td.HeaderRowCount)
++	}
++	// HasAutoFilter should be false when HeaderRowCount is 0 (writer skips autoFilter).
++	if td.HasAutoFilter {
++		t.Error("HasAutoFilter should be false when HeaderRowCount=0")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Dynamic array formulas
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_DynamicArrayFormula(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{{
++				Ref:            "A1",
++				Formula:        "SORT(B1:B10)",
++				FormulaType:    "array",
++				FormulaRef:     "A1:A10",
++				IsDynamicArray: true,
++			}}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	c := got.Sheets[0].Rows[0].Cells[0]
++	if c.Formula != "SORT(B1:B10)" {
++		t.Errorf("Formula = %q", c.Formula)
++	}
++	if !c.IsDynamicArray {
++		t.Error("IsDynamicArray should be true")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Shared string deduplication across cells
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_SharedStringDedup(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{
++					{Ref: "A1", Type: "s", Value: "same"},
++					{Ref: "B1", Type: "s", Value: "same"},
++					{Ref: "C1", Type: "s", Value: "different"},
++				}},
++			},
++		}},
++	}
++	got := writeAndRead(t, data)
++	cells := got.Sheets[0].Rows[0].Cells
++	if cells[0].Value != "same" || cells[1].Value != "same" || cells[2].Value != "different" {
++		t.Errorf("Values = %q, %q, %q", cells[0].Value, cells[1].Value, cells[2].Value)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Empty workbook error
++// ---------------------------------------------------------------------------
++
++func TestWriteWorkbook_NoSheets(t *testing.T) {
++	var buf bytes.Buffer
++	err := WriteWorkbook(&buf, &WorkbookData{})
++	if err == nil {
++		t.Error("expected error for workbook with no sheets")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Encrypted file detection
++// ---------------------------------------------------------------------------
++
++func TestReadWorkbook_EncryptedFile(t *testing.T) {
++	// Create a buffer starting with CFB magic bytes.
++	data := make([]byte, 512)
++	copy(data, cfbMagic)
++	r := bytes.NewReader(data)
++	_, err := ReadWorkbook(r, int64(len(data)))
++	if err == nil {
++		t.Fatal("expected error for encrypted file")
++	}
++	if err != ErrEncryptedFile {
++		t.Errorf("expected ErrEncryptedFile, got: %v", err)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Invalid zip
++// ---------------------------------------------------------------------------
++
++func TestReadWorkbook_InvalidZip(t *testing.T) {
++	data := []byte("this is not a zip file at all")
++	r := bytes.NewReader(data)
++	_, err := ReadWorkbook(r, int64(len(data)))
++	if err == nil {
++		t.Error("expected error for invalid zip")
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Shared strings with whitespace preservation
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_WhitespaceStrings(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{
++				{Ref: "A1", Type: "s", Value: " leading"},
++				{Ref: "B1", Type: "s", Value: "trailing "},
++				{Ref: "C1", Type: "s", Value: "\ttab"},
++			}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	cells := got.Sheets[0].Rows[0].Cells
++	if cells[0].Value != " leading" {
++		t.Errorf("A1 = %q, want ' leading'", cells[0].Value)
++	}
++	if cells[1].Value != "trailing " {
++		t.Errorf("B1 = %q, want 'trailing '", cells[1].Value)
++	}
++	if cells[2].Value != "\ttab" {
++		t.Errorf("C1 = %q, want '\\ttab'", cells[2].Value)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Array formula (CSE)
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_ArrayFormula(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{{
++				Ref:            "A1",
++				Formula:        "SUM(B1:B10*C1:C10)",
++				FormulaType:    "array",
++				FormulaRef:     "A1",
++				IsArrayFormula: true,
++				Value:          "100",
++			}}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	c := got.Sheets[0].Rows[0].Cells[0]
++	if c.Formula != "SUM(B1:B10*C1:C10)" {
++		t.Errorf("Formula = %q", c.Formula)
++	}
++	if c.FormulaType != "array" {
++		t.Errorf("FormulaType = %q", c.FormulaType)
++	}
++	if c.FormulaRef != "A1" {
++		t.Errorf("FormulaRef = %q", c.FormulaRef)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Inline string
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_InlineString(t *testing.T) {
++	// Inline strings are written as type "inlineStr" with <is><t>.
++	// Note: our writer doesn't generate inline strings (it uses SST),
++	// but if the data says inlineStr, we should verify it doesn't corrupt.
++	// Actually, the writer treats type "s" specially but not "inlineStr".
++	// Let's test that "str" type (cached formula result) round-trips.
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "S1",
++			Rows: []RowData{{Num: 1, Cells: []CellData{{
++				Ref:     "A1",
++				Type:    "str",
++				Value:   "computed text",
++				Formula: `"hello"&" world"`,
++			}}}},
++		}},
++	}
++	got := writeAndRead(t, data)
++	c := got.Sheets[0].Rows[0].Cells[0]
++	if c.Type != "str" {
++		t.Errorf("Type = %q, want str", c.Type)
++	}
++	if c.Value != "computed text" {
++		t.Errorf("Value = %q", c.Value)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// Multiple tables on same sheet
++// ---------------------------------------------------------------------------
++
++func TestRoundTrip_MultipleTablesOnSheet(t *testing.T) {
++	data := &WorkbookData{
++		Styles: []StyleData{{}},
++		Sheets: []SheetData{{
++			Name: "Data",
++			Rows: []RowData{
++				{Num: 1, Cells: []CellData{
++					{Ref: "A1", Type: "s", Value: "H1"},
++					{Ref: "D1", Type: "s", Value: "H2"},
++				}},
++				{Num: 2, Cells: []CellData{
++					{Ref: "A2", Value: "1"},
++					{Ref: "D2", Value: "2"},
++				}},
++			},
++		}},
++		Tables: []TableDef{
++			{
++				Name: "T1", DisplayName: "T1",
++				Ref: "A1:A2", SheetIndex: 0,
++				Columns: []string{"H1"}, HeaderRowCount: 1,
++			},
++			{
++				Name: "T2", DisplayName: "T2",
++				Ref: "D1:D2", SheetIndex: 0,
++				Columns: []string{"H2"}, HeaderRowCount: 1,
++			},
++		},
++	}
++	got := writeAndRead(t, data)
++	if len(got.Tables) != 2 {
++		t.Fatalf("Tables = %d, want 2", len(got.Tables))
++	}
++	if got.Tables[0].Name != "T1" || got.Tables[1].Name != "T2" {
++		t.Errorf("Table names = %q, %q", got.Tables[0].Name, got.Tables[1].Name)
++	}
++}
++
++// ---------------------------------------------------------------------------
++// helper
++// ---------------------------------------------------------------------------
++
++func assertCell(t *testing.T, c CellData, wantRef, wantType, wantValue, wantFormula string) {
++	t.Helper()
++	if c.Ref != wantRef {
++		t.Errorf("Ref = %q, want %q", c.Ref, wantRef)
++	}
++	if c.Type != wantType {
++		t.Errorf("[%s] Type = %q, want %q", wantRef, c.Type, wantType)
++	}
++	if c.Value != wantValue {
++		t.Errorf("[%s] Value = %q, want %q", wantRef, c.Value, wantValue)
++	}
++	if c.Formula != wantFormula {
++		t.Errorf("[%s] Formula = %q, want %q", wantRef, c.Formula, wantFormula)
++	}
++}
+diff --git a/ooxml/workbook.go b/ooxml/workbook.go
+index 6dd4a4a..17a9e98 100644
+--- a/ooxml/workbook.go
++++ b/ooxml/workbook.go
+@@ -104,6 +104,8 @@ type DefinedName struct {
+ type WorkbookData struct {
+ 	Date1904     bool // true if the workbook uses the 1904 date system
+ 	CalcProps    CalcPropertiesData
++	CoreProps    CorePropertiesData
++	CorePropsRaw []byte
+ 	Sheets       []SheetData
+ 	Styles       []StyleData   // index 0 = default (empty)
+ 	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
+diff --git a/ooxml/writer.go b/ooxml/writer.go
+index 0a00f78..ebd598f 100644
+--- a/ooxml/writer.go
++++ b/ooxml/writer.go
+@@ -23,6 +23,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
+ 		return fmt.Errorf("workbook must have at least one sheet")
+ 	}
+ 	tablePlan := buildTableWritePlan(data.Tables)
++	hasCoreProps := len(data.CorePropsRaw) > 0 || hasCorePropertiesData(data.CoreProps)
+ 
+ 	// Build shared string table from all string cells.
+ 	sst := NewSharedStringTable()
+@@ -56,15 +57,27 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
+ 	}
+ 
+ 	// [Content_Types].xml
+-	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays); err != nil {
++	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays, hasCoreProps); err != nil {
+ 		return err
+ 	}
+ 
+ 	// _rels/.rels
+-	if err := writeRootRels(zw); err != nil {
++	if err := writeRootRels(zw, hasCoreProps); err != nil {
+ 		return err
+ 	}
+ 
++	// docProps/app.xml
++	if err := writeAppProperties(zw, data); err != nil {
++		return err
++	}
++
++	// docProps/core.xml
++	if hasCoreProps {
++		if err := writeCoreProperties(zw, data); err != nil {
++			return err
++		}
++	}
++
+ 	// xl/workbook.xml
+ 	if err := writeWorkbookXML(zw, data); err != nil {
+ 		return err
+@@ -113,7 +126,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
+ 	return zw.Close()
+ }
+ 
+-func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays bool) error {
++func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays, hasCoreProps bool) error {
+ 	ct := xlsxTypes{
+ 		Xmlns: contentTypesNS,
+ 		Defaults: []xlsxDefault{
+@@ -121,10 +134,17 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDy
+ 			{Extension: "xml", ContentType: "application/xml"},
+ 		},
+ 		Overrides: []xlsxOverride{
++			{PartName: "/docProps/app.xml", ContentType: "application/vnd.openxmlformats-officedocument.extended-properties+xml"},
+ 			{PartName: "/xl/workbook.xml", ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"},
+ 			{PartName: "/xl/styles.xml", ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"},
+ 		},
+ 	}
++	if hasCoreProps {
++		ct.Overrides = append(ct.Overrides, xlsxOverride{
++			PartName:    "/docProps/core.xml",
++			ContentType: "application/vnd.openxmlformats-package.core-properties+xml",
++		})
++	}
+ 	for i := range sheetCount {
+ 		ct.Overrides = append(ct.Overrides, xlsxOverride{
+ 			PartName:    fmt.Sprintf("/xl/worksheets/sheet%d.xml", i+1),
+@@ -152,13 +172,27 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDy
+ 	return writeXML(zw, "[Content_Types].xml", ct)
+ }
+ 
+-func writeRootRels(zw *zip.Writer) error {
++func writeRootRels(zw *zip.Writer, hasCoreProps bool) error {
+ 	rels := xlsxRelationships{
+ 		Xmlns: NSRelationships,
+ 		Relationships: []xlsxRelationship{
+ 			{ID: "rId1", Type: RelTypeWorkbook, Target: "xl/workbook.xml"},
+ 		},
+ 	}
++	nextID := 2
++	if hasCoreProps {
++		rels.Relationships = append(rels.Relationships, xlsxRelationship{
++			ID:     fmt.Sprintf("rId%d", nextID),
++			Type:   RelTypeCoreProps,
++			Target: "docProps/core.xml",
++		})
++		nextID++
++	}
++	rels.Relationships = append(rels.Relationships, xlsxRelationship{
++		ID:     fmt.Sprintf("rId%d", nextID),
++		Type:   RelTypeExtendedApp,
++		Target: "docProps/app.xml",
++	})
+ 	return writeXML(zw, "_rels/.rels", rels)
+ }
+ 
+diff --git a/properties.go b/properties.go
+new file mode 100644
+index 0000000..5eb55e6
+--- /dev/null
++++ b/properties.go
+@@ -0,0 +1,75 @@
++package werkbook
++
++import (
++	"time"
++
++	"github.com/jpoz/werkbook/ooxml"
++)
++
++// CoreProperties exposes the workbook's supported OPC core properties.
++// Zero Created or Modified times mean the property is absent.
++type CoreProperties struct {
++	Title          string
++	Subject        string
++	Creator        string
++	Description    string
++	Identifier     string
++	Language       string
++	Keywords       string
++	Category       string
++	ContentStatus  string
++	Version        string
++	Revision       string
++	LastModifiedBy string
++	Created        time.Time
++	Modified       time.Time
++}
++
++// CoreProperties returns the workbook's OPC core properties.
++func (f *File) CoreProperties() CoreProperties {
++	return f.coreProps
++}
++
++// SetCoreProperties replaces the workbook's OPC core properties.
++func (f *File) SetCoreProperties(props CoreProperties) {
++	f.coreProps = props
++	f.corePropsDirty = true
++}
++
++func corePropsFromData(data ooxml.CorePropertiesData) CoreProperties {
++	return CoreProperties{
++		Title:          data.Title,
++		Subject:        data.Subject,
++		Creator:        data.Creator,
++		Description:    data.Description,
++		Identifier:     data.Identifier,
++		Language:       data.Language,
++		Keywords:       data.Keywords,
++		Category:       data.Category,
++		ContentStatus:  data.ContentStatus,
++		Version:        data.Version,
++		Revision:       data.Revision,
++		LastModifiedBy: data.LastModifiedBy,
++		Created:        data.Created,
++		Modified:       data.Modified,
++	}
++}
++
++func (p CoreProperties) toData() ooxml.CorePropertiesData {
++	return ooxml.CorePropertiesData{
++		Title:          p.Title,
++		Subject:        p.Subject,
++		Creator:        p.Creator,
++		Description:    p.Description,
++		Identifier:     p.Identifier,
++		Language:       p.Language,
++		Keywords:       p.Keywords,
++		Category:       p.Category,
++		ContentStatus:  p.ContentStatus,
++		Version:        p.Version,
++		Revision:       p.Revision,
++		LastModifiedBy: p.LastModifiedBy,
++		Created:        p.Created,
++		Modified:       p.Modified,
++	}
++}
+diff --git a/properties_roundtrip_test.go b/properties_roundtrip_test.go
+new file mode 100644
+index 0000000..345ea10
+--- /dev/null
++++ b/properties_roundtrip_test.go
+@@ -0,0 +1,139 @@
++package werkbook_test
++
++import (
++	"bytes"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/jpoz/werkbook"
++)
++
++func TestCorePropertiesRoundTrip(t *testing.T) {
++	f := werkbook.New(werkbook.FirstSheet("Data"))
++	if _, err := f.NewSheet("Summary"); err != nil {
++		t.Fatalf("NewSheet: %v", err)
++	}
++
++	created := time.Date(2026, 3, 6, 12, 34, 56, 0, time.FixedZone("MST", -7*60*60))
++	modified := created.Add(95 * time.Minute)
++	f.SetCoreProperties(werkbook.CoreProperties{
++		Title:          "Budget",
++		Subject:        "Q1",
++		Creator:        "Alice",
++		Description:    "Ops workbook",
++		Identifier:     "urn:budget:q1",
++		Language:       "en-US",
++		Keywords:       "budget,finance",
++		Category:       "Planning",
++		ContentStatus:  "Draft",
++		Version:        "1.0",
++		Revision:       "3",
++		LastModifiedBy: "Bob",
++		Created:        created,
++		Modified:       modified,
++	})
++
++	dir := t.TempDir()
++	path := filepath.Join(dir, "core-props.xlsx")
++	if err := f.SaveAs(path); err != nil {
++		t.Fatalf("SaveAs: %v", err)
++	}
++
++	rootRels := string(readSheetXML(t, path, "_rels/.rels"))
++	for _, want := range []string{
++		`Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"`,
++		`Target="docProps/core.xml"`,
++		`Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"`,
++		`Target="docProps/app.xml"`,
++	} {
++		if !strings.Contains(rootRels, want) {
++			t.Fatalf("expected root relationships to contain %s: %s", want, rootRels)
++		}
++	}
++
++	contentTypes := string(readSheetXML(t, path, "[Content_Types].xml"))
++	for _, want := range []string{
++		`PartName="/docProps/core.xml"`,
++		`application/vnd.openxmlformats-package.core-properties+xml`,
++		`PartName="/docProps/app.xml"`,
++		`application/vnd.openxmlformats-officedocument.extended-properties+xml`,
++	} {
++		if !strings.Contains(contentTypes, want) {
++			t.Fatalf("expected content types to contain %s: %s", want, contentTypes)
++		}
++	}
++
++	coreXML := string(readSheetXML(t, path, "docProps/core.xml"))
++	for _, want := range []string{
++		`<dc:title>Budget</dc:title>`,
++		`<dc:creator>Alice</dc:creator>`,
++		`<cp:lastModifiedBy>Bob</cp:lastModifiedBy>`,
++		`xsi:type="dcterms:W3CDTF"`,
++		created.UTC().Format(time.RFC3339),
++		modified.UTC().Format(time.RFC3339),
++	} {
++		if !strings.Contains(coreXML, want) {
++			t.Fatalf("expected core.xml to contain %s: %s", want, coreXML)
++		}
++	}
++
++	appXML := string(readSheetXML(t, path, "docProps/app.xml"))
++	for _, want := range []string{
++		`<Application>Werkbook</Application>`,
++		`<vt:lpstr>Worksheets</vt:lpstr>`,
++		`<vt:i4>2</vt:i4>`,
++		`<vt:lpstr>Data</vt:lpstr>`,
++		`<vt:lpstr>Summary</vt:lpstr>`,
++	} {
++		if !strings.Contains(appXML, want) {
++			t.Fatalf("expected app.xml to contain %s: %s", want, appXML)
++		}
++	}
++
++	f2, err := werkbook.Open(path)
++	if err != nil {
++		t.Fatalf("Open: %v", err)
++	}
++	got := f2.CoreProperties()
++	if got.Title != "Budget" || got.Subject != "Q1" || got.Creator != "Alice" || got.Description != "Ops workbook" ||
++		got.Identifier != "urn:budget:q1" || got.Language != "en-US" || got.Keywords != "budget,finance" ||
++		got.Category != "Planning" || got.ContentStatus != "Draft" || got.Version != "1.0" ||
++		got.Revision != "3" || got.LastModifiedBy != "Bob" {
++		t.Fatalf("CoreProperties = %#v", got)
++	}
++	if !got.Created.Equal(created) {
++		t.Fatalf("Created = %v, want %v", got.Created, created)
++	}
++	if !got.Modified.Equal(modified) {
++		t.Fatalf("Modified = %v, want %v", got.Modified, modified)
++	}
++}
++
++func TestOpenSavePreservesExistingCorePropertiesXML(t *testing.T) {
++	orig := readSheetXML(t, "excel_probe.xlsx", "docProps/core.xml")
++
++	f, err := werkbook.Open("excel_probe.xlsx")
++	if err != nil {
++		t.Fatalf("Open: %v", err)
++	}
++	got := f.CoreProperties()
++	if got.Creator != "James Pozdena" || got.LastModifiedBy != "James Pozdena" {
++		t.Fatalf("unexpected parsed core properties: %#v", got)
++	}
++	if got.Created.IsZero() || got.Modified.IsZero() {
++		t.Fatalf("expected parsed created and modified timestamps, got %#v", got)
++	}
++
++	dir := t.TempDir()
++	path := filepath.Join(dir, "preserved.xlsx")
++	if err := f.SaveAs(path); err != nil {
++		t.Fatalf("SaveAs: %v", err)
++	}
++
++	roundTrip := readSheetXML(t, path, "docProps/core.xml")
++	if !bytes.Equal(roundTrip, orig) {
++		t.Fatalf("core.xml changed on untouched round-trip\nwant: %s\ngot:  %s", orig, roundTrip)
++	}
++}
+diff --git a/sheet.go b/sheet.go
+index f84726c..a91adf8 100644
+--- a/sheet.go
++++ b/sheet.go
+@@ -720,17 +720,24 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
+ }
+ 
+ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
++	rangeOverflow := func() [][]formula.Value {
++		return [][]formula.Value{{{
++			Type:          formula.ValueError,
++			Err:           formula.ErrValREF,
++			RangeOverflow: true,
++		}}}
++	}
++
++	nCols := addr.ToCol - addr.FromCol + 1
+ 	s := fr.resolveSheet(addr.Sheet)
+ 	if s == nil {
+-		// For unresolvable sheets, return a single-row error rather than
+-		// potentially allocating millions of rows for full-column refs.
+ 		nRows := addr.ToRow - addr.FromRow + 1
+-		if nRows > 1000 {
+-			nRows = 1
++		if formula.RangeCellCountExceedsLimit(nRows, nCols) {
++			return rangeOverflow()
+ 		}
+ 		rows := make([][]formula.Value, nRows)
+ 		for i := range rows {
+-			row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
++			row := make([]formula.Value, nCols)
+ 			for j := range row {
+ 				row[j] = formula.ErrorVal(formula.ErrValREF)
+ 			}
+@@ -741,18 +748,27 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
+ 
+ 	// Clamp the row range to the sheet's actual data extent so that
+ 	// full-column references (e.g. F:F → F1:F1048576) don't allocate
+-	// a million rows.
++	// rows far beyond the populated extent. Empty sheets fall back to the
++	// range's start row so full-column references still evaluate as blanks.
+ 	toRow := addr.ToRow
+-	if maxRow := s.MaxRow(); maxRow > 0 && toRow > maxRow {
++	maxRow := s.MaxRow()
++	if maxRow < addr.FromRow {
++		maxRow = addr.FromRow
++	}
++	if toRow > maxRow {
+ 		toRow = maxRow
+ 	}
+ 	if toRow < addr.FromRow {
+ 		toRow = addr.FromRow
+ 	}
++	nRows := toRow - addr.FromRow + 1
++	if formula.RangeCellCountExceedsLimit(nRows, nCols) {
++		return rangeOverflow()
++	}
+ 
+-	rows := make([][]formula.Value, toRow-addr.FromRow+1)
++	rows := make([][]formula.Value, nRows)
+ 	for r := addr.FromRow; r <= toRow; r++ {
+-		row := make([]formula.Value, addr.ToCol-addr.FromCol+1)
++		row := make([]formula.Value, nCols)
+ 		for col := addr.FromCol; col <= addr.ToCol; col++ {
+ 			row[col-addr.FromCol] = fr.GetCellValue(formula.CellAddr{
+ 				Sheet: addr.Sheet,
+diff --git a/werkbook.go b/werkbook.go
+index 9b5dc65..1de02af 100644
+--- a/werkbook.go
++++ b/werkbook.go
+@@ -13,16 +13,19 @@ import (
+ 
+ // File represents an XLSX workbook.
+ type File struct {
+-	sheets       []*Sheet
+-	sheetNames   []string
+-	date1904     bool // true if the workbook uses the 1904 date system
+-	calcProps    CalcProperties
+-	calcGen      uint64            // incremented on any cell mutation; starts at 1
+-	evaluating   map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
+-	deps         *formula.DepGraph // cell dependency graph for incremental recalculation
+-	tableDefs    []Table
+-	tables       []formula.TableInfo       // table definitions for structured reference expansion
+-	definedNames []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
++	sheets         []*Sheet
++	sheetNames     []string
++	date1904       bool // true if the workbook uses the 1904 date system
++	calcProps      CalcProperties
++	coreProps      CoreProperties
++	corePropsRaw   []byte
++	corePropsDirty bool
++	calcGen        uint64            // incremented on any cell mutation; starts at 1
++	evaluating     map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
++	deps           *formula.DepGraph // cell dependency graph for incremental recalculation
++	tableDefs      []Table
++	tables         []formula.TableInfo       // table definitions for structured reference expansion
++	definedNames   []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
+ }
+ 
+ // cellKey identifies a cell across the entire workbook for circular ref detection.
+@@ -260,10 +263,12 @@ func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
+ 
+ func fileFromData(data *ooxml.WorkbookData) *File {
+ 	f := &File{
+-		calcGen:   1,
+-		date1904:  data.Date1904,
+-		calcProps: calcPropsFromData(data.CalcProps),
+-		deps:      formula.NewDepGraph(),
++		calcGen:      1,
++		date1904:     data.Date1904,
++		calcProps:    calcPropsFromData(data.CalcProps),
++		coreProps:    corePropsFromData(data.CoreProps),
++		corePropsRaw: append([]byte(nil), data.CorePropsRaw...),
++		deps:         formula.NewDepGraph(),
+ 	}
+ 
+ 	// Convert StyleData slice to *Style slice for assignment.
+@@ -414,6 +419,10 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
+ 	data := &ooxml.WorkbookData{
+ 		Date1904:  f.date1904,
+ 		CalcProps: f.calcProps.toData(),
++		CoreProps: f.coreProps.toData(),
++	}
++	if !f.corePropsDirty && len(f.corePropsRaw) > 0 {
++		data.CorePropsRaw = append([]byte(nil), f.corePropsRaw...)
+ 	}
+ 
+ 	// Style dedup: index 0 is always the default (empty StyleData).
+diff --git a/werkbook_test.go b/werkbook_test.go
+index ad078ac..82a365e 100644
+--- a/werkbook_test.go
++++ b/werkbook_test.go
+@@ -79,6 +79,86 @@ func TestSaveAsCreatesFile(t *testing.T) {
+ 	}
+ }
+ 
++func TestSetDate1904(t *testing.T) {
++	f := werkbook.New()
++
++	// Default should be false.
++	if f.Date1904() {
++		t.Error("Date1904 should default to false")
++	}
++
++	// Enable.
++	f.SetDate1904(true)
++	if !f.Date1904() {
++		t.Error("Date1904 should be true after SetDate1904(true)")
++	}
++
++	// Setting to same value should be a no-op (early return path).
++	f.SetDate1904(true)
++	if !f.Date1904() {
++		t.Error("Date1904 should still be true")
++	}
++
++	// Disable.
++	f.SetDate1904(false)
++	if f.Date1904() {
++		t.Error("Date1904 should be false after SetDate1904(false)")
++	}
++}
++
++func TestCellFormula(t *testing.T) {
++	f := werkbook.New()
++	s := f.Sheet("Sheet1")
++	if err := s.SetFormula("A1", "1+2"); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.SetValue("B1", "plain"); err != nil {
++		t.Fatal(err)
++	}
++
++	for row := range s.Rows() {
++		for _, cell := range row.Cells() {
++			switch cell.Col() {
++			case 1: // A1
++				if cell.Formula() != "1+2" {
++					t.Errorf("A1.Formula() = %q, want '1+2'", cell.Formula())
++				}
++			case 2: // B1
++				if cell.Formula() != "" {
++					t.Errorf("B1.Formula() = %q, want empty", cell.Formula())
++				}
++			}
++		}
++	}
++}
++
++func TestCalcProperties(t *testing.T) {
++	f := werkbook.New()
++
++	// Default should be zero value.
++	cp := f.CalcProperties()
++	if cp.Mode != "" || cp.ID != 0 {
++		t.Error("default CalcProperties should be zero value")
++	}
++
++	// Set and get.
++	f.SetCalcProperties(werkbook.CalcProperties{
++		Mode:           "auto",
++		ID:             12345,
++		FullCalcOnLoad: true,
++	})
++	cp = f.CalcProperties()
++	if cp.Mode != "auto" {
++		t.Errorf("Mode = %q, want auto", cp.Mode)
++	}
++	if cp.ID != 12345 {
++		t.Errorf("ID = %d, want 12345", cp.ID)
++	}
++	if !cp.FullCalcOnLoad {
++		t.Error("FullCalcOnLoad should be true")
++	}
++}
++
+ func TestWriteToAndOpenReader(t *testing.T) {
+ 	f := werkbook.New()
+ 	s := f.Sheet("Sheet1")
+-- 
+2.52.0
+

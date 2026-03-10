@@ -18,6 +18,7 @@ func init() {
 	Register("CONCAT", NoCtx(fnCONCAT))
 	Register("CONCATENATE", NoCtx(fnCONCATENATE))
 	Register("DOLLAR", NoCtx(fnDOLLAR))
+	Register("ENCODEURL", NoCtx(fnENCODEURL))
 	Register("EXACT", NoCtx(fnEXACT))
 	Register("FIND", NoCtx(fnFIND))
 	Register("FIXED", NoCtx(fnFIXED))
@@ -40,6 +41,8 @@ func init() {
 	Register("TEXTJOIN", NoCtx(fnTEXTJOIN))
 	Register("TEXTSPLIT", NoCtx(fnTextSplit))
 	Register("TRIM", NoCtx(fnTRIM))
+	Register("UNICHAR", NoCtx(fnUnichar))
+	Register("UNICODE", NoCtx(fnUnicode))
 	Register("UPPER", NoCtx(fnUPPER))
 	Register("VALUE", NoCtx(fnVALUEFn))
 	Register("VALUETOTEXT", NoCtx(fnValueToText))
@@ -317,7 +320,7 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	format := ValueToString(args[1])
 	v := args[0]
 
-	// Excel rejects format strings containing lowercase 'e+' or 'e-'
+	// Reject format strings containing lowercase 'e+' or 'e-'
 	// (only uppercase 'E' triggers scientific notation).
 	if hasInvalidLowercaseE(format) {
 		return ErrorVal(ErrValVALUE), nil
@@ -343,10 +346,10 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 			}
 			return *e, nil
 		}
-		return StringVal(formatExcelNumber(n, format, date1904)), nil
+		return StringVal(formatNumber(n, format, date1904)), nil
 	}
 
-	// Booleans: Excel's TEXT function returns "TRUE" or "FALSE" for numeric
+	// Booleans: TEXT returns "TRUE" or "FALSE" for numeric
 	// formats, but uses the text section (4th section) if the format has one.
 	if v.Type == ValueBool {
 		text := "TRUE"
@@ -370,7 +373,7 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Excel rejects number format strings that contain unquoted alphabetic
+	// Reject number format strings that contain unquoted alphabetic
 	// characters (outside of date/time codes, scientific E+/E-, color codes,
 	// etc.).  For example "Value: 0" is invalid because "Value" is not quoted.
 	if !strings.EqualFold(format, "General") {
@@ -386,10 +389,10 @@ func fnTEXTWith1904(args []Value, date1904 bool) (Value, error) {
 	// "@" format with a numeric value: convert number to string using
 	// the text section (@ is the text placeholder).
 	if sectionContainsAt(format) && !strings.ContainsAny(format, "0#?") {
-		return StringVal(formatTextSection(excelNumberToString(n), format)), nil
+		return StringVal(formatTextSection(numberToString(n), format)), nil
 	}
 
-	return StringVal(formatExcelNumber(n, format, date1904)), nil
+	return StringVal(formatNumber(n, format, date1904)), nil
 }
 
 func FormatWithCommas(n float64, decimals int) string {
@@ -427,6 +430,52 @@ func fnTRIM(args []Value) (Value, error) {
 	s := ValueToString(args[0])
 	fields := strings.Fields(s)
 	return StringVal(strings.Join(fields, " ")), nil
+}
+
+func fnUnichar(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnUnichar([]Value{v})
+			return r
+		}), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	code := int(n) // truncate to integer
+	if code < 1 || code > 1114111 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	// Surrogate code points (U+D800–U+DFFF) are not valid Unicode characters.
+	if code >= 0xD800 && code <= 0xDFFF {
+		return ErrorVal(ErrValNA), nil
+	}
+	return StringVal(string(rune(code))), nil
+}
+
+func fnUnicode(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnUnicode([]Value{v})
+			return r
+		}), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	s := ValueToString(args[0])
+	if len(s) == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return NumberVal(float64(r)), nil
 }
 
 func fnUPPER(args []Value) (Value, error) {
@@ -471,7 +520,7 @@ func fnCHAR(args []Value) (Value, error) {
 	if code < 1 || code > 255 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	// Excel CHAR uses Windows-1252 encoding. Bytes 0x80–0x9F map to
+	// CHAR uses Windows-1252 encoding. Bytes 0x80–0x9F map to
 	// different Unicode code points than their byte value.
 	if code >= 0x80 && code <= 0x9F {
 		return StringVal(string(win1252ToUnicode[code-0x80])), nil
@@ -502,7 +551,7 @@ func fnCODE(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	r, _ := utf8.DecodeRuneInString(s)
-	// Excel CODE uses Windows-1252 encoding.
+	// CODE uses Windows-1252 encoding.
 	// Characters in the Windows-1252 0x80–0x9F range have different
 	// Unicode code points, so we need to map them back.
 	if b, ok := unicodeToWin1252[r]; ok {
@@ -510,13 +559,39 @@ func fnCODE(args []Value) (Value, error) {
 	}
 	// Characters 0x00–0x7F and 0xA0–0xFF are identical in Windows-1252
 	// and Unicode (Latin-1). Characters outside the Windows-1252 range
-	// (e.g. CJK) get mapped to '_' (95), matching Excel's behavior
+	// (e.g. CJK) get mapped to '_' (95), matching expected behavior
 	// which uses underscore as the default substitution character for
 	// unmappable characters.
 	if r > 0xFF {
 		return NumberVal(95), nil // '_'
 	}
 	return NumberVal(float64(r)), nil
+}
+
+func fnENCODEURL(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnENCODEURL([]Value{v})
+			return r
+		}), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	s := ValueToString(args[0])
+	var buf strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~' {
+			buf.WriteByte(c)
+		} else {
+			fmt.Fprintf(&buf, "%%%02X", c)
+		}
+	}
+	return StringVal(buf.String()), nil
 }
 
 func fnEXACT(args []Value) (Value, error) {
@@ -734,8 +809,8 @@ func fnSEARCH(args []Value) (Value, error) {
 		return NumberVal(float64(start + runeIdx + 1)), nil
 	}
 
-	// Convert Excel wildcard pattern to a regexp.
-	re, err := excelPatternToRegexp(findText)
+	// Convert wildcard pattern to a regexp.
+	re, err := patternToRegexp(findText)
 	if err != nil {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -747,10 +822,10 @@ func fnSEARCH(args []Value) (Value, error) {
 	return NumberVal(float64(start + runeIdx + 1)), nil
 }
 
-// excelPatternToRegexp converts an Excel SEARCH wildcard pattern to a Go regexp.
+// patternToRegexp converts a SEARCH wildcard pattern to a Go regexp.
 // * matches any sequence of characters, ? matches exactly one character.
 // ~* and ~? match literal * and ? respectively. ~~ matches a literal ~.
-func excelPatternToRegexp(pattern string) (*regexp.Regexp, error) {
+func patternToRegexp(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	runes := []rune(pattern)
 	for i := 0; i < len(runes); i++ {
@@ -956,7 +1031,7 @@ func fnROMAN(args []Value) (Value, error) {
 func valueToTextFormat(v Value, strict bool) string {
 	switch v.Type {
 	case ValueNumber:
-		return excelNumberToString(v.Num)
+		return numberToString(v.Num)
 	case ValueString:
 		if strict {
 			return "\"" + v.Str + "\""

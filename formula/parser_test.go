@@ -87,7 +87,7 @@ func TestParsePrecedence(t *testing.T) {
 		{"2*3*4", "(* (* 2 3) 4)"},
 		{"12/3/2", "(/ (/ 12 3) 2)"},
 
-		// Left-associative ^ (matches Excel)
+		// Left-associative ^ (matches expected behavior)
 		{"2^3^4", "(^ (^ 2 3) 4)"},
 
 		// Mixed precedence
@@ -127,8 +127,8 @@ func TestParseUnary(t *testing.T) {
 		{"+1", "(+ 1)"},
 		{"--1", "(- (- 1))"},
 
-		// Unary binds tighter than ^ (Excel convention: -2^2 = 4)
-		{"-2^3", "(^ (- 2) 3)"}, // (-2)^3 = -8 (matches Excel)
+		// Unary binds tighter than ^ (convention: -2^2 = 4)
+		{"-2^3", "(^ (- 2) 3)"}, // (-2)^3 = -8 (matches expected behavior)
 		{"-1*2", "(* (- 1) 2)"}, // (-1)*2 = -2
 		{"-1+2", "(+ (- 1) 2)"}, // (-1)+2 = 1
 		{"+A1*B1", "(* (+ A1) B1)"},

@@ -4,7 +4,7 @@ package formula
 // materialize into a dense array for range evaluation. The limit is set to
 // preserve a single full-column reference while rejecting wider ranges that
 // would otherwise allocate prohibitively large matrices.
-const MaxMaterializedRangeCells int64 = maxExcelRows
+const MaxMaterializedRangeCells int64 = maxRows
 
 // RangeCellCountExceedsLimit reports whether a dense rows×cols materialization
 // would exceed the engine's allocation budget.

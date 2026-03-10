@@ -129,15 +129,15 @@ func TestParseCellRefToken3DRef(t *testing.T) {
 }
 
 func TestParseCellRefTokenOutOfRange(t *testing.T) {
-	// Column or row numbers exceeding Excel limits must return an error.
+	// Column or row numbers exceeding limits must return an error.
 	tests := []struct {
 		name  string
 		input string
 	}{
 		{"col_too_large", "AAAA1"},           // 4 letters → col > 16384
 		{"col_beyond_xfd", "XFE1"},           // one past XFD
-		{"row_too_large", "A1048577"},         // one past max row
-		{"row_way_too_large", "A9999999999"},  // very large row
+		{"row_too_large", "A1048577"},        // one past max row
+		{"row_way_too_large", "A9999999999"}, // very large row
 	}
 
 	for _, tt := range tests {

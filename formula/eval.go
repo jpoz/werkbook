@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	maxExcelRows = 1048576 // maximum rows in an Excel worksheet
-	maxExcelCols = 16384   // maximum columns in an Excel worksheet (XFD)
+	maxRows = 1048576 // maximum rows in a worksheet
+	maxCols = 16384   // maximum columns in a worksheet (XFD)
 )
 
 // CellResolver abstracts cell/range lookups so the VM has no dependency on Sheet.
@@ -111,8 +111,8 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 
 		case OpLoadRange:
 			addr := cf.Ranges[inst.Operand]
-			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxExcelRows
-			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxExcelCols
+			isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+			isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
 			// Implicit intersection: when a full-column or full-row range is
 			// used in a non-array formula, reduce to the single cell at the
 			// formula's own row/column rather than loading the entire range.
@@ -459,6 +459,17 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				arrayCtxDepth--
 			}
 
+		case OpRefResultToBool:
+			// Used by ISREF wrapping ref-returning functions (e.g. INDIRECT).
+			// A ref-returning function produces a reference on success and an
+			// error on failure.  ISREF should return TRUE for non-error results
+			// and FALSE for errors.
+			v, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			push(BoolVal(v.Type != ValueError))
+
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)
 		}
@@ -503,10 +514,10 @@ func CoerceNum(v Value) (float64, *Value) {
 	}
 }
 
-// excelNumberToString formats a number the way Excel does for concatenation:
+// numberToString formats a number for concatenation:
 // - At most 15 significant digits
 // - Scientific notation (capital E with +/- sign) for abs >= 1e15 or abs < 1e-4 (nonzero)
-func excelNumberToString(f float64) string {
+func numberToString(f float64) string {
 	if f == 0 {
 		return "0"
 	}
@@ -521,7 +532,7 @@ func excelNumberToString(f float64) string {
 		// Re-format with 'G' precision 15 then convert to E notation.
 		s = strconv.FormatFloat(f, 'G', 15, 64)
 		// Go's 'G' uses 'E' notation automatically for large/small, with capital E.
-		// But we need to ensure the format matches Excel: capital E with explicit sign.
+		// But we need to ensure the format uses capital E with explicit sign.
 		// 'G' may output e.g. "1E+15" or "1E-06" which is what we want.
 		return s
 	}
@@ -534,7 +545,7 @@ func excelNumberToString(f float64) string {
 func ValueToString(v Value) string {
 	switch v.Type {
 	case ValueNumber:
-		return excelNumberToString(v.Num)
+		return numberToString(v.Num)
 	case ValueString:
 		return v.Str
 	case ValueBool:
@@ -578,7 +589,7 @@ func errorValueToString(e ErrorValue) string {
 
 // CompareValues compares two values for ordering. Returns -1, 0, or 1.
 func CompareValues(a, b Value) int {
-	// In Excel, empty cells adapt to the type of the other operand:
+	// Empty cells adapt to the type of the other operand:
 	//   empty = "" → TRUE,  empty = 0 → TRUE,  empty = FALSE → TRUE
 	if a.Type == ValueEmpty && b.Type == ValueEmpty {
 		return 0
@@ -626,7 +637,7 @@ func CompareValues(a, b Value) int {
 
 // CompareValuesExact is like CompareValues but uses bit-exact float
 // comparison (no tolerance). Used by lookup functions for exact-match
-// mode, where Excel does not apply the ≈1e-15 tolerance that the =
+// mode, which does not apply the ≈1e-15 tolerance that the =
 // operator uses.
 func CompareValuesExact(a, b Value) int {
 	if a.Type == ValueEmpty && b.Type == ValueEmpty {
@@ -689,7 +700,7 @@ func typeRank(t ValueType) int {
 }
 
 // roundTo15SigFigs rounds a float64 to 15 significant decimal digits,
-// matching Excel's internal precision model.
+// matching the expected internal precision model.
 func roundTo15SigFigs(f float64) float64 {
 	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
 		return f
@@ -716,7 +727,7 @@ func roundArithResult(v Value) Value {
 }
 
 func cmpFloat(a, b float64) int {
-	// Excel compares numbers after rounding both to 15 significant digits.
+	// Numbers are compared after rounding both to 15 significant digits.
 	// This makes (1/3*3)=1 evaluate to TRUE while (1-1e-15)=1 is FALSE.
 	ra := roundTo15SigFigs(a)
 	rb := roundTo15SigFigs(b)
@@ -731,7 +742,7 @@ func cmpFloat(a, b float64) int {
 
 // cmpFloatExact compares two float64 values without tolerance.
 // Used by lookup functions (MATCH, VLOOKUP, etc.) for exact-match mode,
-// where Excel requires bit-exact equality.
+// where bit-exact equality is required.
 func cmpFloatExact(a, b float64) int {
 	if a < b {
 		return -1
@@ -756,7 +767,7 @@ func IsTruthy(v Value) bool {
 }
 
 // implicitIntersect reduces a ValueArray loaded from a worksheet range to a
-// scalar value using Excel's implicit intersection rules (legacy non-array
+// scalar value using implicit intersection rules (legacy non-array
 // formula behaviour).  For a single-column range the value at the formula's
 // row is returned; for a single-row range the value at the formula's column
 // is returned.  If the range is multi-row and multi-column, or the formula

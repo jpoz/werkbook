@@ -101,7 +101,7 @@ func errEncryptedFile(path string) *ErrorInfo {
 	return &ErrorInfo{
 		Code:    ErrCodeEncryptedFile,
 		Message: fmt.Sprintf("file %q is password-protected or encrypted", path),
-		Hint:    "Remove the password in Excel (File > Info > Protect Workbook > Encrypt with Password) and try again.",
+		Hint:    "Remove the password protection from the workbook and try again.",
 	}
 }
 

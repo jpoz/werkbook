@@ -34,6 +34,7 @@ func init() {
 	Register("CEILING", NoCtx(fnCEILING))
 	Register("CEILING.MATH", NoCtx(fnCEILINGMATH))
 	Register("CEILING.PRECISE", NoCtx(fnCEILINGPRECISE))
+	Register("ISO.CEILING", NoCtx(fnCEILINGPRECISE))
 	Register("COMBIN", NoCtx(fnCOMBIN))
 	Register("COMBINA", NoCtx(fnCOMBINA))
 	Register("COS", NoCtx(fnCOS))
@@ -55,6 +56,7 @@ func init() {
 	Register("FLOOR", NoCtx(fnFLOOR))
 	Register("FLOOR.MATH", NoCtx(fnFLOORMATH))
 	Register("FLOOR.PRECISE", NoCtx(fnFLOORPRECISE))
+	Register("GAMMA", NoCtx(fnGamma))
 	Register("GCD", NoCtx(fnGCD))
 	Register("INT", NoCtx(fnINT))
 	Register("LCM", NoCtx(fnLCM))
@@ -76,6 +78,7 @@ func init() {
 	Register("QUOTIENT", NoCtx(fnQUOTIENT))
 	Register("RADIANS", NoCtx(fnRADIANS))
 	Register("RAND", NoCtx(fnRAND))
+	Register("RANDARRAY", NoCtx(fnRANDARRAY))
 	Register("RANDBETWEEN", NoCtx(fnRANDBETWEEN))
 	Register("ROUND", NoCtx(fnROUND))
 	Register("ROUNDDOWN", NoCtx(fnROUNDDOWN))
@@ -133,11 +136,11 @@ func fnCEILING(args []Value) (Value, error) {
 	if sig == 0 {
 		return NumberVal(0), nil
 	}
-	// Excel: positive number with negative significance is an error.
+	// Positive number with negative significance is an error.
 	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
-	// Excel: negative number with positive significance rounds toward zero.
+	// Negative number with positive significance rounds toward zero.
 	if n < 0 && sig > 0 {
 		return NumberVal(-math.Floor(math.Abs(n)/sig) * sig), nil
 	}
@@ -256,11 +259,11 @@ func fnFLOOR(args []Value) (Value, error) {
 	if sig == 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
-	// Excel: positive number with negative significance is an error.
+	// Positive number with negative significance is an error.
 	if n > 0 && sig < 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
-	// Excel: negative number with positive significance rounds away from zero.
+	// Negative number with positive significance rounds away from zero.
 	if n < 0 && sig > 0 {
 		return NumberVal(-math.Ceil(math.Abs(n)/sig) * sig), nil
 	}
@@ -340,8 +343,8 @@ func fnMOD(args []Value) (Value, error) {
 	}
 	q := n / d
 	// When |n/d| is very large, math.Floor loses precision and the result is
-	// floating-point noise. Excel returns #NUM! in this case. The threshold
-	// aligns with Excel's behavior: once the quotient exceeds ~10^13, the
+	// floating-point noise. Returns #NUM! in this case. The threshold
+	// aligns with expected behavior: once the quotient exceeds ~10^13, the
 	// intermediate INT(n/d)*d multiplication cannot recover n accurately
 	// within float64's ~15 significant digits.
 	if math.Abs(q) >= 1e13 {
@@ -363,11 +366,11 @@ func fnPOWER(args []Value) (Value, error) {
 	if e != nil {
 		return *e, nil
 	}
-	// Excel: POWER(0,0) returns #NUM!
+	// POWER(0,0) returns #NUM!
 	if base == 0 && exp == 0 {
 		return ErrorVal(ErrValNUM), nil
 	}
-	// Excel: POWER(0, negative) returns #DIV/0!
+	// POWER(0, negative) returns #DIV/0!
 	if base == 0 && exp < 0 {
 		return ErrorVal(ErrValDIV0), nil
 	}
@@ -397,6 +400,87 @@ func fnRAND(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	return NumberVal(rand.Float64()), nil
+}
+
+func fnRANDARRAY(args []Value) (Value, error) {
+	if len(args) > 5 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	rows := 1
+	if len(args) >= 1 {
+		r, e := CoerceNum(args[0])
+		if e != nil {
+			return *e, nil
+		}
+		rows = int(math.Trunc(r))
+	}
+	cols := 1
+	if len(args) >= 2 {
+		c, e := CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		cols = int(math.Trunc(c))
+	}
+	minVal := 0.0
+	if len(args) >= 3 {
+		m, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
+		minVal = m
+	}
+	maxVal := 1.0
+	if len(args) >= 4 {
+		m, e := CoerceNum(args[3])
+		if e != nil {
+			return *e, nil
+		}
+		maxVal = m
+	}
+	whole := false
+	if len(args) >= 5 {
+		whole = IsTruthy(args[4])
+	}
+	if rows <= 0 || cols <= 0 {
+		return ErrorVal(ErrValCALC), nil
+	}
+	if minVal > maxVal {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if whole {
+		lo := int(math.Ceil(minVal))
+		hi := int(math.Floor(maxVal))
+		if lo > hi {
+			return ErrorVal(ErrValVALUE), nil
+		}
+		if rows == 1 && cols == 1 {
+			return NumberVal(float64(lo + rand.Intn(hi-lo+1))), nil
+		}
+		result := make([][]Value, rows)
+		for r := 0; r < rows; r++ {
+			row := make([]Value, cols)
+			for c := 0; c < cols; c++ {
+				row[c] = NumberVal(float64(lo + rand.Intn(hi-lo+1)))
+			}
+			result[r] = row
+		}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
+	// Decimal mode
+	span := maxVal - minVal
+	if rows == 1 && cols == 1 {
+		return NumberVal(minVal + rand.Float64()*span), nil
+	}
+	result := make([][]Value, rows)
+	for r := 0; r < rows; r++ {
+		row := make([]Value, cols)
+		for c := 0; c < cols; c++ {
+			row[c] = NumberVal(minVal + rand.Float64()*span)
+		}
+		result[r] = row
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func fnRANDBETWEEN(args []Value) (Value, error) {
@@ -488,311 +572,653 @@ func fnSQRT(args []Value) (Value, error) {
 }
 
 func fnACOS(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n < -1 || n > 1 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < -1 || n > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Acos(n)), nil
 }
 func fnACOSH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n < 1 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Acosh(n)), nil
 }
 func fnACOT(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Pi/2 - math.Atan(n)), nil
 }
 func fnACOTH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n >= -1 && n <= 1 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n >= -1 && n <= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(0.5 * math.Log((n+1)/(n-1))), nil
 }
 func fnARABIC(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
 	var text string
 	switch args[0].Type {
-	case ValueString: text = strings.TrimSpace(strings.ToUpper(args[0].Str))
-	case ValueError: return args[0], nil
-	case ValueEmpty: return NumberVal(0), nil
-	default: return ErrorVal(ErrValVALUE), nil
+	case ValueString:
+		text = strings.TrimSpace(strings.ToUpper(args[0].Str))
+	case ValueError:
+		return args[0], nil
+	case ValueEmpty:
+		return NumberVal(0), nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
 	}
-	if text == "" { return NumberVal(0), nil }
+	if text == "" {
+		return NumberVal(0), nil
+	}
 	negative := false
-	if text[0] == '-' { negative = true; text = text[1:] }
+	if text[0] == '-' {
+		negative = true
+		text = text[1:]
+	}
 	romanValues := map[byte]int{'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
 	result := 0
 	for i := 0; i < len(text); i++ {
 		val, ok := romanValues[text[i]]
-		if !ok { return ErrorVal(ErrValVALUE), nil }
+		if !ok {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		if i+1 < len(text) {
 			nextVal, ok2 := romanValues[text[i+1]]
-			if !ok2 { return ErrorVal(ErrValVALUE), nil }
-			if val < nextVal { result -= val } else { result += val }
-		} else { result += val }
+			if !ok2 {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			if val < nextVal {
+				result -= val
+			} else {
+				result += val
+			}
+		} else {
+			result += val
+		}
 	}
-	if negative { result = -result }
+	if negative {
+		result = -result
+	}
 	return NumberVal(float64(result)), nil
 }
 func fnASIN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n < -1 || n > 1 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < -1 || n > 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Asin(n)), nil
 }
 func fnASINH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Asinh(n)), nil
 }
 func fnATAN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Atan(n)), nil
 }
 func fnATAN2(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	x, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	y, e := CoerceNum(args[1]); if e != nil { return *e, nil }
-	if x == 0 && y == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	x, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	y, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if x == 0 && y == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(math.Atan2(y, x)), nil
 }
 func fnATANH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n <= -1 || n >= 1 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n <= -1 || n >= 1 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Atanh(n)), nil
 }
 func fnBASE(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 { return ErrorVal(ErrValVALUE), nil }
-	nf, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) < 2 || len(args) > 3 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	n := int64(math.Trunc(nf))
-	if n < 0 { return ErrorVal(ErrValNUM), nil }
-	rf, e := CoerceNum(args[1]); if e != nil { return *e, nil }
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	rf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	radix := int(math.Trunc(rf))
-	if radix < 2 || radix > 36 { return ErrorVal(ErrValNUM), nil }
+	if radix < 2 || radix > 36 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	minLen := 0
 	if len(args) == 3 {
-		ml, e := CoerceNum(args[2]); if e != nil { return *e, nil }
+		ml, e := CoerceNum(args[2])
+		if e != nil {
+			return *e, nil
+		}
 		minLen = int(math.Trunc(ml))
-		if minLen < 0 { return ErrorVal(ErrValNUM), nil }
+		if minLen < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
 	}
 	result := strings.ToUpper(strconv.FormatInt(n, radix))
-	for len(result) < minLen { result = "0" + result }
+	for len(result) < minLen {
+		result = "0" + result
+	}
 	return StringVal(result), nil
 }
 func fnCOMBIN(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	nf, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	kf, e := CoerceNum(args[1]); if e != nil { return *e, nil }
-	n := int(math.Trunc(nf)); k := int(math.Trunc(kf))
-	if n < 0 || k < 0 || n < k { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	n := int(math.Trunc(nf))
+	k := int(math.Trunc(kf))
+	if n < 0 || k < 0 || n < k {
+		return ErrorVal(ErrValNUM), nil
+	}
 	result := 1.0
-	for i := 1; i <= k; i++ { result = result * float64(n-k+i) / float64(i) }
+	for i := 1; i <= k; i++ {
+		result = result * float64(n-k+i) / float64(i)
+	}
 	return NumberVal(result), nil
 }
 func fnCOMBINA(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	nf, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	kf, e := CoerceNum(args[1]); if e != nil { return *e, nil }
-	n := int(math.Trunc(nf)); k := int(math.Trunc(kf))
-	if n < 0 || k < 0 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	n := int(math.Trunc(nf))
+	k := int(math.Trunc(kf))
+	if n < 0 || k < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	total := n + k - 1
-	if k == 0 { return NumberVal(1), nil }
-	if total < 0 { return ErrorVal(ErrValNUM), nil }
+	if k == 0 {
+		return NumberVal(1), nil
+	}
+	if total < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	result := 1.0
-	for i := 1; i <= k; i++ { result = result * float64(total-k+i) / float64(i) }
+	for i := 1; i <= k; i++ {
+		result = result * float64(total-k+i) / float64(i)
+	}
 	return NumberVal(result), nil
 }
 func fnDECIMAL(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
 	text := ""
 	switch args[0].Type {
-	case ValueString: text = args[0].Str
-	case ValueNumber: text = strconv.FormatFloat(args[0].Num, 'f', -1, 64)
-	case ValueError: return args[0], nil
-	default: return ErrorVal(ErrValVALUE), nil
+	case ValueString:
+		text = args[0].Str
+	case ValueNumber:
+		text = strconv.FormatFloat(args[0].Num, 'f', -1, 64)
+	case ValueError:
+		return args[0], nil
+	default:
+		return ErrorVal(ErrValVALUE), nil
 	}
-	radix, e := CoerceNum(args[1]); if e != nil { return *e, nil }
+	radix, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	r := int(math.Trunc(radix))
-	if r < 2 || r > 36 { return ErrorVal(ErrValNUM), nil }
+	if r < 2 || r > 36 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	text = strings.TrimSpace(text)
-	if text == "" { return ErrorVal(ErrValNUM), nil }
+	if text == "" {
+		return ErrorVal(ErrValNUM), nil
+	}
 	result, err := strconv.ParseInt(text, r, 64)
-	if err != nil { return ErrorVal(ErrValNUM), nil }
+	if err != nil {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(float64(result)), nil
 }
 func fnDEGREES(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(n * 180 / math.Pi), nil
 }
 func fnCOS(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Cos(n)), nil
 }
 func fnCOSH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	result := math.Cosh(n)
-	if math.IsInf(result, 0) { return ErrorVal(ErrValNUM), nil }
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(result), nil
 }
 func fnCOT(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(1 / math.Tan(n)), nil
 }
 func fnCOTH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(1 / math.Tanh(n)), nil
 }
 func fnCSC(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(1 / math.Sin(n)), nil
 }
 func fnCSCH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(1 / math.Sinh(n)), nil
 }
 func fnSEC(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(1 / math.Cos(n)), nil
 }
 func fnSECH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(1 / math.Cosh(n)), nil
 }
 func fnERF(args []Value) (Value, error) {
-	if len(args) < 1 || len(args) > 2 { return ErrorVal(ErrValVALUE), nil }
-	lower, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	lower, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	if len(args) == 1 {
 		return NumberVal(math.Erf(lower)), nil
 	}
-	upper, e := CoerceNum(args[1]); if e != nil { return *e, nil }
+	upper, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Erf(upper) - math.Erf(lower)), nil
 }
 func fnERFPRECISE(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Erf(n)), nil
 }
 func fnERFC(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Erfc(n)), nil
 }
 func fnERFCPRECISE(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Erfc(n)), nil
 }
 func fnEVEN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return NumberVal(0), nil }
-	if n > 0 { return NumberVal(math.Ceil(n/2) * 2), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return NumberVal(0), nil
+	}
+	if n > 0 {
+		return NumberVal(math.Ceil(n/2) * 2), nil
+	}
 	return NumberVal(math.Floor(n/2) * 2), nil
 }
 func fnODD(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n == 0 { return NumberVal(1), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n == 0 {
+		return NumberVal(1), nil
+	}
 	if n > 0 {
-		n2 := math.Ceil(n); if int(n2)%2 == 0 { n2++ }
+		n2 := math.Ceil(n)
+		if int(n2)%2 == 0 {
+			n2++
+		}
 		return NumberVal(n2), nil
 	}
-	n2 := math.Floor(n); if int(n2)%2 == 0 { n2-- }
+	n2 := math.Floor(n)
+	if int(n2)%2 == 0 {
+		n2--
+	}
 	return NumberVal(n2), nil
 }
 func fnEXP(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Exp(n)), nil
 }
 func fnFACT(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	n = math.Trunc(n)
-	if n < 0 { return ErrorVal(ErrValNUM), nil }
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	result := 1.0
-	for i := 2.0; i <= n; i++ { result *= i }
+	for i := 2.0; i <= n; i++ {
+		result *= i
+	}
 	return NumberVal(result), nil
 }
 func fnFACTDOUBLE(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	nf, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	n := int(math.Trunc(nf))
-	if n < -1 { return ErrorVal(ErrValNUM), nil }
-	if n <= 0 { return NumberVal(1), nil }
+	if n < -1 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	if n <= 0 {
+		return NumberVal(1), nil
+	}
 	result := 1.0
-	for i := n; i >= 2; i -= 2 { result *= float64(i) }
+	for i := n; i >= 2; i -= 2 {
+		result *= float64(i)
+	}
+	return NumberVal(result), nil
+}
+func fnGamma(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	// 0 or negative integer → #NUM!
+	if n == 0 || (n < 0 && n == math.Trunc(n)) {
+		return ErrorVal(ErrValNUM), nil
+	}
+	result := math.Gamma(n)
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(result), nil
 }
 func fnGCD(args []Value) (Value, error) {
-	if len(args) < 1 { return ErrorVal(ErrValVALUE), nil }
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
 	result := int64(0)
 	for _, arg := range args {
-		n, e := CoerceNum(arg); if e != nil { return *e, nil }
+		n, e := CoerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
 		n = math.Trunc(n)
-		if n < 0 { return ErrorVal(ErrValNUM), nil }
+		if n < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
 		v := int64(n)
 		a, b := result, v
-		for b != 0 { a, b = b, a%b }
+		for b != 0 {
+			a, b = b, a%b
+		}
 		result = a
 	}
 	return NumberVal(float64(result)), nil
 }
 func fnLCM(args []Value) (Value, error) {
-	if len(args) < 1 { return ErrorVal(ErrValVALUE), nil }
-	result := int64(1); hasZero := false
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := int64(1)
+	hasZero := false
 	for _, arg := range args {
-		n, e := CoerceNum(arg); if e != nil { return *e, nil }
+		n, e := CoerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
 		n = math.Trunc(n)
-		if n < 0 { return ErrorVal(ErrValNUM), nil }
+		if n < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
 		v := int64(n)
-		if v == 0 { hasZero = true; continue }
+		if v == 0 {
+			hasZero = true
+			continue
+		}
 		a, b := result, v
-		for b != 0 { a, b = b, a%b }
+		for b != 0 {
+			a, b = b, a%b
+		}
 		result = result / a * v
 	}
-	if hasZero { return NumberVal(0), nil }
+	if hasZero {
+		return NumberVal(0), nil
+	}
 	return NumberVal(float64(result)), nil
 }
 func fnLN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n <= 0 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Log(n)), nil
 }
 func fnLOG(args []Value) (Value, error) {
-	if len(args) < 1 || len(args) > 2 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n <= 0 { return ErrorVal(ErrValNUM), nil }
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	base := 10.0
 	if len(args) == 2 {
-		base, e = CoerceNum(args[1]); if e != nil { return *e, nil }
-		if base <= 0 { return ErrorVal(ErrValNUM), nil }
-		if base == 1 { return ErrorVal(ErrValDIV0), nil }
+		base, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+		if base <= 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		if base == 1 {
+			return ErrorVal(ErrValDIV0), nil
+		}
 	}
 	return NumberVal(math.Log(n) / math.Log(base)), nil
 }
 func fnLOG10(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n <= 0 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n <= 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Log10(n)), nil
 }
 func fnMMULT(args []Value) (Value, error) {
@@ -898,95 +1324,198 @@ func fnMMULT(args []Value) (Value, error) {
 }
 
 func fnMROUND(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	multiple, e := CoerceNum(args[1]); if e != nil { return *e, nil }
-	if multiple == 0 { return NumberVal(0), nil }
-	if (n > 0 && multiple < 0) || (n < 0 && multiple > 0) { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	multiple, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if multiple == 0 {
+		return NumberVal(0), nil
+	}
+	if (n > 0 && multiple < 0) || (n < 0 && multiple > 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Round(n/multiple) * multiple), nil
 }
 func fnMULTINOMIAL(args []Value) (Value, error) {
-	if len(args) < 1 { return ErrorVal(ErrValVALUE), nil }
-	sum := 0; vals := make([]int, 0, len(args))
+	if len(args) < 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	sum := 0
+	vals := make([]int, 0, len(args))
 	for _, arg := range args {
-		n, e := CoerceNum(arg); if e != nil { return *e, nil }
+		n, e := CoerceNum(arg)
+		if e != nil {
+			return *e, nil
+		}
 		ni := int(math.Trunc(n))
-		if ni < 0 { return ErrorVal(ErrValNUM), nil }
-		vals = append(vals, ni); sum += ni
+		if ni < 0 {
+			return ErrorVal(ErrValNUM), nil
+		}
+		vals = append(vals, ni)
+		sum += ni
 	}
 	num := 1.0
-	for i := 2; i <= sum; i++ { num *= float64(i) }
+	for i := 2; i <= sum; i++ {
+		num *= float64(i)
+	}
 	den := 1.0
-	for _, v := range vals { for i := 2; i <= v; i++ { den *= float64(i) } }
+	for _, v := range vals {
+		for i := 2; i <= v; i++ {
+			den *= float64(i)
+		}
+	}
 	return NumberVal(num / den), nil
 }
 func fnPERMUT(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	nf, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	kf, e2 := CoerceNum(args[1]); if e2 != nil { return *e2, nil }
-	if nf <= 0 || kf < 0 { return ErrorVal(ErrValNUM), nil }
-	n := int(nf); k := int(kf)
-	if n < k { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	nf, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	kf, e2 := CoerceNum(args[1])
+	if e2 != nil {
+		return *e2, nil
+	}
+	if nf <= 0 || kf < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
+	n := int(nf)
+	k := int(kf)
+	if n < k {
+		return ErrorVal(ErrValNUM), nil
+	}
 	result := 1.0
-	for i := 0; i < k; i++ { result *= float64(n - i) }
+	for i := 0; i < k; i++ {
+		result *= float64(n - i)
+	}
 	return NumberVal(result), nil
 }
 func fnPI(args []Value) (Value, error) {
-	if len(args) != 0 { return ErrorVal(ErrValVALUE), nil }
+	if len(args) != 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
 	return NumberVal(math.Pi), nil
 }
 func fnPRODUCT(args []Value) (Value, error) {
-	product := 1.0; count := 0
-	if e := IterateNumeric(args, func(n float64) { product *= n; count++ }); e != nil { return *e, nil }
-	if count == 0 { return NumberVal(0), nil }
+	product := 1.0
+	count := 0
+	if e := IterateNumeric(args, func(n float64) { product *= n; count++ }); e != nil {
+		return *e, nil
+	}
+	if count == 0 {
+		return NumberVal(0), nil
+	}
 	return NumberVal(product), nil
 }
 func fnQUOTIENT(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	num, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	den, e := CoerceNum(args[1]); if e != nil { return *e, nil }
-	if den == 0 { return ErrorVal(ErrValDIV0), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	num, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	den, e := CoerceNum(args[1])
+	if e != nil {
+		return *e, nil
+	}
+	if den == 0 {
+		return ErrorVal(ErrValDIV0), nil
+	}
 	return NumberVal(math.Trunc(num / den)), nil
 }
 func fnRADIANS(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(n * math.Pi / 180), nil
 }
 func fnSIGN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	switch { case n > 0: return NumberVal(1), nil; case n < 0: return NumberVal(-1), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	switch {
+	case n > 0:
+		return NumberVal(1), nil
+	case n < 0:
+		return NumberVal(-1), nil
+	}
 	return NumberVal(0), nil
 }
 func fnSIN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Sin(n)), nil
 }
 func fnSINH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	result := math.Sinh(n)
-	if math.IsInf(result, 0) { return ErrorVal(ErrValNUM), nil }
+	if math.IsInf(result, 0) {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(result), nil
 }
 func fnSQRTPI(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
-	if n < 0 { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	if n < 0 {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(math.Sqrt(n * math.Pi)), nil
 }
 func fnTRUNC(args []Value) (Value, error) {
-	if len(args) < 1 || len(args) > 2 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) < 1 || len(args) > 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	digits := 0.0
-	if len(args) == 2 { digits, e = CoerceNum(args[1]); if e != nil { return *e, nil } }
+	if len(args) == 2 {
+		digits, e = CoerceNum(args[1])
+		if e != nil {
+			return *e, nil
+		}
+	}
 	pow := math.Pow(10, math.Floor(digits))
 	return NumberVal(math.Trunc(n*pow) / pow), nil
 }
 
-// fnSUBTOTALCtx implements the Excel SUBTOTAL function. It applies an aggregate
+// fnSUBTOTALCtx implements the SUBTOTAL function. It applies an aggregate
 // function (SUM, AVERAGE, etc.) to one or more ranges, but excludes cells that
 // themselves contain SUBTOTAL formulas to prevent double-counting of nested
 // subtotals.
@@ -1178,13 +1707,23 @@ func fnSEQUENCE(args []Value) (Value, error) {
 }
 
 func fnTAN(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Tan(n)), nil
 }
 func fnTANH(args []Value) (Value, error) {
-	if len(args) != 1 { return ErrorVal(ErrValVALUE), nil }
-	n, e := CoerceNum(args[0]); if e != nil { return *e, nil }
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := CoerceNum(args[0])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(math.Tanh(n)), nil
 }
 
@@ -1192,36 +1731,73 @@ const bitMaxVal = (1 << 48) - 1 // 2^48 - 1
 
 func validateBitArg(v Value) (int64, *Value) {
 	n, e := CoerceNum(v)
-	if e != nil { return 0, e }
+	if e != nil {
+		return 0, e
+	}
 	if n < 0 || math.Floor(n) != n || n > bitMaxVal {
-		ev := ErrorVal(ErrValNUM); return 0, &ev
+		ev := ErrorVal(ErrValNUM)
+		return 0, &ev
 	}
 	return int64(n), nil
 }
 
 func fnBITAND(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
-	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n1, e := validateBitArg(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n2, e := validateBitArg(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(float64(n1 & n2)), nil
 }
 func fnBITOR(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
-	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n1, e := validateBitArg(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n2, e := validateBitArg(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(float64(n1 | n2)), nil
 }
 func fnBITXOR(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n1, e := validateBitArg(args[0]); if e != nil { return *e, nil }
-	n2, e := validateBitArg(args[1]); if e != nil { return *e, nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n1, e := validateBitArg(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	n2, e := validateBitArg(args[1])
+	if e != nil {
+		return *e, nil
+	}
 	return NumberVal(float64(n1 ^ n2)), nil
 }
 func fnBITLSHIFT(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
-	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
-	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := validateBitArg(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sf, ce := CoerceNum(args[1])
+	if ce != nil {
+		return *ce, nil
+	}
+	if math.Floor(sf) != sf {
+		return ErrorVal(ErrValNUM), nil
+	}
 	shift := int(sf)
 	var result int64
 	if shift >= 0 {
@@ -1229,7 +1805,9 @@ func fnBITLSHIFT(args []Value) (Value, error) {
 	} else {
 		result = n >> uint(-shift)
 	}
-	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	if result < 0 || result > bitMaxVal {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(float64(result)), nil
 }
 
@@ -1267,7 +1845,7 @@ func fnSERIESSUM(args []Value) (Value, error) {
 			return *ce, nil
 		}
 		exp := n + float64(i)*m
-		// Excel returns #NUM! for 0^0 and 0^negative.
+		// Returns #NUM! for 0^0 and 0^negative.
 		if x == 0 && exp <= 0 {
 			return ErrorVal(ErrValNUM), nil
 		}
@@ -1535,10 +2113,20 @@ func fnMUNIT(args []Value) (Value, error) {
 }
 
 func fnBITRSHIFT(args []Value) (Value, error) {
-	if len(args) != 2 { return ErrorVal(ErrValVALUE), nil }
-	n, e := validateBitArg(args[0]); if e != nil { return *e, nil }
-	sf, ce := CoerceNum(args[1]); if ce != nil { return *ce, nil }
-	if math.Floor(sf) != sf { return ErrorVal(ErrValNUM), nil }
+	if len(args) != 2 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	n, e := validateBitArg(args[0])
+	if e != nil {
+		return *e, nil
+	}
+	sf, ce := CoerceNum(args[1])
+	if ce != nil {
+		return *ce, nil
+	}
+	if math.Floor(sf) != sf {
+		return ErrorVal(ErrValNUM), nil
+	}
 	shift := int(sf)
 	var result int64
 	if shift >= 0 {
@@ -1546,7 +2134,9 @@ func fnBITRSHIFT(args []Value) (Value, error) {
 	} else {
 		result = n << uint(-shift)
 	}
-	if result < 0 || result > bitMaxVal { return ErrorVal(ErrValNUM), nil }
+	if result < 0 || result > bitMaxVal {
+		return ErrorVal(ErrValNUM), nil
+	}
 	return NumberVal(float64(result)), nil
 }
 

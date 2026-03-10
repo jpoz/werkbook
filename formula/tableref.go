@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// TableInfo holds the resolved geometry of an Excel table, used to expand
+// TableInfo holds the resolved geometry of a table, used to expand
 // structured references in formulas before parsing.
 type TableInfo struct {
 	Name            string   // display name (case-insensitive match)

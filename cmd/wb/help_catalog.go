@@ -63,7 +63,7 @@ func wbToolSpec() toolSpec {
 		Modes: []modeSpec{
 			{
 				Name:        modeDefault,
-				Description: "Human-oriented mode. Successful JSON responses go to stdout; errors and help text go to stderr.",
+				Description: "Human-oriented mode. Commands render readable text by default; use --format json for structured output.",
 			},
 			{
 				Name:        modeAgent,
@@ -76,11 +76,16 @@ func wbToolSpec() toolSpec {
 		},
 		GlobalFlags: []flagSpec{
 			{
-				Name:          "--format",
-				ValueName:     "json|markdown|csv",
-				Description:   "Output format. Only read supports markdown and csv output; agent mode always forces json.",
-				Default:       FormatJSON,
-				AllowedValues: []string{FormatJSON, FormatMarkdown, FormatCSV},
+				Name:        "--format",
+				ValueName:   "text|json|markdown|csv",
+				Description: "Output format. Most commands support text and json. Read and calc also support markdown and csv; dep also supports markdown. Text output may omit columns that are entirely empty. Agent mode always forces json.",
+				Default:     FormatText,
+				AllowedValues: []string{
+					FormatText,
+					FormatJSON,
+					FormatMarkdown,
+					FormatCSV,
+				},
 			},
 			{
 				Name:          "--mode",
@@ -102,7 +107,7 @@ func wbToolSpec() toolSpec {
 				Description:      "Show sheet metadata including dimensions, cell counts, and formula presence.",
 				Usage:            "wb info [flags] <file>",
 				RequiresFile:     true,
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{
 						Name:        "--sheet",
@@ -123,7 +128,7 @@ func wbToolSpec() toolSpec {
 				Description:      "Read cell data from a workbook. Returns stored or cached values.",
 				Usage:            "wb read [flags] <file>",
 				RequiresFile:     true,
-				SupportedFormats: []string{FormatJSON, FormatMarkdown, FormatCSV},
+				SupportedFormats: []string{FormatText, FormatJSON, FormatMarkdown, FormatCSV},
 				Flags: []flagSpec{
 					{Name: "--sheet", ValueName: "name", Description: "Read from the named sheet.", Default: "first sheet"},
 					{Name: "--all-sheets", Description: "Read all sheets. Mutually exclusive with --sheet."},
@@ -132,6 +137,7 @@ func wbToolSpec() toolSpec {
 					{Name: "--head", ValueName: "N", Description: "Alias for --limit."},
 					{Name: "--where", ValueName: "expr", Description: "Filter rows with column=value style expressions.", Repeatable: true},
 					{Name: "--include-formulas", Description: "Include formula strings in output."},
+					{Name: "--show-formulas", Description: "Display formula text instead of cached values for formula cells."},
 					{Name: "--include-styles", Description: "Include style objects in output."},
 					{Name: "--style-summary", Description: "Include a human-readable style summary per cell."},
 					{Name: "--headers", Description: "Treat the first row as headers."},
@@ -145,6 +151,7 @@ func wbToolSpec() toolSpec {
 					"wb read data.xlsx",
 					"wb read --range A1:C10 data.xlsx",
 					"wb read --headers --include-formulas data.xlsx",
+					"wb read --show-formulas data.xlsx",
 					"wb read --format csv --headers data.xlsx",
 					"wb read --limit 5 --headers data.xlsx",
 					"wb read --all-sheets --format markdown data.xlsx",
@@ -161,7 +168,7 @@ func wbToolSpec() toolSpec {
 				RequiresFile:     true,
 				ReadsStdin:       true,
 				StdinJSONKind:    "patch_op[]",
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--patch", ValueName: "json", Description: "Patch JSON array. If omitted, patch JSON is read from stdin."},
 					{Name: "--sheet", ValueName: "name", Description: "Default sheet for operations.", Default: "first sheet"},
@@ -191,7 +198,7 @@ func wbToolSpec() toolSpec {
 				RequiresFile:     true,
 				ReadsStdin:       true,
 				StdinJSONKind:    "create_spec",
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--spec", ValueName: "json", Description: "Spec JSON. If omitted, spec JSON is read from stdin."},
 				},
@@ -211,7 +218,7 @@ func wbToolSpec() toolSpec {
 				Description:      "Force recalculation of all formulas and return evaluated results.",
 				Usage:            "wb calc [flags] <file>",
 				RequiresFile:     true,
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON, FormatMarkdown, FormatCSV},
 				Flags: []flagSpec{
 					{Name: "--sheet", ValueName: "name", Description: "Recalculate and show the named sheet.", Default: "first sheet"},
 					{Name: "--range", ValueName: "A1:D10", Description: "Return results for a specific range.", Default: "full used range"},
@@ -234,7 +241,7 @@ func wbToolSpec() toolSpec {
 				Description:      "Show precedents and dependents for a cell, range, or all formulas on a sheet.",
 				Usage:            "wb dep [flags] <file>",
 				RequiresFile:     true,
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON, FormatMarkdown},
 				Flags: []flagSpec{
 					{Name: "--cell", ValueName: "A1", Description: "Show dependencies for a single cell."},
 					{Name: "--range", ValueName: "A1:D10", Description: "Show dependencies for all formula cells in a range."},
@@ -267,7 +274,7 @@ func wbToolSpec() toolSpec {
 						Summary:          "List all registered formula functions",
 						Description:      "List all registered formula functions.",
 						Usage:            "wb formula list",
-						SupportedFormats: []string{FormatJSON},
+						SupportedFormats: []string{FormatText, FormatJSON},
 						Examples: []string{
 							"wb formula list",
 						},
@@ -283,7 +290,7 @@ func wbToolSpec() toolSpec {
 				Summary:          "Show machine-readable CLI metadata",
 				Description:      "Return structured metadata for commands, flags, modes, and agent-mode behavior.",
 				Usage:            "wb capabilities",
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Examples: []string{
 					"wb capabilities",
 					"wb --mode agent help read",
@@ -293,15 +300,13 @@ func wbToolSpec() toolSpec {
 				},
 			},
 			{
-				Name:        "help",
-				Path:        []string{"help"},
-				Summary:     "Show help for a command",
-				Description: "Show human-readable help in default mode or structured JSON help in agent mode.",
-				Usage:       "wb help [command]",
-				Aliases:     []string{"--help", "-h"},
-				SupportedFormats: []string{
-					FormatJSON,
-				},
+				Name:             "help",
+				Path:             []string{"help"},
+				Summary:          "Show help for a command",
+				Description:      "Show human-readable help in default mode or structured JSON help in agent mode.",
+				Usage:            "wb help [command]",
+				Aliases:          []string{"--help", "-h"},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Examples: []string{
 					"wb help",
 					"wb help read",
@@ -317,7 +322,7 @@ func wbToolSpec() toolSpec {
 				Summary:          "Print version info",
 				Description:      "Print version info.",
 				Usage:            "wb version",
-				SupportedFormats: []string{FormatJSON},
+				SupportedFormats: []string{FormatText, FormatJSON},
 				Examples: []string{
 					"wb version",
 				},
@@ -328,7 +333,7 @@ func wbToolSpec() toolSpec {
 
 func writeHelpTopic(path []string, globals globalFlags) int {
 	spec := wbToolSpec()
-	if globals.mode == modeAgent {
+	if wantJSON(globals) {
 		if len(path) == 0 {
 			writeSuccess("help", helpData{
 				Topic: "overview",

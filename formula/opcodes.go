@@ -6,63 +6,65 @@ import "fmt"
 type OpCode byte
 
 const (
-	OpPushNum   OpCode = iota // operand: index into Consts
-	OpPushStr                 // operand: index into Consts
-	OpPushBool                // operand: 0=false, 1=true
-	OpPushError               // operand: ErrorValue
-	OpPushEmpty               // operand: unused
-	OpLoadCell                // operand: index into Refs
-	OpLoadRange               // operand: index into Ranges
-	OpAdd                     // pop two, push sum
-	OpSub                     // pop two, push difference
-	OpMul                     // pop two, push product
-	OpDiv                     // pop two, push quotient
-	OpPow                     // pop two, push power
-	OpNeg                     // pop one, push negation
-	OpPercent                 // pop one, push value/100
-	OpConcat                  // pop two, push concatenation
-	OpEq                      // pop two, push equality
-	OpNe                      // pop two, push not-equal
-	OpLt                      // pop two, push less-than
-	OpLe                      // pop two, push less-or-equal
-	OpGt                      // pop two, push greater-than
-	OpGe                      // pop two, push greater-or-equal
-	OpCall                    // operand: funcID<<8 | argc
-	OpMakeArray               // operand: rows<<16 | cols
-	OpLoadCellRef             // operand: index into Refs; pushes ValueRef (no cell lookup)
-	OpEnterArrayCtx           // operand: unused; pushes array context (suppresses implicit intersection)
-	OpLeaveArrayCtx           // operand: unused; pops array context
-	OpLoad3DRange             // operand: index into Ranges; loads values across multiple sheets
+	OpPushNum         OpCode = iota // operand: index into Consts
+	OpPushStr                       // operand: index into Consts
+	OpPushBool                      // operand: 0=false, 1=true
+	OpPushError                     // operand: ErrorValue
+	OpPushEmpty                     // operand: unused
+	OpLoadCell                      // operand: index into Refs
+	OpLoadRange                     // operand: index into Ranges
+	OpAdd                           // pop two, push sum
+	OpSub                           // pop two, push difference
+	OpMul                           // pop two, push product
+	OpDiv                           // pop two, push quotient
+	OpPow                           // pop two, push power
+	OpNeg                           // pop one, push negation
+	OpPercent                       // pop one, push value/100
+	OpConcat                        // pop two, push concatenation
+	OpEq                            // pop two, push equality
+	OpNe                            // pop two, push not-equal
+	OpLt                            // pop two, push less-than
+	OpLe                            // pop two, push less-or-equal
+	OpGt                            // pop two, push greater-than
+	OpGe                            // pop two, push greater-or-equal
+	OpCall                          // operand: funcID<<8 | argc
+	OpMakeArray                     // operand: rows<<16 | cols
+	OpLoadCellRef                   // operand: index into Refs; pushes ValueRef (no cell lookup)
+	OpEnterArrayCtx                 // operand: unused; pushes array context (suppresses implicit intersection)
+	OpLeaveArrayCtx                 // operand: unused; pops array context
+	OpLoad3DRange                   // operand: index into Ranges; loads values across multiple sheets
+	OpRefResultToBool               // operand: unused; pops value, pushes TRUE if non-error (for ISREF wrapping ref-returning funcs)
 )
 
 var opNames = [...]string{
-	OpPushNum:   "PushNum",
-	OpPushStr:   "PushStr",
-	OpPushBool:  "PushBool",
-	OpPushError: "PushError",
-	OpPushEmpty: "PushEmpty",
-	OpLoadCell:  "LoadCell",
-	OpLoadRange: "LoadRange",
-	OpAdd:       "Add",
-	OpSub:       "Sub",
-	OpMul:       "Mul",
-	OpDiv:       "Div",
-	OpPow:       "Pow",
-	OpNeg:       "Neg",
-	OpPercent:   "Percent",
-	OpConcat:    "Concat",
-	OpEq:        "Eq",
-	OpNe:        "Ne",
-	OpLt:        "Lt",
-	OpLe:        "Le",
-	OpGt:        "Gt",
-	OpGe:        "Ge",
-	OpCall:        "Call",
-	OpMakeArray:   "MakeArray",
-	OpLoadCellRef:   "LoadCellRef",
-	OpEnterArrayCtx: "EnterArrayCtx",
-	OpLeaveArrayCtx: "LeaveArrayCtx",
-	OpLoad3DRange:   "Load3DRange",
+	OpPushNum:         "PushNum",
+	OpPushStr:         "PushStr",
+	OpPushBool:        "PushBool",
+	OpPushError:       "PushError",
+	OpPushEmpty:       "PushEmpty",
+	OpLoadCell:        "LoadCell",
+	OpLoadRange:       "LoadRange",
+	OpAdd:             "Add",
+	OpSub:             "Sub",
+	OpMul:             "Mul",
+	OpDiv:             "Div",
+	OpPow:             "Pow",
+	OpNeg:             "Neg",
+	OpPercent:         "Percent",
+	OpConcat:          "Concat",
+	OpEq:              "Eq",
+	OpNe:              "Ne",
+	OpLt:              "Lt",
+	OpLe:              "Le",
+	OpGt:              "Gt",
+	OpGe:              "Ge",
+	OpCall:            "Call",
+	OpMakeArray:       "MakeArray",
+	OpLoadCellRef:     "LoadCellRef",
+	OpEnterArrayCtx:   "EnterArrayCtx",
+	OpLeaveArrayCtx:   "LeaveArrayCtx",
+	OpLoad3DRange:     "Load3DRange",
+	OpRefResultToBool: "RefResultToBool",
 }
 
 func (op OpCode) String() string {

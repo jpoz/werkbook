@@ -9,7 +9,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Excel number format engine
+// Number format engine
 //
 // Supports the format codes used by TEXT(), cell number formats, etc.
 // Reference: https://support.microsoft.com/en-us/office/number-format-codes
@@ -30,10 +30,10 @@ var longMonths = [13]string{"", "January", "February", "March", "April", "May", 
 var shortDays = [8]string{"", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 var longDays = [8]string{"", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 
-// formatExcelNumber formats a number using an Excel format string.
+// formatNumber formats a number using a number format string.
 // This is the main entry point used by the TEXT() function.
-// If date1904 is true, date serial numbers use the 1904 epoch (Mac Excel).
-func formatExcelNumber(n float64, format string, date1904 bool) string {
+// If date1904 is true, date serial numbers use the 1904 date system.
+func formatNumber(n float64, format string, date1904 bool) string {
 	if strings.EqualFold(format, "General") {
 		return formatGeneral(n)
 	}
@@ -165,7 +165,7 @@ func sectionHasFormatCodes(section string) bool {
 				return true
 			}
 		// Date/time codes — Y, D, H are unambiguous; M could be month or minute
-		// but is always a date/time code in Excel formats.
+		// but is always a date/time code in number formats.
 		case 'Y', 'D', 'H', 'M':
 			return true
 		}
@@ -248,8 +248,8 @@ func sectionHasUnquotedLetters(section string) bool {
 	return false
 }
 
-// excelColorCodes is the set of color names recognised inside square brackets.
-var excelColorCodes = map[string]bool{
+// colorCodes is the set of color names recognised inside square brackets.
+var colorCodes = map[string]bool{
 	"BLACK":   true,
 	"BLUE":    true,
 	"CYAN":    true,
@@ -260,7 +260,7 @@ var excelColorCodes = map[string]bool{
 	"YELLOW":  true,
 }
 
-// stripColorCodes removes Excel color codes like [Red], [Blue], [Color 3], etc.
+// stripColorCodes removes color codes like [Red], [Blue], [Color 3], etc.
 // from a format section. These are display hints and do not affect text output.
 func stripColorCodes(format string) string {
 	var result strings.Builder
@@ -276,7 +276,7 @@ func stripColorCodes(format string) string {
 				inner := format[i+1 : j]
 				upperInner := strings.ToUpper(strings.TrimSpace(inner))
 				// Check for named colors or "Color N" syntax.
-				if excelColorCodes[upperInner] || strings.HasPrefix(upperInner, "COLOR ") || strings.HasPrefix(upperInner, "COLOR") && len(upperInner) > 5 && upperInner[5] >= '0' && upperInner[5] <= '9' {
+				if colorCodes[upperInner] || strings.HasPrefix(upperInner, "COLOR ") || strings.HasPrefix(upperInner, "COLOR") && len(upperInner) > 5 && upperInner[5] >= '0' && upperInner[5] <= '9' {
 					i = j + 1 // skip past ']'
 					continue
 				}
@@ -292,7 +292,7 @@ func stripColorCodes(format string) string {
 }
 
 // formatTextSection formats a text value using the text section (4th section)
-// of an Excel format string. The '@' placeholder is replaced with the text value.
+// of a format string. The '@' placeholder is replaced with the text value.
 func formatTextSection(text string, section string) string {
 	if section == "" {
 		return text
@@ -339,7 +339,7 @@ func sectionContainsAt(section string) bool {
 }
 
 // formatGeneral returns the "General" format representation.
-// Excel's General format uses scientific notation (uppercase E) for:
+// General format uses scientific notation (uppercase E) for:
 //   - numbers with absolute value >= 1e11
 //   - very small nonzero numbers with absolute value < 1e-4
 //
@@ -366,7 +366,7 @@ func formatGeneral(n float64) string {
 	if n == math.Trunc(n) && abs < 1e15 {
 		return strconv.FormatFloat(n, 'f', -1, 64)
 	}
-	// Use %g-like formatting but with up to 10 significant digits like Excel.
+	// Use %g-like formatting but with up to 10 significant digits.
 	s := strconv.FormatFloat(n, 'G', 10, 64)
 	return s
 }
@@ -436,7 +436,7 @@ func isDateTimeFormat(format string) bool {
 				}
 			}
 			// Standalone "m" or "mm" without other date/time codes: could be month.
-			// In Excel, a standalone "m" format IS a date format (month of a date).
+			// A standalone "m" format is a date format (month of a date).
 			return true
 		case 'A':
 			// Check for AM/PM.
@@ -505,13 +505,13 @@ func stripLiterals(format string) string {
 	return b.String()
 }
 
-// formatDateTime formats an Excel serial number as a date/time string.
+// formatDateTime formats a date serial number as a date/time string.
 func formatDateTime(serial float64, format string, date1904 bool) string {
 	var t time.Time
 	if date1904 {
-		t = ExcelSerialToTime1904(serial)
+		t = SerialToTime1904(serial)
 	} else {
-		t = ExcelSerialToTime(serial)
+		t = SerialToTime(serial)
 	}
 
 	// Determine if there's an AM/PM marker.
@@ -738,7 +738,7 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 
 // computeMContexts pre-scans the format to determine for each 'm'/'M' run
 // whether it represents minutes (true) or months (false).
-// In Excel, 'm' after 'h' and before 's' means minutes; otherwise months.
+// 'm' after 'h' and before 's' means minutes; otherwise months.
 func computeMContexts(format string) []bool {
 	upper := strings.ToUpper(format)
 	var results []bool
@@ -785,7 +785,7 @@ func computeMContexts(format string) []bool {
 				isMinute = true
 			case 'Y', 'D':
 				// A date token between H and M breaks the connection — but
-				// in practice Excel still treats m as minute if h appeared before.
+				// in practice m is still treated as minute if h appeared before.
 			}
 			if tokens[j].char == 'H' {
 				break
@@ -815,7 +815,7 @@ func countRun(s string, i int, ch byte) int {
 	return count
 }
 
-// isLiteralPassthrough returns true for characters that Excel passes through as-is
+// isLiteralPassthrough returns true for characters that are passed through as-is
 // in format strings without needing quotes or backslash.
 func isLiteralPassthrough(ch byte) bool {
 	switch ch {
@@ -1567,12 +1567,12 @@ func formatNumberSection(n float64, format string) string {
 	}
 
 	// Count integer and decimal digit placeholders.
-	intZeros := 0   // minimum integer digits (from '0')
-	intDigits := 0  // total integer placeholders (from '0', '#', '?')
-	intSpaces := 0  // integer '?' count (space-padded positions)
-	decZeros := 0   // decimal '0' count
-	decHashes := 0  // decimal '#' count
-	decSpaces := 0  // decimal '?' count
+	intZeros := 0  // minimum integer digits (from '0')
+	intDigits := 0 // total integer placeholders (from '0', '#', '?')
+	intSpaces := 0 // integer '?' count (space-padded positions)
+	decZeros := 0  // decimal '0' count
+	decHashes := 0 // decimal '#' count
+	decSpaces := 0 // decimal '?' count
 
 	inDecimal := false
 	for _, tok := range tokens {
@@ -1844,13 +1844,13 @@ type numFmtTokenKind byte
 
 const (
 	tokLiteral    numFmtTokenKind = iota
-	tokDigit                       // '0' — required digit
-	tokDigitOpt                    // '#' — optional digit
-	tokDigitSpace                  // '?' — digit padded with space
-	tokDecimal                  // '.'
-	tokComma                    // ','
-	tokPercent                  // '%'
-	tokExponent                 // 'E+' or 'E-'
+	tokDigit                      // '0' — required digit
+	tokDigitOpt                   // '#' — optional digit
+	tokDigitSpace                 // '?' — digit padded with space
+	tokDecimal                    // '.'
+	tokComma                      // ','
+	tokPercent                    // '%'
+	tokExponent                   // 'E+' or 'E-'
 )
 
 type numFmtToken struct {
@@ -1889,14 +1889,14 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 			continue
 		}
 
-		// Underscore (space placeholder in Excel) — skip next char, emit space.
+		// Underscore (space placeholder) — skip next char, emit space.
 		if ch == '_' && i+1 < len(format) {
 			tokens = append(tokens, numFmtToken{kind: tokLiteral, value: " "})
 			i += 2
 			continue
 		}
 
-		// Asterisk (repeat fill char in Excel) — skip next char.
+		// Asterisk (repeat fill char) — skip next char.
 		if ch == '*' && i+1 < len(format) {
 			i += 2
 			continue
@@ -1922,7 +1922,7 @@ func tokenizeNumberFormat(format string) []numFmtToken {
 			tokens = append(tokens, numFmtToken{kind: tokPercent, value: "%"})
 			i++
 		case 'E':
-			// Scientific notation: E+ or E- (uppercase only; Excel treats lowercase 'e' as literal).
+			// Scientific notation: E+ or E- (uppercase only; lowercase 'e' is treated as literal).
 			if i+1 < len(format) && (format[i+1] == '+' || format[i+1] == '-') {
 				tokens = append(tokens, numFmtToken{kind: tokExponent, value: format[i : i+2]})
 				i += 2
@@ -1972,7 +1972,7 @@ func isFormatLiteral(ch byte) bool {
 
 // hasInvalidLowercaseE checks whether a format string contains lowercase 'e'
 // followed by '+' or '-' outside of quoted strings or escape sequences.
-// Excel only recognises uppercase 'E' for scientific notation; lowercase 'e'
+// Only uppercase 'E' is recognised for scientific notation; lowercase 'e'
 // in this position makes the entire format invalid (#VALUE!).
 func hasInvalidLowercaseE(format string) bool {
 	inQuote := false
@@ -2217,8 +2217,8 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 // Time helpers
 // ---------------------------------------------------------------------------
 
-// daysSinceEpoch converts a time.Time to Excel days (for internal elapsed time).
+// daysSinceEpoch converts a time.Time to serial days (for internal elapsed time).
 func daysSinceEpoch(t time.Time) float64 {
-	duration := t.Sub(ExcelEpoch)
+	duration := t.Sub(Epoch1900)
 	return duration.Hours() / 24
 }

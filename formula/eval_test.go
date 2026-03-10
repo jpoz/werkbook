@@ -517,7 +517,7 @@ func TestEvalCoerceNum(t *testing.T) {
 		{name: "cell_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
 			{Sheet: "", Col: 1, Row: 1}: StringVal("5"),
 		}, wantNum: 5},
-		// Whitespace-padded numeric string coerces to number (Excel trims whitespace)
+		// Whitespace-padded numeric string coerces to number (whitespace is trimmed)
 		{name: "cell_padded_numeric_string", formula: "A1+0", cells: map[CellAddr]Value{
 			{Sheet: "", Col: 1, Row: 1}: StringVal(" 5 "),
 		}, wantNum: 5},
@@ -596,7 +596,7 @@ func TestEvalCompareValues(t *testing.T) {
 		{name: "negative_gt", formula: "0>-10", want: true},
 		// Decimal comparisons
 		{name: "decimal_eq", formula: "0.1+0.2=0.3", want: true},  // relative epsilon handles this
-		{name: "third_times_3", formula: "(1/3*3)=1", want: true}, // Excel audit: must be TRUE
+		{name: "third_times_3", formula: "(1/3*3)=1", want: true}, // audit: must be TRUE
 		{name: "decimal_lt", formula: "0.1<0.2", want: true},
 	}
 
@@ -743,7 +743,7 @@ func TestEvalConcatErrorPropagation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Number formatting in concat — Excel uses 15 significant digits
+// Number formatting in concat — uses 15 significant digits
 // ---------------------------------------------------------------------------
 
 func TestEvalConcatNumberFormatting(t *testing.T) {
@@ -1098,7 +1098,7 @@ func TestCompareValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Empty cell comparison via formulas — Excel behavior
+// Empty cell comparison via formulas — expected behavior
 // ---------------------------------------------------------------------------
 
 func TestEvalEmptyCellComparisons(t *testing.T) {

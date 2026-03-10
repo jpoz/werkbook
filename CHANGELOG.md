@@ -1,5 +1,72 @@
 # Changelog
 
+## v0.6.1
+
+### Improvements
+
+- **Zero external dependencies**: Removed `spf13/cobra` and `spf13/pflag` from the module. The community library now has no external dependencies (stdlib only). The CLI commands already parsed their own flags, so cobra was a redundant routing layer replaced by a simple command dispatcher.
+
+## v0.6.0
+
+### New formula functions (55 functions)
+
+#### Complex number functions (22)
+- `COMPLEX`, `IMAGINARY`, `IMREAL`, `IMABS`
+- `IMSUM`, `IMSUB`, `IMPRODUCT`, `IMDIV`
+- `IMARGUMENT`, `IMCONJUGATE`, `IMSQRT`, `IMPOWER`
+- `IMEXP`, `IMLN`, `IMLOG2`, `IMLOG10`
+- `IMSIN`, `IMCOS`, `IMTAN`
+- `IMSINH`, `IMCOSH`, `IMSECH`, `IMCSC`, `IMCOT`, `IMCSCH`
+
+#### Statistical distribution functions (25)
+- `BINOM.DIST`, `BINOM.INV`, `NEGBINOM.DIST`
+- `POISSON.DIST`, `EXPON.DIST`, `WEIBULL.DIST`
+- `GAMMA`, `GAMMA.DIST`, `GAMMA.INV`
+- `LOGNORM.DIST`, `LOGNORM.INV`
+- `T.DIST`, `T.INV`, `T.DIST.RT`, `T.DIST.2T`, `T.INV.2T`
+- `CHISQ.DIST`, `CHISQ.INV`, `CHISQ.DIST.RT`, `CHISQ.INV.RT`
+- `F.DIST`, `F.INV`, `F.DIST.RT`, `F.INV.RT`
+- `HYPGEOM.DIST`
+
+#### Other new functions (8)
+- `BETA.DIST`, `BETA.INV`
+- `CONFIDENCE.NORM`, `CONFIDENCE.T`
+- `PHI`, `GAUSS`, `SKEW.P`
+- `ISPMT`
+- `UNICHAR`, `UNICODE`
+- `XMATCH`, `SORTBY`
+- `CHOOSECOLS`, `CHOOSEROWS`
+- `PERCENTILE.INC`, `QUARTILE.INC` (aliases)
+
+### Features
+
+- **Lambda support**: Formula engine now supports `LAMBDA` functions and 1904 date system
+- **Dynamic array formulas**: Added support for dynamic array formula spill ranges
+- **Sheet copying and cloning**: New `Sheet.Copy()` and `File.CloneSheet()` methods
+- **Merge cell support**: Added sheet operations for merged cells
+- **Defined names**: Added defined name resolution API and operations
+- **Table support**: Added table and calc properties support
+- **`_xlfn` prefix handling**: Extended function prefix mapping for better spreadsheet compatibility
+
+### CLI improvements
+
+- **`--show-formulas` flag**: Display raw formulas instead of computed values
+- **Human-readable text output**: New default text output format with markdown table formatting
+
+### Bug fixes
+
+- Improved `NORM.INV` precision with Newton-Raphson refinement
+- Fixed `GAMMA.DIST`, `LOGNORM.DIST`/`LOGNORM.INV`, and `WEIBULL.DIST` to match spreadsheet behavior
+- Fixed `CODE` function to return underscore (95) for unmappable characters
+- Fixed tilde escape handling in `COUNTIF`/`SUMIF` wildcard criteria
+- Fixed `INDEX` to return `#VALUE!` for `row_num=0` in non-array context
+- Fixed `_xludf.` prefixed functions to return `#NAME?` matching spreadsheet behavior
+- Replaced `fmt.Sprintf` with `strconv` for number formatting (performance)
+
+### Test coverage
+
+- Added comprehensive tests for 70+ formula functions
+
 ## v0.4.1
 
 ### Bug fixes

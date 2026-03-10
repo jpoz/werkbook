@@ -28,6 +28,9 @@ func cmdInfo(args []string, globals globalFlags) int {
 	if hasHelpFlag(args) {
 		return writeHelpTopic([]string{cmd}, globals)
 	}
+	if !ensureFormat(cmd, globals, FormatText, FormatJSON) {
+		return ExitUsage
+	}
 
 	var sheetFlag string
 

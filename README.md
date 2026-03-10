@@ -3,6 +3,7 @@
 [![Go](https://github.com/jpoz/werkbook/actions/workflows/go.yml/badge.svg)](https://github.com/jpoz/werkbook/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jpoz/werkbook.svg)](https://pkg.go.dev/github.com/jpoz/werkbook)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/werkbook)](https://goreportcard.com/report/github.com/jpoz/werkbook)
+
 A Go library for reading and writing `.xlsx` workbooks with a built-in formula engine. Zero external dependencies.
 
 ## Install
@@ -30,7 +31,7 @@ wb calc file.xlsx                        # Recalculate formulas
 wb formula list                          # List available functions
 ```
 
-All output uses a JSON envelope by default. Use `--format markdown` or `--format csv` for other formats.
+Default CLI output is human-readable text. Use `--format json` or `--mode agent` for structured JSON, and `--format markdown` or `--format csv` for table output where supported.
 
 ## Quick Start
 
@@ -88,9 +89,18 @@ Werkbook includes a built-in formula engine. See [FORMULAS.md](FORMULAS.md) for 
 
 ## Compatibility
 
-Werkbook targets `.xlsx` workbook interoperability and formula behavior compatibility with Microsoft Excel.
+Werkbook targets `.xlsx` workbook interoperability and spreadsheet formula behavior compatibility.
 
-Excel is a trademark of Microsoft Corporation. Werkbook is not affiliated with or endorsed by Microsoft.
+## Local interop loop
+
+When working in the sibling workspace with `../testdata`, use:
+
+```bash
+make interop ONLY=exceljs/02_lookup_model
+make interop-full ONLY=exceljs/02_lookup_model
+```
+
+`interop` is the fast loop for community-only code changes. `interop-full` regenerates fixtures, refreshes Excel-backed specs, reruns parity, and syncs the current issue queue into [`testdata_issues/`](/Users/jpoz/Developer/werkbook/community/testdata_issues).
 
 ## License
 

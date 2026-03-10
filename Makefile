@@ -59,7 +59,7 @@ all: help
 .PHONY: help
 help: ## Show this help
 	@echo ""
-	@echo "$(BOLD)Werkbook$(NC) — Go library & CLI for reading and writing Excel XLSX files"
+	@echo "$(BOLD)Werkbook$(NC) — Go library & CLI for reading and writing XLSX spreadsheet files"
 	$(call print_targets)
 
 # ============================================================================
@@ -131,7 +131,23 @@ build: ## Verify the package compiles
 	$(call print_stage,Building)
 	go build ./...
 
+.PHONY: install
+install: ## Install the wb CLI locally
+	$(call print_stage,Installing wb CLI)
+	go install ./cmd/wb
+	$(call print_success,wb installed to $$(go env GOPATH)/bin/wb)
+
 .PHONY: clean
 clean: ## Remove generated artifacts
 	$(call print_stage,Cleaning)
 	rm -f coverage.out coverage.html
+
+.PHONY: interop
+interop: ## Fast parity rerun against ../testdata (use ONLY=fixture/id)
+	@if [ ! -d ../testdata ]; then echo "missing ../testdata sibling repo"; exit 1; fi
+	cd ../testdata && go run ./cmd/community-loop --skip-gen --skip-excel $(if $(ONLY),--only $(ONLY),)
+
+.PHONY: interop-full
+interop-full: ## Full fixture -> Excel -> parity -> issue sync loop (use ONLY=fixture/id)
+	@if [ ! -d ../testdata ]; then echo "missing ../testdata sibling repo"; exit 1; fi
+	cd ../testdata && go run ./cmd/community-loop $(if $(ONLY),--only $(ONLY),)

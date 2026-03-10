@@ -133,7 +133,7 @@ func TestCellDataToValue_DateCell(t *testing.T) {
 			name:     "1900 date system",
 			cd:       ooxml.CellData{Type: "d", Value: "2024-06-15"},
 			date1904: false,
-			want:     timeToExcelSerial(time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)),
+			want:     timeToSerial(time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)),
 		},
 		{
 			name:     "1904 date system",

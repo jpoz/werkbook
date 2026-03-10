@@ -8,20 +8,20 @@ import (
 // XML struct types for xl/styles.xml
 
 type xlsxStyleSheet struct {
-	XMLName       xml.Name         `xml:"styleSheet"`
-	Xmlns         string           `xml:"xmlns,attr"`
-	NumFmts       *xlsxNumFmts     `xml:"numFmts,omitempty"`
-	Fonts         xlsxFonts        `xml:"fonts"`
-	Fills         xlsxFills        `xml:"fills"`
-	Borders       xlsxBorders      `xml:"borders"`
-	CellStyleXfs  xlsxCellStyleXfs `xml:"cellStyleXfs"`
-	CellXfs       xlsxCellXfs      `xml:"cellXfs"`
-	CellStyles    xlsxCellStyles   `xml:"cellStyles"`
+	XMLName      xml.Name         `xml:"styleSheet"`
+	Xmlns        string           `xml:"xmlns,attr"`
+	NumFmts      *xlsxNumFmts     `xml:"numFmts,omitempty"`
+	Fonts        xlsxFonts        `xml:"fonts"`
+	Fills        xlsxFills        `xml:"fills"`
+	Borders      xlsxBorders      `xml:"borders"`
+	CellStyleXfs xlsxCellStyleXfs `xml:"cellStyleXfs"`
+	CellXfs      xlsxCellXfs      `xml:"cellXfs"`
+	CellStyles   xlsxCellStyles   `xml:"cellStyles"`
 }
 
 type xlsxCellStyles struct {
-	Count     int              `xml:"count,attr"`
-	CellStyle []xlsxCellStyle  `xml:"cellStyle"`
+	Count     int             `xml:"count,attr"`
+	CellStyle []xlsxCellStyle `xml:"cellStyle"`
 }
 
 type xlsxCellStyle struct {
@@ -46,12 +46,12 @@ type xlsxFonts struct {
 }
 
 type xlsxFont struct {
-	B     *xlsxVal  `xml:"b,omitempty"`
-	I     *xlsxVal  `xml:"i,omitempty"`
-	U     *xlsxVal  `xml:"u,omitempty"`
-	Sz    *xlsxSz   `xml:"sz,omitempty"`
+	B     *xlsxVal   `xml:"b,omitempty"`
+	I     *xlsxVal   `xml:"i,omitempty"`
+	U     *xlsxVal   `xml:"u,omitempty"`
+	Sz    *xlsxSz    `xml:"sz,omitempty"`
 	Color *xlsxColor `xml:"color,omitempty"`
-	Name  *xlsxName `xml:"name,omitempty"`
+	Name  *xlsxName  `xml:"name,omitempty"`
 }
 
 type xlsxVal struct{}
@@ -342,9 +342,9 @@ func (ssb *StyleSheetBuilder) addNumFmt(sd StyleData) int {
 // Build returns the serializable xlsxStyleSheet.
 func (ssb *StyleSheetBuilder) Build() xlsxStyleSheet {
 	ss := xlsxStyleSheet{
-		Xmlns: NSSpreadsheetML,
-		Fonts: xlsxFonts{Count: len(ssb.fonts), Font: ssb.fonts},
-		Fills: xlsxFills{Count: len(ssb.fills), Fill: ssb.fills},
+		Xmlns:   NSSpreadsheetML,
+		Fonts:   xlsxFonts{Count: len(ssb.fonts), Font: ssb.fonts},
+		Fills:   xlsxFills{Count: len(ssb.fills), Fill: ssb.fills},
 		Borders: xlsxBorders{Count: len(ssb.borders), Border: ssb.borders},
 		CellStyleXfs: xlsxCellStyleXfs{
 			Count: 1,

@@ -5,14 +5,14 @@ import (
 	"strings"
 )
 
-// Lexer tokenizes an Excel formula string.
+// Lexer tokenizes a formula string.
 type Lexer struct {
 	src []byte
 	pos int // current byte position
 }
 
 // NewLexer creates a lexer for the given formula string.
-// The formula should NOT include the leading '=' that Excel uses;
+// The formula should NOT include the leading '=';
 // strip it before passing to the lexer.
 func NewLexer(formula string) *Lexer {
 	return &Lexer{src: []byte(formula)}
@@ -181,7 +181,7 @@ func (l *Lexer) lexError() (Token, error) {
 		if ch == '!' || ch == '?' {
 			l.pos++
 			val := string(l.src[start:l.pos])
-			if isExcelError(val) {
+			if isFormulaError(val) {
 				return Token{Type: TokError, Value: val, Pos: start}, nil
 			}
 			return Token{}, fmt.Errorf("unknown error literal %q at position %d", val, start)
@@ -194,7 +194,7 @@ func (l *Lexer) lexError() (Token, error) {
 	}
 	// #N/A has no trailing ! or ?
 	val := string(l.src[start:l.pos])
-	if isExcelError(val) {
+	if isFormulaError(val) {
 		return Token{Type: TokError, Value: val, Pos: start}, nil
 	}
 	return Token{}, fmt.Errorf("unknown error literal %q at position %d", val, start)
@@ -360,7 +360,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		// Only try 3D sheet reference if the word so far does NOT look like
 		// a cell reference. E.g. "S1:S3!A1" — S1 is a valid cell ref, so
 		// the colon should be a range operator, not a 3D sheet separator.
-		// Excel behaves the same way: sheet names that look like cell refs
+		// Sheet names that look like cell refs
 		// must be quoted to form a valid 3D reference.
 		word := string(l.src[start:l.pos])
 		if !looksLikeCellRef(word) {
@@ -496,7 +496,7 @@ func (l *Lexer) skipWhitespace() {
 	}
 }
 
-// looksLikeCellRef checks if a string looks like a valid Excel cell reference.
+// looksLikeCellRef checks if a string looks like a valid cell reference.
 // Accepts: A1, $A1, A$1, $A$1, XFD1048576, etc.
 func looksLikeCellRef(s string) bool {
 	i := 0
@@ -547,7 +547,7 @@ func isIdentContinue(ch byte) bool {
 	return isAlpha(ch) || (ch >= '0' && ch <= '9') || ch == '_' || ch == '.' || ch == '$'
 }
 
-func isExcelError(s string) bool {
+func isFormulaError(s string) bool {
 	upper := strings.ToUpper(s)
 	switch upper {
 	case "#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#SPILL!", "#CALC!", "#GETTING_DATA":

@@ -7,7 +7,7 @@ import (
 	"github.com/jpoz/werkbook/formula"
 )
 
-// DefinedName represents an Excel defined name, including workbook-scoped
+// DefinedName represents a defined name, including workbook-scoped
 // and sheet-scoped named ranges.
 type DefinedName struct {
 	Name         string

@@ -165,16 +165,16 @@ func TestStyleSheetBuilder_MultipleCustomNumFmts(t *testing.T) {
 func TestStyleSheetBuilder_XMLRoundTrip(t *testing.T) {
 	ssb := NewStyleSheetBuilder()
 	ssb.AddStyle(StyleData{
-		FontName:  "Helvetica",
-		FontSize:  16,
-		FontBold:  true,
-		FontColor: "FFFF0000",
-		FillColor: "FF00FF00",
+		FontName:          "Helvetica",
+		FontSize:          16,
+		FontBold:          true,
+		FontColor:         "FFFF0000",
+		FillColor:         "FF00FF00",
 		BorderBottomStyle: "thin",
 		BorderBottomColor: "FF000000",
-		HAlign:   "center",
-		WrapText: true,
-		NumFmt:   "#,##0.00",
+		HAlign:            "center",
+		WrapText:          true,
+		NumFmt:            "#,##0.00",
 	})
 
 	ss := ssb.Build()
