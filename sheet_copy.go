@@ -49,7 +49,7 @@ func (f *File) CloneSheetFrom(src *Sheet, dstName string) (*Sheet, error) {
 		dst.rows[rowNum] = dstRow
 	}
 
-	f.registerSheetFormulas(dst)
+	_ = f.registerSheetFormulas(dst, false)
 	return dst, nil
 }
 
@@ -68,13 +68,19 @@ func cloneCell(src *Cell) *Cell {
 	return clone
 }
 
-func (f *File) registerSheetFormulas(s *Sheet) {
+func (f *File) registerSheetFormulas(s *Sheet, strict bool) error {
 	for _, r := range s.rows {
 		for col, c := range r.cells {
 			if c.formula == "" {
 				continue
 			}
-			src := f.expandFormula(c.formula, s.name, r.num)
+			src, err := f.expandFormula(c.formula, s.name, r.num)
+			if err != nil {
+				if strict {
+					return formulaExpansionError(s.name, col, r.num, err)
+				}
+				continue
+			}
 			node, err := formula.Parse(src)
 			if err != nil {
 				continue
@@ -88,4 +94,13 @@ func (f *File) registerSheetFormulas(s *Sheet) {
 			f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
 		}
 	}
+	return nil
+}
+
+func formulaExpansionError(sheet string, col, row int, err error) error {
+	cell := fmt.Sprintf("R%dC%d", row, col)
+	if ref, refErr := CoordinatesToCellName(col, row); refErr == nil {
+		cell = ref
+	}
+	return fmt.Errorf("sheet %q cell %s: %w", sheet, cell, err)
 }

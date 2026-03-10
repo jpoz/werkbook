@@ -85,6 +85,10 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
+	src, err := s.file.expandFormula(f, s.name, row)
+	if err != nil {
+		return err
+	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
 	// Unregister old formula if any.
@@ -101,7 +105,6 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.dirty = true
 	s.file.calcGen++
 	// Compile and register in dep graph.
-	src := s.file.expandFormula(f, s.name, row)
 	node, parseErr := formula.Parse(src)
 	if parseErr == nil {
 		cf, compErr := formula.Compile(src, node)
@@ -565,7 +568,13 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	cf := c.compiled
 	if cf == nil {
 		// Expand table structured references and defined names before parsing.
-		src := f.expandFormula(c.formula, s.name, row)
+		src, err := f.expandFormula(c.formula, s.name, row)
+		if err != nil {
+			if c.value.Type == TypeString {
+				return Value{Type: TypeString, String: "#NAME?"}
+			}
+			return Value{Type: TypeError, String: "#NAME?"}
+		}
 		node, err := formula.Parse(src)
 		if err != nil {
 			if c.value.Type == TypeString {
@@ -621,7 +630,10 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 
 	cf := c.compiled
 	if cf == nil {
-		src := f.expandFormula(c.formula, s.name, row)
+		src, err := f.expandFormula(c.formula, s.name, row)
+		if err != nil {
+			return formula.ErrorVal(formula.ErrValNAME)
+		}
 		node, err := formula.Parse(src)
 		if err != nil {
 			return formula.ErrorVal(formula.ErrValNAME)
@@ -719,6 +731,19 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 	return valueToFormulaValue(c.value)
 }
 
+func newFormulaValueMatrix(nRows, nCols int) [][]formula.Value {
+	if nRows <= 0 || nCols <= 0 {
+		return nil
+	}
+	rows := make([][]formula.Value, nRows)
+	cells := make([]formula.Value, nRows*nCols)
+	for i := range rows {
+		start := i * nCols
+		rows[i] = cells[start : start+nCols]
+	}
+	return rows
+}
+
 func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
 	rangeOverflow := func() [][]formula.Value {
 		return [][]formula.Value{{{
@@ -735,13 +760,12 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 		if formula.RangeCellCountExceedsLimit(nRows, nCols) {
 			return rangeOverflow()
 		}
-		rows := make([][]formula.Value, nRows)
+		rows := newFormulaValueMatrix(nRows, nCols)
+		refErr := formula.ErrorVal(formula.ErrValREF)
 		for i := range rows {
-			row := make([]formula.Value, nCols)
-			for j := range row {
-				row[j] = formula.ErrorVal(formula.ErrValREF)
+			for j := range rows[i] {
+				rows[i][j] = refErr
 			}
-			rows[i] = row
 		}
 		return rows
 	}
@@ -761,22 +785,38 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	if toRow < addr.FromRow {
 		toRow = addr.FromRow
 	}
+	toCol := addr.ToCol
+	if addr.FromCol == 1 && addr.ToCol >= MaxColumns {
+		maxCol := s.MaxCol()
+		if maxCol < addr.FromCol {
+			maxCol = addr.FromCol
+		}
+		if toCol > maxCol {
+			toCol = maxCol
+		}
+		if toCol < addr.FromCol {
+			toCol = addr.FromCol
+		}
+	}
 	nRows := toRow - addr.FromRow + 1
+	nCols = toCol - addr.FromCol + 1
 	if formula.RangeCellCountExceedsLimit(nRows, nCols) {
 		return rangeOverflow()
 	}
 
-	rows := make([][]formula.Value, nRows)
-	for r := addr.FromRow; r <= toRow; r++ {
-		row := make([]formula.Value, nCols)
-		for col := addr.FromCol; col <= addr.ToCol; col++ {
-			row[col-addr.FromCol] = fr.GetCellValue(formula.CellAddr{
-				Sheet: addr.Sheet,
-				Col:   col,
-				Row:   r,
-			})
+	rows := newFormulaValueMatrix(nRows, nCols)
+	for rowNum, sheetRow := range s.rows {
+		if rowNum < addr.FromRow || rowNum > toRow {
+			continue
 		}
-		rows[r-addr.FromRow] = row
+		row := rows[rowNum-addr.FromRow]
+		for colNum, cell := range sheetRow.cells {
+			if colNum < addr.FromCol || colNum > toCol {
+				continue
+			}
+			s.resolveCell(cell, colNum, rowNum)
+			row[colNum-addr.FromCol] = valueToFormulaValue(cell.value)
+		}
 	}
 	return rows
 }

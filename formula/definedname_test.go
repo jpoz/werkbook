@@ -1,6 +1,10 @@
 package formula
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestExpandDefinedNames(t *testing.T) {
 	names := []DefinedNameInfo{
@@ -105,5 +109,20 @@ func TestExpandDefinedNamesEmpty(t *testing.T) {
 	got := ExpandDefinedNames("A1+B1", nil, 0, nil)
 	if want := "A1+B1"; got != want {
 		t.Errorf("nil names: got %q, want %q", got, want)
+	}
+}
+
+func TestExpandDefinedNamesBoundedRejectsOversizeExpansion(t *testing.T) {
+	names := []DefinedNameInfo{
+		{
+			Name:         "Huge",
+			Value:        strings.Repeat("1+", MaxExpandedFormulaBytes/2),
+			LocalSheetID: -1,
+		},
+	}
+
+	_, err := ExpandDefinedNamesBounded("Huge+Huge", names, 0, nil, MaxExpandedFormulaBytes)
+	if !errors.Is(err, ErrFormulaTooLarge) {
+		t.Fatalf("expected ErrFormulaTooLarge, got %v", err)
 	}
 }

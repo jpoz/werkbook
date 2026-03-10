@@ -286,6 +286,9 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 		if n < 1 {
 			return ErrorVal(ErrValVALUE), nil
 		}
+		if oldText == "" {
+			return StringVal(text), nil
+		}
 		count := 0
 		result := text
 		idx := 0

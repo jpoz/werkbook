@@ -258,10 +258,10 @@ func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fileFromData(data), nil
+	return fileFromData(data)
 }
 
-func fileFromData(data *ooxml.WorkbookData) *File {
+func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 	f := &File{
 		calcGen:      1,
 		date1904:     data.Date1904,
@@ -368,8 +368,10 @@ func fileFromData(data *ooxml.WorkbookData) *File {
 		})
 	}
 
-	f.registerAllFormulas()
-	return f
+	if err := f.registerAllFormulas(true); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
@@ -470,20 +472,25 @@ func (f *File) rebuildFormulaState() {
 			}
 		}
 	}
-	f.registerAllFormulas()
+	_ = f.registerAllFormulas(false)
 }
 
 // expandFormula expands table refs and defined names in a formula string.
-func (f *File) expandFormula(src string, sheetName string, row int) string {
+func (f *File) expandFormula(src string, sheetName string, row int) (string, error) {
 	src = formula.ExpandTableRefs(src, f.tables, row)
-	src = formula.ExpandDefinedNames(src, f.definedNames, f.SheetIndex(sheetName), f.sheetNames)
-	return src
+	if len(src) > formula.MaxExpandedFormulaBytes {
+		return "", fmt.Errorf("%w: expanded formula exceeds %d bytes", formula.ErrFormulaTooLarge, formula.MaxExpandedFormulaBytes)
+	}
+	return formula.ExpandDefinedNamesBounded(src, f.definedNames, f.SheetIndex(sheetName), f.sheetNames, formula.MaxExpandedFormulaBytes)
 }
 
-func (f *File) registerAllFormulas() {
+func (f *File) registerAllFormulas(strict bool) error {
 	for _, s := range f.sheets {
-		f.registerSheetFormulas(s)
+		if err := f.registerSheetFormulas(s, strict); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // invalidateDependents queries the dep graph for all transitive dependents

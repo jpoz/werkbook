@@ -103,6 +103,8 @@ func TestSUBSTITUTE(t *testing.T) {
 		{name: "no_match", formula: `SUBSTITUTE("hello","z","X")`, want: "hello"},
 		// Empty old_text — returns original text unchanged
 		{name: "empty_old", formula: `SUBSTITUTE("hello","","X")`, want: "hello"},
+		{name: "empty_old_with_instance", formula: `SUBSTITUTE("hello","","X",2)`, want: "hello"},
+		{name: "empty_old_with_large_instance", formula: `SUBSTITUTE("A","","B",1000000000000)`, want: "A"},
 		// Empty new_text — delete occurrences
 		{name: "delete_all", formula: `SUBSTITUTE("hello","l","")`, want: "heo"},
 		// Empty source text

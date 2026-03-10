@@ -233,6 +233,26 @@ func TestOversizedCrossSheetRangeReturnsREF(t *testing.T) {
 	}
 }
 
+func TestWholeSheetReferenceExtremeCoordinateReturnsREF(t *testing.T) {
+	f := werkbook.New()
+	data := f.Sheet("Sheet1")
+	calc, err := f.NewSheet("Calc")
+	if err != nil {
+		t.Fatalf("NewSheet: %v", err)
+	}
+
+	data.SetValue("XFD1048576", 1)
+	calc.SetFormula("A1", "SUM(Sheet1!A:XFD)")
+
+	val, err := calc.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeError || val.String != "#REF!" {
+		t.Errorf("SUM(Sheet1!A:XFD) = %#v, want #REF!", val)
+	}
+}
+
 // TestCrossSheetEmptyRefReturnsZero verifies that a cross-sheet reference to
 // an empty cell returns 0, not empty. This matches expected behavior where
 // formulas like ='Sheet2'!A1 (with A1 empty) cache 0.

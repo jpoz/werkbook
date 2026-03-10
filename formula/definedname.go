@@ -1,8 +1,21 @@
 package formula
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 )
+
+// MaxExpandedFormulaBytes caps the size of a formula after structured
+// references and defined names have been expanded. The limit is set well above
+// Excel's cell formula size ceiling, but low enough to prevent a tiny workbook
+// from ballooning into large intermediate allocations during parse-time
+// dependency registration.
+const MaxExpandedFormulaBytes = 64 * 1024
+
+// ErrFormulaTooLarge reports that a formula or formula expansion exceeded the
+// engine's parse-time size budget.
+var ErrFormulaTooLarge = errors.New("formula exceeds expansion limit")
 
 // DefinedNameInfo holds a resolved defined name for expansion in formulas.
 type DefinedNameInfo struct {
@@ -17,8 +30,22 @@ type DefinedNameInfo struct {
 // currentSheetIdx is the 0-based index of the sheet containing the formula (-1 if unknown).
 // sheetNames maps localSheetId values to workbook sheet names for qualified local-name refs.
 func ExpandDefinedNames(src string, names []DefinedNameInfo, currentSheetIdx int, sheetNames []string) string {
-	if len(names) == 0 {
+	expanded, err := ExpandDefinedNamesBounded(src, names, currentSheetIdx, sheetNames, MaxExpandedFormulaBytes)
+	if err != nil {
 		return src
+	}
+	return expanded
+}
+
+// ExpandDefinedNamesBounded is like ExpandDefinedNames, but returns an error if
+// the expanded formula would exceed maxBytes. A non-positive maxBytes disables
+// the size check.
+func ExpandDefinedNamesBounded(src string, names []DefinedNameInfo, currentSheetIdx int, sheetNames []string, maxBytes int) (string, error) {
+	if err := checkExpandedFormulaSize(len(src), maxBytes); err != nil {
+		return "", err
+	}
+	if len(names) == 0 {
+		return src, nil
 	}
 
 	// Build case-insensitive lookups. Local names for the current sheet take
@@ -42,14 +69,17 @@ func ExpandDefinedNames(src string, names []DefinedNameInfo, currentSheetIdx int
 		}
 	}
 	if len(lookup) == 0 && len(qualified) == 0 {
-		return src
+		return src, nil
 	}
 
 	var result strings.Builder
+	written := 0
 	i := 0
 	for i < len(src) {
 		if val, consumed, ok := matchQualifiedDefinedName(src, i, qualified); ok {
-			result.WriteString(val)
+			if err := writeExpandedString(&result, &written, val, maxBytes); err != nil {
+				return "", err
+			}
 			i += consumed
 			continue
 		}
@@ -68,7 +98,9 @@ func ExpandDefinedNames(src string, names []DefinedNameInfo, currentSheetIdx int
 				}
 				j++
 			}
-			result.WriteString(src[i:j])
+			if err := writeExpandedString(&result, &written, src[i:j], maxBytes); err != nil {
+				return "", err
+			}
 			i = j
 			continue
 		}
@@ -83,19 +115,25 @@ func ExpandDefinedNames(src string, names []DefinedNameInfo, currentSheetIdx int
 
 			// Don't replace if followed by '(' — it's a function call.
 			if i < len(src) && src[i] == '(' {
-				result.WriteString(ident)
+				if err := writeExpandedString(&result, &written, ident, maxBytes); err != nil {
+					return "", err
+				}
 				continue
 			}
 
 			// Don't replace if followed by '!' — it's a sheet prefix.
 			if i < len(src) && src[i] == '!' {
-				result.WriteString(ident)
+				if err := writeExpandedString(&result, &written, ident, maxBytes); err != nil {
+					return "", err
+				}
 				continue
 			}
 
 			// Don't replace if preceded by '!' (sheet-qualified ref) or ':' (range part).
 			if nameStart > 0 && (src[nameStart-1] == '!' || src[nameStart-1] == ':') {
-				result.WriteString(ident)
+				if err := writeExpandedString(&result, &written, ident, maxBytes); err != nil {
+					return "", err
+				}
 				continue
 			}
 
@@ -103,17 +141,23 @@ func ExpandDefinedNames(src string, names []DefinedNameInfo, currentSheetIdx int
 			if val, ok := lookup[strings.ToLower(ident)]; ok {
 				// Wrap in parentheses to avoid precedence issues
 				// when the defined name value is a complex expression.
-				result.WriteString(val)
+				if err := writeExpandedString(&result, &written, val, maxBytes); err != nil {
+					return "", err
+				}
 			} else {
-				result.WriteString(ident)
+				if err := writeExpandedString(&result, &written, ident, maxBytes); err != nil {
+					return "", err
+				}
 			}
 			continue
 		}
 
-		result.WriteByte(src[i])
+		if err := writeExpandedByte(&result, &written, src[i], maxBytes); err != nil {
+			return "", err
+		}
 		i++
 	}
-	return result.String()
+	return result.String(), nil
 }
 
 func qualifiedDefinedNameKey(sheet, name string) string {
@@ -193,4 +237,29 @@ func scanSheetQualifier(src string, start int) (string, int, bool) {
 func isIdentOrDotByte(c byte) bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
 		(c >= '0' && c <= '9') || c == '_' || c == '.'
+}
+
+func writeExpandedString(dst *strings.Builder, written *int, s string, maxBytes int) error {
+	if err := checkExpandedFormulaSize(*written+len(s), maxBytes); err != nil {
+		return err
+	}
+	dst.WriteString(s)
+	*written += len(s)
+	return nil
+}
+
+func writeExpandedByte(dst *strings.Builder, written *int, b byte, maxBytes int) error {
+	if err := checkExpandedFormulaSize(*written+1, maxBytes); err != nil {
+		return err
+	}
+	dst.WriteByte(b)
+	*written += 1
+	return nil
+}
+
+func checkExpandedFormulaSize(size, maxBytes int) error {
+	if maxBytes > 0 && size > maxBytes {
+		return fmt.Errorf("%w: expanded formula exceeds %d bytes", ErrFormulaTooLarge, maxBytes)
+	}
+	return nil
 }
