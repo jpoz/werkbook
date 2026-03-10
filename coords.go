@@ -68,9 +68,9 @@ func ColumnNameToNumber(name string) (int, error) {
 			return 0, fmt.Errorf("invalid column name %q", name)
 		}
 		col = col*26 + int(c-'A') + 1
-	}
-	if col > MaxColumns {
-		return 0, fmt.Errorf("column %q exceeds maximum (%d)", name, MaxColumns)
+		if col > MaxColumns {
+			return 0, fmt.Errorf("column %q exceeds maximum (%d)", name, MaxColumns)
+		}
 	}
 	return col, nil
 }
