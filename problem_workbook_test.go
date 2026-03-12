@@ -108,9 +108,35 @@ func TestProblemWorkbookRecalculateMatchesExcel(t *testing.T) {
 }
 
 func TestCoolTest4119RecalculateMatchesExcel(t *testing.T) {
-	f, err := werkbook.Open("cool-test-4119.xlsx")
+	f := werkbook.New(werkbook.FirstSheet("Out - Ledger Totals"))
+	totals := f.Sheet("Out - Ledger Totals")
+	if totals == nil {
+		t.Fatal("Out - Ledger Totals sheet not found")
+	}
+
+	if _, err := f.NewSheet("treasury-ledger"); err != nil {
+		t.Fatalf("NewSheet(treasury-ledger): %v", err)
+	}
+
+	totals.SetValue("A5", "Current Treasury Balance")
+	totals.SetFormula("C5", "INDEX('treasury-ledger'!G:G,2)/100")
+
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "CurrentTreasuryBalance",
+		Value:        "'Out - Ledger Totals'!$C$5",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatalf("SetDefinedName(CurrentTreasuryBalance): %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "cool-test-4119.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs(%s): %v", path, err)
+	}
+
+	f, err := werkbook.Open(path)
 	if err != nil {
-		t.Fatalf("Open(cool-test-4119.xlsx): %v", err)
+		t.Fatalf("Open(%s): %v", path, err)
 	}
 
 	f.Recalculate()
