@@ -47,6 +47,9 @@ func CallFunc(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	if fn == nil {
 		return Value{}, fmt.Errorf("unimplemented function: %s", name)
 	}
+	if elementWiseCallFuncs[name] && hasArrayArg(args) {
+		return callElementWise(args, ctx, fn)
+	}
 	return fn(args, ctx)
 }
 
@@ -62,6 +65,241 @@ func NoCtx(fn func([]Value) (Value, error)) Func {
 	return func(args []Value, _ *EvalContext) (Value, error) {
 		return fn(args)
 	}
+}
+
+// elementWiseCallFuncs lists scalar functions that should broadcast over array
+// arguments when they are evaluated in array context. Aggregate, lookup, and
+// array-returning functions are intentionally excluded.
+var elementWiseCallFuncs = map[string]bool{
+	// Logic and info.
+	"ERROR.TYPE": true,
+	"IFERROR":    true,
+	"IFNA":       true,
+	"ISBLANK":    true,
+	"ISERR":      true,
+	"ISERROR":    true,
+	"ISEVEN":     true,
+	"ISLOGICAL":  true,
+	"ISNA":       true,
+	"ISNONTEXT":  true,
+	"ISNUMBER":   true,
+	"ISODD":      true,
+	"ISTEXT":     true,
+	"N":          true,
+	"NOT":        true,
+
+	// Text.
+	"CHAR":        true,
+	"CLEAN":       true,
+	"CODE":        true,
+	"DOLLAR":      true,
+	"ENCODEURL":   true,
+	"EXACT":       true,
+	"FIND":        true,
+	"FIXED":       true,
+	"LEFT":        true,
+	"LEN":         true,
+	"LOWER":       true,
+	"MID":         true,
+	"NUMBERVALUE": true,
+	"PROPER":      true,
+	"REPLACE":     true,
+	"REPT":        true,
+	"RIGHT":       true,
+	"ROMAN":       true,
+	"SEARCH":      true,
+	"SUBSTITUTE":  true,
+	"T":           true,
+	"TEXT":        true,
+	"TEXTAFTER":   true,
+	"TEXTBEFORE":  true,
+	"TRIM":        true,
+	"UNICHAR":     true,
+	"UNICODE":     true,
+	"UPPER":       true,
+	"VALUE":       true,
+
+	// Date and time.
+	"DATE":       true,
+	"DATEDIF":    true,
+	"DATEVALUE":  true,
+	"DAY":        true,
+	"DAYS":       true,
+	"DAYS360":    true,
+	"EDATE":      true,
+	"EOMONTH":    true,
+	"HOUR":       true,
+	"ISOWEEKNUM": true,
+	"MINUTE":     true,
+	"MONTH":      true,
+	"SECOND":     true,
+	"TIME":       true,
+	"TIMEVALUE":  true,
+	"WEEKDAY":    true,
+	"WEEKNUM":    true,
+	"YEAR":       true,
+	"YEARFRAC":   true,
+
+	// Scalar math.
+	"ABS":             true,
+	"ACOS":            true,
+	"ACOSH":           true,
+	"ACOT":            true,
+	"ACOTH":           true,
+	"ARABIC":          true,
+	"ASIN":            true,
+	"ASINH":           true,
+	"ATAN":            true,
+	"ATAN2":           true,
+	"ATANH":           true,
+	"BASE":            true,
+	"BITAND":          true,
+	"BITLSHIFT":       true,
+	"BITOR":           true,
+	"BITRSHIFT":       true,
+	"BITXOR":          true,
+	"CEILING":         true,
+	"CEILING.MATH":    true,
+	"CEILING.PRECISE": true,
+	"COMBIN":          true,
+	"COMBINA":         true,
+	"COS":             true,
+	"COSH":            true,
+	"COT":             true,
+	"COTH":            true,
+	"CSC":             true,
+	"CSCH":            true,
+	"DECIMAL":         true,
+	"DEGREES":         true,
+	"ERF":             true,
+	"ERF.PRECISE":     true,
+	"ERFC":            true,
+	"ERFC.PRECISE":    true,
+	"EVEN":            true,
+	"EXP":             true,
+	"FACT":            true,
+	"FACTDOUBLE":      true,
+	"FLOOR":           true,
+	"FLOOR.MATH":      true,
+	"FLOOR.PRECISE":   true,
+	"GAMMA":           true,
+	"INT":             true,
+	"ISO.CEILING":     true,
+	"LN":              true,
+	"LOG":             true,
+	"LOG10":           true,
+	"MOD":             true,
+	"MROUND":          true,
+	"ODD":             true,
+	"PERMUT":          true,
+	"POWER":           true,
+	"QUOTIENT":        true,
+	"RADIANS":         true,
+	"ROUND":           true,
+	"ROUNDDOWN":       true,
+	"ROUNDUP":         true,
+	"SEC":             true,
+	"SECH":            true,
+	"SIGN":            true,
+	"SIN":             true,
+	"SINH":            true,
+	"SQRT":            true,
+	"SQRTPI":          true,
+	"TAN":             true,
+	"TANH":            true,
+	"TRUNC":           true,
+
+	// Scalar statistics and distributions.
+	"BINOM.DIST":       true,
+	"BINOM.DIST.RANGE": true,
+	"BINOM.INV":        true,
+	"BETA.DIST":        true,
+	"BETA.INV":         true,
+	"CHISQ.DIST":       true,
+	"CHISQ.DIST.RT":    true,
+	"CHISQ.INV":        true,
+	"CHISQ.INV.RT":     true,
+	"CONFIDENCE.NORM":  true,
+	"CONFIDENCE.T":     true,
+	"EXPON.DIST":       true,
+	"F.DIST":           true,
+	"F.DIST.RT":        true,
+	"F.INV":            true,
+	"F.INV.RT":         true,
+	"FISHER":           true,
+	"FISHERINV":        true,
+	"GAMMALN":          true,
+	"GAMMALN.PRECISE":  true,
+	"GAMMA.DIST":       true,
+	"GAMMA.INV":        true,
+	"GAUSS":            true,
+	"HYPGEOM.DIST":     true,
+	"LOGNORM.DIST":     true,
+	"LOGNORM.INV":      true,
+	"NEGBINOM.DIST":    true,
+	"NORM.DIST":        true,
+	"NORM.INV":         true,
+	"NORM.S.DIST":      true,
+	"NORM.S.INV":       true,
+	"PERMUTATIONA":     true,
+	"PHI":              true,
+	"POISSON.DIST":     true,
+	"STANDARDIZE":      true,
+	"T.DIST":           true,
+	"T.DIST.2T":        true,
+	"T.DIST.RT":        true,
+	"T.INV":            true,
+	"T.INV.2T":         true,
+	"WEIBULL.DIST":     true,
+}
+
+func hasArrayArg(args []Value) bool {
+	for _, arg := range args {
+		if arg.Type == ValueArray {
+			return true
+		}
+	}
+	return false
+}
+
+func arrayDimsAll(args []Value) (rows, cols int) {
+	rows, cols = 1, 1
+	for _, arg := range args {
+		if arg.Type != ValueArray {
+			continue
+		}
+		r, c := len(arg.Array), 0
+		if r > 0 {
+			c = len(arg.Array[0])
+		}
+		if r > rows {
+			rows = r
+		}
+		if c > cols {
+			cols = c
+		}
+	}
+	return rows, cols
+}
+
+func callElementWise(args []Value, ctx *EvalContext, fn Func) (Value, error) {
+	rows, cols := arrayDimsAll(args)
+	result := make([][]Value, rows)
+	scalarArgs := make([]Value, len(args))
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			for k, arg := range args {
+				scalarArgs[k] = ArrayElement(arg, i, j)
+			}
+			cell, err := fn(scalarArgs, ctx)
+			if err != nil {
+				return Value{}, err
+			}
+			result[i][j] = cell
+		}
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 // arrayForcingFuncs lists functions that evaluate their arguments in array

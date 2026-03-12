@@ -177,6 +177,27 @@ func fnLEFT(args []Value) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if len(args) == 1 && args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnLEFT([]Value{v})
+			return r
+		}), nil
+	}
+	if len(args) == 2 && (args[0].Type == ValueArray || args[1].Type == ValueArray) {
+		rows, cols := arrayDims(args[0], args[1])
+		result := make([][]Value, rows)
+		for i := 0; i < rows; i++ {
+			result[i] = make([]Value, cols)
+			for j := 0; j < cols; j++ {
+				r, _ := fnLEFT([]Value{
+					ArrayElement(args[0], i, j),
+					ArrayElement(args[1], i, j),
+				})
+				result[i][j] = r
+			}
+		}
+		return Value{Type: ValueArray, Array: result}, nil
+	}
 	s := ValueToString(args[0])
 	n := 1
 	if len(args) == 2 {

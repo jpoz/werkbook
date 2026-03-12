@@ -1570,6 +1570,204 @@ func TestEvalSUMPRODUCTBooleanArrayDoubleNeg(t *testing.T) {
 	}
 }
 
+func TestEvalSUMPRODUCTWithLiftedTextAndDateFunctions(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("2026-03-12 14:58:36 UTC"),
+			{Col: 2, Row: 1}: StringVal("completed"),
+			{Col: 3, Row: 1}: NumberVal(10000207),
+			{Col: 1, Row: 2}: StringVal("2026-02-26 17:34:12 UTC"),
+			{Col: 2, Row: 2}: StringVal("completed"),
+			{Col: 3, Row: 2}: NumberVal(5000000),
+			{Col: 1, Row: 3}: StringVal("2025-11-06 20:04:55 UTC"),
+			{Col: 2, Row: 3}: StringVal("completed"),
+			{Col: 3, Row: 3}: NumberVal(5000000),
+			{Col: 1, Row: 4}: EmptyVal(),
+			{Col: 2, Row: 4}: StringVal("closing"),
+			{Col: 3, Row: 4}: NumberVal(5000000),
+			{Col: 1, Row: 5}: StringVal("2026-02-17 15:16:38 UTC"),
+			{Col: 2, Row: 5}: StringVal("rejected"),
+			{Col: 3, Row: 5}: NumberVal(6970032),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     4,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	// Reduced from the Excel diff workbook case that failed with #VALUE!
+	cf := evalCompile(t, `SUMPRODUCT((A1:A5<>"")*(IF(A1:A5<>"",DATEVALUE(LEFT(A1:A5,10)),0)>=DATE(2025,12,12))*(B1:B5<>"rejected")*C1:C5)/100`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 150002.07 {
+		t.Errorf("reduced Excel diff SUMPRODUCT = %v (%g), want 150002.07", got.Type, got.Num)
+	}
+}
+
+func TestEvalElementWiseLiftedScalarFunctions(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:  StringVal("alpha"),
+			{Col: 1, Row: 2}:  StringVal(""),
+			{Col: 1, Row: 3}:  StringVal("xy"),
+			{Col: 2, Row: 1}:  NumberVal(10),
+			{Col: 2, Row: 2}:  NumberVal(1),
+			{Col: 2, Row: 3}:  NumberVal(100),
+			{Col: 3, Row: 1}:  NumberVal(dateSerial(2026, 3, 12)),
+			{Col: 3, Row: 2}:  NumberVal(dateSerial(2026, 1, 1)),
+			{Col: 3, Row: 3}:  NumberVal(dateSerial(2024, 2, 29)),
+			{Col: 4, Row: 1}:  NumberVal(1),
+			{Col: 4, Row: 2}:  NumberVal(10),
+			{Col: 4, Row: 3}:  NumberVal(100),
+			{Col: 5, Row: 1}:  NumberVal(1.24),
+			{Col: 5, Row: 2}:  NumberVal(2.66),
+			{Col: 5, Row: 3}:  NumberVal(-3.14159),
+			{Col: 6, Row: 1}:  NumberVal(1),
+			{Col: 6, Row: 2}:  NumberVal(0),
+			{Col: 6, Row: 3}:  NumberVal(2),
+			{Col: 7, Row: 1}:  NumberVal(10),
+			{Col: 7, Row: 2}:  NumberVal(1),
+			{Col: 7, Row: 3}:  NumberVal(100),
+			{Col: 8, Row: 1}:  StringVal("x"),
+			{Col: 8, Row: 2}:  StringVal("y"),
+			{Col: 8, Row: 3}:  EmptyVal(),
+			{Col: 9, Row: 1}:  NumberVal(10),
+			{Col: 9, Row: 2}:  NumberVal(20),
+			{Col: 9, Row: 3}:  NumberVal(30),
+			{Col: 10, Row: 1}: NumberVal(2),
+			{Col: 10, Row: 2}: NumberVal(0),
+			{Col: 10, Row: 3}: NumberVal(5),
+			{Col: 11, Row: 1}: NumberVal(1),
+			{Col: 11, Row: 2}: NumberVal(10),
+			{Col: 11, Row: 3}: NumberVal(100),
+			{Col: 12, Row: 1}: NumberVal(0),
+			{Col: 12, Row: 2}: NumberVal(1),
+			{Col: 12, Row: 3}: NumberVal(-1),
+		},
+	}
+
+	arrayCtx := &EvalContext{
+		CurrentCol:     13,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+	scalarCtx := &EvalContext{
+		CurrentCol:     13,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		ctx     *EvalContext
+		want    Value
+	}{
+		{
+			name:    "array_formula_len",
+			formula: "LEN(A1:A3)",
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(5)},
+				{NumberVal(0)},
+				{NumberVal(2)},
+			}},
+		},
+		{
+			name:    "array_formula_day",
+			formula: "DAY(C1:C3)",
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(12)},
+				{NumberVal(1)},
+				{NumberVal(29)},
+			}},
+		},
+		{
+			name:    "array_formula_round_with_array_decimals",
+			formula: "ROUND(E1:E3,F1:F3)",
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1.2)},
+				{NumberVal(3)},
+				{NumberVal(-3.14)},
+			}},
+		},
+		{
+			name:    "array_formula_not",
+			formula: `NOT(H1:H3="x")`,
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{BoolVal(false)},
+				{BoolVal(true)},
+				{BoolVal(true)},
+			}},
+		},
+		{
+			name:    "array_formula_iferror",
+			formula: "IFERROR(I1:I3/J1:J3,9)",
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(5)},
+				{NumberVal(9)},
+				{NumberVal(6)},
+			}},
+		},
+		{
+			name:    "array_formula_norm_dist",
+			formula: "ROUND(NORM.DIST(L1:L3,0,1,TRUE),3)",
+			ctx:     arrayCtx,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(0.5)},
+				{NumberVal(0.841)},
+				{NumberVal(0.159)},
+			}},
+		},
+		{
+			name:    "sumproduct_len",
+			formula: "SUMPRODUCT(LEN(A1:A3),B1:B3)",
+			ctx:     scalarCtx,
+			want:    NumberVal(250),
+		},
+		{
+			name:    "sumproduct_day_filter",
+			formula: "SUMPRODUCT((DAY(C1:C3)>=10)*D1:D3)",
+			ctx:     scalarCtx,
+			want:    NumberVal(101),
+		},
+		{
+			name:    "sumproduct_round",
+			formula: "SUMPRODUCT(ROUND(E1:E3,F1:F3),G1:G3)",
+			ctx:     scalarCtx,
+			want:    NumberVal(-299),
+		},
+		{
+			name:    "sumproduct_iferror",
+			formula: "SUMPRODUCT(IFERROR(I1:I3/J1:J3,0),K1:K3)",
+			ctx:     scalarCtx,
+			want:    NumberVal(605),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, tt.ctx)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 func TestEvalImplicitIntersectionRowVector(t *testing.T) {
 	// Row vector implicit intersection: single-row range intersects at formula's column.
 	resolver := &mockResolver{

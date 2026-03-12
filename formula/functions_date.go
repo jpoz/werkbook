@@ -667,6 +667,12 @@ func fnDATEVALUEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	if args[0].Type == ValueArray {
+		return LiftUnary(args[0], func(v Value) Value {
+			r, _ := fnDATEVALUEWithDateSystem([]Value{v}, date1904)
+			return r
+		}), nil
+	}
 	if args[0].Type == ValueError {
 		return args[0], nil
 	}
