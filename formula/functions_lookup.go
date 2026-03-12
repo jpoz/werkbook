@@ -416,6 +416,7 @@ func fnINDEX(args []Value) (Value, error) {
 	if arr.Type != ValueArray {
 		return arr, nil
 	}
+	rows, cols := effectiveArrayBounds(arr)
 	rowNum, e := CoerceNum(args[1])
 	if e != nil {
 		return *e, nil
@@ -430,7 +431,7 @@ func fnINDEX(args []Value) (Value, error) {
 			return *e, nil
 		}
 		colNum = int(cn)
-	} else if len(arr.Array) == 1 {
+	} else if rows == 1 {
 		// INDEX(single_row_array, n) is treated as INDEX(array, 1, n).
 		// This also preserves the row/column zero semantics in the special
 		// handling below: INDEX(single_row_array, 0) returns the full row.
@@ -456,33 +457,66 @@ func fnINDEX(args []Value) (Value, error) {
 	if ri == 0 {
 		// Return entire column as a single-column array.
 		ci := colNum - 1
-		var col [][]Value
-		for _, row := range arr.Array {
-			if ci < 0 || ci >= len(row) {
-				return ErrorVal(ErrValREF), nil
-			}
-			col = append(col, []Value{row[ci]})
+		if ci < 0 || ci >= cols {
+			return ErrorVal(ErrValREF), nil
 		}
-		return Value{Type: ValueArray, Array: col, NoSpill: true}, nil
+		col := make([][]Value, len(arr.Array))
+		for i, row := range arr.Array {
+			cell := EmptyVal()
+			if ci < len(row) {
+				cell = row[ci]
+			}
+			col[i] = []Value{cell}
+		}
+		out := Value{Type: ValueArray, Array: col, NoSpill: true}
+		if arr.RangeOrigin != nil {
+			origin := *arr.RangeOrigin
+			origin.FromCol += ci
+			origin.ToCol = origin.FromCol
+			out.RangeOrigin = &origin
+		}
+		return out, nil
 	}
 	if colNum == 0 {
 		// Return entire row as a single-row array.
 		ri--
-		if ri < 0 || ri >= len(arr.Array) {
+		if ri < 0 || ri >= rows {
 			return ErrorVal(ErrValREF), nil
 		}
-		return Value{Type: ValueArray, Array: [][]Value{arr.Array[ri]}, NoSpill: true}, nil
+		width := materializedArrayCols(arr.Array)
+		if width == 0 {
+			width = 1
+		}
+		row := make([]Value, width)
+		if ri < len(arr.Array) {
+			copy(row, arr.Array[ri])
+		}
+		out := Value{Type: ValueArray, Array: [][]Value{row}, NoSpill: true}
+		if arr.RangeOrigin != nil {
+			origin := *arr.RangeOrigin
+			origin.FromRow += ri
+			origin.ToRow = origin.FromRow
+			out.RangeOrigin = &origin
+		}
+		return out, nil
 	}
 
 	ri--
 	colNum--
-	if ri >= len(arr.Array) {
+	if ri < 0 || ri >= rows {
 		return ErrorVal(ErrValREF), nil
 	}
-	if colNum >= len(arr.Array[ri]) {
+	if colNum < 0 || colNum >= cols {
 		return ErrorVal(ErrValREF), nil
 	}
-	return arr.Array[ri][colNum], nil
+	return indexArrayValue(arr, ri, colNum), nil
+}
+
+func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
+	if rowIdx >= 0 && rowIdx < len(arr.Array) && colIdx >= 0 && colIdx < len(arr.Array[rowIdx]) {
+		return arr.Array[rowIdx][colIdx]
+	}
+	return EmptyVal()
 }
 
 func fnMATCH(args []Value) (Value, error) {
@@ -1199,17 +1233,9 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 		return v, nil
 	}
 
-	rows := len(v.Array)
+	rows, cols := effectiveArrayBounds(v)
 	if rows == 0 {
 		return Value{Type: ValueArray, Array: nil}, nil
-	}
-
-	// Find the maximum column count (handle ragged arrays).
-	cols := 0
-	for _, row := range v.Array {
-		if len(row) > cols {
-			cols = len(row)
-		}
 	}
 	if cols == 0 {
 		return Value{Type: ValueArray, Array: nil}, nil
@@ -1220,11 +1246,7 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 	for c := 0; c < cols; c++ {
 		result[c] = make([]Value, rows)
 		for r := 0; r < rows; r++ {
-			if c < len(v.Array[r]) {
-				result[c][r] = v.Array[r][c]
-			} else {
-				result[c][r] = EmptyVal()
-			}
+			result[c][r] = indexArrayValue(v, r, c)
 		}
 	}
 	return Value{Type: ValueArray, Array: result}, nil
@@ -1238,16 +1260,12 @@ func fnUNIQUE(args []Value) (Value, error) {
 
 	// Extract the 2D grid from the first argument.
 	arr := args[0]
-	var grid [][]Value
-	switch arr.Type {
-	case ValueArray:
-		grid = arr.Array
-	default:
-		// Single value → 1x1 grid.
-		grid = [][]Value{{arr}}
-	}
-	if len(grid) == 0 {
-		return ErrorVal(ErrValCALC), nil
+	grid, errVal := normalizeToArrayGrid(arr)
+	if errVal != nil {
+		if errVal.Err == ErrValVALUE {
+			return ErrorVal(ErrValCALC), nil
+		}
+		return *errVal, nil
 	}
 
 	// by_col: default FALSE.
@@ -1271,8 +1289,9 @@ func fnUNIQUE(args []Value) (Value, error) {
 	}
 
 	// If by_col, transpose so we always work with rows.
+	fullGrid := grid.matrix()
 	if byCol {
-		grid = transposeGrid(grid)
+		fullGrid = transposeGrid(fullGrid)
 	}
 
 	// Build a key for each row and track counts / first-seen order.
@@ -1282,7 +1301,7 @@ func fnUNIQUE(args []Value) (Value, error) {
 	}
 	seen := make(map[string]int) // key → count
 	var order []rowEntry
-	for i, row := range grid {
+	for i, row := range fullGrid {
 		k := rowKey(row)
 		seen[k]++
 		if seen[k] == 1 {
@@ -1296,7 +1315,7 @@ func fnUNIQUE(args []Value) (Value, error) {
 		if exactlyOnce && seen[entry.key] != 1 {
 			continue
 		}
-		row := grid[entry.index]
+		row := fullGrid[entry.index]
 		cp := make([]Value, len(row))
 		copy(cp, row)
 		result = append(result, cp)
@@ -1390,12 +1409,12 @@ func fnTAKE(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
 
-	numRows, numCols := gridDims(grid)
+	numRows, numCols := grid.rowCount, grid.colCount
 
 	// Parse rows parameter.
 	rowsArg, e := CoerceNum(args[1])
@@ -1456,18 +1475,7 @@ func fnTAKE(args []Value) (Value, error) {
 	}
 
 	// Build the result grid.
-	result := make([][]Value, rowEnd-rowStart)
-	for i := rowStart; i < rowEnd; i++ {
-		row := make([]Value, colEnd-colStart)
-		for j := colStart; j < colEnd; j++ {
-			if j < len(grid[i]) {
-				row[j-colStart] = grid[i][j]
-			} else {
-				row[j-colStart] = EmptyVal()
-			}
-		}
-		result[i-rowStart] = row
-	}
+	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
 
 	if len(result) == 1 && len(result[0]) == 1 {
 		return result[0][0], nil
@@ -1482,12 +1490,12 @@ func fnDROP(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
 
-	numRows, numCols := gridDims(grid)
+	numRows, numCols := grid.rowCount, grid.colCount
 
 	// Parse rows parameter.
 	rowsArg, e := CoerceNum(args[1])
@@ -1532,18 +1540,7 @@ func fnDROP(args []Value) (Value, error) {
 	}
 
 	// Build the result grid.
-	result := make([][]Value, rowEnd-rowStart)
-	for i := rowStart; i < rowEnd; i++ {
-		row := make([]Value, colEnd-colStart)
-		for j := colStart; j < colEnd; j++ {
-			if j < len(grid[i]) {
-				row[j-colStart] = grid[i][j]
-			} else {
-				row[j-colStart] = EmptyVal()
-			}
-		}
-		result[i-rowStart] = row
-	}
+	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
 
 	if len(result) == 1 && len(result[0]) == 1 {
 		return result[0][0], nil
@@ -1559,11 +1556,11 @@ func fnEXPAND(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
-	srcRows, srcCols := gridDims(grid)
+	srcRows, srcCols := grid.rowCount, grid.colCount
 
 	// Parse rows argument.
 	targetRows := srcRows
@@ -1602,9 +1599,9 @@ func fnEXPAND(args []Value) (Value, error) {
 	// If no expansion needed, return original.
 	if targetRows == srcRows && targetCols == srcCols {
 		if srcRows == 1 && srcCols == 1 {
-			return grid[0][0], nil
+			return grid.cell(0, 0), nil
 		}
-		return Value{Type: ValueArray, Array: grid}, nil
+		return Value{Type: ValueArray, Array: grid.matrix()}, nil
 	}
 
 	// Build expanded grid.
@@ -1613,7 +1610,7 @@ func fnEXPAND(args []Value) (Value, error) {
 		row := make([]Value, targetCols)
 		for c := 0; c < targetCols; c++ {
 			if r < srcRows && c < srcCols {
-				row[c] = grid[r][c]
+				row[c] = grid.cell(r, c)
 			} else {
 				row[c] = pad
 			}
@@ -1648,12 +1645,12 @@ func fnCHOOSECOLS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
 
-	_, numCols := gridDims(grid)
+	numCols := grid.colCount
 	selectCols := make([]int, len(args)-1)
 	for i, arg := range args[1:] {
 		colIdx, e := normalizeChooserIndex(arg, numCols)
@@ -1663,15 +1660,11 @@ func fnCHOOSECOLS(args []Value) (Value, error) {
 		selectCols[i] = colIdx
 	}
 
-	result := make([][]Value, len(grid))
-	for r, srcRow := range grid {
+	result := make([][]Value, grid.rowCount)
+	for r := 0; r < grid.rowCount; r++ {
 		row := make([]Value, len(selectCols))
 		for c, srcCol := range selectCols {
-			if srcCol < len(srcRow) {
-				row[c] = srcRow[srcCol]
-			} else {
-				row[c] = EmptyVal()
-			}
+			row[c] = grid.cell(r, srcCol)
 		}
 		result[r] = row
 	}
@@ -1688,12 +1681,12 @@ func fnCHOOSEROWS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
 
-	numRows, _ := gridDims(grid)
+	numRows := grid.rowCount
 	selectRows := make([]int, len(args)-1)
 	for i, arg := range args[1:] {
 		rowIdx, e := normalizeChooserIndex(arg, numRows)
@@ -1705,9 +1698,7 @@ func fnCHOOSEROWS(args []Value) (Value, error) {
 
 	result := make([][]Value, len(selectRows))
 	for i, srcRow := range selectRows {
-		row := make([]Value, len(grid[srcRow]))
-		copy(row, grid[srcRow])
-		result[i] = row
+		result[i] = grid.row(srcRow)
 	}
 
 	if len(result) == 1 && len(result[0]) == 1 {
@@ -1723,7 +1714,7 @@ func fnTOCOL(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
@@ -1745,7 +1736,7 @@ func fnTOCOL(args []Value) (Value, error) {
 		scanByCol = IsTruthy(args[2])
 	}
 
-	flat := flattenGrid(grid, scanByCol, ignore)
+	flat := flattenArrayGrid(grid, scanByCol, ignore)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
@@ -1768,7 +1759,7 @@ func fnTOROW(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
@@ -1790,7 +1781,7 @@ func fnTOROW(args []Value) (Value, error) {
 		scanByCol = IsTruthy(args[2])
 	}
 
-	flat := flattenGrid(grid, scanByCol, ignore)
+	flat := flattenArrayGrid(grid, scanByCol, ignore)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
@@ -1802,21 +1793,18 @@ func fnTOROW(args []Value) (Value, error) {
 	return Value{Type: ValueArray, Array: [][]Value{flat}}, nil
 }
 
-// flattenGrid flattens a 2D grid into a 1D slice, optionally scanning by
+// flattenArrayGrid flattens a grid into a 1D slice, optionally scanning by
 // column and filtering based on ignore flags (0=keep all, 1=ignore blanks,
 // 2=ignore errors, 3=ignore blanks and errors).
-func flattenGrid(grid [][]Value, scanByCol bool, ignore int) []Value {
-	_, numCols := gridDims(grid)
-	numRows := len(grid)
+func flattenArrayGrid(grid arrayGrid, scanByCol bool, ignore int) []Value {
+	numCols := grid.colCount
+	numRows := grid.rowCount
 
 	var flat []Value
 	if scanByCol {
 		for c := 0; c < numCols; c++ {
 			for r := 0; r < numRows; r++ {
-				v := EmptyVal()
-				if c < len(grid[r]) {
-					v = grid[r][c]
-				}
+				v := grid.cell(r, c)
 				if shouldInclude(v, ignore) {
 					flat = append(flat, v)
 				}
@@ -1825,10 +1813,7 @@ func flattenGrid(grid [][]Value, scanByCol bool, ignore int) []Value {
 	} else {
 		for r := 0; r < numRows; r++ {
 			for c := 0; c < numCols; c++ {
-				v := EmptyVal()
-				if c < len(grid[r]) {
-					v = grid[r][c]
-				}
+				v := grid.cell(r, c)
 				if shouldInclude(v, ignore) {
 					flat = append(flat, v)
 				}
@@ -1860,14 +1845,11 @@ func fnWRAPROWS(args []Value) (Value, error) {
 	}
 
 	// Flatten input to a 1D vector.
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
-	var flat []Value
-	for _, row := range grid {
-		flat = append(flat, row...)
-	}
+	flat := flattenArrayGrid(grid, false, 0)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -1916,14 +1898,11 @@ func fnWRAPCOLS(args []Value) (Value, error) {
 	}
 
 	// Flatten input to a 1D vector.
-	grid, errVal := normalizeToGrid(args[0])
+	grid, errVal := normalizeToArrayGrid(args[0])
 	if errVal != nil {
 		return *errVal, nil
 	}
-	var flat []Value
-	for _, row := range grid {
-		flat = append(flat, row...)
-	}
+	flat := flattenArrayGrid(grid, false, 0)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
@@ -1971,16 +1950,16 @@ func fnHSTACK(args []Value) (Value, error) {
 	}
 
 	// Normalize all arguments to grids and find the max row count.
-	grids := make([][][]Value, len(args))
+	grids := make([]arrayGrid, len(args))
 	maxRows := 0
 	for i, arg := range args {
-		g, errVal := normalizeToGrid(arg)
+		g, errVal := normalizeToArrayGrid(arg)
 		if errVal != nil {
 			return *errVal, nil
 		}
 		grids[i] = g
-		if len(g) > maxRows {
-			maxRows = len(g)
+		if g.rowCount > maxRows {
+			maxRows = g.rowCount
 		}
 	}
 
@@ -1989,19 +1968,16 @@ func fnHSTACK(args []Value) (Value, error) {
 	for r := 0; r < maxRows; r++ {
 		var row []Value
 		for _, g := range grids {
-			_, cols := gridDims(g)
-			if r < len(g) {
-				for c := 0; c < cols; c++ {
-					if c < len(g[r]) {
-						row = append(row, g[r][c])
-					} else {
+			for c := 0; c < g.colCount; c++ {
+				if r < g.rowCount {
+					if g.rangeOrigin == nil && !g.hasMaterializedCell(r, c) {
 						row = append(row, ErrorVal(ErrValNA))
+						continue
 					}
+					row = append(row, g.cell(r, c))
+					continue
 				}
-			} else {
-				for c := 0; c < cols; c++ {
-					row = append(row, ErrorVal(ErrValNA))
-				}
+				row = append(row, ErrorVal(ErrValNA))
 			}
 		}
 		result[r] = row
@@ -2021,28 +1997,31 @@ func fnVSTACK(args []Value) (Value, error) {
 	}
 
 	// Normalize all arguments to grids and find the max column count.
-	grids := make([][][]Value, len(args))
+	grids := make([]arrayGrid, len(args))
 	maxCols := 0
 	for i, arg := range args {
-		g, errVal := normalizeToGrid(arg)
+		g, errVal := normalizeToArrayGrid(arg)
 		if errVal != nil {
 			return *errVal, nil
 		}
 		grids[i] = g
-		_, cols := gridDims(g)
-		if cols > maxCols {
-			maxCols = cols
+		if g.colCount > maxCols {
+			maxCols = g.colCount
 		}
 	}
 
 	// Build result by stacking rows from each grid vertically.
 	var result [][]Value
 	for _, g := range grids {
-		for _, srcRow := range g {
+		for r := 0; r < g.rowCount; r++ {
 			row := make([]Value, maxCols)
 			for c := 0; c < maxCols; c++ {
-				if c < len(srcRow) {
-					row[c] = srcRow[c]
+				if c < g.colCount {
+					if g.rangeOrigin == nil && !g.hasMaterializedCell(r, c) {
+						row[c] = ErrorVal(ErrValNA)
+						continue
+					}
+					row[c] = g.cell(r, c)
 				} else {
 					row[c] = ErrorVal(ErrValNA)
 				}

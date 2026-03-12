@@ -277,14 +277,26 @@ func (c *compiler) compileNode(node Node) error {
 		if arrayCtx {
 			c.emit(OpEnterArrayCtx, 0)
 		}
-		for _, arg := range n.Args {
-			if !arrayCtx && PreservesDirectRangeArgs(name) && preservesDirectRangeArg(arg) {
-				c.emit(OpEnterArrayCtx, 0)
-				if err := c.compileNode(arg); err != nil {
-					return err
+		for i, arg := range n.Args {
+			if !arrayCtx {
+				switch ArgEvalModeForFuncArg(name, i) {
+				case FuncArgEvalArray:
+					c.emit(OpEnterArrayCtx, 0)
+					if err := c.compileNode(arg); err != nil {
+						return err
+					}
+					c.emit(OpLeaveArrayCtx, 0)
+					continue
+				case FuncArgEvalDirectRange:
+					if isDirectRangeRefNode(arg) {
+						c.emit(OpEnterArrayCtx, 0)
+						if err := c.compileNode(arg); err != nil {
+							return err
+						}
+						c.emit(OpLeaveArrayCtx, 0)
+						continue
+					}
 				}
-				c.emit(OpLeaveArrayCtx, 0)
-				continue
 			}
 			if err := c.compileNode(arg); err != nil {
 				return err
@@ -352,7 +364,7 @@ func binaryOpCode(op string) (OpCode, error) {
 	}
 }
 
-func preservesDirectRangeArg(node Node) bool {
+func isDirectRangeRefNode(node Node) bool {
 	_, ok := node.(*RangeRef)
 	return ok
 }

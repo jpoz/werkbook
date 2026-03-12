@@ -224,6 +224,25 @@ func TestPOWER(t *testing.T) {
 func TestABS(t *testing.T) {
 	resolver := &mockResolver{}
 
+	t.Run("trimmed_range_origin", func(t *testing.T) {
+		got, err := fnABS([]Value{
+			trimmedRangeValue([][]Value{
+				{NumberVal(-5)},
+			}, 1, 1, 1, 3),
+		})
+		if err != nil {
+			t.Fatalf("fnABS: %v", err)
+		}
+		assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(5)},
+			{NumberVal(0)},
+			{NumberVal(0)},
+		}})
+		if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+			t.Fatalf("fnABS RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+		}
+	})
+
 	numTests := []struct {
 		name    string
 		formula string

@@ -332,69 +332,132 @@ var arrayForcingFuncs = map[string]bool{
 	"HLOOKUP":    true,
 }
 
-// directRangeArgFuncs lists functions that should preserve direct range
-// arguments like A:A or 1:1 instead of implicitly intersecting them down to
-// the formula's row or column. Unlike arrayForcingFuncs, this only needs to
-// apply to plain range references, not arbitrary range expressions.
-var directRangeArgFuncs = map[string]bool{
-	"AGGREGATE":       true,
-	"AVERAGE":         true,
-	"AVERAGEA":        true,
-	"AVEDEV":          true,
-	"CORREL":          true,
-	"COUNT":           true,
-	"COUNTA":          true,
-	"COUNTBLANK":      true,
-	"COVAR":           true,
-	"COVARIANCE.P":    true,
-	"COVARIANCE.S":    true,
-	"DEVSQ":           true,
-	"FORECAST":        true,
-	"FORECAST.LINEAR": true,
-	"GEOMEAN":         true,
-	"HARMEAN":         true,
-	"INTERCEPT":       true,
-	"KURT":            true,
-	"LARGE":           true,
-	"MAX":             true,
-	"MAXA":            true,
-	"MEDIAN":          true,
-	"MIN":             true,
-	"MINA":            true,
-	"MODE":            true,
-	"MODE.MULT":       true,
-	"MODE.SNGL":       true,
-	"PEARSON":         true,
-	"PERCENTILE":      true,
-	"PERCENTILE.EXC":  true,
-	"PERCENTILE.INC":  true,
-	"PRODUCT":         true,
-	"QUARTILE":        true,
-	"QUARTILE.EXC":    true,
-	"QUARTILE.INC":    true,
-	"RSQ":             true,
-	"SKEW":            true,
-	"SKEW.P":          true,
-	"SLOPE":           true,
-	"SMALL":           true,
-	"STANDARDIZE":     true,
-	"STEYX":           true,
-	"STDEV":           true,
-	"STDEV.P":         true,
-	"STDEV.S":         true,
-	"STDEVA":          true,
-	"STDEVP":          true,
-	"STDEVPA":         true,
-	"SUBTOTAL":        true,
-	"SUM":             true,
-	"SUMSQ":           true,
-	"TRIMMEAN":        true,
-	"VAR":             true,
-	"VAR.P":           true,
-	"VAR.S":           true,
-	"VARA":            true,
-	"VARP":            true,
-	"VARPA":           true,
+// FuncArgEvalMode describes how the compiler should evaluate an argument for a
+// particular function in a legacy non-array formula context.
+type FuncArgEvalMode int
+
+const (
+	FuncArgEvalDefault FuncArgEvalMode = iota
+	FuncArgEvalDirectRange
+	FuncArgEvalArray
+)
+
+// directRangeAllArgFuncs preserve plain direct range references like A:A or
+// 1:1 for every argument position, but still allow expressions like A:A*B:B to
+// follow legacy implicit-intersection behavior unless the function is fully
+// array-forcing.
+var directRangeAllArgFuncs = map[string]bool{
+	"AVERAGE":   true,
+	"AVERAGEA":  true,
+	"AVEDEV":    true,
+	"COLUMNS":   true,
+	"COUNT":     true,
+	"COUNTA":    true,
+	"DEVSQ":     true,
+	"GEOMEAN":   true,
+	"HARMEAN":   true,
+	"KURT":      true,
+	"MAX":       true,
+	"MAXA":      true,
+	"MEDIAN":    true,
+	"MIN":       true,
+	"MINA":      true,
+	"MODE":      true,
+	"MODE.MULT": true,
+	"MODE.SNGL": true,
+	"PRODUCT":   true,
+	"ROWS":      true,
+	"SKEW":      true,
+	"SKEW.P":    true,
+	"STDEV":     true,
+	"STDEV.P":   true,
+	"STDEV.S":   true,
+	"STDEVA":    true,
+	"STDEVP":    true,
+	"STDEVPA":   true,
+	"SUM":       true,
+	"SUMSQ":     true,
+	"VAR":       true,
+	"VAR.P":     true,
+	"VAR.S":     true,
+	"VARA":      true,
+	"VARP":      true,
+	"VARPA":     true,
+}
+
+// directRangeArgFuncs preserve direct range references only for the argument
+// positions that are range-like for a given function. This avoids accidentally
+// suppressing implicit intersection for scalar parameters such as the first
+// STANDARDIZE argument.
+var directRangeArgFuncs = map[string]map[int]bool{
+	"COUNTBLANK":      {0: true},
+	"CORREL":          {0: true, 1: true},
+	"COVAR":           {0: true, 1: true},
+	"COVARIANCE.P":    {0: true, 1: true},
+	"COVARIANCE.S":    {0: true, 1: true},
+	"FORECAST":        {1: true, 2: true},
+	"FORECAST.LINEAR": {1: true, 2: true},
+	"INTERCEPT":       {0: true, 1: true},
+	"LARGE":           {0: true},
+	"PEARSON":         {0: true, 1: true},
+	"PERCENTILE":      {0: true},
+	"PERCENTILE.EXC":  {0: true},
+	"PERCENTILE.INC":  {0: true},
+	"PERCENTRANK":     {0: true},
+	"PERCENTRANK.EXC": {0: true},
+	"PERCENTRANK.INC": {0: true},
+	"QUARTILE":        {0: true},
+	"QUARTILE.EXC":    {0: true},
+	"QUARTILE.INC":    {0: true},
+	"RANK":            {1: true},
+	"RANK.AVG":        {1: true},
+	"RANK.EQ":         {1: true},
+	"RSQ":             {0: true, 1: true},
+	"SLOPE":           {0: true, 1: true},
+	"SMALL":           {0: true},
+	"STEYX":           {0: true, 1: true},
+	"TRIMMEAN":        {0: true},
+	"XLOOKUP":         {1: true, 2: true},
+	"XMATCH":          {1: true},
+}
+
+// directRangeArgStartFuncs preserve direct ranges from the given argument
+// index onward. This is used for functions that accept a trailing list of
+// references after one or more scalar control arguments.
+var directRangeArgStartFuncs = map[string]int{
+	"AGGREGATE": 2,
+	"SUBTOTAL":  1,
+}
+
+// arrayArgFuncs evaluate the listed argument positions in array context,
+// suppressing implicit intersection for the whole argument expression. This is
+// required for functions like FILTER whose include argument is commonly a
+// boolean range expression rather than a plain range reference.
+var arrayArgFuncs = map[string]map[int]bool{
+	"FILTER": {0: true, 1: true},
+}
+
+// arrayFirstArgFuncs evaluate the first argument in array context because it is
+// semantically an array input.
+var arrayFirstArgFuncs = map[string]bool{
+	"ARRAYTOTEXT": true,
+	"CHOOSECOLS":  true,
+	"CHOOSEROWS":  true,
+	"DROP":        true,
+	"EXPAND":      true,
+	"SORT":        true,
+	"TAKE":        true,
+	"TOCOL":       true,
+	"TOROW":       true,
+	"UNIQUE":      true,
+	"WRAPCOLS":    true,
+	"WRAPROWS":    true,
+}
+
+// arrayAllArgFuncs evaluate every argument in array context.
+var arrayAllArgFuncs = map[string]bool{
+	"HSTACK": true,
+	"VSTACK": true,
 }
 
 // IsArrayFunc reports whether the named function forces array evaluation of
@@ -404,9 +467,30 @@ func IsArrayFunc(name string) bool {
 	return arrayForcingFuncs[strings.ToUpper(name)]
 }
 
-// PreservesDirectRangeArgs reports whether the named function should receive a
-// direct range reference as a range, even in legacy non-array formula
-// contexts.
-func PreservesDirectRangeArgs(name string) bool {
-	return directRangeArgFuncs[strings.ToUpper(name)]
+// ArgEvalModeForFuncArg reports how the compiler should evaluate the given
+// argument position for a function in legacy non-array formula contexts.
+func ArgEvalModeForFuncArg(name string, argIndex int) FuncArgEvalMode {
+	upper := strings.ToUpper(name)
+	if arrayAllArgFuncs[upper] {
+		return FuncArgEvalArray
+	}
+	if arrayFirstArgFuncs[upper] && argIndex == 0 {
+		return FuncArgEvalArray
+	}
+	if positions, ok := arrayArgFuncs[upper]; ok && positions[argIndex] {
+		return FuncArgEvalArray
+	}
+	if upper == "SORTBY" && (argIndex == 0 || argIndex%2 == 1) {
+		return FuncArgEvalArray
+	}
+	if directRangeAllArgFuncs[upper] {
+		return FuncArgEvalDirectRange
+	}
+	if start, ok := directRangeArgStartFuncs[upper]; ok && argIndex >= start {
+		return FuncArgEvalDirectRange
+	}
+	if positions, ok := directRangeArgFuncs[upper]; ok && positions[argIndex] {
+		return FuncArgEvalDirectRange
+	}
+	return FuncArgEvalDefault
 }

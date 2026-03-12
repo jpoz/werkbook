@@ -10,6 +10,12 @@ type mockResolver struct {
 	cells map[CellAddr]Value
 }
 
+// sparseResolver mimics the workbook resolver's behavior for full-row and
+// full-column references by clamping them to the populated extent.
+type sparseResolver struct {
+	cells map[CellAddr]Value
+}
+
 type panicRangeResolver struct {
 	rangeCalls int
 }
@@ -34,6 +40,56 @@ func (m *mockResolver) GetRangeValues(addr RangeAddr) [][]Value {
 		rows[r-addr.FromRow] = row
 	}
 	return rows
+}
+
+func (m *sparseResolver) GetCellValue(addr CellAddr) Value {
+	if v, ok := m.cells[addr]; ok {
+		return v
+	}
+	return EmptyVal()
+}
+
+func (m *sparseResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	toRow := addr.ToRow
+	toCol := addr.ToCol
+	if addr.FromRow == 1 && addr.ToRow >= maxRows {
+		toRow = max(addr.FromRow, m.maxUsedRow(addr.Sheet, addr.FromCol, addr.ToCol))
+	}
+	if addr.FromCol == 1 && addr.ToCol >= maxCols {
+		toCol = max(addr.FromCol, m.maxUsedCol(addr.Sheet, addr.FromRow, addr.ToRow))
+	}
+	rows := make([][]Value, toRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= toRow; r++ {
+		row := make([]Value, toCol-addr.FromCol+1)
+		for c := addr.FromCol; c <= toCol; c++ {
+			ca := CellAddr{Sheet: addr.Sheet, Col: c, Row: r}
+			if v, ok := m.cells[ca]; ok {
+				row[c-addr.FromCol] = v
+			}
+		}
+		rows[r-addr.FromRow] = row
+	}
+	return rows
+}
+
+func (m *sparseResolver) maxUsedRow(sheet string, fromCol, toCol int) int {
+	maxRow := 0
+	for addr := range m.cells {
+		if addr.Sheet == sheet && addr.Col >= fromCol && addr.Col <= toCol && addr.Row > maxRow {
+			maxRow = addr.Row
+		}
+	}
+	return maxRow
+}
+
+func (m *sparseResolver) maxUsedCol(sheet string, fromRow, toRow int) int {
+	maxCol := 0
+	for addr := range m.cells {
+		if addr.Sheet == sheet && addr.Row >= fromRow && addr.Row <= toRow && addr.Col > maxCol {
+			maxCol = addr.Col
+		}
+	}
+	return maxCol
 }
 
 func (m *panicRangeResolver) GetCellValue(addr CellAddr) Value {
@@ -528,6 +584,153 @@ func TestEvalCOUNTAPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalXLOOKUPPreservesFullColumnArgsInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("a"),
+			{Col: 1, Row: 2}: StringVal("b"),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     4,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, `XLOOKUP("b",A:A,B:B)`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf(`XLOOKUP("b",A:A,B:B) = %v (%g), want 20`, got.Type, got.Num)
+	}
+}
+
+func TestEvalXMATCHPreservesFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     4,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "XMATCH(20,B:B)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("XMATCH(20,B:B) = %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
+func TestEvalFILTERPreservesFullColumnArgsInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 2, Row: 1}: StringVal("drop"),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 2, Row: 2}: StringVal("keep"),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 2, Row: 3}: StringVal("keep"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, `FILTER(A:A,B:B="keep")`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("FILTER(A:A,B:B=\"keep\") type = %v, want ValueArray", got.Type)
+	}
+	cols := 0
+	if len(got.Array) > 0 {
+		cols = len(got.Array[0])
+	}
+	if len(got.Array) != 2 || cols != 1 || len(got.Array[1]) != 1 {
+		t.Fatalf("FILTER(A:A,B:B=\"keep\") dims = %dx%d, want 2x1", len(got.Array), cols)
+	}
+	if got.Array[0][0].Type != ValueNumber || got.Array[0][0].Num != 200 {
+		t.Fatalf("FILTER first row = %#v, want 200", got.Array[0][0])
+	}
+	if got.Array[1][0].Type != ValueNumber || got.Array[1][0].Num != 300 {
+		t.Fatalf("FILTER second row = %#v, want 300", got.Array[1][0])
+	}
+}
+
+func TestEvalPERCENTRANKPreservesFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "PERCENTRANK(A:A,A2)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0.5 {
+		t.Errorf("PERCENTRANK(A:A,A2) = %v (%g), want 0.5", got.Type, got.Num)
+	}
+}
+
+func TestEvalSTANDARDIZEStillImplicitIntersectsScalarSlot(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     3,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "STANDARDIZE(A:A,AVERAGE(A:A),STDEV.S(A:A))")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("STANDARDIZE(A:A,AVERAGE(A:A),STDEV.S(A:A)) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // coerceNum edge cases (exercised through arithmetic operations)
 // ---------------------------------------------------------------------------
@@ -665,6 +868,79 @@ func TestEvalCompareValues(t *testing.T) {
 				t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want)
 			}
 		})
+	}
+}
+
+func TestArrayElementTrimmedRangeOriginUsesBlankForMissingLogicalCells(t *testing.T) {
+	trimmed := trimmedRangeValue([][]Value{
+		{NumberVal(10)},
+	}, 1, 1, 1, 3)
+
+	assertLookupValueEqual(t, ArrayElement(trimmed, 0, 0), NumberVal(10))
+	assertLookupValueEqual(t, ArrayElement(trimmed, 1, 0), EmptyVal())
+
+	got := ArrayElement(trimmed, 3, 0)
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Fatalf("ArrayElement(out of bounds) = %#v, want #N/A", got)
+	}
+}
+
+func TestBinaryArithTrimmedRangeOriginUsesLogicalBounds(t *testing.T) {
+	trimmed := trimmedRangeValue([][]Value{
+		{NumberVal(10)},
+	}, 1, 1, 1, 3)
+
+	got := binaryArith(trimmed, NumberVal(0), func(an, bn float64) Value {
+		return NumberVal(an + bn)
+	})
+
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(10)},
+		{NumberVal(0)},
+		{NumberVal(0)},
+	}})
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("binaryArith RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+	}
+}
+
+func TestBinaryCompareTrimmedRangeOriginUsesLogicalBounds(t *testing.T) {
+	trimmed := trimmedRangeValue([][]Value{
+		{StringVal("keep")},
+	}, 1, 1, 1, 3)
+
+	got := binaryCompare(trimmed, StringVal("keep"), func(c int) bool { return c == 0 })
+
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{BoolVal(true)},
+		{BoolVal(false)},
+		{BoolVal(false)},
+	}})
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("binaryCompare RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+	}
+}
+
+func TestLiftUnaryTrimmedRangeOriginUsesLogicalBounds(t *testing.T) {
+	trimmed := trimmedRangeValue([][]Value{
+		{NumberVal(-10)},
+	}, 1, 1, 1, 3)
+
+	got := LiftUnary(trimmed, func(v Value) Value {
+		n, e := CoerceNum(v)
+		if e != nil {
+			return *e
+		}
+		return NumberVal(math.Abs(n))
+	})
+
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(10)},
+		{NumberVal(0)},
+		{NumberVal(0)},
+	}})
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("LiftUnary RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
 	}
 }
 

@@ -5,6 +5,47 @@ import (
 	"testing"
 )
 
+func TestSORT_TrimmedRangeOrigin(t *testing.T) {
+	got, err := fnSORT([]Value{
+		trimmedRangeValue([][]Value{
+			{NumberVal(2)},
+			{NumberVal(1)},
+		}, 1, 1, 1, 3),
+		NumberVal(1),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnSORT: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(2)},
+		{NumberVal(1)},
+		{EmptyVal()},
+	}})
+}
+
+func TestSORTBY_TrimmedRangeOrigin(t *testing.T) {
+	got, err := fnSORTBY([]Value{
+		trimmedRangeValue([][]Value{
+			{StringVal("b")},
+			{StringVal("a")},
+		}, 1, 1, 1, 3),
+		trimmedRangeValue([][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+		}, 2, 1, 2, 3),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnSORTBY: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a")},
+		{StringVal("b")},
+		{EmptyVal()},
+	}})
+}
+
 func TestTRUE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -858,6 +899,28 @@ func TestIF(t *testing.T) {
 			t.Errorf(`IF(FALSE, "yes") = %v, want FALSE`, got)
 		}
 	})
+}
+
+func TestIFTrimmedRangeOriginCondition(t *testing.T) {
+	got, err := fnIF([]Value{
+		trimmedRangeValue([][]Value{
+			{BoolVal(true)},
+		}, 1, 1, 1, 3),
+		NumberVal(1),
+		NumberVal(0),
+	})
+	if err != nil {
+		t.Fatalf("fnIF: %v", err)
+	}
+
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1)},
+		{NumberVal(0)},
+		{NumberVal(0)},
+	}})
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("fnIF RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+	}
 }
 
 func TestIFERROR(t *testing.T) {

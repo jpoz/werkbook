@@ -808,19 +808,14 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 func arrayDims(a, b Value) (rows, cols int) {
 	rows, cols = 1, 1
 	if a.Type == ValueArray {
-		rows = len(a.Array)
-		if rows > 0 {
-			cols = len(a.Array[0])
-		}
+		rows, cols = arrayOpBounds(a)
 	}
 	if b.Type == ValueArray {
-		if r := len(b.Array); r > rows {
+		if r, c := arrayOpBounds(b); r > rows {
 			rows = r
-		}
-		if len(b.Array) > 0 {
-			if c := len(b.Array[0]); c > cols {
-				cols = c
-			}
+			cols = max(cols, c)
+		} else if c > cols {
+			cols = c
 		}
 	}
 	return
@@ -844,9 +839,8 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 
 	// At least one operand is an array — do element-wise computation.
 	rows, cols := arrayDims(a, b)
-	result := make([][]Value, rows)
+	result := newValueMatrix(rows, cols)
 	for i := 0; i < rows; i++ {
-		result[i] = make([]Value, cols)
 		for j := 0; j < cols; j++ {
 			av := ArrayElement(a, i, j)
 			bv := ArrayElement(b, i, j)
@@ -861,7 +855,9 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 			}
 		}
 	}
-	return Value{Type: ValueArray, Array: result}
+	out := Value{Type: ValueArray, Array: result}
+	out.RangeOrigin = combinedArrayOpRangeOrigin(rows, cols, a, b)
+	return out
 }
 
 // binaryCompare performs a comparison operation on two Values, supporting
@@ -879,9 +875,8 @@ func binaryCompare(a, b Value, op func(int) bool) Value {
 
 	// At least one operand is an array — do element-wise comparison.
 	rows, cols := arrayDims(a, b)
-	result := make([][]Value, rows)
+	result := newValueMatrix(rows, cols)
 	for i := 0; i < rows; i++ {
-		result[i] = make([]Value, cols)
 		for j := 0; j < cols; j++ {
 			av := ArrayElement(a, i, j)
 			bv := ArrayElement(b, i, j)
@@ -894,7 +889,9 @@ func binaryCompare(a, b Value, op func(int) bool) Value {
 			}
 		}
 	}
-	return Value{Type: ValueArray, Array: result}
+	out := Value{Type: ValueArray, Array: result}
+	out.RangeOrigin = combinedArrayOpRangeOrigin(rows, cols, a, b)
+	return out
 }
 
 // callFunction is replaced by CallFunc in registry.go.
@@ -903,15 +900,16 @@ func binaryCompare(a, b Value, op func(int) bool) Value {
 // returning a new ValueArray of the same shape. Used for array-formula
 // evaluation of functions like ABS, ISNUMBER, etc.
 func LiftUnary(arr Value, fn func(Value) Value) Value {
-	rows := make([][]Value, len(arr.Array))
-	for i, row := range arr.Array {
-		out := make([]Value, len(row))
-		for j, cell := range row {
-			out[j] = fn(cell)
+	rows, cols := arrayOpBounds(arr)
+	result := newValueMatrix(rows, cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			result[i][j] = fn(ArrayElement(arr, i, j))
 		}
-		rows[i] = out
 	}
-	return Value{Type: ValueArray, Array: rows}
+	out := Value{Type: ValueArray, Array: result}
+	out.RangeOrigin = combinedArrayOpRangeOrigin(rows, cols, arr)
+	return out
 }
 
 // ArrayElement returns element [i][j] from arr if it is an array,
@@ -921,8 +919,15 @@ func ArrayElement(v Value, i, j int) Value {
 	if v.Type != ValueArray {
 		return v
 	}
+	rows, cols := effectiveArrayBounds(v)
+	if i < 0 || j < 0 || i >= rows || j >= cols {
+		return ErrorVal(ErrValNA)
+	}
 	if i < len(v.Array) && j < len(v.Array[i]) {
 		return v.Array[i][j]
+	}
+	if v.RangeOrigin != nil {
+		return EmptyVal()
 	}
 	return ErrorVal(ErrValNA)
 }

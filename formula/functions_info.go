@@ -242,8 +242,11 @@ func fnCOLUMNS(args []Value) (Value, error) {
 	if args[0].Type == ValueError {
 		return args[0], nil
 	}
-	if args[0].Type == ValueArray && len(args[0].Array) > 0 {
-		return NumberVal(float64(len(args[0].Array[0]))), nil
+	if args[0].Type == ValueArray {
+		_, cols := effectiveArrayBounds(args[0])
+		if cols > 0 {
+			return NumberVal(float64(cols)), nil
+		}
 	}
 	return NumberVal(1), nil
 }
@@ -256,7 +259,10 @@ func fnROWS(args []Value) (Value, error) {
 		return args[0], nil
 	}
 	if args[0].Type == ValueArray {
-		return NumberVal(float64(len(args[0].Array))), nil
+		rows, _ := effectiveArrayBounds(args[0])
+		if rows > 0 {
+			return NumberVal(float64(rows)), nil
+		}
 	}
 	return NumberVal(1), nil
 }

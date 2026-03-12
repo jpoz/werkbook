@@ -38,21 +38,23 @@ func fnIF(args []Value) (Value, error) {
 	// Array formula: when the condition is an array, apply IF element-wise.
 	if args[0].Type == ValueArray {
 		cond := args[0]
-		rows := make([][]Value, len(cond.Array))
-		for i, row := range cond.Array {
-			out := make([]Value, len(row))
-			for j, cell := range row {
+		rowCount, colCount := arrayOpBounds(cond)
+		rows := newValueMatrix(rowCount, colCount)
+		for i := 0; i < rowCount; i++ {
+			for j := 0; j < colCount; j++ {
+				cell := ArrayElement(cond, i, j)
 				if IsTruthy(cell) {
-					out[j] = ArrayElement(args[1], i, j)
+					rows[i][j] = ArrayElement(args[1], i, j)
 				} else if len(args) == 3 {
-					out[j] = ArrayElement(args[2], i, j)
+					rows[i][j] = ArrayElement(args[2], i, j)
 				} else {
-					out[j] = BoolVal(false)
+					rows[i][j] = BoolVal(false)
 				}
 			}
-			rows[i] = out
 		}
-		return Value{Type: ValueArray, Array: rows}, nil
+		out := Value{Type: ValueArray, Array: rows}
+		out.RangeOrigin = combinedArrayOpRangeOrigin(rowCount, colCount, cond)
+		return out, nil
 	}
 	if args[0].Type == ValueError {
 		return args[0], nil
@@ -259,6 +261,10 @@ func fnSORT(args []Value) (Value, error) {
 	if arr.Type != ValueArray || len(arr.Array) == 0 {
 		return arr, nil
 	}
+	grid, errVal := normalizeToArrayGrid(arr)
+	if errVal != nil {
+		return *errVal, nil
+	}
 
 	sortIndex := 1
 	if len(args) >= 2 {
@@ -278,11 +284,7 @@ func fnSORT(args []Value) (Value, error) {
 		sortOrder = int(so)
 	}
 
-	rows := make([][]Value, len(arr.Array))
-	for i, row := range arr.Array {
-		rows[i] = make([]Value, len(row))
-		copy(rows[i], row)
-	}
+	rows := grid.matrix()
 
 	si := sortIndex - 1
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -310,19 +312,11 @@ func fnSORTBY(args []Value) (Value, error) {
 
 	// Normalize array argument to a 2D grid.
 	arr := args[0]
-	var grid [][]Value
-	switch arr.Type {
-	case ValueArray:
-		grid = arr.Array
-	case ValueError:
-		return arr, nil
-	default:
-		grid = [][]Value{{arr}}
+	grid, errVal := normalizeToArrayGrid(arr)
+	if errVal != nil {
+		return *errVal, nil
 	}
-	if len(grid) == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	numRows := len(grid)
+	numRows := grid.rowCount
 
 	// Parse (by_array, sort_order) pairs from remaining args.
 	// After args[0], remaining args are grouped in pairs of 2: (by_array, sort_order).
@@ -343,22 +337,14 @@ func fnSORTBY(args []Value) (Value, error) {
 		}
 
 		// Normalize by_array to a 2D grid, then flatten to a 1D vector.
-		var byGrid [][]Value
-		switch byArg.Type {
-		case ValueArray:
-			byGrid = byArg.Array
-		default:
-			byGrid = [][]Value{{byArg}}
+		byGrid, errVal := normalizeToArrayGrid(byArg)
+		if errVal != nil {
+			return *errVal, nil
 		}
 
 		// Validate: by_array must be a vector (single row or single column).
-		byRows := len(byGrid)
-		byCols := 0
-		for _, row := range byGrid {
-			if len(row) > byCols {
-				byCols = len(row)
-			}
-		}
+		byRows := byGrid.rowCount
+		byCols := byGrid.colCount
 		if byRows > 1 && byCols > 1 {
 			return ErrorVal(ErrValVALUE), nil
 		}
@@ -367,17 +353,14 @@ func fnSORTBY(args []Value) (Value, error) {
 		var flat []Value
 		if byCols <= 1 {
 			// Column vector or single cell: one value per row.
-			for _, row := range byGrid {
-				if len(row) > 0 {
-					flat = append(flat, row[0])
-				} else {
-					flat = append(flat, EmptyVal())
-				}
+			for row := 0; row < byRows; row++ {
+				flat = append(flat, byGrid.cell(row, 0))
 			}
 		} else {
 			// Row vector: one value per column.
-			if len(byGrid) > 0 {
-				flat = byGrid[0]
+			flat = make([]Value, byCols)
+			for col := 0; col < byCols; col++ {
+				flat[col] = byGrid.cell(0, col)
 			}
 		}
 
@@ -435,9 +418,7 @@ func fnSORTBY(args []Value) (Value, error) {
 	// Build result array by reordering rows.
 	result := make([][]Value, numRows)
 	for i, idx := range indices {
-		row := make([]Value, len(grid[idx]))
-		copy(row, grid[idx])
-		result[i] = row
+		result[i] = grid.row(idx)
 	}
 
 	return Value{Type: ValueArray, Array: result}, nil
