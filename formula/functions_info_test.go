@@ -1408,23 +1408,23 @@ func TestISFORMULA(t *testing.T) {
 			},
 		},
 		formulas: map[CellAddr]string{
-			{Col: 2, Row: 1}:                    "A1+58",
-			{Col: 1, Row: 2}:                    "SUM(A1:A1)",
-			{Col: 2, Row: 2}:                    "IF(A1>10,7,0)",
-			{Col: 3, Row: 2}:                    `CONCATENATE("hello","world")`,
-			{Col: 4, Row: 2}:                    "SUM(IF(A1>0,A1,0))",
-			{Col: 1, Row: 3}:                    "$A$1",
-			{Col: 2, Row: 3}:                    "A$1+$B1",
-			{Col: 4, Row: 3}:                    "1/0",
-			{Col: 1, Row: 4}:                    "FORMULATEXT(B1)",
-			{Col: 2, Row: 4}:                    `CONCATENATE("she said ",CHAR(34),"hi",CHAR(34))`,
-			{Col: 3, Row: 4}:                    "LEN(FORMULATEXT(B1))",
-			{Col: 4, Row: 4}:                    "COLUMN(A1)",
-			{Col: 1, Row: 5}:                    "AVERAGE(A1,B1)",
-			{Col: 2, Row: 5}:                    "MAX(1,2,3)",
-			{Col: 3, Row: 5}:                    "MIN(A1,0)",
-			{Col: 4, Row: 5}:                    `UPPER("hello")`,
-			{Sheet: "Sheet2", Col: 1, Row: 1}:   "Sheet1!A1*2+15",
+			{Col: 2, Row: 1}:                  "A1+58",
+			{Col: 1, Row: 2}:                  "SUM(A1:A1)",
+			{Col: 2, Row: 2}:                  "IF(A1>10,7,0)",
+			{Col: 3, Row: 2}:                  `CONCATENATE("hello","world")`,
+			{Col: 4, Row: 2}:                  "SUM(IF(A1>0,A1,0))",
+			{Col: 1, Row: 3}:                  "$A$1",
+			{Col: 2, Row: 3}:                  "A$1+$B1",
+			{Col: 4, Row: 3}:                  "1/0",
+			{Col: 1, Row: 4}:                  "FORMULATEXT(B1)",
+			{Col: 2, Row: 4}:                  `CONCATENATE("she said ",CHAR(34),"hi",CHAR(34))`,
+			{Col: 3, Row: 4}:                  "LEN(FORMULATEXT(B1))",
+			{Col: 4, Row: 4}:                  "COLUMN(A1)",
+			{Col: 1, Row: 5}:                  "AVERAGE(A1,B1)",
+			{Col: 2, Row: 5}:                  "MAX(1,2,3)",
+			{Col: 3, Row: 5}:                  "MIN(A1,0)",
+			{Col: 4, Row: 5}:                  `UPPER("hello")`,
+			{Sheet: "Sheet2", Col: 1, Row: 1}: "Sheet1!A1*2+15",
 		},
 	}
 	ctx := &EvalContext{
@@ -1656,48 +1656,48 @@ func TestFORMULATEXT(t *testing.T) {
 	resolver := &mockFormulaResolver{
 		mockResolver: mockResolver{
 			cells: map[CellAddr]Value{
-				{Col: 1, Row: 1}: NumberVal(42),           // A1: constant number
-				{Col: 2, Row: 1}: NumberVal(100),          // B1: has formula =A1+58
-				{Col: 3, Row: 1}: StringVal("hello"),      // C1: constant text
-				{Col: 4, Row: 1}: BoolVal(true),           // D1: constant boolean
-				{Col: 1, Row: 2}: NumberVal(600),          // A2: has formula =SUM(A1:A1)
-				{Col: 2, Row: 2}: NumberVal(7),            // B2: has formula =IF(A1>10,7,0)
-				{Col: 3, Row: 2}: StringVal("helloworld"), // C2: has formula =CONCATENATE("hello","world")
-				{Col: 4, Row: 2}: NumberVal(99),           // D2: has formula =SUM(IF(A1>0,A1,0))
-				{Col: 1, Row: 3}: NumberVal(42),           // A3: has formula =$A$1
-				{Col: 2, Row: 3}: NumberVal(42),           // B3: has formula =A$1+$B1
-				{Col: 3, Row: 3}: ErrorVal(ErrValDIV0),    // C3: constant error (no formula)
-				{Col: 4, Row: 3}: ErrorVal(ErrValDIV0),    // D3: has formula =1/0
-				{Col: 1, Row: 4}: StringVal("=A1+58"),     // A4: has formula =FORMULATEXT(B1)
+				{Col: 1, Row: 1}: NumberVal(42),              // A1: constant number
+				{Col: 2, Row: 1}: NumberVal(100),             // B1: has formula =A1+58
+				{Col: 3, Row: 1}: StringVal("hello"),         // C1: constant text
+				{Col: 4, Row: 1}: BoolVal(true),              // D1: constant boolean
+				{Col: 1, Row: 2}: NumberVal(600),             // A2: has formula =SUM(A1:A1)
+				{Col: 2, Row: 2}: NumberVal(7),               // B2: has formula =IF(A1>10,7,0)
+				{Col: 3, Row: 2}: StringVal("helloworld"),    // C2: has formula =CONCATENATE("hello","world")
+				{Col: 4, Row: 2}: NumberVal(99),              // D2: has formula =SUM(IF(A1>0,A1,0))
+				{Col: 1, Row: 3}: NumberVal(42),              // A3: has formula =$A$1
+				{Col: 2, Row: 3}: NumberVal(42),              // B3: has formula =A$1+$B1
+				{Col: 3, Row: 3}: ErrorVal(ErrValDIV0),       // C3: constant error (no formula)
+				{Col: 4, Row: 3}: ErrorVal(ErrValDIV0),       // D3: has formula =1/0
+				{Col: 1, Row: 4}: StringVal("=A1+58"),        // A4: has formula =FORMULATEXT(B1)
 				{Col: 2, Row: 4}: StringVal(`she said "hi"`), // B4: has formula =CONCATENATE("she said ",CHAR(34),"hi",CHAR(34))
-				{Col: 3, Row: 4}: NumberVal(6),            // C4: has formula =LEN(FORMULATEXT(B1))
-				{Col: 4, Row: 4}: NumberVal(1),            // D4: has formula =COLUMN(A1)
-				{Col: 1, Row: 5}: NumberVal(10),           // A5: has formula =AVERAGE(A1,B1)
-				{Col: 2, Row: 5}: NumberVal(3),            // B5: has formula =MAX(1,2,3)
-				{Col: 3, Row: 5}: NumberVal(0),            // C5: has formula =MIN(A1,0)
-				{Col: 4, Row: 5}: StringVal("HELLO"),      // D5: has formula =UPPER("hello")
+				{Col: 3, Row: 4}: NumberVal(6),               // C4: has formula =LEN(FORMULATEXT(B1))
+				{Col: 4, Row: 4}: NumberVal(1),               // D4: has formula =COLUMN(A1)
+				{Col: 1, Row: 5}: NumberVal(10),              // A5: has formula =AVERAGE(A1,B1)
+				{Col: 2, Row: 5}: NumberVal(3),               // B5: has formula =MAX(1,2,3)
+				{Col: 3, Row: 5}: NumberVal(0),               // C5: has formula =MIN(A1,0)
+				{Col: 4, Row: 5}: StringVal("HELLO"),         // D5: has formula =UPPER("hello")
 				// E1 (Col:5, Row:1) intentionally missing — empty cell
 				// Cross-sheet cell
 				{Sheet: "Sheet2", Col: 1, Row: 1}: NumberVal(99), // Sheet2!A1: has formula =Sheet1!A1*2+15
 			},
 		},
 		formulas: map[CellAddr]string{
-			{Col: 2, Row: 1}: "A1+58",
-			{Col: 1, Row: 2}: "SUM(A1:A1)",
-			{Col: 2, Row: 2}: "IF(A1>10,7,0)",
-			{Col: 3, Row: 2}: `CONCATENATE("hello","world")`,
-			{Col: 4, Row: 2}: "SUM(IF(A1>0,A1,0))",
-			{Col: 1, Row: 3}: "$A$1",
-			{Col: 2, Row: 3}: "A$1+$B1",
-			{Col: 4, Row: 3}: "1/0",
-			{Col: 1, Row: 4}: "FORMULATEXT(B1)",
-			{Col: 2, Row: 4}: `CONCATENATE("she said ",CHAR(34),"hi",CHAR(34))`,
-			{Col: 3, Row: 4}: "LEN(FORMULATEXT(B1))",
-			{Col: 4, Row: 4}: "COLUMN(A1)",
-			{Col: 1, Row: 5}: "AVERAGE(A1,B1)",
-			{Col: 2, Row: 5}: "MAX(1,2,3)",
-			{Col: 3, Row: 5}: "MIN(A1,0)",
-			{Col: 4, Row: 5}: `UPPER("hello")`,
+			{Col: 2, Row: 1}:                  "A1+58",
+			{Col: 1, Row: 2}:                  "SUM(A1:A1)",
+			{Col: 2, Row: 2}:                  "IF(A1>10,7,0)",
+			{Col: 3, Row: 2}:                  `CONCATENATE("hello","world")`,
+			{Col: 4, Row: 2}:                  "SUM(IF(A1>0,A1,0))",
+			{Col: 1, Row: 3}:                  "$A$1",
+			{Col: 2, Row: 3}:                  "A$1+$B1",
+			{Col: 4, Row: 3}:                  "1/0",
+			{Col: 1, Row: 4}:                  "FORMULATEXT(B1)",
+			{Col: 2, Row: 4}:                  `CONCATENATE("she said ",CHAR(34),"hi",CHAR(34))`,
+			{Col: 3, Row: 4}:                  "LEN(FORMULATEXT(B1))",
+			{Col: 4, Row: 4}:                  "COLUMN(A1)",
+			{Col: 1, Row: 5}:                  "AVERAGE(A1,B1)",
+			{Col: 2, Row: 5}:                  "MAX(1,2,3)",
+			{Col: 3, Row: 5}:                  "MIN(A1,0)",
+			{Col: 4, Row: 5}:                  `UPPER("hello")`,
 			{Sheet: "Sheet2", Col: 1, Row: 1}: "Sheet1!A1*2+15",
 		},
 	}
@@ -5148,4 +5148,75 @@ func TestROW(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestAREAS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:                  NumberVal(10),
+			{Col: 2, Row: 1}:                  StringVal("text"),
+			{Col: 2, Row: 2}:                  ErrorVal(ErrValDIV0),
+			{Col: 3, Row: 3}:                  BoolVal(true),
+			{Col: 4, Row: 4}:                  NumberVal(44),
+			{Col: 5, Row: 5}:                  NumberVal(55),
+			{Sheet: "Sheet2", Col: 1, Row: 1}: NumberVal(99),
+			{Sheet: "Sheet2", Col: 2, Row: 2}: NumberVal(22),
+			{Sheet: "Sheet2", Col: 3, Row: 3}: NumberVal(33),
+		},
+	}
+	ctx := &EvalContext{
+		CurrentCol:   1,
+		CurrentRow:   1,
+		CurrentSheet: "Sheet1",
+		Resolver:     resolver,
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{"direct_cell_number", `AREAS(A1)`, NumberVal(1)},
+		{"direct_cell_error_value", `AREAS(B2)`, NumberVal(1)},
+		{"direct_range", `AREAS(A1:B2)`, NumberVal(1)},
+		{"parenthesized_single_ref", `AREAS((A1))`, NumberVal(1)},
+		{"multi_area_union", `AREAS((A1:B2,C3,D4:E5))`, NumberVal(3)},
+		{"multi_area_union_absolute", `AREAS(($A$1,$B$2:$C$3))`, NumberVal(2)},
+		{"multi_area_union_sheet_qualified", `AREAS((Sheet2!A1,Sheet2!B2:C3))`, NumberVal(2)},
+		{"offset_single_cell", `AREAS(OFFSET(A1,0,0))`, NumberVal(1)},
+		{"offset_range", `AREAS(OFFSET(A1,0,0,2,2))`, NumberVal(1)},
+		{"offset_single_cell_with_error_value", `AREAS(OFFSET(B2,0,0))`, NumberVal(1)},
+		{"indirect_single_cell", `AREAS(INDIRECT("A1"))`, NumberVal(1)},
+		{"indirect_range", `AREAS(INDIRECT("A1:B2"))`, NumberVal(1)},
+		{"indirect_error_cell", `AREAS(INDIRECT("B2"))`, NumberVal(1)},
+		{"indirect_sheet_cell", `AREAS(INDIRECT("Sheet2!A1"))`, NumberVal(1)},
+		{"number_literal", `AREAS(1)`, ErrorVal(ErrValVALUE)},
+		{"string_literal", `AREAS("A1")`, ErrorVal(ErrValVALUE)},
+		{"boolean_literal", `AREAS(TRUE)`, ErrorVal(ErrValVALUE)},
+		{"array_literal", `AREAS({1,2})`, ErrorVal(ErrValVALUE)},
+		{"arithmetic_error", `AREAS(1/0)`, ErrorVal(ErrValDIV0)},
+		{"indirect_bad_ref", `AREAS(INDIRECT(""))`, ErrorVal(ErrValREF)},
+		{"offset_bad_ref", `AREAS(OFFSET(A1,-1,0))`, ErrorVal(ErrValREF)},
+		{"no_args", `AREAS()`, ErrorVal(ErrValVALUE)},
+		{"too_many_args", `AREAS(A1,B1)`, ErrorVal(ErrValVALUE)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.want.Type == ValueNumber {
+				if got.Type != ValueNumber || got.Num != tt.want.Num {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want.Num)
+				}
+				return
+			}
+			if got.Type != tt.want.Type || got.Err != tt.want.Err {
+				t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+			}
+		})
+	}
 }

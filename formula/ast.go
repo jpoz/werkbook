@@ -126,6 +126,24 @@ func (n *RangeRef) String() string {
 	return fmt.Sprintf("(: %s %s)", n.From, n.To)
 }
 
+// UnionRef represents a parenthesized multi-area reference list like
+// (A1:B2,C3,D4:E5). The parser only produces this node for AREAS.
+type UnionRef struct {
+	Areas []Node
+}
+
+func (n *UnionRef) nodeMarker() {}
+func (n *UnionRef) String() string {
+	if len(n.Areas) == 0 {
+		return "(union)"
+	}
+	parts := make([]string, len(n.Areas))
+	for i, area := range n.Areas {
+		parts[i] = area.String()
+	}
+	return fmt.Sprintf("(union %s)", strings.Join(parts, " "))
+}
+
 // UnaryExpr represents a prefix unary operation like -A1 or +5.
 type UnaryExpr struct {
 	Op      string

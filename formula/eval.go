@@ -208,7 +208,7 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 			}
 			push(Value{Type: ValueRef, Num: float64(addr.Col + addr.Row*100_000), Str: sheet})
 
-		case OpAdd:
+		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
 			b, err := pop()
 			if err != nil {
 				return Value{}, err
@@ -221,84 +221,31 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				a = implicitIntersect(a, ctx)
 				b = implicitIntersect(b, ctx)
 			}
-			push(binaryArith(a, b, func(an, bn float64) Value {
-				return NumberVal(an + bn)
-			}))
-
-		case OpSub:
-			b, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			a, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				a = implicitIntersect(a, ctx)
-				b = implicitIntersect(b, ctx)
-			}
-			push(binaryArith(a, b, func(an, bn float64) Value {
-				return NumberVal(an - bn)
-			}))
-
-		case OpMul:
-			b, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			a, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				a = implicitIntersect(a, ctx)
-				b = implicitIntersect(b, ctx)
-			}
-			push(binaryArith(a, b, func(an, bn float64) Value {
-				return NumberVal(an * bn)
-			}))
-
-		case OpDiv:
-			b, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			a, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				a = implicitIntersect(a, ctx)
-				b = implicitIntersect(b, ctx)
-			}
-			push(binaryArith(a, b, func(an, bn float64) Value {
-				if bn == 0 {
-					return ErrorVal(ErrValDIV0)
+			var fn func(float64, float64) Value
+			switch inst.Op {
+			case OpAdd:
+				fn = func(an, bn float64) Value { return NumberVal(an + bn) }
+			case OpSub:
+				fn = func(an, bn float64) Value { return NumberVal(an - bn) }
+			case OpMul:
+				fn = func(an, bn float64) Value { return NumberVal(an * bn) }
+			case OpDiv:
+				fn = func(an, bn float64) Value {
+					if bn == 0 {
+						return ErrorVal(ErrValDIV0)
+					}
+					return NumberVal(an / bn)
 				}
-				return NumberVal(an / bn)
-			}))
-
-		case OpPow:
-			b, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			a, err := pop()
-			if err != nil {
-				return Value{}, err
-			}
-			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				a = implicitIntersect(a, ctx)
-				b = implicitIntersect(b, ctx)
-			}
-			push(binaryArith(a, b, func(an, bn float64) Value {
-				result := math.Pow(an, bn)
-				if math.IsNaN(result) || math.IsInf(result, 0) {
-					return ErrorVal(ErrValNUM)
+			case OpPow:
+				fn = func(an, bn float64) Value {
+					result := math.Pow(an, bn)
+					if math.IsNaN(result) || math.IsInf(result, 0) {
+						return ErrorVal(ErrValNUM)
+					}
+					return NumberVal(result)
 				}
-				return NumberVal(result)
-			}))
+			}
+			push(binaryArith(a, b, fn))
 
 		case OpNeg:
 			a, err := pop()

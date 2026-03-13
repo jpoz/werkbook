@@ -1011,7 +1011,9 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
 		return ErrorVal(ErrValREF), nil
 	}
 	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
-	return ctx.Resolver.GetCellValue(addr), nil
+	val := ctx.Resolver.GetCellValue(addr)
+	val.CellOrigin = &addr
+	return val, nil
 }
 
 // indirectParseCell parses a cell reference like "A1" or "B3" into (col, row).
