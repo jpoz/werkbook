@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **437** spreadsheet formula functions.
+Werkbook supports **438** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
@@ -18,6 +18,7 @@ Werkbook supports **437** spreadsheet formula functions.
 | ANCHORARRAY | Returns the full spilled array produced by a dynamic array formula. | Lookup & Reference | 6 |
 | AND | Returns TRUE when every supplied condition is TRUE. | Logical | 31 |
 | ARABIC | Converts Roman numeral text to an Arabic number. | Math & Trig | 38 |
+| AREAS | Counts the number of areas in a reference. | Information | 23 |
 | ARRAYTOTEXT | Converts an array into a text representation. | Text | 24 |
 | ASIN | Returns the arcsine of a number. | Math & Trig | 30 |
 | ASINH | Returns the inverse hyperbolic sine of a number. | Math & Trig | 26 |
@@ -467,11 +468,10 @@ effects, or require locale-specific behavior that cannot be reproduced in a serv
 
 # Not Yet Implemented
 
-The following **18** functions are not yet supported.
+The following **17** functions are not yet supported.
 
 | Function | Description | Category |
 |----------|-------------|----------|
-| AREAS | Counts the number of areas in a reference. | Lookup & Reference |
 | BYCOL | Applies a lambda to each column of an array. | Logical |
 | BYROW | Applies a lambda to each row of an array. | Logical |
 | FORECAST.ETS | Predicts a future value using exponential smoothing. | Statistical |

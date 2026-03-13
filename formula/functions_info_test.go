@@ -5178,3 +5178,74 @@ func TestROW(t *testing.T) {
 		}
 	})
 }
+
+func TestAREAS(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}:                  NumberVal(10),
+			{Col: 2, Row: 1}:                  StringVal("text"),
+			{Col: 2, Row: 2}:                  ErrorVal(ErrValDIV0),
+			{Col: 3, Row: 3}:                  BoolVal(true),
+			{Col: 4, Row: 4}:                  NumberVal(44),
+			{Col: 5, Row: 5}:                  NumberVal(55),
+			{Sheet: "Sheet2", Col: 1, Row: 1}: NumberVal(99),
+			{Sheet: "Sheet2", Col: 2, Row: 2}: NumberVal(22),
+			{Sheet: "Sheet2", Col: 3, Row: 3}: NumberVal(33),
+		},
+	}
+	ctx := &EvalContext{
+		CurrentCol:   1,
+		CurrentRow:   1,
+		CurrentSheet: "Sheet1",
+		Resolver:     resolver,
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{"direct_cell_number", `AREAS(A1)`, NumberVal(1)},
+		{"direct_cell_error_value", `AREAS(B2)`, NumberVal(1)},
+		{"direct_range", `AREAS(A1:B2)`, NumberVal(1)},
+		{"parenthesized_single_ref", `AREAS((A1))`, NumberVal(1)},
+		{"multi_area_union", `AREAS((A1:B2,C3,D4:E5))`, NumberVal(3)},
+		{"multi_area_union_absolute", `AREAS(($A$1,$B$2:$C$3))`, NumberVal(2)},
+		{"multi_area_union_sheet_qualified", `AREAS((Sheet2!A1,Sheet2!B2:C3))`, NumberVal(2)},
+		{"offset_single_cell", `AREAS(OFFSET(A1,0,0))`, NumberVal(1)},
+		{"offset_range", `AREAS(OFFSET(A1,0,0,2,2))`, NumberVal(1)},
+		{"offset_single_cell_with_error_value", `AREAS(OFFSET(B2,0,0))`, NumberVal(1)},
+		{"indirect_single_cell", `AREAS(INDIRECT("A1"))`, NumberVal(1)},
+		{"indirect_range", `AREAS(INDIRECT("A1:B2"))`, NumberVal(1)},
+		{"indirect_error_cell", `AREAS(INDIRECT("B2"))`, NumberVal(1)},
+		{"indirect_sheet_cell", `AREAS(INDIRECT("Sheet2!A1"))`, NumberVal(1)},
+		{"number_literal", `AREAS(1)`, ErrorVal(ErrValVALUE)},
+		{"string_literal", `AREAS("A1")`, ErrorVal(ErrValVALUE)},
+		{"boolean_literal", `AREAS(TRUE)`, ErrorVal(ErrValVALUE)},
+		{"array_literal", `AREAS({1,2})`, ErrorVal(ErrValVALUE)},
+		{"arithmetic_error", `AREAS(1/0)`, ErrorVal(ErrValDIV0)},
+		{"indirect_bad_ref", `AREAS(INDIRECT(""))`, ErrorVal(ErrValREF)},
+		{"offset_bad_ref", `AREAS(OFFSET(A1,-1,0))`, ErrorVal(ErrValREF)},
+		{"no_args", `AREAS()`, ErrorVal(ErrValVALUE)},
+		{"too_many_args", `AREAS(A1,B1)`, ErrorVal(ErrValVALUE)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if tt.want.Type == ValueNumber {
+				if got.Type != ValueNumber || got.Num != tt.want.Num {
+					t.Errorf("%s = %v, want %v", tt.formula, got, tt.want.Num)
+				}
+				return
+			}
+			if got.Type != tt.want.Type || got.Err != tt.want.Err {
+				t.Errorf("%s = %v, want %v", tt.formula, got, tt.want)
+			}
+		})
+	}
+}

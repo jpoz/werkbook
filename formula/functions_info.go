@@ -3,6 +3,7 @@ package formula
 import "math"
 
 func init() {
+	Register("AREAS", NoCtx(fnAREAS))
 	Register("COLUMN", fnCOLUMN)
 	Register("COLUMNS", NoCtx(fnCOLUMNS))
 	Register("ERROR.TYPE", NoCtx(fnERRORTYPE))
@@ -189,6 +190,35 @@ func fnN(args []Value) (Value, error) {
 	default:
 		return NumberVal(0), nil
 	}
+}
+
+func fnAREAS(args []Value) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	if areas, ok := areasCount(args[0]); ok {
+		return NumberVal(float64(areas)), nil
+	}
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	return ErrorVal(ErrValVALUE), nil
+}
+
+func areasCount(v Value) (int, bool) {
+	switch v.Type {
+	case ValueRef:
+		return 1, true
+	case ValueArray:
+		if v.RangeOrigin != nil {
+			return 1, true
+		}
+	default:
+		if v.CellOrigin != nil {
+			return 1, true
+		}
+	}
+	return 0, false
 }
 
 func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {

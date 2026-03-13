@@ -151,6 +151,9 @@ func (c *compiler) compileNode(node Node) error {
 			c.emit(OpLoadRange, idx)
 		}
 
+	case *UnionRef:
+		return fmt.Errorf("union references are only supported inside AREAS")
+
 	case *UnaryExpr:
 		if err := c.compileNode(n.Operand); err != nil {
 			return err
@@ -212,11 +215,18 @@ func (c *compiler) compileNode(node Node) error {
 		if argc > 255 {
 			return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
 		}
+		if name == "AREAS" && argc == 1 {
+			if union, ok := n.Args[0].(*UnionRef); ok {
+				idx := c.addNumConst(float64(len(union.Areas)))
+				c.emit(OpPushNum, idx)
+				return nil
+			}
+		}
 		// COLUMN and ROW need the cell reference coordinates, not the resolved
 		// cell value.  When the single argument is a direct cell reference, push
 		// a ValueRef (address only) so the function can extract col/row.
-		if (name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY" || name == "ISREF") && argc == 1 {
-			if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation {
+		if (name == "AREAS" || name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY" || name == "ISREF") && argc == 1 {
+			if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" {
 				idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 				c.emit(OpLoadCellRef, idx)
 				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))

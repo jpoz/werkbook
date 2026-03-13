@@ -279,6 +279,7 @@ func (p *Parser) parseNud() (Node, error) {
 func (p *Parser) parseFunc() (Node, error) {
 	tok := p.advance()
 	name := strings.TrimSuffix(tok.Value, "(")
+	upperName := strings.ToUpper(name)
 
 	// Zero-arg function: immediately followed by ).
 	if p.peek().Type == TokRParen {
@@ -292,7 +293,15 @@ func (p *Parser) parseFunc() (Node, error) {
 	if p.peek().Type == TokComma {
 		args = append(args, &EmptyArg{})
 	} else {
-		arg, err := p.parseExpression(0)
+		var (
+			arg Node
+			err error
+		)
+		if upperName == "AREAS" {
+			arg, err = p.parseAREASArg()
+		} else {
+			arg, err = p.parseExpression(0)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -331,6 +340,69 @@ func (p *Parser) parseFunc() (Node, error) {
 	}
 
 	return call, nil
+}
+
+func (p *Parser) parseAREASArg() (Node, error) {
+	if p.peek().Type != TokLParen {
+		return p.parseExpression(0)
+	}
+	start := p.pos
+	arg, ok, err := p.tryParseAREASUnion()
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return arg, nil
+	}
+	p.pos = start
+	return p.parseExpression(0)
+}
+
+func (p *Parser) tryParseAREASUnion() (Node, bool, error) {
+	if p.peek().Type != TokLParen {
+		return nil, false, nil
+	}
+	p.advance()
+
+	first, err := p.parseExpression(0)
+	if err != nil {
+		return nil, false, err
+	}
+	if p.peek().Type != TokComma {
+		if _, err := p.expect(TokRParen); err != nil {
+			return nil, false, err
+		}
+		return first, true, nil
+	}
+	if !isAREASReferenceNode(first) {
+		return nil, false, fmt.Errorf("AREAS multi-area references must contain only direct cell or range references")
+	}
+
+	areas := []Node{first}
+	for p.peek().Type == TokComma {
+		p.advance()
+		area, err := p.parseExpression(0)
+		if err != nil {
+			return nil, false, err
+		}
+		if !isAREASReferenceNode(area) {
+			return nil, false, fmt.Errorf("AREAS multi-area references must contain only direct cell or range references")
+		}
+		areas = append(areas, area)
+	}
+	if _, err := p.expect(TokRParen); err != nil {
+		return nil, false, fmt.Errorf("expected ')' to close AREAS reference list")
+	}
+	return &UnionRef{Areas: areas}, true, nil
+}
+
+func isAREASReferenceNode(n Node) bool {
+	switch n.(type) {
+	case *CellRef, *RangeRef:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseCallArgs() ([]Node, error) {
@@ -469,6 +541,12 @@ func substituteLambdaNames(n Node, subst map[string]Node) Node {
 			args[i] = substituteLambdaNames(arg, subst)
 		}
 		return &FuncCall{Name: v.Name, Args: args}
+	case *UnionRef:
+		areas := make([]Node, len(v.Areas))
+		for i, area := range v.Areas {
+			areas[i] = substituteLambdaNames(area, subst)
+		}
+		return &UnionRef{Areas: areas}
 	case *ArrayLit:
 		rows := make([][]Node, len(v.Rows))
 		for i, row := range v.Rows {
@@ -515,6 +593,12 @@ func cloneNode(n Node) Node {
 			args[i] = cloneNode(arg)
 		}
 		return &FuncCall{Name: v.Name, Args: args}
+	case *UnionRef:
+		areas := make([]Node, len(v.Areas))
+		for i, area := range v.Areas {
+			areas[i] = cloneNode(area)
+		}
+		return &UnionRef{Areas: areas}
 	case *ArrayLit:
 		rows := make([][]Node, len(v.Rows))
 		for i, row := range v.Rows {
