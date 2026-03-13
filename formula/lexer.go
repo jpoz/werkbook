@@ -261,19 +261,31 @@ func (l *Lexer) lexQuotedRef() (Token, error) {
 			// End of quoted name. Expect '!' next.
 			if l.pos < len(l.src) && l.src[l.pos] == '!' {
 				l.pos++ // skip !
-				// Now read the cell/range reference part.
-				refStart := l.pos
-				l.consumeCellRefChars()
-				if l.pos == refStart {
-					return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-				}
-				return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+				return l.lexRefAfterBang(start)
 			}
 			return Token{}, fmt.Errorf("expected '!' after quoted sheet name at position %d", l.pos)
 		}
 		l.pos++
 	}
 	return Token{}, fmt.Errorf("unterminated quoted sheet name starting at position %d", start)
+}
+
+func (l *Lexer) lexRefAfterBang(start int) (Token, error) {
+	if l.pos < len(l.src) && l.src[l.pos] == '#' {
+		tok, err := l.lexError()
+		if err != nil {
+			return Token{}, err
+		}
+		tok.Pos = start
+		return tok, nil
+	}
+
+	refStart := l.pos
+	l.consumeCellRefChars()
+	if l.pos == refStart {
+		return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
+	}
+	return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
 }
 
 // lexIdentOrRef reads an identifier which could be:
@@ -302,22 +314,12 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	// Also check for 3D reference: Name:Name!CellRef (e.g. Sheet:Sheet5!A1)
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == '!' {
 		l.pos++ // skip !
-		refStart := l.pos
-		l.consumeCellRefChars()
-		if l.pos == refStart {
-			return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-		}
-		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		return l.lexRefAfterBang(start)
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
 		if bangPos := l.find3DSheetBang(); bangPos > 0 {
 			l.pos = bangPos + 1 // skip past !
-			refStart := l.pos
-			l.consumeCellRefChars()
-			if l.pos == refStart {
-				return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-			}
-			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+			return l.lexRefAfterBang(start)
 		}
 	}
 
@@ -349,12 +351,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	// Also check for 3D reference: Sheet1:Sheet5!A1
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == '!' {
 		l.pos++ // skip !
-		refStart := l.pos
-		l.consumeCellRefChars()
-		if l.pos == refStart {
-			return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-		}
-		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		return l.lexRefAfterBang(start)
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
 		// Only try 3D sheet reference if the word so far does NOT look like
@@ -366,12 +363,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		if !looksLikeCellRef(word) {
 			if bangPos := l.find3DSheetBang(); bangPos > 0 {
 				l.pos = bangPos + 1 // skip past !
-				refStart := l.pos
-				l.consumeCellRefChars()
-				if l.pos == refStart {
-					return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-				}
-				return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+				return l.lexRefAfterBang(start)
 			}
 		}
 	}
@@ -403,24 +395,14 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	// Check again for sheet-qualified ref after reading full identifier (e.g. Sheet_Name!A1).
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == '!' {
 		l.pos++ // skip !
-		refStart := l.pos
-		l.consumeCellRefChars()
-		if l.pos == refStart {
-			return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-		}
-		return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		return l.lexRefAfterBang(start)
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
 		word := string(l.src[start:l.pos])
 		if !looksLikeCellRef(word) {
 			if bangPos := l.find3DSheetBang(); bangPos > 0 {
 				l.pos = bangPos + 1 // skip past !
-				refStart := l.pos
-				l.consumeCellRefChars()
-				if l.pos == refStart {
-					return Token{}, fmt.Errorf("expected cell reference after '!' at position %d", l.pos)
-				}
-				return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+				return l.lexRefAfterBang(start)
 			}
 		}
 	}

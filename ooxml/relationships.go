@@ -7,6 +7,7 @@ const (
 	NSOfficeDocument     = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 	RelTypeWorkbook      = NSOfficeDocument + "/officeDocument"
 	RelTypeWorksheet     = NSOfficeDocument + "/worksheet"
+	RelTypeExternalLink  = NSOfficeDocument + "/externalLink"
 	RelTypeStyles        = NSOfficeDocument + "/styles"
 	RelTypeSharedStr     = NSOfficeDocument + "/sharedStrings"
 	RelTypeSheetMetadata = NSOfficeDocument + "/sheetMetadata"
@@ -15,9 +16,10 @@ const (
 	RelTypeTable = NSOfficeDocument + "/table"
 
 	// Strict OOXML namespaces (ISO/IEC 29500 Strict).
-	NSOfficeDocumentStrict = "http://purl.oclc.org/ooxml/officeDocument/relationships"
-	RelTypeWorksheetStrict = NSOfficeDocumentStrict + "/worksheet"
-	RelTypeTableStrict     = NSOfficeDocumentStrict + "/table"
+	NSOfficeDocumentStrict    = "http://purl.oclc.org/ooxml/officeDocument/relationships"
+	RelTypeWorksheetStrict    = NSOfficeDocumentStrict + "/worksheet"
+	RelTypeExternalLinkStrict = NSOfficeDocumentStrict + "/externalLink"
+	RelTypeTableStrict        = NSOfficeDocumentStrict + "/table"
 )
 
 type xlsxRelationships struct {

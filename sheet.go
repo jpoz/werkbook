@@ -712,23 +712,38 @@ func (fr *fileResolver) resolveSheet(name string) *Sheet {
 	return fr.file.Sheet(name)
 }
 
+func (fr *fileResolver) resolveExternalSheet(name string) *externalSheet {
+	if name == "" {
+		return nil
+	}
+	bookIndex, sheetName, ok := parseExternalSheetRef(name)
+	if !ok || bookIndex < 0 || bookIndex >= len(fr.file.externalBooks) {
+		return nil
+	}
+	return fr.file.externalBooks[bookIndex].sheets[externalSheetKey(sheetName)]
+}
+
 func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 	s := fr.resolveSheet(addr.Sheet)
-	if s == nil {
-		return formula.ErrorVal(formula.ErrValREF)
+	if s != nil {
+		r, ok := s.rows[addr.Row]
+		if !ok {
+			return formula.EmptyVal()
+		}
+		c, ok := r.cells[addr.Col]
+		if !ok {
+			return formula.EmptyVal()
+		}
+
+		s.resolveCell(c, addr.Col, addr.Row)
+		return valueToFormulaValue(c.value)
 	}
 
-	r, ok := s.rows[addr.Row]
-	if !ok {
-		return formula.EmptyVal()
-	}
-	c, ok := r.cells[addr.Col]
-	if !ok {
-		return formula.EmptyVal()
+	if es := fr.resolveExternalSheet(addr.Sheet); es != nil {
+		return es.cellValue(addr.Col, addr.Row)
 	}
 
-	s.resolveCell(c, addr.Col, addr.Row)
-	return valueToFormulaValue(c.value)
+	return formula.ErrorVal(formula.ErrValREF)
 }
 
 func newFormulaValueMatrix(nRows, nCols int) [][]formula.Value {
@@ -756,6 +771,9 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	nCols := addr.ToCol - addr.FromCol + 1
 	s := fr.resolveSheet(addr.Sheet)
 	if s == nil {
+		if es := fr.resolveExternalSheet(addr.Sheet); es != nil {
+			return es.rangeValues(addr)
+		}
 		nRows := addr.ToRow - addr.FromRow + 1
 		if formula.RangeCellCountExceedsLimit(nRows, nCols) {
 			return rangeOverflow()

@@ -23,6 +23,7 @@ type File struct {
 	calcGen        uint64            // incremented on any cell mutation; starts at 1
 	evaluating     map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
 	deps           *formula.DepGraph // cell dependency graph for incremental recalculation
+	externalBooks  []externalBook
 	tableDefs      []Table
 	tables         []formula.TableInfo       // table definitions for structured reference expansion
 	definedNames   []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
@@ -366,6 +367,42 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 			Value:        dn.Value,
 			LocalSheetID: dn.LocalSheetID,
 		})
+	}
+
+	// Build cached external workbook data for formulas like '[1]Sheet'!A1.
+	for _, bookData := range data.ExternalBooks {
+		book := externalBook{sheets: make(map[string]*externalSheet)}
+		for _, sd := range bookData.Sheets {
+			sheet := &externalSheet{rows: make(map[int]map[int]formula.Value)}
+			for _, rd := range sd.Rows {
+				var rowVals map[int]formula.Value
+				for _, cd := range rd.Cells {
+					col, row, err := CellNameToCoordinates(cd.Ref)
+					if err != nil {
+						continue
+					}
+					v := cellDataToValue(cd, nil, f.date1904)
+					if v.Type == TypeEmpty && cd.Type == "" {
+						continue
+					}
+					if rowVals == nil {
+						rowVals = make(map[int]formula.Value)
+					}
+					rowVals[col] = valueToFormulaValue(v)
+					if col > sheet.maxCol {
+						sheet.maxCol = col
+					}
+					if row > sheet.maxRow {
+						sheet.maxRow = row
+					}
+				}
+				if len(rowVals) > 0 {
+					sheet.rows[rd.Num] = rowVals
+				}
+			}
+			book.sheets[externalSheetKey(sd.Name)] = sheet
+		}
+		f.externalBooks = append(f.externalBooks, book)
 	}
 
 	if err := f.registerAllFormulas(true); err != nil {

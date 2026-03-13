@@ -19,13 +19,14 @@ type xlsxCalcPr struct {
 }
 
 type xlsxWorkbook struct {
-	XMLName      xml.Name          `xml:"workbook"`
-	Xmlns        string            `xml:"xmlns,attr"`
-	XmlnsR       string            `xml:"xmlns:r,attr"`
-	WorkbookPr   *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
-	CalcPr       *xlsxCalcPr       `xml:"calcPr,omitempty"`
-	Sheets       xlsxSheets        `xml:"sheets"`
-	DefinedNames *xlsxDefinedNames `xml:"definedNames,omitempty"`
+	XMLName            xml.Name                `xml:"workbook"`
+	Xmlns              string                  `xml:"xmlns,attr"`
+	XmlnsR             string                  `xml:"xmlns:r,attr"`
+	WorkbookPr         *xlsxWorkbookPr         `xml:"workbookPr,omitempty"`
+	CalcPr             *xlsxCalcPr             `xml:"calcPr,omitempty"`
+	Sheets             xlsxSheets              `xml:"sheets"`
+	ExternalReferences *xlsxExternalReferences `xml:"externalReferences,omitempty"`
+	DefinedNames       *xlsxDefinedNames       `xml:"definedNames,omitempty"`
 }
 
 type xlsxDefinedNames struct {
@@ -40,6 +41,14 @@ type xlsxDefinedName struct {
 
 type xlsxSheets struct {
 	Sheet []xlsxSheet `xml:"sheet"`
+}
+
+type xlsxExternalReferences struct {
+	ExternalReference []xlsxExternalReference `xml:"externalReference"`
+}
+
+type xlsxExternalReference struct {
+	RID string
 }
 
 type xlsxSheet struct {
@@ -67,6 +76,16 @@ func (s *xlsxSheet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			}
 		case "state":
 			s.State = attr.Value
+		}
+	}
+	return d.Skip()
+}
+
+// UnmarshalXML handles both transitional and strict OOXML namespaces for the r:id attribute.
+func (r *xlsxExternalReference) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	for _, attr := range start.Attr {
+		if attr.Name.Local == "id" && (attr.Name.Space == NSOfficeDocument || attr.Name.Space == NSOfficeDocumentStrict) {
+			r.RID = attr.Value
 		}
 	}
 	return d.Skip()
@@ -102,14 +121,21 @@ type DefinedName struct {
 
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Date1904     bool // true if the workbook uses the 1904 date system
-	CalcProps    CalcPropertiesData
-	CoreProps    CorePropertiesData
-	CorePropsRaw []byte
-	Sheets       []SheetData
-	Styles       []StyleData   // index 0 = default (empty)
-	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
-	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
+	Date1904      bool // true if the workbook uses the 1904 date system
+	CalcProps     CalcPropertiesData
+	CoreProps     CorePropertiesData
+	CorePropsRaw  []byte
+	Sheets        []SheetData
+	ExternalBooks []ExternalBookData
+	Styles        []StyleData   // index 0 = default (empty)
+	Tables        []TableDef    // table definitions parsed from xl/tables/table*.xml
+	DefinedNames  []DefinedName // named ranges/formulas from <definedNames>
+}
+
+// ExternalBookData holds cached values for an OOXML external workbook link.
+// The sheet order matches the workbook's external sheetNames list.
+type ExternalBookData struct {
+	Sheets []SheetData
 }
 
 // CalcPropertiesData holds workbook-level calculation settings from <calcPr>.

@@ -47,15 +47,19 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		files[f.Name] = f
 	}
 
-	// Parse workbook relationships to find sheet paths.
+	// Parse workbook relationships to find sheet paths and external links.
 	wbRels, err := readXML[xlsxRelationships](files, "xl/_rels/workbook.xml.rels")
 	if err != nil {
 		return nil, fmt.Errorf("read workbook rels: %w", err)
 	}
-	sheetRels := make(map[string]string) // rId -> target path
+	sheetRels := make(map[string]string)        // rId -> target path
+	externalLinkRels := make(map[string]string) // rId -> target path
 	for _, rel := range wbRels.Relationships {
-		if rel.Type == RelTypeWorksheet || rel.Type == RelTypeWorksheetStrict {
+		switch rel.Type {
+		case RelTypeWorksheet, RelTypeWorksheetStrict:
 			sheetRels[rel.ID] = rel.Target
+		case RelTypeExternalLink, RelTypeExternalLinkStrict:
+			externalLinkRels[rel.ID] = rel.Target
 		}
 	}
 
@@ -108,20 +112,24 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 			})
 		}
 	}
+	if wb.ExternalReferences != nil {
+		for _, ref := range wb.ExternalReferences.ExternalReference {
+			var book ExternalBookData
+			if target, ok := externalLinkRels[ref.RID]; ok {
+				path := workbookRelTargetPath(target)
+				if parsed, err := readExternalBookData(files, path); err == nil {
+					book = parsed
+				}
+			}
+			data.ExternalBooks = append(data.ExternalBooks, book)
+		}
+	}
 	for _, s := range wb.Sheets.Sheet {
 		target, ok := sheetRels[s.RID]
 		if !ok {
 			continue
 		}
-		// Target may be relative (e.g. "worksheets/sheet1.xml") or
-		// absolute (e.g. "/xl/worksheets/sheet1.xml"). Absolute paths
-		// start with "/" and are relative to the ZIP root.
-		var path string
-		if strings.HasPrefix(target, "/") {
-			path = target[1:]
-		} else {
-			path = "xl/" + target
-		}
+		path := workbookRelTargetPath(target)
 		ws, err := readXML[xlsxWorksheet](files, path)
 		if err != nil {
 			return nil, fmt.Errorf("read sheet %q: %w", s.Name, err)
@@ -223,6 +231,60 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		cd.Value = xc.V
 	}
 	return cd
+}
+
+func workbookRelTargetPath(target string) string {
+	if strings.HasPrefix(target, "/") {
+		return target[1:]
+	}
+	return "xl/" + target
+}
+
+func readExternalBookData(files map[string]*zip.File, path string) (ExternalBookData, error) {
+	link, err := readXML[xlsxExternalLink](files, path)
+	if err != nil {
+		return ExternalBookData{}, err
+	}
+	if link.ExternalBook == nil {
+		return ExternalBookData{}, nil
+	}
+
+	var book ExternalBookData
+	if link.ExternalBook.SheetNames != nil {
+		book.Sheets = make([]SheetData, len(link.ExternalBook.SheetNames.SheetName))
+		for i, sheet := range link.ExternalBook.SheetNames.SheetName {
+			book.Sheets[i].Name = sheet.Val
+		}
+	}
+
+	if link.ExternalBook.SheetDataSet == nil {
+		return book, nil
+	}
+
+	for _, sheet := range link.ExternalBook.SheetDataSet.SheetData {
+		if sheet.SheetID < 0 {
+			continue
+		}
+		for len(book.Sheets) <= sheet.SheetID {
+			book.Sheets = append(book.Sheets, SheetData{})
+		}
+		sd := &book.Sheets[sheet.SheetID]
+		for _, row := range sheet.Rows {
+			rd := RowData{Num: row.R}
+			for _, cell := range row.Cells {
+				rd.Cells = append(rd.Cells, CellData{
+					Ref:   cell.R,
+					Type:  cell.T,
+					Value: cell.V,
+				})
+			}
+			if len(rd.Cells) > 0 {
+				sd.Rows = append(sd.Rows, rd)
+			}
+		}
+	}
+
+	return book, nil
 }
 
 func parseOOXMLBoolString(v string) bool {
