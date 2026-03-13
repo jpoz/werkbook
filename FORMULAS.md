@@ -63,7 +63,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | CLEAN | Removes non-printing characters from text. | Text | 25 |
 | CODE | Returns the numeric code for the first character in text. | Text | 13 |
 | COLUMN | Returns the column number of a reference. | Information | 25 |
-| COLUMNS | Returns the number of columns in a reference or array. | Information | 30 |
+| COLUMNS | Returns the number of columns in a reference or array. | Information | 33 |
 | COMBIN | Returns the number of combinations for a given number of items. | Math & Trig | 40 |
 | COMBINA | Returns the number of combinations with repetitions. | Math & Trig | 31 |
 | COMPLEX | Builds a complex number from real and imaginary parts. | Engineering | 51 |
@@ -99,7 +99,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 18 |
 | DATEVALUE | Converts date text to a serial date number. | Date & Time | 39 |
 | DAVERAGE | Returns the average of matching records in a database range. | Db | 3 |
-| DAY | Returns the day of the month from a date. | Date & Time | 6 |
+| DAY | Returns the day of the month from a date. | Date & Time | 7 |
 | DAYS | Returns the number of days between two dates. | Date & Time | 17 |
 | DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 57 |
 | DB | Returns depreciation using the fixed-declining balance method. | Financial | 29 |
@@ -150,7 +150,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | FACT | Returns the factorial of a number. | Math & Trig | 28 |
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
-| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 31 |
+| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 32 |
 | FIND | Returns the position of one text value inside another, case-sensitive. | Text | 48 |
 | FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
 | FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
@@ -184,7 +184,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 32 |
-| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 58 |
+| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 59 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 44 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
 | IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
@@ -212,7 +212,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 80 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 81 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 61 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
@@ -239,7 +239,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 30 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
-| LEN | Returns the number of characters in text. | Text | 32 |
+| LEN | Returns the number of characters in text. | Text | 33 |
 | LET | Assigns names to intermediate values within a formula. | Logical | 33 |
 | LINEST | Returns linear regression statistics. | Statistical | 3 |
 | LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
@@ -251,7 +251,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | LOOKUP | Looks up a value in a one-dimensional range and returns the matching result. | Lookup & Reference | 24 |
 | LOWER | Converts text to lowercase. | Text | 23 |
 | MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 16 |
-| MAX | Returns the largest numeric value. | Statistical | 33 |
+| MAX | Returns the largest numeric value. | Statistical | 35 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
 | MDETERM | Returns the determinant of a matrix. | Math & Trig | 31 |
@@ -283,7 +283,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | NORM.INV | Returns the inverse of the normal cumulative distribution. | Statistical | 28 |
 | NORM.S.DIST | Returns the standard normal distribution. | Statistical | 27 |
 | NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
-| NOT | Returns the opposite of a logical value. | Logical | 12 |
+| NOT | Returns the opposite of a logical value. | Logical | 13 |
 | NOW | Returns the current date and time. | Date & Time | 2 |
 | NPER | Returns the number of periods for an investment or loan. | Financial | 5 |
 | NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
@@ -299,7 +299,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | PERCENTILE | Returns the percentile of a data set. | Statistical | 33 |
 | PERCENTILE.EXC | Returns the exclusive percentile of a data set. | Statistical | 31 |
 | PERCENTILE.INC | Returns the inclusive percentile of a data set. | Statistical | 46 |
-| PERCENTRANK | Returns the rank of a value as a percentage of a data set. | Statistical | 26 |
+| PERCENTRANK | Returns the rank of a value as a percentage of a data set. | Statistical | 27 |
 | PERCENTRANK.EXC | Returns the exclusive percentage rank of a value in a data set. | Statistical | 29 |
 | PERCENTRANK.INC | Returns the inclusive percentage rank of a value in a data set. | Statistical | 52 |
 | PERMUT | Returns the number of permutations for a number of objects. | Math & Trig | 39 |
@@ -334,11 +334,11 @@ Werkbook supports **438** spreadsheet formula functions.
 | REPT | Repeats text a specified number of times. | Text | 26 |
 | RIGHT | Returns characters from the right side of a text value. | Text | 41 |
 | ROMAN | Converts an Arabic number to Roman numeral text. | Text | 38 |
-| ROUND | Rounds a number to a requested number of digits. | Math & Trig | 40 |
+| ROUND | Rounds a number to a requested number of digits. | Math & Trig | 42 |
 | ROUNDDOWN | Rounds a number toward zero. | Math & Trig | 36 |
 | ROUNDUP | Rounds a number away from zero. | Math & Trig | 36 |
 | ROW | Returns the row number of a reference. | Information | 41 |
-| ROWS | Returns the number of rows in a reference or array. | Information | 32 |
+| ROWS | Returns the number of rows in a reference or array. | Information | 35 |
 | RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
 | RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 23 |
 | SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 15 |
@@ -355,11 +355,11 @@ Werkbook supports **438** spreadsheet formula functions.
 | SLN | Returns straight-line depreciation for one period. | Financial | 9 |
 | SLOPE | Returns the slope of a linear regression line. | Statistical | 16 |
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 28 |
-| SORT | Sorts an array by row or column order. | Logical | 25 |
-| SORTBY | Sorts an array by one or more companion arrays. | Logical | 3 |
+| SORT | Sorts an array by row or column order. | Logical | 26 |
+| SORTBY | Sorts an array by one or more companion arrays. | Logical | 4 |
 | SQRT | Returns the square root of a number. | Math & Trig | 29 |
 | SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
-| STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 16 |
+| STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 17 |
 | STDEV | Returns the sample standard deviation. | Statistical | 26 |
 | STDEV.P | Returns the population standard deviation. | Statistical | 32 |
 | STDEV.S | Returns the sample standard deviation. | Statistical | 45 |
@@ -367,12 +367,12 @@ Werkbook supports **438** spreadsheet formula functions.
 | STDEVP | Returns the population standard deviation. | Statistical | 10 |
 | STDEVPA | Returns the population standard deviation including logical values and text coercions. | Statistical | 29 |
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
-| SUBSTITUTE | Replaces matching text within a string. | Text | 23 |
+| SUBSTITUTE | Replaces matching text within a string. | Text | 25 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 32 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 57 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 62 |
 | SUMIF | Returns the sum of values that match one condition. | Statistical | 39 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 42 |
-| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 38 |
+| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 43 |
 | SUMSQ | Returns the sum of squares of the supplied values. | Statistical | 30 |
 | SUMX2MY2 | Returns the sum of the difference of squares of paired arrays. | Math & Trig | 31 |
 | SUMX2PY2 | Returns the sum of the sum of squares of paired arrays. | Math & Trig | 31 |
@@ -432,8 +432,8 @@ Werkbook supports **438** spreadsheet formula functions.
 | WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
 | WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |
 | XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 19 |
-| XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 64 |
-| XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 35 |
+| XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 65 |
+| XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 36 |
 | XNPV | Returns the net present value of cash flows on irregular dates. | Financial | 18 |
 | XOR | Returns TRUE when an odd number of supplied conditions are TRUE. | Logical | 34 |
 | YEAR | Returns the year from a date. | Date & Time | 26 |

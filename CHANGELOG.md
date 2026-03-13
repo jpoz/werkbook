@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.1
+
+### Security
+
+- **Expansion bomb prevention**: Added size limits to formula range expansion to prevent denial-of-service via crafted spreadsheets
+
+### Bug fixes
+
+- **Array/scalar lifting**: Scalar functions now correctly lift over array arguments, matching Excel behavior
+- **Full-column ranges**: Fixed AGGREGATE and other functions handling of full-column ranges (e.g. `A:A`)
+- **Range trimming**: Preserved logical bounds when trimming ranges, fixing edge cases where trimmed ranges lost their original dimensions
+- **Argument evaluation modes**: Refined how formula function arguments are evaluated, improving correctness for functions that mix scalar and range parameters
+
+### Other
+
+- Added regression tests for whole-column recalculation
+- Updated README description
+
 ## v0.7.0
 
 ### New formula functions (64 functions)
