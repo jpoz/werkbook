@@ -409,8 +409,8 @@ Werkbook supports **445** spreadsheet formula functions.
 | TIMEVALUE | Converts time text to a serial time value. | Date & Time | 48 |
 | TOCOL | Flattens an array into a single column. | Lookup & Reference | 22 |
 | TODAY | Returns the current date. | Date & Time | 2 |
-| TOROW | Flattens an array into a single row. | Lookup & Reference | 20 |
-| TRANSPOSE | Swaps the rows and columns of an array. | Lookup & Reference | 35 |
+| TOROW | Flattens an array into a single row. | Lookup & Reference | 46 |
+| TRANSPOSE | Swaps the rows and columns of an array. | Lookup & Reference | 58 |
 | TREND | Returns values along a linear trend. | Statistical | 10 |
 | TRIM | Removes extra spaces from text. | Text | 18 |
 | TRIMMEAN | Returns the mean after trimming values from both tails of a data set. | Statistical | 23 |
