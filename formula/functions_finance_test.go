@@ -509,6 +509,151 @@ func TestPMT_Comprehensive(t *testing.T) {
 			args: []Value{StringVal("0.05"), StringVal("12"), StringVal("1000")},
 			want: -112.83,
 		},
+
+		// --- Cross-check with well-known value ---
+		{
+			name: "cross-check: $1000 loan at 10% annual for 12 months",
+			// PMT(0.10/12, 12, 1000) ≈ -87.92
+			args: numArgs(0.10/12, 12, 1000),
+			want: -87.92,
+		},
+		{
+			name: "cross-check: $5000 loan at 12% annual for 24 months",
+			// PMT(0.12/12, 24, 5000) ≈ -235.37
+			args: numArgs(0.12/12, 24, 5000),
+			want: -235.37,
+		},
+
+		// --- Retirement annuity (saving for retirement) ---
+		{
+			name: "retirement annuity: saving $1M over 30 years at 7%",
+			// PMT(0.07/12, 360, 0, 1000000) ≈ -819.69
+			args: numArgs(0.07/12, 360, 0, 1000000),
+			want: -819.69,
+		},
+		{
+			name: "retirement annuity: type=1 saving $500k over 20 years at 6%",
+			// PMT(0.06/12, 240, 0, 500000, 1) ≈ -1076.77
+			args: numArgs(0.06/12, 240, 0, 500000, 1),
+			want: -1076.77,
+		},
+
+		// --- Boolean coercion for fv and intermediate args ---
+		{
+			name: "bool coercion: TRUE for fv (fv=1)",
+			// PMT(0.05, 10, 1000, TRUE) = PMT(0.05, 10, 1000, 1)
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(1000), BoolVal(true)},
+			want: -129.58,
+		},
+		{
+			name: "bool coercion: FALSE for fv (fv=0)",
+			args: []Value{NumberVal(0.05), NumberVal(10), NumberVal(1000), BoolVal(false)},
+			want: -129.50,
+		},
+
+		// --- Zero rate with type=1 and fv combined ---
+		{
+			name: "zero rate with type=1 and fv",
+			// PMT(0, 12, 6000, 6000, 1) = -(6000+6000)/12 = -1000
+			args: numArgs(0, 12, 6000, 6000, 1),
+			want: -1000,
+		},
+		{
+			name: "zero rate with type=0 and fv",
+			// PMT(0, 12, 6000, 6000, 0) = -(6000+6000)/12 = -1000
+			args: numArgs(0, 12, 6000, 6000, 0),
+			want: -1000,
+		},
+
+		// --- Weekly payments ---
+		{
+			name: "weekly payments: 52 weeks at 5% annual",
+			// PMT(0.05/52, 52, 10000) ≈ -197.25
+			args: numArgs(0.05/52, 52, 10000),
+			want: -197.25,
+		},
+
+		// --- Biweekly mortgage payments ---
+		{
+			name: "biweekly mortgage: 26 payments/yr for 30 yrs at 5%",
+			// PMT(0.05/26, 26*30, 200000) ≈ -495.29
+			args: numArgs(0.05/26, 26*30, 200000),
+			want: -495.29,
+		},
+
+		// --- Sign convention verification ---
+		{
+			name: "sign: positive pv yields negative payment",
+			args: numArgs(0.06/12, 60, 10000),
+			want: -193.33,
+		},
+		{
+			name: "sign: negative pv yields positive payment",
+			args: numArgs(0.06/12, 60, -10000),
+			want: 193.33,
+		},
+
+		// --- Tiny pv ---
+		{
+			name: "tiny pv: $1 loan at 5% for 12 months",
+			args: numArgs(0.05/12, 12, 1),
+			want: -0.09,
+		},
+
+		// --- Large fv with zero pv ---
+		{
+			name: "large fv: saving $10M over 40 years at 8%",
+			args: numArgs(0.08/12, 480, 0, 10000000),
+			want: -2864.50,
+		},
+
+		// --- String coercion for fv and type ---
+		{
+			name: "string coercion: fv as string",
+			args: []Value{NumberVal(0.06 / 12), NumberVal(60), NumberVal(0), StringVal("10000")},
+			want: -143.33,
+		},
+		{
+			name: "string coercion: type as string '1'",
+			args: []Value{NumberVal(0.10 / 12), NumberVal(120), NumberVal(50000), NumberVal(0), StringVal("1")},
+			want: -655.29,
+		},
+		{
+			name: "string coercion: type as string '0'",
+			args: []Value{NumberVal(0.10 / 12), NumberVal(120), NumberVal(50000), NumberVal(0), StringVal("0")},
+			want: -660.75,
+		},
+
+		// --- Empty val for pv (coerces to 0) ---
+		{
+			name: "empty val for pv (coerces to 0)",
+			args: []Value{NumberVal(0.05 / 12), NumberVal(60), EmptyVal(), NumberVal(10000)},
+			want: -147.05,
+		},
+
+		// --- nper=1 with fv ---
+		{
+			name: "nper=1 with fv: single period loan with balloon",
+			// PMT(0.10, 1, 5000, 10000) = -(5000*1.1 + 10000)/((1.1-1)/0.1) = -(5500+10000)/1 = -15500
+			args: numArgs(0.10, 1, 5000, 10000),
+			want: -15500.00,
+		},
+
+		// --- nper=1 with type=1 ---
+		{
+			name: "nper=1 type=1",
+			// PMT(0.10, 1, 1000, 0, 1) = -(1000*1.1)/((1+0.1)*(1.1-1)/0.1) = -1100/(1.1*1) = -1000
+			args: numArgs(0.10, 1, 1000, 0, 1),
+			want: -1000.00,
+		},
+
+		// --- Rate exactly 1 (100%) ---
+		{
+			name: "rate exactly 1.0 with nper=1",
+			// PMT(1.0, 1, 1000) = -(1000*2)/((2-1)/1) = -2000/1 = -2000
+			args: numArgs(1.0, 1, 1000),
+			want: -2000.00,
+		},
 	}
 
 	for _, tt := range tests {
