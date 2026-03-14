@@ -110,6 +110,7 @@ func main() {
 var parserSupported = map[string]string{
 	"LAMBDA": "Logical",
 	"LET":    "Logical",
+	"MAP":    "Logical",
 }
 
 // descriptionMap holds locally authored, concise descriptions for formulas

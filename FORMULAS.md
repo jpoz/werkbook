@@ -250,6 +250,7 @@ Werkbook supports **438** spreadsheet formula functions.
 | LOGNORM.INV | Returns the inverse of the lognormal cumulative distribution. | Statistical | 31 |
 | LOOKUP | Looks up a value in a one-dimensional range and returns the matching result. | Lookup & Reference | 24 |
 | LOWER | Converts text to lowercase. | Text | 23 |
+| MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 24 |
 | MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 16 |
 | MAX | Returns the largest numeric value. | Statistical | 35 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
@@ -480,7 +481,6 @@ The following **17** functions are not yet supported.
 | FORECAST.ETS.STAT | Returns forecast statistics from exponential smoothing. | Statistical |
 | GETPIVOTDATA | Returns a value from a pivot table by field and item labels. | Lookup & Reference |
 | MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical |
-| MAP | Applies a lambda element-by-element across one or more arrays. | Logical |
 | ODDFPRICE | Returns the price of a security with an odd first period. | Financial |
 | ODDFYIELD | Returns the yield of a security with an odd first period. | Financial |
 | ODDLPRICE | Returns the price of a security with an odd last period. | Financial |
