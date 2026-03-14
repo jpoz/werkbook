@@ -92,7 +92,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | COUPPCD | Returns the previous coupon date before settlement. | Financial | 19 |
 | COVAR | Returns the population covariance of two data sets. | Statistical | 34 |
 | COVARIANCE.P | Returns the population covariance of two data sets. | Statistical | 21 |
-| COVARIANCE.S | Returns the sample covariance of two data sets. | Statistical | 6 |
+| COVARIANCE.S | Returns the sample covariance of two data sets. | Statistical | 7 |
 | CSC | Returns the cosecant of an angle. | Math & Trig | 27 |
 | CSCH | Returns the hyperbolic cosecant of a number. | Math & Trig | 28 |
 | CUMIPMT | Returns cumulative interest paid over a span of payment periods. | Financial | 33 |
@@ -347,7 +347,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
 | RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 23 |
 | SCAN | Returns the running accumulation produced by a lambda over an array. | Logical | 25 |
-| SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 15 |
+| SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 51 |
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
 | SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
 | SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |

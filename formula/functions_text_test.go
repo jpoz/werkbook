@@ -1989,6 +1989,177 @@ func TestSEARCHWildcards(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SEARCH — comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSEARCHComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		wantNum float64
+		isErr   bool
+	}{
+		// Basic case-insensitive search
+		{name: "find_world_in_hello_world", formula: `SEARCH("world","Hello World")`, wantNum: 7},
+		{name: "case_insensitive_HELLO", formula: `SEARCH("HELLO","hello world")`, wantNum: 1},
+		{name: "case_insensitive_mixed", formula: `SEARCH("hElLo","HELLO WORLD")`, wantNum: 1},
+
+		// With start_num
+		{name: "start_num_skip_first", formula: `SEARCH("o","hello world",5)`, wantNum: 5},
+		{name: "start_num_skip_to_second", formula: `SEARCH("o","hello world",6)`, wantNum: 8},
+		{name: "start_num_explicit_1", formula: `SEARCH("h","hello",1)`, wantNum: 1},
+		{name: "start_num_at_position", formula: `SEARCH("l","hello",4)`, wantNum: 4},
+
+		// Wildcard ? (single character)
+		{name: "question_at_beginning", formula: `SEARCH("?ello","hello")`, wantNum: 1},
+		{name: "question_at_end", formula: `SEARCH("hell?","hello")`, wantNum: 1},
+		{name: "multiple_question_marks", formula: `SEARCH("h??lo","hello")`, wantNum: 1},
+		{name: "question_only", formula: `SEARCH("?","abc")`, wantNum: 1},
+
+		// Wildcard * (any characters)
+		{name: "star_zero_chars", formula: `SEARCH("he*llo","hello")`, wantNum: 1},
+		{name: "star_many_chars", formula: `SEARCH("h*d","hello world")`, wantNum: 1},
+		{name: "star_only", formula: `SEARCH("*","anything")`, wantNum: 1},
+		{name: "star_at_end", formula: `SEARCH("hel*","hello")`, wantNum: 1},
+		{name: "star_at_beginning", formula: `SEARCH("*lo","hello")`, wantNum: 1},
+
+		// Multiple/combined wildcards
+		{name: "question_star_question", formula: `SEARCH("?e*d","hello world")`, wantNum: 1},
+		{name: "star_question_combined", formula: `SEARCH("h*l?o","hello")`, wantNum: 1},
+
+		// Empty find text → start position
+		{name: "empty_find_default", formula: `SEARCH("","hello")`, wantNum: 1},
+		{name: "empty_find_with_start", formula: `SEARCH("","hello",3)`, wantNum: 3},
+
+		// Error cases: not found
+		{name: "not_found_VALUE", formula: `SEARCH("xyz","hello")`, isErr: true},
+		// Error cases: start_num out of range
+		{name: "start_num_exceeds_length", formula: `SEARCH("a","hello",10)`, isErr: true},
+		{name: "start_num_zero", formula: `SEARCH("a","hello",0)`, isErr: true},
+		{name: "start_num_negative", formula: `SEARCH("a","hello",-1)`, isErr: true},
+
+		// Find text longer than within text
+		{name: "find_longer_than_within", formula: `SEARCH("hello world!","hello")`, isErr: true},
+
+		// Escaped wildcards: ~? and ~*
+		{name: "escaped_question_literal", formula: `SEARCH("~?","is this?")`, wantNum: 8},
+		{name: "escaped_star_literal", formula: `SEARCH("~*","3*5")`, wantNum: 2},
+		{name: "escaped_tilde_literal", formula: `SEARCH("~~","a~b")`, wantNum: 2},
+
+		// Unicode / multibyte characters
+		{name: "unicode_find", formula: `SEARCH("世界","你好世界")`, wantNum: 3},
+		{name: "unicode_case_insensitive", formula: `SEARCH("café","CAFÉ au lait")`, wantNum: 1},
+		{name: "emoji_search", formula: `SEARCH("🌍","hello🌍world")`, wantNum: 6},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueNumber || got.Num != tt.wantNum {
+					t.Errorf("Eval(%q) = type=%d num=%g, want %g", tt.formula, got.Type, got.Num, tt.wantNum)
+				}
+			}
+		})
+	}
+
+	// Wrong arg count tests via direct function call
+	t.Run("too_few_args", func(t *testing.T) {
+		v, err := fnSEARCH([]Value{StringVal("a")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueError {
+			t.Errorf("got %v, want error", v)
+		}
+	})
+
+	t.Run("too_many_args", func(t *testing.T) {
+		v, err := fnSEARCH([]Value{StringVal("a"), StringVal("abc"), NumberVal(1), NumberVal(2)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Type != ValueError {
+			t.Errorf("got %v, want error", v)
+		}
+	})
+
+	// Error propagation: if an argument is an error, it should propagate
+	t.Run("error_propagation_find_text", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+			},
+		}
+		cf := evalCompile(t, `SEARCH(A1,"hello")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// The error in A1 gets coerced to a string "#N/A" and searched for;
+		// it won't be found, so the result is #VALUE!
+		if got.Type != ValueError {
+			t.Errorf("got %v, want error", got)
+		}
+	})
+
+	t.Run("start_num_just_past_end", func(t *testing.T) {
+		// start_num = len+1 is exactly past the end for non-empty find
+		cf := evalCompile(t, `SEARCH("a","hello",6)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("empty_within_text", func(t *testing.T) {
+		cf := evalCompile(t, `SEARCH("a","")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("empty_find_empty_within", func(t *testing.T) {
+		cf := evalCompile(t, `SEARCH("","")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("wildcard_star_matching_everything", func(t *testing.T) {
+		cf := evalCompile(t, `SEARCH("*","hello world")`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // TEXT — boolean, @, color code, and digit placeholder fixes
 // ---------------------------------------------------------------------------
 
