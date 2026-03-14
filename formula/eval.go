@@ -77,6 +77,10 @@ type FormulaArrayEvaluator interface {
 
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
+	return evalWithParams(cf, resolver, ctx, nil)
+}
+
+func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext, params []Value) (Value, error) {
 	stack := make([]Value, 0, 16)
 	arrayCtxDepth := 0 // >0 means we're inside an array-forcing function's arguments
 
@@ -416,6 +420,61 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				return Value{}, err
 			}
 			push(BoolVal(v.Type != ValueError))
+
+		case OpLoadParam:
+			if params == nil || int(inst.Operand) >= len(params) {
+				return Value{}, fmt.Errorf("parameter index %d out of range", inst.Operand)
+			}
+			push(params[inst.Operand])
+
+		case OpMap:
+			subIdx := int(inst.Operand >> 8)
+			numArrays := int(inst.Operand & 0xFF)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop arrays from stack (in reverse order since last pushed is on top)
+			arrays := make([]Value, numArrays)
+			for i := numArrays - 1; i >= 0; i-- {
+				v, err := pop()
+				if err != nil {
+					return Value{}, err
+				}
+				arrays[i] = v
+			}
+
+			// Determine output dimensions (max rows x max cols across all arrays)
+			rows, cols := 1, 1
+			for _, arr := range arrays {
+				if arr.Type == ValueArray {
+					r, c := arrayOpBounds(arr)
+					if r > rows {
+						rows = r
+					}
+					if c > cols {
+						cols = c
+					}
+				}
+			}
+
+			// For each element position, bind params and eval the sub-formula
+			result := newValueMatrix(rows, cols)
+			paramVals := make([]Value, numArrays)
+			for i := 0; i < rows; i++ {
+				for j := 0; j < cols; j++ {
+					for k, arr := range arrays {
+						paramVals[k] = ArrayElement(arr, i, j)
+					}
+					cellResult, err := evalWithParams(subFormula, resolver, ctx, paramVals)
+					if err != nil {
+						return Value{}, err
+					}
+					result[i][j] = cellResult
+				}
+			}
+			push(Value{Type: ValueArray, Array: result})
 
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)

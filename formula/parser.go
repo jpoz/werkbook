@@ -284,6 +284,9 @@ func (p *Parser) parseFunc() (Node, error) {
 	// Zero-arg function: immediately followed by ).
 	if p.peek().Type == TokRParen {
 		p.advance()
+		if isMapFuncName(name) {
+			return desugarMAP(nil)
+		}
 		return &FuncCall{Name: name}, nil
 	}
 
@@ -337,6 +340,10 @@ func (p *Parser) parseFunc() (Node, error) {
 
 	if isLetFuncName(name) {
 		return desugarLET(args)
+	}
+
+	if isMapFuncName(name) {
+		return desugarMAP(args)
 	}
 
 	return call, nil
@@ -503,6 +510,60 @@ func desugarLET(args []Node) (Node, error) {
 	return args[len(args)-1], nil
 }
 
+func isMapFuncName(name string) bool {
+	upper := strings.ToUpper(name)
+	return upper == "MAP" || upper == "_XLFN.MAP"
+}
+
+func desugarMAP(args []Node) (Node, error) {
+	if len(args) < 2 {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	// Last arg must be a LAMBDA FuncCall
+	lastArg := args[len(args)-1]
+	lambdaCall, ok := lastArg.(*FuncCall)
+	if !ok || !isLambdaFuncName(lambdaCall.Name) {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	// LAMBDA must have at least a body (1 arg) and params matching array count
+	lambdaArgs := lambdaCall.Args
+	if len(lambdaArgs) == 0 {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	numArrays := len(args) - 1
+	body := lambdaArgs[len(lambdaArgs)-1]
+	params := lambdaArgs[:len(lambdaArgs)-1]
+
+	// Number of params must match number of arrays
+	if len(params) != numArrays {
+		return &ErrorLit{Code: ErrVALUE}, nil
+	}
+
+	// Extract parameter names and build substitution map
+	paramNames := make([]string, len(params))
+	subst := make(map[string]Node, len(params))
+	for i, param := range params {
+		name, ok := lambdaParamName(param)
+		if !ok {
+			return &ErrorLit{Code: ErrVALUE}, nil
+		}
+		paramNames[i] = name
+		subst[name] = &ParamRef{Slot: i, Name: name}
+	}
+
+	// Replace parameter references in the body with ParamRef nodes
+	transformedBody := substituteLambdaNames(body, subst)
+
+	return &MapExpr{
+		Arrays:     args[:numArrays],
+		ParamNames: paramNames,
+		Body:       transformedBody,
+	}, nil
+}
+
 func lambdaParamName(n Node) (string, bool) {
 	ref, ok := n.(*CellRef)
 	if !ok || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
@@ -556,6 +617,19 @@ func substituteLambdaNames(n Node, subst map[string]Node) Node {
 			}
 		}
 		return &ArrayLit{Rows: rows}
+	case *ParamRef:
+		// ParamRef is already a resolved parameter reference; return as-is.
+		return &ParamRef{Slot: v.Slot, Name: v.Name}
+	case *MapExpr:
+		arrays := make([]Node, len(v.Arrays))
+		for i, arr := range v.Arrays {
+			arrays[i] = substituteLambdaNames(arr, subst)
+		}
+		return &MapExpr{
+			Arrays:     arrays,
+			ParamNames: append([]string(nil), v.ParamNames...),
+			Body:       substituteLambdaNames(v.Body, subst),
+		}
 	default:
 		return cloneNode(v)
 	}
@@ -608,6 +682,18 @@ func cloneNode(n Node) Node {
 			}
 		}
 		return &ArrayLit{Rows: rows}
+	case *ParamRef:
+		return &ParamRef{Slot: v.Slot, Name: v.Name}
+	case *MapExpr:
+		arrays := make([]Node, len(v.Arrays))
+		for i, arr := range v.Arrays {
+			arrays[i] = cloneNode(arr)
+		}
+		return &MapExpr{
+			Arrays:     arrays,
+			ParamNames: append([]string(nil), v.ParamNames...),
+			Body:       cloneNode(v.Body),
+		}
 	default:
 		return v
 	}

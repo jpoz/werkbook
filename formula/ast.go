@@ -220,6 +220,29 @@ func (n *ArrayLit) String() string {
 	return b.String()
 }
 
+// ParamRef represents a reference to a lambda parameter inside a MAP/REDUCE/SCAN body.
+type ParamRef struct {
+	Slot int    // parameter index (0-based)
+	Name string // parameter name for debugging
+}
+
+func (n *ParamRef) nodeMarker() {}
+func (n *ParamRef) String() string {
+	return fmt.Sprintf("$param(%d:%s)", n.Slot, n.Name)
+}
+
+// MapExpr represents a MAP(arrays..., LAMBDA(params..., body)) expression.
+type MapExpr struct {
+	Arrays     []Node   // array expressions
+	ParamNames []string // lambda parameter names (uppercase)
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *MapExpr) nodeMarker() {}
+func (n *MapExpr) String() string {
+	return fmt.Sprintf("(MAP arrays=%d params=%v)", len(n.Arrays), n.ParamNames)
+}
+
 // needsQuoting returns true if a sheet name contains characters that require quoting.
 func needsQuoting(name string) bool {
 	for _, c := range name {
