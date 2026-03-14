@@ -17117,3 +17117,228 @@ func TestXMATCH_ComprehensiveExtended(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// HYPERLINK — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestHYPERLINKAdditional(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("http://example.com"),
+			{Col: 2, Row: 1}: StringVal("Click Here"),
+			{Col: 1, Row: 2}: NumberVal(42),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		formula  string
+		wantType ValueType
+		wantStr  string
+		wantNum  float64
+		wantBool bool
+		wantErr  ErrorValue
+	}{
+		// mailto: link
+		{
+			name:     "mailto link with friendly name",
+			formula:  `HYPERLINK("mailto:user@example.com","Email Us")`,
+			wantType: ValueString,
+			wantStr:  "Email Us",
+		},
+		{
+			name:     "mailto link without friendly name",
+			formula:  `HYPERLINK("mailto:user@example.com")`,
+			wantType: ValueString,
+			wantStr:  "mailto:user@example.com",
+		},
+
+		// File path link
+		{
+			name:     "file path link",
+			formula:  `HYPERLINK("C:\Documents\report.xlsx","Open Report")`,
+			wantType: ValueString,
+			wantStr:  "Open Report",
+		},
+		{
+			name:     "file path without friendly name",
+			formula:  `HYPERLINK("/Users/test/file.txt")`,
+			wantType: ValueString,
+			wantStr:  "/Users/test/file.txt",
+		},
+
+		// URL with special characters / query params
+		{
+			name:     "URL with query params",
+			formula:  `HYPERLINK("http://example.com/search?q=test&lang=en","Search")`,
+			wantType: ValueString,
+			wantStr:  "Search",
+		},
+		{
+			name:     "URL with hash fragment",
+			formula:  `HYPERLINK("http://example.com/page#section","Go to section")`,
+			wantType: ValueString,
+			wantStr:  "Go to section",
+		},
+		{
+			name:     "URL with encoded spaces",
+			formula:  `HYPERLINK("http://example.com/my%20page","My Page")`,
+			wantType: ValueString,
+			wantStr:  "My Page",
+		},
+
+		// Long URL
+		{
+			name:     "long URL without friendly name",
+			formula:  `HYPERLINK("https://www.example.com/very/long/path/to/some/deeply/nested/resource/that/goes/on/and/on/and/on")`,
+			wantType: ValueString,
+			wantStr:  "https://www.example.com/very/long/path/to/some/deeply/nested/resource/that/goes/on/and/on/and/on",
+		},
+		{
+			name:     "long URL with friendly name",
+			formula:  `HYPERLINK("https://www.example.com/very/long/path/to/some/deeply/nested/resource","Short Name")`,
+			wantType: ValueString,
+			wantStr:  "Short Name",
+		},
+
+		// Friendly name with various types
+		{
+			name:     "friendly name is zero",
+			formula:  `HYPERLINK("http://example.com",0)`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		{
+			name:     "friendly name is negative number",
+			formula:  `HYPERLINK("http://example.com",-1)`,
+			wantType: ValueNumber,
+			wantNum:  -1,
+		},
+		{
+			name:     "friendly name is float",
+			formula:  `HYPERLINK("http://example.com",3.14)`,
+			wantType: ValueNumber,
+			wantNum:  3.14,
+		},
+
+		// Computed friendly name
+		{
+			name:     "computed friendly name concatenation",
+			formula:  `HYPERLINK("http://example.com","Click"&" Here")`,
+			wantType: ValueString,
+			wantStr:  "Click Here",
+		},
+		{
+			name:     "computed friendly name with LEN",
+			formula:  `HYPERLINK("http://example.com",LEN("hello"))`,
+			wantType: ValueNumber,
+			wantNum:  5,
+		},
+
+		// Cell reference for both args
+		{
+			name:     "both args from cells",
+			formula:  `HYPERLINK(A1,B1)`,
+			wantType: ValueString,
+			wantStr:  "Click Here",
+		},
+
+		// FTP protocol
+		{
+			name:     "ftp URL",
+			formula:  `HYPERLINK("ftp://files.example.com/data","FTP Download")`,
+			wantType: ValueString,
+			wantStr:  "FTP Download",
+		},
+
+		// HTTPS URL
+		{
+			name:     "https URL without friendly name",
+			formula:  `HYPERLINK("https://secure.example.com")`,
+			wantType: ValueString,
+			wantStr:  "https://secure.example.com",
+		},
+
+		// Friendly name with special characters
+		{
+			name:     "friendly name with special chars",
+			formula:  `HYPERLINK("http://example.com","Price: $100 (50% off!)")`,
+			wantType: ValueString,
+			wantStr:  "Price: $100 (50% off!)",
+		},
+
+		// Friendly name is a formula result
+		{
+			name:     "friendly name from IF",
+			formula:  `HYPERLINK("http://example.com",IF(TRUE,"Yes","No"))`,
+			wantType: ValueString,
+			wantStr:  "Yes",
+		},
+
+		// Boolean link location with friendly name
+		{
+			name:     "boolean link with friendly name",
+			formula:  `HYPERLINK(TRUE,"link text")`,
+			wantType: ValueString,
+			wantStr:  "link text",
+		},
+
+		// Numeric link with string friendly
+		{
+			name:     "numeric link with string friendly",
+			formula:  `HYPERLINK(999,"Go to page")`,
+			wantType: ValueString,
+			wantStr:  "Go to page",
+		},
+
+		// Empty link with friendly name
+		{
+			name:     "empty link with friendly name",
+			formula:  `HYPERLINK("","Some Text")`,
+			wantType: ValueString,
+			wantStr:  "Some Text",
+		},
+
+		// Friendly name is empty string with non-empty link
+		{
+			name:     "non_empty_link_empty_friendly",
+			formula:  `HYPERLINK("http://example.com","")`,
+			wantType: ValueString,
+			wantStr:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.wantType {
+				t.Fatalf("got type %v, want %v (value=%v)", got.Type, tt.wantType, got)
+			}
+			switch tt.wantType {
+			case ValueString:
+				if got.Str != tt.wantStr {
+					t.Errorf("got %q, want %q", got.Str, tt.wantStr)
+				}
+			case ValueNumber:
+				if got.Num != tt.wantNum {
+					t.Errorf("got %g, want %g", got.Num, tt.wantNum)
+				}
+			case ValueBool:
+				if got.Bool != tt.wantBool {
+					t.Errorf("got %v, want %v", got.Bool, tt.wantBool)
+				}
+			case ValueError:
+				if got.Err != tt.wantErr {
+					t.Errorf("got %v, want %v", got.Err, tt.wantErr)
+				}
+			case ValueEmpty:
+				// nothing to check beyond type
+			}
+		})
+	}
+}

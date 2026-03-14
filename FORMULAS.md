@@ -59,7 +59,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | CHISQ.INV | Returns the inverse of the chi-square cumulative distribution. | Statistical | 36 |
 | CHISQ.INV.RT | Returns the inverse of the right-tailed chi-square distribution. | Statistical | 20 |
 | CHISQ.TEST | Returns the result of a chi-square test. | Statistical | 23 |
-| CHOOSE | Returns the value at a position from a supplied list of choices. | Text | 24 |
+| CHOOSE | Returns the value at a position from a supplied list of choices. | Text | 49 |
 | CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 28 |
 | CHOOSEROWS | Returns selected rows from an array. | Lookup & Reference | 28 |
 | CLEAN | Removes non-printing characters from text. | Text | 25 |
@@ -183,7 +183,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | HLOOKUP | Looks up a value across the top row of a table and returns a value from a specified row. | Lookup & Reference | 102 |
 | HOUR | Returns the hour from a time or datetime value. | Date & Time | 16 |
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
-| HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
+| HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 46 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 36 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 76 |

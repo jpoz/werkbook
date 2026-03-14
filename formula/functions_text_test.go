@@ -6775,3 +6775,120 @@ func TestREPLACEWrongArgCountExtended(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CHOOSE — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestCHOOSEAdditional(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 1}: StringVal("from_cell"),
+		},
+	}
+
+	type want struct {
+		typ ValueType
+		num float64
+		str string
+		b   bool
+		err ErrorValue
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    want
+	}{
+		// Mixed types in value list
+		{name: "mixed_types_select_number", formula: `CHOOSE(1,100,"hello",TRUE)`, want: want{typ: ValueNumber, num: 100}},
+		{name: "mixed_types_select_string", formula: `CHOOSE(2,100,"hello",TRUE)`, want: want{typ: ValueString, str: "hello"}},
+		{name: "mixed_types_select_bool", formula: `CHOOSE(3,100,"hello",TRUE)`, want: want{typ: ValueBool, b: true}},
+
+		// Large number of values (10+)
+		{name: "ten_values_first", formula: `CHOOSE(1,"v1","v2","v3","v4","v5","v6","v7","v8","v9","v10")`, want: want{typ: ValueString, str: "v1"}},
+		{name: "ten_values_last", formula: `CHOOSE(10,"v1","v2","v3","v4","v5","v6","v7","v8","v9","v10")`, want: want{typ: ValueString, str: "v10"}},
+		{name: "ten_values_middle", formula: `CHOOSE(5,"v1","v2","v3","v4","v5","v6","v7","v8","v9","v10")`, want: want{typ: ValueString, str: "v5"}},
+
+		// Nested CHOOSE: CHOOSE(CHOOSE(1,2), "a", "b") = "b"
+		{name: "nested_choose", formula: `CHOOSE(CHOOSE(1,2),"a","b")`, want: want{typ: ValueString, str: "b"}},
+		{name: "nested_choose_deep", formula: `CHOOSE(CHOOSE(2,1,3),"x","y","z")`, want: want{typ: ValueString, str: "z"}},
+
+		// Cell reference as index
+		{name: "cell_ref_index", formula: `CHOOSE(A1,"first","second","third")`, want: want{typ: ValueString, str: "second"}},
+
+		// Cell reference as value
+		{name: "cell_ref_value", formula: `CHOOSE(1,B1)`, want: want{typ: ValueString, str: "from_cell"}},
+
+		// Expression as index
+		{name: "expression_index", formula: `CHOOSE(1+1,"a","b","c")`, want: want{typ: ValueString, str: "b"}},
+
+		// Index exactly equal to value count (boundary)
+		{name: "index_equals_count", formula: `CHOOSE(3,"a","b","c")`, want: want{typ: ValueString, str: "c"}},
+
+		// Index one past the end
+		{name: "index_one_past_end", formula: `CHOOSE(4,"a","b","c")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Decimal index 3.1 selects 3rd
+		{name: "decimal_index_3.1", formula: `CHOOSE(3.1,"a","b","c")`, want: want{typ: ValueString, str: "c"}},
+
+		// Large decimal truncation
+		{name: "decimal_index_1.999", formula: `CHOOSE(1.999,"first","second")`, want: want{typ: ValueString, str: "first"}},
+
+		// Numeric values with computation
+		{name: "computed_values", formula: `CHOOSE(2,10+5,20+5,30+5)`, want: want{typ: ValueNumber, num: 25}},
+
+		// Boolean FALSE as index (FALSE=0) -> out of range
+		{name: "bool_false_index", formula: `CHOOSE(FALSE,"a","b")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Empty string as index -> #VALUE! (cannot coerce)
+		{name: "empty_string_index", formula: `CHOOSE("","a","b")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Non-numeric string as index -> #VALUE!
+		{name: "text_string_index", formula: `CHOOSE("abc","a","b")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Very large index
+		{name: "very_large_index", formula: `CHOOSE(999,"a","b","c")`, want: want{typ: ValueError, err: ErrValVALUE}},
+
+		// Two values, select each
+		{name: "two_values_first", formula: `CHOOSE(1,"yes","no")`, want: want{typ: ValueString, str: "yes"}},
+		{name: "two_values_second", formula: `CHOOSE(2,"yes","no")`, want: want{typ: ValueString, str: "no"}},
+
+		// Number returned as-is (not stringified)
+		{name: "number_returned_as_number", formula: `CHOOSE(1,42)`, want: want{typ: ValueNumber, num: 42}},
+		{name: "zero_returned", formula: `CHOOSE(1,0)`, want: want{typ: ValueNumber, num: 0}},
+		{name: "negative_number_returned", formula: `CHOOSE(1,-99.5)`, want: want{typ: ValueNumber, num: -99.5}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.typ {
+				t.Fatalf("Eval(%q).Type = %v, want %v (value=%v)", tt.formula, got.Type, tt.want.typ, got)
+			}
+			switch tt.want.typ {
+			case ValueString:
+				if got.Str != tt.want.str {
+					t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want.str)
+				}
+			case ValueNumber:
+				if got.Num != tt.want.num {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.num)
+				}
+			case ValueBool:
+				if got.Bool != tt.want.b {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Bool, tt.want.b)
+				}
+			case ValueError:
+				if got.Err != tt.want.err {
+					t.Errorf("Eval(%q) = %v, want %v", tt.formula, got.Err, tt.want.err)
+				}
+			}
+		})
+	}
+}
