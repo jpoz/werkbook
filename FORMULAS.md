@@ -439,10 +439,10 @@ Werkbook supports **446** spreadsheet formula functions.
 | WORKDAY.INTL | Returns a working day offset using a custom weekend pattern. | Date & Time | 34 |
 | WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
 | WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |
-| XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 19 |
+| XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 38 |
 | XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 111 |
 | XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 81 |
-| XNPV | Returns the net present value of cash flows on irregular dates. | Financial | 18 |
+| XNPV | Returns the net present value of cash flows on irregular dates. | Financial | 42 |
 | XOR | Returns TRUE when an odd number of supplied conditions are TRUE. | Logical | 34 |
 | YEAR | Returns the year from a date. | Date & Time | 26 |
 | YEARFRAC | Returns the fraction of a year between two dates. | Date & Time | 38 |
