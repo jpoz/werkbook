@@ -6122,6 +6122,773 @@ func TestDPRODUCT_FieldCaseInsensitive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DPRODUCT — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestDPRODUCT_SingleMatchReturnsValue(t *testing.T) {
+	// Single matching record should return the value itself.
+	db := [][]Value{
+		{StringVal("Item"), StringVal("Qty")},
+		{StringVal("A"), NumberVal(42)},
+		{StringVal("B"), NumberVal(10)},
+	}
+	crit := [][]Value{
+		{StringVal("Item")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,"Qty",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("DPRODUCT single match = %+v, want 42", got)
+	}
+}
+
+func TestDPRODUCT_NoMatchReturnsZero(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Item"), StringVal("Qty")},
+		{StringVal("A"), NumberVal(5)},
+		{StringVal("B"), NumberVal(3)},
+	}
+	crit := [][]Value{
+		{StringVal("Item")},
+		{StringVal("Z")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,"Qty",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DPRODUCT no matches = %+v, want 0", got)
+	}
+}
+
+func TestDPRODUCT_AllRecordsMatch(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Cat"), StringVal("Val")},
+		{StringVal("X"), NumberVal(2)},
+		{StringVal("Y"), NumberVal(3)},
+		{StringVal("Z"), NumberVal(7)},
+	}
+	// Empty criteria row means match all.
+	crit := [][]Value{
+		{StringVal("Cat")},
+		{StringVal("")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 { // 2*3*7
+		t.Errorf("DPRODUCT all match = %+v, want 42", got)
+	}
+}
+
+func TestDPRODUCT_FieldByColumnNumber(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Name"), StringVal("A"), StringVal("B")},
+		{StringVal("X"), NumberVal(3), NumberVal(10)},
+		{StringVal("Y"), NumberVal(5), NumberVal(20)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	// Column 3 = "B"
+	cf := evalCompile(t, `DPRODUCT(A1:C3,3,G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 200 { // 10*20
+		t.Errorf("DPRODUCT field by col num = %+v, want 200", got)
+	}
+}
+
+func TestDPRODUCT_NumericComparisonCriteria(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Item"), StringVal("Price")},
+		{StringVal("A"), NumberVal(3)},
+		{StringVal("B"), NumberVal(7)},
+		{StringVal("C"), NumberVal(12)},
+		{StringVal("D"), NumberVal(4)},
+	}
+
+	tests := []struct {
+		name string
+		crit string
+		want float64
+	}{
+		{"gt5", ">5", 84},      // 7*12 = 84
+		{"lte4", "<=4", 12},    // 3*4 = 12
+		{"gte7", ">=7", 84},    // 7*12 = 84
+		{"lt7", "<7", 12},      // 3*4 = 12
+		{"eq12", "=12", 12},    // 12
+		{"ne7", "<>7", 144},    // 3*12*4 = 144
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			crit := [][]Value{
+				{StringVal("Price")},
+				{StringVal(tt.crit)},
+			}
+			resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+			cf := evalCompile(t, `DPRODUCT(A1:B5,"Price",G1:G2)`)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Errorf("DPRODUCT %s = %+v, want %v", tt.crit, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDPRODUCT_MultipleCriteriaColumnsAND(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Color"), StringVal("Size"), StringVal("Qty")},
+		{StringVal("Red"), NumberVal(10), NumberVal(2)},
+		{StringVal("Blue"), NumberVal(20), NumberVal(3)},
+		{StringVal("Red"), NumberVal(30), NumberVal(5)},
+		{StringVal("Red"), NumberVal(10), NumberVal(7)},
+	}
+	// AND: Color=Red AND Size=10
+	crit := [][]Value{
+		{StringVal("Color"), StringVal("Size")},
+		{StringVal("Red"), NumberVal(10)},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:C5,"Qty",G1:H2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 14 { // 2*7
+		t.Errorf("DPRODUCT AND criteria = %+v, want 14", got)
+	}
+}
+
+func TestDPRODUCT_ORCriteriaMultipleRows(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Fruit"), StringVal("Val")},
+		{StringVal("Apple"), NumberVal(2)},
+		{StringVal("Banana"), NumberVal(3)},
+		{StringVal("Cherry"), NumberVal(5)},
+	}
+	// OR: Fruit=Apple OR Fruit=Cherry
+	crit := [][]Value{
+		{StringVal("Fruit")},
+		{StringVal("Apple")},
+		{StringVal("Cherry")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 { // 2*5
+		t.Errorf("DPRODUCT OR criteria = %+v, want 10", got)
+	}
+}
+
+func TestDPRODUCT_WildcardMatchStar(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Score")},
+		{StringVal("Alpha"), NumberVal(2)},
+		{StringVal("Beta"), NumberVal(3)},
+		{StringVal("Alphabet"), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("Alph*")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Score",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 { // 2*5
+		t.Errorf("DPRODUCT wildcard * = %+v, want 10", got)
+	}
+}
+
+func TestDPRODUCT_WildcardMatchQuestion(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Code"), StringVal("Val")},
+		{StringVal("AB"), NumberVal(3)},
+		{StringVal("AC"), NumberVal(4)},
+		{StringVal("ABC"), NumberVal(100)},
+	}
+	crit := [][]Value{
+		{StringVal("Code")},
+		{StringVal("A?")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 12 { // 3*4
+		t.Errorf("DPRODUCT wildcard ? = %+v, want 12", got)
+	}
+}
+
+func TestDPRODUCT_CaseInsensitiveCriteria(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("Apple"), NumberVal(6)},
+		{StringVal("APPLE"), NumberVal(7)},
+		{StringVal("Banana"), NumberVal(100)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("apple")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 { // 6*7
+		t.Errorf("DPRODUCT case-insensitive criteria = %+v, want 42", got)
+	}
+}
+
+func TestDPRODUCT_NegativeValuesInProduct(t *testing.T) {
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(-2)},
+		{StringVal("A"), NumberVal(3)},
+		{StringVal("A"), NumberVal(-4)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 24 { // -2*3*-4 = 24
+		t.Errorf("DPRODUCT neg values = %+v, want 24", got)
+	}
+}
+
+func TestDPRODUCT_ZeroInProductYieldsZero(t *testing.T) {
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(100)},
+		{StringVal("A"), NumberVal(0)},
+		{StringVal("A"), NumberVal(50)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DPRODUCT zero in product = %+v, want 0", got)
+	}
+}
+
+func TestDPRODUCT_ErrorInMatchingCell(t *testing.T) {
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(5)},
+		{StringVal("A"), ErrorVal(ErrValNA)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("DPRODUCT error in cell = %+v, want #N/A", got)
+	}
+}
+
+func TestDPRODUCT_VsDSUM_Relationship(t *testing.T) {
+	// For a single matching record, DPRODUCT and DSUM should return the same value.
+	db := [][]Value{
+		{StringVal("Key"), StringVal("Val")},
+		{StringVal("A"), NumberVal(17)},
+		{StringVal("B"), NumberVal(99)},
+	}
+	crit := [][]Value{
+		{StringVal("Key")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+
+	cfProduct := evalCompile(t, `DPRODUCT(A1:B3,"Val",G1:G2)`)
+	cfSum := evalCompile(t, `DSUM(A1:B3,"Val",G1:G2)`)
+
+	gotProduct, err := Eval(cfProduct, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval DPRODUCT: %v", err)
+	}
+	gotSum, err := Eval(cfSum, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval DSUM: %v", err)
+	}
+
+	if gotProduct.Type != ValueNumber || gotSum.Type != ValueNumber {
+		t.Fatalf("expected both to be numbers, got product=%+v sum=%+v", gotProduct, gotSum)
+	}
+	if gotProduct.Num != gotSum.Num {
+		t.Errorf("single match: DPRODUCT=%v DSUM=%v, expected equal", gotProduct.Num, gotSum.Num)
+	}
+}
+
+func TestDPRODUCT_FractionalValues(t *testing.T) {
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(0.5)},
+		{StringVal("A"), NumberVal(0.25)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0.125 { // 0.5*0.25
+		t.Errorf("DPRODUCT fractional = %+v, want 0.125", got)
+	}
+}
+
+func TestDPRODUCT_BoolFieldCoercedToColumnIndex(t *testing.T) {
+	// TRUE coerces to 1, so field=TRUE means column 1.
+	db := [][]Value{
+		{StringVal("Val"), StringVal("Other")},
+		{NumberVal(3), NumberVal(100)},
+		{NumberVal(5), NumberVal(200)},
+	}
+	crit := [][]Value{
+		{StringVal("Val")},
+		{StringVal("")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,TRUE,G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 15 { // 3*5
+		t.Errorf("DPRODUCT bool field = %+v, want 15", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DPRODUCT — extended comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestDPRODUCT_VsDGET_SingleMatch(t *testing.T) {
+	// Cross-check: DPRODUCT with single match = DGET for same criteria.
+	db := [][]Value{
+		{StringVal("Key"), StringVal("Val")},
+		{StringVal("A"), NumberVal(17)},
+		{StringVal("B"), NumberVal(99)},
+		{StringVal("C"), NumberVal(55)},
+	}
+	crit := [][]Value{
+		{StringVal("Key")},
+		{StringVal("B")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+
+	cfProduct := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	cfGet := evalCompile(t, `DGET(A1:B4,"Val",G1:G2)`)
+
+	gotProduct, err := Eval(cfProduct, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval DPRODUCT: %v", err)
+	}
+	gotGet, err := Eval(cfGet, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval DGET: %v", err)
+	}
+
+	if gotProduct.Type != ValueNumber || gotGet.Type != ValueNumber {
+		t.Fatalf("expected both numbers, DPRODUCT=%+v DGET=%+v", gotProduct, gotGet)
+	}
+	if gotProduct.Num != gotGet.Num {
+		t.Errorf("single match: DPRODUCT=%v DGET=%v, expected equal", gotProduct.Num, gotGet.Num)
+	}
+}
+
+func TestDPRODUCT_ThreeMatchesProduct(t *testing.T) {
+	// Three matching records: product = 2*5*7 = 70.
+	db := [][]Value{
+		{StringVal("Cat"), StringVal("Val")},
+		{StringVal("A"), NumberVal(2)},
+		{StringVal("B"), NumberVal(100)},
+		{StringVal("A"), NumberVal(5)},
+		{StringVal("A"), NumberVal(7)},
+	}
+	crit := [][]Value{
+		{StringVal("Cat")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B5,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 70 {
+		t.Errorf("DPRODUCT three matches = %+v, want 70", got)
+	}
+}
+
+func TestDPRODUCT_VerySmallFractionalProduct(t *testing.T) {
+	// Product of very small fractions: 0.1 * 0.01 * 0.001 = 1e-6.
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(0.1)},
+		{StringVal("A"), NumberVal(0.01)},
+		{StringVal("A"), NumberVal(0.001)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("DPRODUCT type = %v, want number", got.Type)
+	}
+	diff := got.Num - 1e-6
+	if diff > 1e-15 || diff < -1e-15 {
+		t.Errorf("DPRODUCT very small fractions = %g, want 1e-6", got.Num)
+	}
+}
+
+func TestDPRODUCT_MixedNegativePositiveZero(t *testing.T) {
+	// Mix: -3 * 4 * 0 = 0.
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(-3)},
+		{StringVal("A"), NumberVal(4)},
+		{StringVal("A"), NumberVal(0)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DPRODUCT mixed neg/pos/zero = %+v, want 0", got)
+	}
+}
+
+func TestDPRODUCT_CriteriaHeaderMismatch(t *testing.T) {
+	// Criteria header does not match any database column.
+	// Non-blank criterion on unmatched header -> no match.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(10)},
+		{StringVal("B"), NumberVal(20)},
+	}
+	crit := [][]Value{
+		{StringVal("NonExistentCol")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B3,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("DPRODUCT unmatched criteria header = %+v, want 0", got)
+	}
+}
+
+func TestDPRODUCT_EmptyFieldArgError(t *testing.T) {
+	// Empty field argument -> #VALUE! error.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(10)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("")},
+	}
+	args := []Value{
+		{Type: ValueArray, Array: db},
+		EmptyVal(),
+		{Type: ValueArray, Array: crit},
+	}
+	got, err := fnDProduct(args)
+	if err != nil {
+		t.Fatalf("fnDProduct error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("DPRODUCT empty field = %+v, want #VALUE!", got)
+	}
+}
+
+func TestDPRODUCT_ErrorInDatabaseArg(t *testing.T) {
+	// Error value as database argument -> propagate error.
+	args := []Value{
+		ErrorVal(ErrValREF),
+		StringVal("Val"),
+		{Type: ValueArray, Array: [][]Value{{StringVal("X")}, {StringVal("A")}}},
+	}
+	got, err := fnDProduct(args)
+	if err != nil {
+		t.Fatalf("fnDProduct error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("DPRODUCT error db arg = %+v, want #REF!", got)
+	}
+}
+
+func TestDPRODUCT_ErrorInCriteriaArg(t *testing.T) {
+	// Error value as criteria argument -> propagate error.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(10)},
+	}
+	args := []Value{
+		{Type: ValueArray, Array: db},
+		StringVal("Val"),
+		ErrorVal(ErrValNA),
+	}
+	got, err := fnDProduct(args)
+	if err != nil {
+		t.Fatalf("fnDProduct error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("DPRODUCT error criteria arg = %+v, want #N/A", got)
+	}
+}
+
+func TestDPRODUCT_MultipleORWithAND(t *testing.T) {
+	// Two OR rows each with AND conditions:
+	// Row 1: Color=Red AND Size>15
+	// Row 2: Color=Blue AND Size<=10
+	db := [][]Value{
+		{StringVal("Color"), StringVal("Size"), StringVal("Qty")},
+		{StringVal("Red"), NumberVal(20), NumberVal(2)},   // matches row 1
+		{StringVal("Red"), NumberVal(10), NumberVal(3)},   // no match
+		{StringVal("Blue"), NumberVal(5), NumberVal(4)},   // matches row 2
+		{StringVal("Blue"), NumberVal(30), NumberVal(5)},  // no match
+		{StringVal("Green"), NumberVal(8), NumberVal(6)},  // no match
+	}
+	crit := [][]Value{
+		{StringVal("Color"), StringVal("Size")},
+		{StringVal("Red"), StringVal(">15")},
+		{StringVal("Blue"), StringVal("<=10")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:C6,"Qty",G1:H3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 8 { // 2*4
+		t.Errorf("DPRODUCT multiple OR with AND = %+v, want 8", got)
+	}
+}
+
+func TestDPRODUCT_SingleRecordDB(t *testing.T) {
+	// Database with only one record (plus header).
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("Solo"), NumberVal(42)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("Solo")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B2,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 42 {
+		t.Errorf("DPRODUCT single record DB = %+v, want 42", got)
+	}
+}
+
+func TestDPRODUCT_LargeNegativeProduct(t *testing.T) {
+	// Odd number of negative values: -2 * -3 * -5 = -30.
+	db := [][]Value{
+		{StringVal("X"), StringVal("Y")},
+		{StringVal("A"), NumberVal(-2)},
+		{StringVal("A"), NumberVal(-3)},
+		{StringVal("A"), NumberVal(-5)},
+	}
+	crit := [][]Value{
+		{StringVal("X")},
+		{StringVal("A")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Y",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -30 {
+		t.Errorf("DPRODUCT odd negatives = %+v, want -30", got)
+	}
+}
+
+func TestDPRODUCT_NotEqualStringCriteria(t *testing.T) {
+	// "<>Apple" should match everything except Apple.
+	db := [][]Value{
+		{StringVal("Fruit"), StringVal("Val")},
+		{StringVal("Apple"), NumberVal(2)},
+		{StringVal("Banana"), NumberVal(3)},
+		{StringVal("Cherry"), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Fruit")},
+		{StringVal("<>Apple")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 15 { // 3*5
+		t.Errorf("DPRODUCT <>Apple = %+v, want 15", got)
+	}
+}
+
+func TestDPRODUCT_WildcardMiddleStar(t *testing.T) {
+	// Wildcard with star in the middle: "A*e" matches "Apple", "Ape".
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("Apple"), NumberVal(2)},
+		{StringVal("Ape"), NumberVal(3)},
+		{StringVal("Banana"), NumberVal(100)},
+		{StringVal("Axe"), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+		{StringVal("A*e")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B5,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 { // 2*3*5
+		t.Errorf("DPRODUCT wildcard middle star = %+v, want 30", got)
+	}
+}
+
+func TestDPRODUCT_BoolCriteriaValue(t *testing.T) {
+	// Criteria matching boolean values in the database.
+	db := [][]Value{
+		{StringVal("Active"), StringVal("Val")},
+		{BoolVal(true), NumberVal(3)},
+		{BoolVal(false), NumberVal(7)},
+		{BoolVal(true), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Active")},
+		{BoolVal(true)},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 15 { // 3*5
+		t.Errorf("DPRODUCT bool criteria = %+v, want 15", got)
+	}
+}
+
+func TestDPRODUCT_FieldErrorArg(t *testing.T) {
+	// Error value as field argument -> propagate error.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(10)},
+	}
+	args := []Value{
+		{Type: ValueArray, Array: db},
+		ErrorVal(ErrValNUM),
+		{Type: ValueArray, Array: [][]Value{{StringVal("Name")}, {StringVal("A")}}},
+	}
+	got, err := fnDProduct(args)
+	if err != nil {
+		t.Fatalf("fnDProduct error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("DPRODUCT error field arg = %+v, want #NUM!", got)
+	}
+}
+
+func TestDPRODUCT_NoCriteriaRowsMatchAll(t *testing.T) {
+	// Criteria with only header row and no condition rows -> match all.
+	db := [][]Value{
+		{StringVal("Name"), StringVal("Val")},
+		{StringVal("A"), NumberVal(2)},
+		{StringVal("B"), NumberVal(3)},
+		{StringVal("C"), NumberVal(5)},
+	}
+	crit := [][]Value{
+		{StringVal("Name")},
+	}
+	resolver := makeDBResolver(db, 1, 1, crit, 7, 1)
+	cf := evalCompile(t, `DPRODUCT(A1:B4,"Val",G1:G1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 { // 2*3*5
+		t.Errorf("DPRODUCT no criteria rows = %+v, want 30", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // DSTDEV
 // ---------------------------------------------------------------------------
 

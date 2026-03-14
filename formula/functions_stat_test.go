@@ -12580,6 +12580,444 @@ func TestFREQUENCY_DuplicateBins(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// FREQUENCY — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestFREQUENCY_BasicSimple(t *testing.T) {
+	// {1,2,3,4,5} with bins {2,4} -> {2,2,1}
+	data := []Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}
+	bins := []Value{NumberVal(2), NumberVal(4)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{2, 2, 1})
+}
+
+func TestFREQUENCY_EmptyBinsSingleCount(t *testing.T) {
+	// Empty bins -> single count of all numeric values.
+	data := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	got := freqHelper(t, data, []Value{})
+	freqExpectArray(t, got, []float64{3})
+}
+
+func TestFREQUENCY_SingleBinTwoGroups(t *testing.T) {
+	// Single bin splits into two groups: <=bin and >bin.
+	data := []Value{NumberVal(1), NumberVal(5), NumberVal(10), NumberVal(15)}
+	bins := []Value{NumberVal(8)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{2, 2})
+}
+
+func TestFREQUENCY_ManyBinsLargeData(t *testing.T) {
+	// 10 bins for 20 values spanning 0-100.
+	var data []Value
+	for i := 1; i <= 20; i++ {
+		data = append(data, NumberVal(float64(i*5)))
+	}
+	bins := []Value{
+		NumberVal(10), NumberVal(20), NumberVal(30), NumberVal(40), NumberVal(50),
+		NumberVal(60), NumberVal(70), NumberVal(80), NumberVal(90), NumberVal(100),
+	}
+	got := freqHelper(t, data, bins)
+	// data: 5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100
+	// <=10: {5,10}=2, (10,20]: {15,20}=2, (20,30]: {25,30}=2, (30,40]: {35,40}=2,
+	// (40,50]: {45,50}=2, (50,60]: {55,60}=2, (60,70]: {65,70}=2, (70,80]: {75,80}=2,
+	// (80,90]: {85,90}=2, (90,100]: {95,100}=2, >100: 0
+	freqExpectArray(t, got, []float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0})
+}
+
+func TestFREQUENCY_ValuesExactlyOnBoundaries(t *testing.T) {
+	// Values exactly on bin boundaries are counted in the <= group.
+	data := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	bins := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 1, 1, 0})
+}
+
+func TestFREQUENCY_AllBelowFirstBinMany(t *testing.T) {
+	data := []Value{NumberVal(1), NumberVal(2), NumberVal(3), NumberVal(4), NumberVal(5)}
+	bins := []Value{NumberVal(100), NumberVal(200), NumberVal(300)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{5, 0, 0, 0})
+}
+
+func TestFREQUENCY_AllAboveLastBinMany(t *testing.T) {
+	data := []Value{NumberVal(50), NumberVal(60), NumberVal(70), NumberVal(80)}
+	bins := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{0, 0, 0, 4})
+}
+
+func TestFREQUENCY_DuplicateValues(t *testing.T) {
+	data := []Value{NumberVal(5), NumberVal(5), NumberVal(5), NumberVal(15), NumberVal(15)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{3, 2})
+}
+
+func TestFREQUENCY_NegativeValuesAndBins(t *testing.T) {
+	data := []Value{NumberVal(-10), NumberVal(-5), NumberVal(0), NumberVal(5), NumberVal(10)}
+	bins := []Value{NumberVal(-3), NumberVal(3)}
+	got := freqHelper(t, data, bins)
+	// <=-3: {-10,-5}=2, (-3,3]: {0}=1, >3: {5,10}=2
+	freqExpectArray(t, got, []float64{2, 1, 2})
+}
+
+func TestFREQUENCY_EmptyDataAllZeros(t *testing.T) {
+	bins := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	got := freqHelper(t, []Value{}, bins)
+	freqExpectArray(t, got, []float64{0, 0, 0, 0})
+}
+
+func TestFREQUENCY_SingleValueSingleBin(t *testing.T) {
+	data := []Value{NumberVal(5)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 0})
+}
+
+func TestFREQUENCY_SingleValueAboveBin(t *testing.T) {
+	data := []Value{NumberVal(15)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{0, 1})
+}
+
+func TestFREQUENCY_UnsortedBinsStillCorrect(t *testing.T) {
+	// Bins {30,10,20} should be sorted internally to {10,20,30}.
+	data := []Value{NumberVal(5), NumberVal(15), NumberVal(25), NumberVal(35)}
+	bins := []Value{NumberVal(30), NumberVal(10), NumberVal(20)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 1, 1, 1})
+}
+
+func TestFREQUENCY_DecimalBinsAndValues(t *testing.T) {
+	data := []Value{NumberVal(0.5), NumberVal(1.5), NumberVal(2.5), NumberVal(3.5)}
+	bins := []Value{NumberVal(1.0), NumberVal(2.0), NumberVal(3.0)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 1, 1, 1})
+}
+
+func TestFREQUENCY_LargeNumberOfValues(t *testing.T) {
+	// 100 values from 1..100, bins at 25,50,75.
+	var data []Value
+	for i := 1; i <= 100; i++ {
+		data = append(data, NumberVal(float64(i)))
+	}
+	bins := []Value{NumberVal(25), NumberVal(50), NumberVal(75)}
+	got := freqHelper(t, data, bins)
+	// <=25: 25 values, (25,50]: 25 values, (50,75]: 25 values, >75: 25 values
+	freqExpectArray(t, got, []float64{25, 25, 25, 25})
+}
+
+func TestFREQUENCY_TextBoolInDataIgnored(t *testing.T) {
+	data := []Value{
+		NumberVal(1), StringVal("hello"), NumberVal(5),
+		BoolVal(true), BoolVal(false), NumberVal(15),
+	}
+	bins := []Value{NumberVal(3), NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	// Only numeric: 1,5,15. <=3: {1}=1, (3,10]: {5}=1, >10: {15}=1
+	freqExpectArray(t, got, []float64{1, 1, 1})
+}
+
+func TestFREQUENCY_ErrorInDataPropagated(t *testing.T) {
+	dataArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2), ErrorVal(ErrValREF)},
+	}}
+	binsArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(5)},
+	}}
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("expected #REF! error, got %+v", got)
+	}
+}
+
+func TestFREQUENCY_ErrorInBinsPropagated(t *testing.T) {
+	dataArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2)},
+	}}
+	binsArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(5), ErrorVal(ErrValNAME)},
+	}}
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNAME {
+		t.Errorf("expected #NAME? error, got %+v", got)
+	}
+}
+
+func TestFREQUENCY_KnownCrossCheck(t *testing.T) {
+	// bins = {10,20,30}, data = {5,15,25,35} -> {1,1,1,1}
+	data := []Value{NumberVal(5), NumberVal(15), NumberVal(25), NumberVal(35)}
+	bins := []Value{NumberVal(10), NumberVal(20), NumberVal(30)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 1, 1, 1})
+}
+
+func TestFREQUENCY_EmptyInData(t *testing.T) {
+	// Empty values should be ignored.
+	data := []Value{NumberVal(1), EmptyVal(), NumberVal(5), EmptyVal()}
+	bins := []Value{NumberVal(3)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 1})
+}
+
+func TestFREQUENCY_MultiRowData(t *testing.T) {
+	// Data as 2D array (multiple rows).
+	dataArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(2)},
+		{NumberVal(3), NumberVal(4)},
+		{NumberVal(5), NumberVal(6)},
+	}}
+	binsArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(2), NumberVal(4)},
+	}}
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// data: 1,2,3,4,5,6. bins sorted: {2,4}
+	// <=2: {1,2}=2, (2,4]: {3,4}=2, >4: {5,6}=2
+	freqExpectArray(t, got, []float64{2, 2, 2})
+}
+
+func TestFREQUENCY_ViaEvalWithUnsortedBins(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(15),
+			{Col: 1, Row: 3}: NumberVal(25),
+			{Col: 1, Row: 4}: NumberVal(35),
+			{Col: 2, Row: 1}: NumberVal(30), // unsorted bins
+			{Col: 2, Row: 2}: NumberVal(10),
+			{Col: 2, Row: 3}: NumberVal(20),
+		},
+	}
+	cf := evalCompile(t, "FREQUENCY(A1:A4,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	freqExpectArray(t, got, []float64{1, 1, 1, 1})
+}
+
+func TestFREQUENCY_ZeroValueInBin(t *testing.T) {
+	// Bin at 0 should work: <=0 and >0.
+	data := []Value{NumberVal(-1), NumberVal(0), NumberVal(1)}
+	bins := []Value{NumberVal(0)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{2, 1}) // -1,0 <= 0; 1 > 0
+}
+
+func TestFREQUENCY_VeryCloseDecimals(t *testing.T) {
+	data := []Value{NumberVal(1.0000001), NumberVal(0.9999999), NumberVal(1.0)}
+	bins := []Value{NumberVal(1.0)}
+	got := freqHelper(t, data, bins)
+	// 0.9999999 <= 1.0, 1.0 <= 1.0, 1.0000001 > 1.0
+	freqExpectArray(t, got, []float64{2, 1})
+}
+
+// ---------------------------------------------------------------------------
+// FREQUENCY — extended comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestFREQUENCY_IdenticalValues(t *testing.T) {
+	// All data values are identical.
+	data := []Value{NumberVal(5), NumberVal(5), NumberVal(5), NumberVal(5)}
+	bins := []Value{NumberVal(3), NumberVal(7)}
+	got := freqHelper(t, data, bins)
+	// <=3: 0, (3,7]: 4, >7: 0
+	freqExpectArray(t, got, []float64{0, 4, 0})
+}
+
+func TestFREQUENCY_IdenticalValuesOnBoundary(t *testing.T) {
+	// All data values equal to a bin boundary.
+	data := []Value{NumberVal(10), NumberVal(10), NumberVal(10)}
+	bins := []Value{NumberVal(5), NumberVal(10), NumberVal(15)}
+	got := freqHelper(t, data, bins)
+	// <=5: 0, (5,10]: 3, (10,15]: 0, >15: 0
+	freqExpectArray(t, got, []float64{0, 3, 0, 0})
+}
+
+func TestFREQUENCY_SingleValueBelowSingleBin(t *testing.T) {
+	data := []Value{NumberVal(3)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 0})
+}
+
+func TestFREQUENCY_SingleValueAboveSingleBin(t *testing.T) {
+	data := []Value{NumberVal(20)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{0, 1})
+}
+
+func TestFREQUENCY_SingleValueEqualsBin(t *testing.T) {
+	data := []Value{NumberVal(10)}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{1, 0})
+}
+
+func TestFREQUENCY_NegativeBinsOnly(t *testing.T) {
+	// All bins are negative.
+	data := []Value{NumberVal(-15), NumberVal(-5), NumberVal(0), NumberVal(5)}
+	bins := []Value{NumberVal(-10), NumberVal(-1)}
+	got := freqHelper(t, data, bins)
+	// <=-10: {-15}=1, (-10,-1]: {-5}=1, >-1: {0,5}=2
+	freqExpectArray(t, got, []float64{1, 1, 2})
+}
+
+func TestFREQUENCY_VeryLargeValues(t *testing.T) {
+	data := []Value{NumberVal(1e15), NumberVal(2e15), NumberVal(3e15)}
+	bins := []Value{NumberVal(1.5e15), NumberVal(2.5e15)}
+	got := freqHelper(t, data, bins)
+	// <=1.5e15: {1e15}=1, (1.5e15,2.5e15]: {2e15}=1, >2.5e15: {3e15}=1
+	freqExpectArray(t, got, []float64{1, 1, 1})
+}
+
+func TestFREQUENCY_VerySmallDecimalDifferences(t *testing.T) {
+	// Values very close together near bin boundaries.
+	data := []Value{NumberVal(0.001), NumberVal(0.002), NumberVal(0.003), NumberVal(0.004)}
+	bins := []Value{NumberVal(0.002), NumberVal(0.003)}
+	got := freqHelper(t, data, bins)
+	// <=0.002: {0.001,0.002}=2, (0.002,0.003]: {0.003}=1, >0.003: {0.004}=1
+	freqExpectArray(t, got, []float64{2, 1, 1})
+}
+
+func TestFREQUENCY_UnsortedBinsReversed(t *testing.T) {
+	// Bins in descending order should be sorted internally.
+	data := []Value{NumberVal(1), NumberVal(5), NumberVal(10), NumberVal(15)}
+	bins := []Value{NumberVal(12), NumberVal(8), NumberVal(3)}
+	got := freqHelper(t, data, bins)
+	// sorted bins: {3,8,12}. <=3: {1}=1, (3,8]: {5}=1, (8,12]: {10}=1, >12: {15}=1
+	freqExpectArray(t, got, []float64{1, 1, 1, 1})
+}
+
+func TestFREQUENCY_AllSameBinValue(t *testing.T) {
+	// All bins have the same value.
+	data := []Value{NumberVal(3), NumberVal(5), NumberVal(7)}
+	bins := []Value{NumberVal(5), NumberVal(5), NumberVal(5)}
+	got := freqHelper(t, data, bins)
+	// sorted bins: {5,5,5}. <=5: {3,5}=2, (5,5]: 0, (5,5]: 0, >5: {7}=1
+	freqExpectArray(t, got, []float64{2, 0, 0, 1})
+}
+
+func TestFREQUENCY_EmptyAndTextMixedInData(t *testing.T) {
+	// Mix of empty, text, bool, and numeric values.
+	data := []Value{
+		EmptyVal(), NumberVal(2), StringVal("abc"),
+		BoolVal(true), NumberVal(8), EmptyVal(), NumberVal(12),
+	}
+	bins := []Value{NumberVal(5), NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	// Only numeric: 2,8,12. <=5: {2}=1, (5,10]: {8}=1, >10: {12}=1
+	freqExpectArray(t, got, []float64{1, 1, 1})
+}
+
+func TestFREQUENCY_ScalarDataArrayBins(t *testing.T) {
+	// Scalar data, array bins.
+	dataArr := NumberVal(15)
+	binsArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(10), NumberVal(20), NumberVal(30)},
+	}}
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// <=10: 0, (10,20]: {15}=1, (20,30]: 0, >30: 0
+	freqExpectArray(t, got, []float64{0, 1, 0, 0})
+}
+
+func TestFREQUENCY_ArrayDataScalarBin(t *testing.T) {
+	// Array data, scalar bin.
+	dataArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(5), NumberVal(10), NumberVal(20)},
+	}}
+	binsArr := NumberVal(8)
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// <=8: {1,5}=2, >8: {10,20}=2
+	freqExpectArray(t, got, []float64{2, 2})
+}
+
+func TestFREQUENCY_ZeroBin(t *testing.T) {
+	// Single bin at 0, data spans negative to positive.
+	data := []Value{NumberVal(-5), NumberVal(-1), NumberVal(0), NumberVal(1), NumberVal(5)}
+	bins := []Value{NumberVal(0)}
+	got := freqHelper(t, data, bins)
+	// <=0: {-5,-1,0}=3, >0: {1,5}=2
+	freqExpectArray(t, got, []float64{3, 2})
+}
+
+func TestFREQUENCY_FiveBinsUniform(t *testing.T) {
+	// 5 bins evenly spaced, data uniformly distributed.
+	data := []Value{
+		NumberVal(2), NumberVal(4), NumberVal(6), NumberVal(8), NumberVal(10),
+		NumberVal(12), NumberVal(14), NumberVal(16), NumberVal(18), NumberVal(20),
+	}
+	bins := []Value{NumberVal(5), NumberVal(10), NumberVal(15), NumberVal(20)}
+	got := freqHelper(t, data, bins)
+	// <=5: {2,4}=2, (5,10]: {6,8,10}=3, (10,15]: {12,14}=2, (15,20]: {16,18,20}=3, >20: 0
+	freqExpectArray(t, got, []float64{2, 3, 2, 3, 0})
+}
+
+func TestFREQUENCY_TextOnlyData(t *testing.T) {
+	// Data with only text values -> all zeros.
+	data := []Value{StringVal("a"), StringVal("b"), StringVal("c")}
+	bins := []Value{NumberVal(10)}
+	got := freqHelper(t, data, bins)
+	freqExpectArray(t, got, []float64{0, 0})
+}
+
+func TestFREQUENCY_MultiRowBins(t *testing.T) {
+	// Bins as 2D array (multiple rows).
+	dataArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(1), NumberVal(5), NumberVal(10), NumberVal(15), NumberVal(20)},
+	}}
+	binsArr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(5)},
+		{NumberVal(10)},
+		{NumberVal(15)},
+	}}
+	got, err := fnFREQUENCY([]Value{dataArr, binsArr})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// bins sorted: {5,10,15}. <=5: {1,5}=2, (5,10]: {10}=1, (10,15]: {15}=1, >15: {20}=1
+	freqExpectArray(t, got, []float64{2, 1, 1, 1})
+}
+
+func TestFREQUENCY_ViaEvalSimple(t *testing.T) {
+	// Test via Eval: data={1,2,3,4,5}, bins={2,4}
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, "FREQUENCY(A1:A5,B1:B2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	freqExpectArray(t, got, []float64{2, 2, 1})
+}
+
+// ---------------------------------------------------------------------------
 // PEARSON
 // ---------------------------------------------------------------------------
 

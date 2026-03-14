@@ -115,18 +115,18 @@ Werkbook supports **445** spreadsheet formula functions.
 | DEGREES | Converts radians to degrees. | Math & Trig | 25 |
 | DELTA | Tests whether two numbers are equal and returns 1 or 0. | Engineering | 24 |
 | DEVSQ | Returns the sum of squared deviations from the sample mean. | Statistical | 23 |
-| DGET | Returns a single value from matching records in a database range. | Db | 1 |
+| DGET | Returns a single value from matching records in a database range. | Db | 2 |
 | DISC | Returns the discount rate for a security. | Financial | 14 |
 | DMAX | Returns the maximum value from matching records in a database range. | Db | 6 |
 | DMIN | Returns the minimum value from matching records in a database range. | Db | 5 |
 | DOLLAR | Formats a number as currency text. | Text | 25 |
 | DOLLARDE | Converts a fractional dollar price to a decimal price. | Financial | 18 |
 | DOLLARFR | Converts a decimal dollar price to a fractional price. | Financial | 17 |
-| DPRODUCT | Returns the product of matching records in a database range. | Db | 7 |
+| DPRODUCT | Returns the product of matching records in a database range. | Db | 67 |
 | DROP | Drops rows or columns from the start or end of an array. | Lookup & Reference | 26 |
 | DSTDEV | Returns the sample standard deviation of matching database records. | Db | 3 |
 | DSTDEVP | Returns the population standard deviation of matching database records. | Db | 2 |
-| DSUM | Returns the sum of matching records in a database range. | Db | 7 |
+| DSUM | Returns the sum of matching records in a database range. | Db | 8 |
 | DURATION | Returns the Macauley duration of a security. | Financial | 27 |
 | DVAR | Returns the sample variance of matching database records. | Db | 3 |
 | DVARP | Returns the population variance of matching database records. | Db | 3 |
@@ -163,7 +163,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | FORECAST | Predicts a future value using linear regression. | Statistical | 20 |
 | FORECAST.LINEAR | Predicts a future value using linear regression. | Statistical | 22 |
 | FORMULATEXT | Returns the formula text from a referenced cell. | Information | 39 |
-| FREQUENCY | Returns a frequency distribution for numeric bins. | Statistical | 25 |
+| FREQUENCY | Returns a frequency distribution for numeric bins. | Statistical | 69 |
 | FV | Returns the future value of an investment or annuity. | Financial | 13 |
 | FVSCHEDULE | Returns a future value after applying a schedule of interest rates. | Financial | 9 |
 | GAMMA | Returns the gamma function value. | Math & Trig | 31 |
