@@ -133,7 +133,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | EDATE | Shifts a date by a number of whole months. | Date & Time | 40 |
 | EFFECT | Returns the effective annual interest rate for a nominal rate. | Financial | 18 |
 | ENCODEURL | Encodes text so it can be safely used in a URL. | Text | 44 |
-| EOMONTH | Returns the last day of a month offset from a start date. | Date & Time | 18 |
+| EOMONTH | Returns the last day of a month offset from a start date. | Date & Time | 45 |
 | ERF | Returns the error function. | Math & Trig | 22 |
 | ERF.PRECISE | Returns the error function integrated from 0 to a limit. | Math & Trig | 20 |
 | ERFC | Returns the complementary error function. | Math & Trig | 18 |
@@ -435,7 +435,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | WEEKDAY | Returns the day of the week for a date. | Date & Time | 59 |
 | WEEKNUM | Returns the week number of a date. | Date & Time | 39 |
 | WEIBULL.DIST | Returns the Weibull distribution. | Statistical | 33 |
-| WORKDAY | Returns a working day offset from a start date. | Date & Time | 23 |
+| WORKDAY | Returns a working day offset from a start date. | Date & Time | 42 |
 | WORKDAY.INTL | Returns a working day offset using a custom weekend pattern. | Date & Time | 34 |
 | WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
 | WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |

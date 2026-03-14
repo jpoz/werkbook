@@ -1406,6 +1406,89 @@ func TestEOMONTH(t *testing.T) {
 		{"too_many_args", "EOMONTH(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
 		{"invalid_months", `EOMONTH(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
 		{"error_propagation", "EOMONTH(DATE(2025,1,15),1/0)", 0, true, ErrValDIV0},
+
+		// --- Comprehensive additional EOMONTH tests ---
+
+		// Basic: same month returns last day
+		{"basic_jan15_zero", "EOMONTH(DATE(2025,1,15),0)", dateSerial(2025, time.January, 31), false, 0},
+
+		// Forward by 1 month: Jan → Feb (non-leap year 2025)
+		{"forward_1_jan_to_feb_nonleap", "EOMONTH(DATE(2025,1,15),1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Forward by 1 month: Jan → Feb (leap year 2020)
+		{"forward_1_jan_to_feb_leap_2020", "EOMONTH(DATE(2020,1,15),1)", dateSerial(2020, time.February, 29), false, 0},
+
+		// Forward by 1 month: Jan → Feb (non-leap year 2021)
+		{"forward_1_jan_to_feb_nonleap_2021", "EOMONTH(DATE(2021,1,15),1)", dateSerial(2021, time.February, 28), false, 0},
+
+		// Backward: Mar 15 → Feb end (non-leap)
+		{"backward_mar_to_feb_nonleap", "EOMONTH(DATE(2025,3,15),-1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Backward: Mar 15 → Feb end (leap year 2020)
+		{"backward_mar_to_feb_leap", "EOMONTH(DATE(2020,3,15),-1)", dateSerial(2020, time.February, 29), false, 0},
+
+		// Start on last day: Jan 31 + 1 → Feb 28 (non-leap)
+		{"start_last_day_jan31_plus1", "EOMONTH(DATE(2025,1,31),1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Start on last day: Jan 31 + 1 → Feb 29 (leap year 2024)
+		{"start_last_day_jan31_plus1_leap", "EOMONTH(DATE(2024,1,31),1)", dateSerial(2024, time.February, 29), false, 0},
+
+		// Large offset: +12 months = same month next year last day
+		{"large_offset_plus12", "EOMONTH(DATE(2025,3,15),12)", dateSerial(2026, time.March, 31), false, 0},
+
+		// Negative large offset: -24 months = two years back
+		{"large_offset_minus24", "EOMONTH(DATE(2025,6,10),-24)", dateSerial(2023, time.June, 30), false, 0},
+
+		// December → January crossing (forward)
+		{"dec_to_jan_forward", "EOMONTH(DATE(2025,12,15),1)", dateSerial(2026, time.January, 31), false, 0},
+
+		// January → December crossing (backward)
+		{"jan_to_dec_backward", "EOMONTH(DATE(2025,1,15),-1)", dateSerial(2024, time.December, 31), false, 0},
+
+		// February start in leap year: Feb 1 2024, 0 months → Feb 29
+		{"feb_start_leap_zero", "EOMONTH(DATE(2024,2,1),0)", dateSerial(2024, time.February, 29), false, 0},
+
+		// February start in non-leap year: Feb 1 2025, 0 months → Feb 28
+		{"feb_start_nonleap_zero", "EOMONTH(DATE(2025,2,1),0)", dateSerial(2025, time.February, 28), false, 0},
+
+		// 30-day months: April
+		{"thirty_day_april", "EOMONTH(DATE(2025,4,10),0)", dateSerial(2025, time.April, 30), false, 0},
+
+		// 30-day months: June
+		{"thirty_day_june", "EOMONTH(DATE(2025,6,1),0)", dateSerial(2025, time.June, 30), false, 0},
+
+		// 30-day months: September
+		{"thirty_day_september", "EOMONTH(DATE(2025,9,20),0)", dateSerial(2025, time.September, 30), false, 0},
+
+		// 30-day months: November
+		{"thirty_day_november", "EOMONTH(DATE(2025,11,5),0)", dateSerial(2025, time.November, 30), false, 0},
+
+		// 31-day months: March
+		{"thirtyone_day_march", "EOMONTH(DATE(2025,3,1),0)", dateSerial(2025, time.March, 31), false, 0},
+
+		// 31-day months: May
+		{"thirtyone_day_may", "EOMONTH(DATE(2025,5,15),0)", dateSerial(2025, time.May, 31), false, 0},
+
+		// 31-day months: July
+		{"thirtyone_day_july", "EOMONTH(DATE(2025,7,4),0)", dateSerial(2025, time.July, 31), false, 0},
+
+		// 31-day months: August
+		{"thirtyone_day_august", "EOMONTH(DATE(2025,8,20),0)", dateSerial(2025, time.August, 31), false, 0},
+
+		// 31-day months: October
+		{"thirtyone_day_october", "EOMONTH(DATE(2025,10,1),0)", dateSerial(2025, time.October, 31), false, 0},
+
+		// 31-day months: December
+		{"thirtyone_day_december", "EOMONTH(DATE(2025,12,25),0)", dateSerial(2025, time.December, 31), false, 0},
+
+		// Multi-year forward: +36 months = 3 years
+		{"multi_year_plus36", "EOMONTH(DATE(2020,2,15),36)", dateSerial(2023, time.February, 28), false, 0},
+
+		// Leap year to leap year: Feb 2020 + 48 → Feb 2024
+		{"leap_to_leap_plus48", "EOMONTH(DATE(2020,2,15),48)", dateSerial(2024, time.February, 29), false, 0},
+
+		// String date coercion via DATEVALUE
+		{"string_coercion_datevalue", `EOMONTH(DATEVALUE("1/15/2025"),1)`, dateSerial(2025, time.February, 28), false, 0},
 	}
 
 	for _, tc := range tests {
@@ -2305,6 +2388,77 @@ func TestWORKDAY(t *testing.T) {
 		{"doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
 		// WORKDAY(10/1/2008, 151, {11/26/2008,12/4/2008,1/21/2009}) = 5/5/2009 = 39938
 		{"doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
+
+		// --- Comprehensive additional WORKDAY tests ---
+
+		// Friday + 1 = next Monday (skips weekend)
+		// DATE(2025,1,3) = 45660 (Fri), next Mon = 45663
+		{"friday_plus1_skip_weekend", "WORKDAY(DATE(2025,1,3),1)", 45663, false, 0},
+
+		// Monday - 1 = previous Friday
+		// DATE(2025,1,6) = 45663 (Mon), prev Fri = 45660
+		{"monday_minus1_prev_friday", "WORKDAY(DATE(2025,1,6),-1)", 45660, false, 0},
+
+		// Saturday + 1 = Tuesday (skips to next working day after weekend)
+		// DATE(2025,1,4) = 45661 (Sat), next workday = Mon 45663
+		{"saturday_plus1_to_monday", "WORKDAY(DATE(2025,1,4),1)", 45663, false, 0},
+
+		// Sunday + 1 = Monday
+		// DATE(2025,1,5) = 45662 (Sun), next workday = Mon 45663
+		{"sunday_plus1_to_monday", "WORKDAY(DATE(2025,1,5),1)", 45663, false, 0},
+
+		// Zero days on weekday returns same date
+		{"zero_days_on_monday", "WORKDAY(DATE(2025,1,6),0)", 45663, false, 0},
+		{"zero_days_on_friday", "WORKDAY(DATE(2025,1,3),0)", 45660, false, 0},
+
+		// Zero days on weekend returns weekend serial (per implementation)
+		{"zero_days_on_sunday", "WORKDAY(DATE(2025,1,5),0)", 45662, false, 0},
+
+		// 20 working days = 4 weeks (28 calendar days, crossing 4 weekends)
+		// Wed Jan 1 + 20 workdays: 4 full weeks of workdays = Wed Jan 29
+		{"twenty_days_four_weeks", "WORKDAY(DATE(2025,1,1),20)", dateSerial(2025, time.January, 29), false, 0},
+
+		// Negative with holidays: Mon Jan 13 -5, holiday on Fri Jan 10
+		// Without holiday: Fri(1), Thu(2), Wed(3), Tue(4), Mon Jan 6(5) = 45663
+		// With holiday on Fri Jan 10 (45667): Thu(1), Wed(2), Tue(3), Mon(4), Fri Jan 3(5) = 45660
+		{"negative_with_holiday", "WORKDAY(DATE(2025,1,13),-5,DATE(2025,1,10))", 45660, false, 0},
+
+		// Holiday that falls on a weekend should not double-count
+		// Wed Jan 1 + 5, holiday on Sat Jan 4 = same result as no holidays
+		{"holiday_on_saturday_no_effect", "WORKDAY(DATE(2025,1,1),5,DATE(2025,1,4))", 45665, false, 0},
+		{"holiday_on_sunday_no_effect", "WORKDAY(DATE(2025,1,1),5,DATE(2025,1,5))", 45665, false, 0},
+
+		// Multiple consecutive holidays (Mon+Tue)
+		// Wed Jan 1 + 3, holidays on Mon Jan 6 and Tue Jan 7:
+		// Thu(1), Fri(2), skip Mon+Tue, Wed Jan 8(3) = 45665
+		{"consecutive_holidays", "WORKDAY(DATE(2025,1,1),3,{45663,45664})", 45665, false, 0},
+
+		// 5 work days per week cross-check: Mon Jan 6 + 5 workdays
+		// Tue(1), Wed(2), Thu(3), Fri(4), Mon Jan 13(5) = 45670
+		{"five_days_from_monday", "WORKDAY(DATE(2025,1,6),5)", dateSerial(2025, time.January, 13), false, 0},
+
+		// Large negative offset
+		// Wed Jan 15 - 10 workdays = Wed Jan 1
+		{"large_negative_10", "WORKDAY(DATE(2025,1,15),-10)", dateSerial(2025, time.January, 1), false, 0},
+
+		// Start Sunday - 1 = previous Friday
+		// Sun Jan 5 - 1 workday → Fri Jan 3
+		{"start_sunday_minus1", "WORKDAY(DATE(2025,1,5),-1)", 45660, false, 0},
+
+		// String coercion for days argument
+		{"string_days_coercion", `WORKDAY(DATE(2025,1,1),"5")`, 45665, false, 0},
+
+		// Cross-month boundary
+		// Fri Jan 31 2025 + 1 = Mon Feb 3 2025
+		{"cross_month_jan_to_feb", "WORKDAY(DATE(2025,1,31),1)", dateSerial(2025, time.February, 3), false, 0},
+
+		// Cross-year boundary
+		// Wed Dec 31 2025 + 1 = Thu Jan 1 2026 (assuming Jan 1 is a workday)
+		{"cross_year_dec_to_jan", "WORKDAY(DATE(2025,12,31),1)", dateSerial(2026, time.January, 1), false, 0},
+
+		// Negative crossing year boundary
+		// Thu Jan 1 2026 - 1 = Wed Dec 31 2025
+		{"negative_cross_year", "WORKDAY(DATE(2026,1,1),-1)", dateSerial(2025, time.December, 31), false, 0},
 	}
 
 	for _, tc := range tests {
