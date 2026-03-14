@@ -73,7 +73,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | CONCATENATE | Joins multiple text values into one string. | Text | 45 |
 | CONFIDENCE.NORM | Returns a normal-distribution confidence interval half-width. | Statistical | 25 |
 | CONFIDENCE.T | Returns a Student's t-distribution confidence interval half-width. | Statistical | 29 |
-| CONVERT | Converts a number from one measurement system to another. | Engineering | 57 |
+| CONVERT | Converts a number from one measurement system to another. | Engineering | 185 |
 | CORREL | Returns the correlation coefficient between two data sets. | Statistical | 20 |
 | COS | Returns the cosine of an angle. | Math & Trig | 28 |
 | COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
