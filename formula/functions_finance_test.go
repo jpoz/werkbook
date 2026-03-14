@@ -12155,6 +12155,63 @@ func TestDURATION(t *testing.T) {
 		// --- Multi-period, annual, basis=3 ---
 		{name: "annual basis=3", args: numArgs(43831, 47484, 0.07, 0.08, 1, 3), want: 7.4205},
 
+		// --- Par bond (coupon = yield) ---
+		// settlement=1/1/2020 (43831), maturity=1/1/2030 (47484), coupon=yld=0.06, freq=2, basis=0
+		{name: "par bond coupon=yield", args: numArgs(43831, 47484, 0.06, 0.06, 2, 0), want: 7.6620},
+
+		// --- Very low coupon (near zero) ---
+		{name: "low coupon 0.1%", args: numArgs(43831, 47484, 0.001, 0.06, 2, 0), want: 9.9306},
+
+		// --- Very high yield ---
+		{name: "very high yield 50%", args: numArgs(43831, 47484, 0.05, 0.50, 2, 0), want: 3.1789},
+
+		// --- Zero yield, non-zero coupon ---
+		// When yield=0, present values are undiscounted
+		{name: "zero yield nonzero coupon", args: numArgs(43831, 47484, 0.05, 0, 2, 0), want: 8.4167},
+
+		// --- Very short bond: 3 months, quarterly ---
+		// settlement=1/15/2025 (45672), maturity=4/15/2025 (45762), freq=4
+		{name: "3 month quarterly", args: numArgs(45672, 45762, 0.04, 0.03, 4, 0), want: 0.2466},
+
+		// --- 2 year bond, semiannual, basis=2 ---
+		// settlement=1/1/2020 (43831), maturity=1/1/2022 (44197)
+		{name: "2yr semi basis=2", args: numArgs(43831, 44197, 0.05, 0.06, 2, 2), want: 0.9877},
+
+		// --- 2 year bond, semiannual, basis=4 ---
+		{name: "2yr semi basis=4", args: numArgs(43831, 44197, 0.05, 0.06, 2, 4), want: 0.9877},
+
+		// --- 5 year bond, annual, basis=1 ---
+		// settlement=1/1/2020 (43831), maturity=1/1/2025 (45658)
+		{name: "5yr annual basis=1", args: numArgs(43831, 45658, 0.04, 0.05, 1, 1), want: 4.6203},
+
+		// --- 5 year bond, quarterly, basis=3 ---
+		{name: "5yr quarterly basis=3", args: numArgs(43831, 45658, 0.04, 0.05, 4, 3), want: 4.5438},
+
+		// --- Medium term, medium coupon/yield, all basis types ---
+		// settlement=3/15/2020 (43905), maturity=3/15/2027 (46434), coupon=0.035, yld=0.04, freq=2
+		{name: "7yr basis=0 semi", args: numArgs(43905, 46434, 0.035, 0.04, 2, 0), want: 6.1743},
+		{name: "7yr basis=1 semi", args: numArgs(43905, 46434, 0.035, 0.04, 2, 1), want: 6.1779},
+		{name: "7yr basis=2 semi", args: numArgs(43905, 46434, 0.035, 0.04, 2, 2), want: 6.1779},
+		{name: "7yr basis=3 semi", args: numArgs(43905, 46434, 0.035, 0.04, 2, 3), want: 6.1779},
+		{name: "7yr basis=4 semi", args: numArgs(43905, 46434, 0.035, 0.04, 2, 4), want: 6.1743},
+
+		// --- Settlement close to maturity (< 1 coupon period) ---
+		// settlement=7/1/2025 (45839), maturity=1/1/2026 (46023), freq=2
+		{name: "close to maturity semi", args: numArgs(45839, 46023, 0.05, 0.06, 2, 0), want: 0.5},
+
+		// --- Large coupon, small yield ---
+		{name: "large coupon small yield", args: numArgs(43831, 47484, 0.20, 0.01, 2, 0), want: 6.7271},
+
+		// --- Zero coupon 10yr bond duration ~ 10 years ---
+		// settlement=1/1/2020 (43831), maturity=1/1/2030 (47484), coupon=0, yld=0.05, freq=1
+		{name: "zero coupon 10yr annual", args: numArgs(43831, 47484, 0, 0.05, 1, 0), want: 10.0000},
+
+		// --- Frequency truncation: freq=2.9 should be treated as 2 ---
+		{name: "freq truncation 2.9", args: numArgs(43831, 47484, 0.05, 0.06, 2.9, 0), want: 7.8950},
+
+		// --- Basis truncation: basis=1.7 should be treated as 1 ---
+		{name: "basis truncation 1.7", args: numArgs(43282, 54058, 0.08, 0.09, 2, 1.7), want: 10.9191},
+
 		// --- Error cases ---
 		{name: "too few args", args: numArgs(43831, 47484, 0.05, 0.06), wantErr: true},
 		{name: "too many args", args: numArgs(43831, 47484, 0.05, 0.06, 2, 0, 99), wantErr: true},
@@ -12166,6 +12223,14 @@ func TestDURATION(t *testing.T) {
 		{name: "bad frequency 0", args: numArgs(43831, 47484, 0.05, 0.06, 0, 0), wantErr: true},
 		{name: "bad basis -1", args: numArgs(43831, 47484, 0.05, 0.06, 2, -1), wantErr: true},
 		{name: "bad basis 5", args: numArgs(43831, 47484, 0.05, 0.06, 2, 5), wantErr: true},
+		// --- Additional error cases ---
+		{name: "no args", args: []Value{}, wantErr: true},
+		{name: "one arg", args: numArgs(43831), wantErr: true},
+		{name: "negative frequency", args: numArgs(43831, 47484, 0.05, 0.06, -2, 0), wantErr: true},
+		{name: "frequency 5", args: numArgs(43831, 47484, 0.05, 0.06, 5, 0), wantErr: true},
+		{name: "frequency 6", args: numArgs(43831, 47484, 0.05, 0.06, 6, 0), wantErr: true},
+		{name: "basis 6", args: numArgs(43831, 47484, 0.05, 0.06, 2, 6), wantErr: true},
+		{name: "basis 10", args: numArgs(43831, 47484, 0.05, 0.06, 2, 10), wantErr: true},
 	}
 
 	for _, tc := range tests {
@@ -12194,6 +12259,233 @@ func TestDURATION_ViaEval(t *testing.T) {
 	}
 	if math.Abs(v.Num-10.9191) > 0.01 {
 		t.Errorf("got %f, want ~10.9191", v.Num)
+	}
+}
+
+func TestDURATION_EvalAnnual(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 1, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-8.0225) > 0.01 {
+		t.Errorf("got %f, want ~8.0225", v.Num)
+	}
+}
+
+func TestDURATION_EvalQuarterly(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 4, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-7.8304) > 0.01 {
+		t.Errorf("got %f, want ~7.8304", v.Num)
+	}
+}
+
+func TestDURATION_EvalZeroCoupon(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), 0, 0.05, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-10.0) > 0.01 {
+		t.Errorf("got %f, want ~10.0", v.Num)
+	}
+}
+
+func TestDURATION_EvalDefaultBasis(t *testing.T) {
+	// 5 args, no basis (default = 0)
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 2)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-7.8950) > 0.01 {
+		t.Errorf("got %f, want ~7.8950", v.Num)
+	}
+}
+
+func TestDURATION_EvalBasis2(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2018,7,1), DATE(2048,1,1), 0.08, 0.09, 2, 2)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-10.9191) > 0.01 {
+		t.Errorf("got %f, want ~10.9191", v.Num)
+	}
+}
+
+func TestDURATION_EvalBasis3(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2018,7,1), DATE(2048,1,1), 0.08, 0.09, 2, 3)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-10.9191) > 0.01 {
+		t.Errorf("got %f, want ~10.9191", v.Num)
+	}
+}
+
+func TestDURATION_EvalBasis4(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2018,7,1), DATE(2048,1,1), 0.08, 0.09, 2, 4)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-10.9137) > 0.01 {
+		t.Errorf("got %f, want ~10.9137", v.Num)
+	}
+}
+
+func TestDURATION_EvalErrorSettlementAfterMaturity(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2030,1,1), DATE(2020,1,1), 0.05, 0.06, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestDURATION_EvalErrorNegativeCoupon(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), -0.05, 0.06, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestDURATION_EvalErrorBadFrequency(t *testing.T) {
+	cf := evalCompile(t, "DURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 3, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestDURATION_StringCoercion(t *testing.T) {
+	// All numeric args passed as strings should still work via CoerceNum
+	args := []Value{
+		StringVal("43831"), // settlement 1/1/2020
+		StringVal("47484"), // maturity 1/1/2030
+		StringVal("0.05"),  // coupon
+		StringVal("0.06"),  // yield
+		StringVal("2"),     // frequency
+		StringVal("0"),     // basis
+	}
+	v, err := fnDuration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DURATION string coercion", v, 7.8950)
+}
+
+func TestDURATION_StringCoercionPartial(t *testing.T) {
+	// Mix of string and numeric args
+	args := []Value{
+		NumberVal(43831),
+		NumberVal(47484),
+		StringVal("0.05"),
+		NumberVal(0.06),
+		StringVal("2"),
+		NumberVal(0),
+	}
+	v, err := fnDuration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "DURATION partial string coercion", v, 7.8950)
+}
+
+func TestDURATION_StringCoercionError(t *testing.T) {
+	// Non-numeric string should produce an error
+	args := []Value{
+		StringVal("abc"),
+		NumberVal(47484),
+		NumberVal(0.05),
+		NumberVal(0.06),
+		NumberVal(2),
+		NumberVal(0),
+	}
+	v, err := fnDuration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertError(t, "DURATION string coercion error", v)
+}
+
+func TestDURATION_HigherCouponLowerDuration(t *testing.T) {
+	// Verify that higher coupon results in lower duration (same yield/maturity)
+	lowCouponArgs := numArgs(43831, 47484, 0.02, 0.06, 2, 0)
+	highCouponArgs := numArgs(43831, 47484, 0.10, 0.06, 2, 0)
+
+	vLow, err := fnDuration(lowCouponArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vHigh, err := fnDuration(highCouponArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if vLow.Type != ValueNumber || vHigh.Type != ValueNumber {
+		t.Fatal("expected numbers")
+	}
+	if vLow.Num <= vHigh.Num {
+		t.Errorf("higher coupon should have lower duration: low coupon dur=%f, high coupon dur=%f", vLow.Num, vHigh.Num)
+	}
+}
+
+func TestDURATION_HigherYieldLowerDuration(t *testing.T) {
+	// Verify that higher yield results in lower duration (same coupon/maturity)
+	lowYieldArgs := numArgs(43831, 47484, 0.05, 0.02, 2, 0)
+	highYieldArgs := numArgs(43831, 47484, 0.05, 0.10, 2, 0)
+
+	vLow, err := fnDuration(lowYieldArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vHigh, err := fnDuration(highYieldArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if vLow.Type != ValueNumber || vHigh.Type != ValueNumber {
+		t.Fatal("expected numbers")
+	}
+	if vLow.Num <= vHigh.Num {
+		t.Errorf("higher yield should have lower duration: low yield dur=%f, high yield dur=%f", vLow.Num, vHigh.Num)
 	}
 }
 
@@ -12263,6 +12555,55 @@ func TestMDURATION(t *testing.T) {
 		// MDURATION = 10.9191 / (1 + 0.045) = 10.4490
 		{name: "formula verification", args: numArgs(43282, 54058, 0.08, 0.09, 2, 1), want: 10.4490},
 
+		// --- Par bond (coupon = yield) ---
+		{name: "par bond coupon=yield", args: numArgs(43831, 47484, 0.06, 0.06, 2, 0), want: 7.4388},
+
+		// --- Very low coupon ---
+		{name: "low coupon 0.1%", args: numArgs(43831, 47484, 0.001, 0.06, 2, 0), want: 9.6413},
+
+		// --- Very high yield ---
+		{name: "very high yield 50%", args: numArgs(43831, 47484, 0.05, 0.50, 2, 0), want: 2.5432},
+
+		// --- Zero yield, non-zero coupon ---
+		{name: "zero yield nonzero coupon", args: numArgs(43831, 47484, 0.05, 0, 2, 0), want: 8.4167},
+
+		// --- Very short bond: 3 months, quarterly ---
+		{name: "3 month quarterly", args: numArgs(45672, 45762, 0.04, 0.03, 4, 0), want: 0.2448},
+
+		// --- 2 year bond, semiannual, basis=2 ---
+		{name: "2yr semi basis=2", args: numArgs(43831, 44197, 0.05, 0.06, 2, 2), want: 0.9590},
+
+		// --- 2 year bond, semiannual, basis=4 ---
+		{name: "2yr semi basis=4", args: numArgs(43831, 44197, 0.05, 0.06, 2, 4), want: 0.9590},
+
+		// --- 5 year bond, annual, basis=1 ---
+		{name: "5yr annual basis=1", args: numArgs(43831, 45658, 0.04, 0.05, 1, 1), want: 4.4003},
+
+		// --- 5 year bond, quarterly, basis=3 ---
+		{name: "5yr quarterly basis=3", args: numArgs(43831, 45658, 0.04, 0.05, 4, 3), want: 4.4877},
+
+		// --- Medium term, all basis types ---
+		{name: "7yr basis=0 semi md", args: numArgs(43905, 46434, 0.035, 0.04, 2, 0), want: 6.0532},
+		{name: "7yr basis=1 semi md", args: numArgs(43905, 46434, 0.035, 0.04, 2, 1), want: 6.0568},
+		{name: "7yr basis=2 semi md", args: numArgs(43905, 46434, 0.035, 0.04, 2, 2), want: 6.0568},
+		{name: "7yr basis=3 semi md", args: numArgs(43905, 46434, 0.035, 0.04, 2, 3), want: 6.0568},
+		{name: "7yr basis=4 semi md", args: numArgs(43905, 46434, 0.035, 0.04, 2, 4), want: 6.0532},
+
+		// --- Close to maturity ---
+		{name: "close to maturity semi", args: numArgs(45839, 46023, 0.05, 0.06, 2, 0), want: 0.4854},
+
+		// --- Large coupon, small yield ---
+		{name: "large coupon small yield", args: numArgs(43831, 47484, 0.20, 0.01, 2, 0), want: 6.6937},
+
+		// --- Zero coupon 10yr annual ---
+		{name: "zero coupon 10yr annual", args: numArgs(43831, 47484, 0, 0.05, 1, 0), want: 9.5238},
+
+		// --- Frequency truncation ---
+		{name: "freq truncation 2.9", args: numArgs(43831, 47484, 0.05, 0.06, 2.9, 0), want: 7.6650},
+
+		// --- Basis truncation ---
+		{name: "basis truncation 1.7", args: numArgs(43282, 54058, 0.08, 0.09, 2, 1.7), want: 10.4490},
+
 		// --- Error cases ---
 		{name: "too few args", args: numArgs(43831, 47484, 0.05, 0.06), wantErr: true},
 		{name: "too many args", args: numArgs(43831, 47484, 0.05, 0.06, 2, 0, 99), wantErr: true},
@@ -12274,6 +12615,14 @@ func TestMDURATION(t *testing.T) {
 		{name: "bad frequency 0", args: numArgs(43831, 47484, 0.05, 0.06, 0, 0), wantErr: true},
 		{name: "bad basis -1", args: numArgs(43831, 47484, 0.05, 0.06, 2, -1), wantErr: true},
 		{name: "bad basis 5", args: numArgs(43831, 47484, 0.05, 0.06, 2, 5), wantErr: true},
+		// --- Additional error cases ---
+		{name: "no args", args: []Value{}, wantErr: true},
+		{name: "one arg", args: numArgs(43831), wantErr: true},
+		{name: "negative frequency", args: numArgs(43831, 47484, 0.05, 0.06, -2, 0), wantErr: true},
+		{name: "frequency 5", args: numArgs(43831, 47484, 0.05, 0.06, 5, 0), wantErr: true},
+		{name: "frequency 6", args: numArgs(43831, 47484, 0.05, 0.06, 6, 0), wantErr: true},
+		{name: "basis 6", args: numArgs(43831, 47484, 0.05, 0.06, 2, 6), wantErr: true},
+		{name: "basis 10", args: numArgs(43831, 47484, 0.05, 0.06, 2, 10), wantErr: true},
 	}
 
 	for _, tc := range tests {
@@ -12302,6 +12651,241 @@ func TestMDURATION_ViaEval(t *testing.T) {
 	}
 	if math.Abs(v.Num-5.7357) > 0.01 {
 		t.Errorf("got %f, want ~5.7357", v.Num)
+	}
+}
+
+func TestMDURATION_EvalAnnual(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 1, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-7.5684) > 0.01 {
+		t.Errorf("got %f, want ~7.5684", v.Num)
+	}
+}
+
+func TestMDURATION_EvalQuarterly(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 4, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-7.7146) > 0.01 {
+		t.Errorf("got %f, want ~7.7146", v.Num)
+	}
+}
+
+func TestMDURATION_EvalZeroCoupon(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0, 0.05, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-9.7561) > 0.01 {
+		t.Errorf("got %f, want ~9.7561", v.Num)
+	}
+}
+
+func TestMDURATION_EvalDefaultBasis(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 2)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", v.Type)
+	}
+	if math.Abs(v.Num-7.6650) > 0.01 {
+		t.Errorf("got %f, want ~7.6650", v.Num)
+	}
+}
+
+func TestMDURATION_EvalErrorSettlementAfterMaturity(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2030,1,1), DATE(2020,1,1), 0.05, 0.06, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestMDURATION_EvalErrorNegativeYield(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, -0.06, 2, 0)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestMDURATION_EvalErrorBadBasis(t *testing.T) {
+	cf := evalCompile(t, "MDURATION(DATE(2020,1,1), DATE(2030,1,1), 0.05, 0.06, 2, 5)")
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueError {
+		t.Fatalf("expected error, got %v (num=%f)", v.Type, v.Num)
+	}
+}
+
+func TestMDURATION_StringCoercion(t *testing.T) {
+	args := []Value{
+		StringVal("43831"),
+		StringVal("47484"),
+		StringVal("0.05"),
+		StringVal("0.06"),
+		StringVal("2"),
+		StringVal("0"),
+	}
+	v, err := fnMduration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "MDURATION string coercion", v, 7.6650)
+}
+
+func TestMDURATION_StringCoercionPartial(t *testing.T) {
+	args := []Value{
+		NumberVal(43831),
+		NumberVal(47484),
+		StringVal("0.05"),
+		NumberVal(0.06),
+		StringVal("2"),
+		NumberVal(0),
+	}
+	v, err := fnMduration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertClose(t, "MDURATION partial string coercion", v, 7.6650)
+}
+
+func TestMDURATION_StringCoercionError(t *testing.T) {
+	args := []Value{
+		NumberVal(43831),
+		NumberVal(47484),
+		NumberVal(0.05),
+		StringVal("xyz"),
+		NumberVal(2),
+		NumberVal(0),
+	}
+	v, err := fnMduration(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertError(t, "MDURATION string coercion error", v)
+}
+
+func TestMDURATION_RelationToDuration(t *testing.T) {
+	// Verify MDURATION = DURATION / (1 + yld/freq) for various parameter combos
+	cases := []struct {
+		name string
+		args []Value
+		yld  float64
+		freq float64
+	}{
+		{
+			name: "semi 5% yield",
+			args: numArgs(43831, 47484, 0.05, 0.05, 2, 0),
+			yld:  0.05, freq: 2,
+		},
+		{
+			name: "annual 8% yield",
+			args: numArgs(43831, 47484, 0.06, 0.08, 1, 0),
+			yld:  0.08, freq: 1,
+		},
+		{
+			name: "quarterly 3% yield",
+			args: numArgs(43831, 47484, 0.04, 0.03, 4, 1),
+			yld:  0.03, freq: 4,
+		},
+		{
+			name: "semi 15% yield basis=2",
+			args: numArgs(43831, 47484, 0.10, 0.15, 2, 2),
+			yld:  0.15, freq: 2,
+		},
+		{
+			name: "annual 1% yield basis=3",
+			args: numArgs(43831, 47484, 0.02, 0.01, 1, 3),
+			yld:  0.01, freq: 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			durVal, err := fnDuration(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mdurVal, err := fnMduration(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if durVal.Type != ValueNumber || mdurVal.Type != ValueNumber {
+				t.Fatal("expected numbers")
+			}
+			expectedMdur := durVal.Num / (1.0 + tc.yld/tc.freq)
+			if math.Abs(mdurVal.Num-expectedMdur) > 0.0001 {
+				t.Errorf("MDURATION=%f, but DURATION/(1+yld/freq)=%f (DURATION=%f)", mdurVal.Num, expectedMdur, durVal.Num)
+			}
+		})
+	}
+}
+
+func TestMDURATION_HigherYieldLowerDuration(t *testing.T) {
+	lowYieldArgs := numArgs(43831, 47484, 0.05, 0.02, 2, 0)
+	highYieldArgs := numArgs(43831, 47484, 0.05, 0.10, 2, 0)
+
+	vLow, err := fnMduration(lowYieldArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vHigh, err := fnMduration(highYieldArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if vLow.Type != ValueNumber || vHigh.Type != ValueNumber {
+		t.Fatal("expected numbers")
+	}
+	if vLow.Num <= vHigh.Num {
+		t.Errorf("higher yield should have lower MDURATION: low yield=%f, high yield=%f", vLow.Num, vHigh.Num)
+	}
+}
+
+func TestMDURATION_HigherCouponLowerDuration(t *testing.T) {
+	lowCouponArgs := numArgs(43831, 47484, 0.02, 0.06, 2, 0)
+	highCouponArgs := numArgs(43831, 47484, 0.10, 0.06, 2, 0)
+
+	vLow, err := fnMduration(lowCouponArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vHigh, err := fnMduration(highCouponArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if vLow.Type != ValueNumber || vHigh.Type != ValueNumber {
+		t.Fatal("expected numbers")
+	}
+	if vLow.Num <= vHigh.Num {
+		t.Errorf("higher coupon should have lower MDURATION: low coupon=%f, high coupon=%f", vLow.Num, vHigh.Num)
 	}
 }
 

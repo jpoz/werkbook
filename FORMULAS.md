@@ -127,7 +127,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | DSTDEV | Returns the sample standard deviation of matching database records. | Db | 2 |
 | DSTDEVP | Returns the population standard deviation of matching database records. | Db | 1 |
 | DSUM | Returns the sum of matching records in a database range. | Db | 7 |
-| DURATION | Returns the Macauley duration of a security. | Financial | 2 |
+| DURATION | Returns the Macauley duration of a security. | Financial | 27 |
 | DVAR | Returns the sample variance of matching database records. | Db | 1 |
 | DVARP | Returns the population variance of matching database records. | Db | 1 |
 | EDATE | Shifts a date by a number of whole months. | Date & Time | 19 |
@@ -259,7 +259,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
 | MDETERM | Returns the determinant of a matrix. | Math & Trig | 31 |
-| MDURATION | Returns the modified duration of a security. | Financial | 2 |
+| MDURATION | Returns the modified duration of a security. | Financial | 22 |
 | MEDIAN | Returns the median of a data set. | Statistical | 27 |
 | MID | Returns characters from the middle of a text value. | Text | 50 |
 | MIN | Returns the smallest numeric value. | Statistical | 32 |
