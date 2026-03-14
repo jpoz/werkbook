@@ -105,7 +105,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | DAYS | Returns the number of days between two dates. | Date & Time | 17 |
 | DAYS360 | Returns the number of days between two dates using a 360-day year. | Date & Time | 57 |
 | DB | Returns depreciation using the fixed-declining balance method. | Financial | 29 |
-| DCOUNT | Counts numeric values in matching records of a database range. | Db | 5 |
+| DCOUNT | Counts numeric values in matching records of a database range. | Db | 6 |
 | DCOUNTA | Counts non-empty values in matching records of a database range. | Db | 5 |
 | DDB | Returns depreciation using the double-declining balance method or another factor. | Financial | 27 |
 | DEC2BIN | Converts a decimal number to binary. | Engineering | 37 |
@@ -117,7 +117,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | DEVSQ | Returns the sum of squared deviations from the sample mean. | Statistical | 23 |
 | DGET | Returns a single value from matching records in a database range. | Db | 1 |
 | DISC | Returns the discount rate for a security. | Financial | 14 |
-| DMAX | Returns the maximum value from matching records in a database range. | Db | 5 |
+| DMAX | Returns the maximum value from matching records in a database range. | Db | 6 |
 | DMIN | Returns the minimum value from matching records in a database range. | Db | 5 |
 | DOLLAR | Formats a number as currency text. | Text | 25 |
 | DOLLARDE | Converts a fractional dollar price to a decimal price. | Financial | 18 |

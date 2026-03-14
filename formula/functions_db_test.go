@@ -2056,6 +2056,204 @@ func TestDCOUNT(t *testing.T) {
 			wantType: ValueNumber,
 			wantNum:  3, // zeros are numeric values
 		},
+		// --- negative numbers are counted ---
+		{
+			name: "negative numbers are counted",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-10)},
+				{StringVal("B"), NumberVal(-20)},
+				{StringVal("C"), NumberVal(5)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  3,
+		},
+		// --- field as float column number ---
+		{
+			name: "field as float 2.9 truncates to column 2",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("")},
+			},
+			field:    "2.9",
+			wantType: ValueNumber,
+			wantNum:  6, // column 2 = Height, all numeric
+		},
+		// --- criteria on same column as field ---
+		{
+			name: "criteria on same column as field",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">12")},
+			},
+			field:    `"Height"`,
+			wantType: ValueNumber,
+			wantNum:  3, // h=18, h=13, h=14
+		},
+		// --- = empty matches only empty cells ---
+		{
+			name: "= empty criteria matches empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(20)},
+				{StringVal("C"), NumberVal(30)},
+				{EmptyVal(), NumberVal(40)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("=")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  2, // rows with empty Name
+		},
+		// --- <> empty matches non-empty cells ---
+		{
+			name: "<> empty criteria matches non-empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(20)},
+				{StringVal("C"), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("<>")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  2, // A and C (non-empty Name)
+		},
+		// --- whitespace-padded criteria header ---
+		{
+			name: "whitespace-padded criteria header still matches",
+			db:   db,
+			crit: [][]Value{
+				{StringVal(" Tree ")},
+				{StringVal("Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3,
+		},
+		// --- numeric string in field column not counted ---
+		{
+			name: "numeric string values not counted by DCOUNT",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), StringVal("100")},
+				{StringVal("B"), StringVal("200")},
+				{StringVal("C"), NumberVal(300)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only C is a true number
+		},
+		// --- duplicate criteria rows count once ---
+		{
+			name: "duplicate criteria rows do not double-count",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Cherry")},
+				{StringVal("Cherry")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only one Cherry record; OR of same criteria doesn't duplicate
+		},
+		// --- multiple AND columns with OR rows ---
+		{
+			name: "multiple AND columns with multiple OR rows",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Yield")},
+				{StringVal("Apple"), StringVal(">10")},
+				{StringVal("Pear"), StringVal("<9")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  2, // Apple yield>10: h=18(y=14); Pear yield<9: h=9(y=8)
+		},
+		// --- single cell database (headers only, no data) ---
+		{
+			name: "single column database with no matching data",
+			db: [][]Value{
+				{StringVal("X")},
+			},
+			crit: [][]Value{
+				{StringVal("X")},
+				{StringVal("")},
+			},
+			field:    `"X"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- mixed positive and negative with criteria ---
+		{
+			name: "count mixed positive and negative matching criteria",
+			db: [][]Value{
+				{StringVal("Type"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-5)},
+				{StringVal("B"), NumberVal(10)},
+				{StringVal("A"), NumberVal(-3)},
+				{StringVal("B"), NumberVal(7)},
+				{StringVal("A"), NumberVal(0)},
+			},
+			crit: [][]Value{
+				{StringVal("Type")},
+				{StringVal("A")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  3, // -5, -3, 0 all numeric
+		},
+		// --- very large values ---
+		{
+			name: "very large numbers are counted",
+			db: [][]Value{
+				{StringVal("ID"), StringVal("Amount")},
+				{StringVal("A"), NumberVal(1e15)},
+				{StringVal("B"), NumberVal(1e-15)},
+			},
+			crit: [][]Value{
+				{StringVal("ID")},
+				{StringVal("")},
+			},
+			field:    `"Amount"`,
+			wantType: ValueNumber,
+			wantNum:  2,
+		},
+		// --- criteria with string comparison operators on text ---
+		{
+			name: "string comparison > on text column",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("Alpha"), NumberVal(1)},
+				{StringVal("Beta"), NumberVal(2)},
+				{StringVal("Gamma"), NumberVal(3)},
+				{StringVal("Delta"), NumberVal(4)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal(">Delta")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only Gamma > Delta lexically
+		},
 	}
 
 	runDBTests(t, "DCOUNT", tests)
@@ -2699,6 +2897,191 @@ func TestDCOUNTA(t *testing.T) {
 			field:    `"Score"`,
 			wantType: ValueNumber,
 			wantNum:  1, // only B
+		},
+		// --- DCOUNTA counts numeric strings ---
+		{
+			name: "numeric strings are counted by DCOUNTA",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), StringVal("100")},
+				{StringVal("B"), StringVal("200")},
+				{StringVal("C"), NumberVal(300)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  3, // all non-empty: "100", "200", 300
+		},
+		// --- field as float column number ---
+		{
+			name: "field as float 1.7 truncates to column 1",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "1.7",
+			wantType: ValueNumber,
+			wantNum:  3, // column 1 = Tree (text), DCOUNTA counts text
+		},
+		// --- criteria on same column as field ---
+		{
+			name: "criteria on same column as field",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">12")},
+			},
+			field:    `"Height"`,
+			wantType: ValueNumber,
+			wantNum:  3, // h=18, h=13, h=14
+		},
+		// --- = empty matches only empty cells ---
+		{
+			name: "= empty criteria matches empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), StringVal("x")},
+				{EmptyVal(), StringVal("y")},
+				{StringVal("C"), StringVal("z")},
+				{EmptyVal(), StringVal("w")},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("=")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  2, // rows with empty Name
+		},
+		// --- <> empty matches non-empty cells ---
+		{
+			name: "<> empty criteria matches non-empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), StringVal("x")},
+				{EmptyVal(), StringVal("y")},
+				{StringVal("C"), StringVal("z")},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("<>")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  2, // A and C
+		},
+		// --- whitespace-padded criteria header ---
+		{
+			name: "whitespace-padded criteria header still matches",
+			db:   db,
+			crit: [][]Value{
+				{StringVal(" Tree ")},
+				{StringVal("Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  3,
+		},
+		// --- multiple empty cells among other types ---
+		{
+			name: "multiple empty cells among mixed types",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Data")},
+				{StringVal("A"), NumberVal(1)},
+				{StringVal("B"), EmptyVal()},
+				{StringVal("C"), StringVal("hi")},
+				{StringVal("D"), EmptyVal()},
+				{StringVal("E"), BoolVal(false)},
+				{StringVal("F"), EmptyVal()},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Data"`,
+			wantType: ValueNumber,
+			wantNum:  3, // 1, "hi", false (3 empties skipped)
+		},
+		// --- duplicate criteria rows ---
+		{
+			name: "duplicate criteria rows do not double count",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Cherry")},
+				{StringVal("Cherry")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  1, // only one Cherry record
+		},
+		// --- multiple AND columns with OR rows ---
+		{
+			name: "multiple AND columns with multiple OR rows",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Yield")},
+				{StringVal("Apple"), StringVal(">10")},
+				{StringVal("Pear"), StringVal("<9")},
+			},
+			field:    `"Tree"`,
+			wantType: ValueNumber,
+			wantNum:  2, // Apple y>10: Apple(y=14); Pear y<9: Pear(y=8) -> count text
+		},
+		// --- single cell database ---
+		{
+			name: "single column headers-only database returns 0",
+			db: [][]Value{
+				{StringVal("X")},
+			},
+			crit: [][]Value{
+				{StringVal("X")},
+				{StringVal("")},
+			},
+			field:    `"X"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- DCOUNTA counts everything except empty in a fully-populated column ---
+		{
+			name: "fully-populated mixed column counts all non-empty",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Stuff")},
+				{StringVal("A"), NumberVal(0)},
+				{StringVal("B"), StringVal("")},
+				{StringVal("C"), BoolVal(true)},
+				{StringVal("D"), NumberVal(-99)},
+				{StringVal("E"), StringVal("hello")},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("")},
+			},
+			field:    `"Stuff"`,
+			wantType: ValueNumber,
+			wantNum:  5, // 0, "", true, -99, "hello" all non-empty
+		},
+		// --- large number of matching records ---
+		{
+			name: "count with string comparison > on text",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("Alpha"), StringVal("x")},
+				{StringVal("Beta"), StringVal("y")},
+				{StringVal("Gamma"), StringVal("z")},
+				{StringVal("Delta"), StringVal("w")},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal(">Delta")},
+			},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1, // Gamma > Delta lexically
 		},
 	}
 
@@ -4054,6 +4437,215 @@ func TestDMAX(t *testing.T) {
 			wantType: ValueNumber,
 			wantNum:  99,
 		},
+		// --- mixed positive and negative ---
+		{
+			name: "max of mixed positive and negative",
+			db: [][]Value{
+				{StringVal("Type"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-10)},
+				{StringVal("A"), NumberVal(5)},
+				{StringVal("A"), NumberVal(-3)},
+				{StringVal("A"), NumberVal(2)},
+			},
+			crit:     [][]Value{{StringVal("Type")}, {StringVal("A")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  5,
+		},
+		// --- very close values (precision) ---
+		{
+			name: "max distinguishes very close values",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(1.0000001)},
+				{StringVal("B"), NumberVal(1.0000002)},
+				{StringVal("C"), NumberVal(1.0000000)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1.0000002,
+		},
+		// --- field as float column number ---
+		{
+			name: "field as float 5.5 truncates to column 5",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "5.5",
+			wantType: ValueNumber,
+			wantNum:  105, // column 5 = Profit
+		},
+		// --- criteria on same column as field ---
+		{
+			name: "criteria on same column as field - max of Height where Height>10",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">10")},
+			},
+			field:    `"Height"`,
+			wantType: ValueNumber,
+			wantNum:  18,
+		},
+		// --- = empty matches only empty cells ---
+		{
+			name: "= empty criteria matches empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(50)},
+				{StringVal("C"), NumberVal(30)},
+				{EmptyVal(), NumberVal(40)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("=")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  50, // max of 50 and 40
+		},
+		// --- <> empty matches non-empty cells ---
+		{
+			name: "<> empty criteria matches non-empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(50)},
+				{StringVal("C"), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("<>")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  30, // max of 10 and 30 (empty Name row excluded)
+		},
+		// --- whitespace-padded criteria header ---
+		{
+			name: "whitespace-padded criteria header still matches",
+			db:   db,
+			crit: [][]Value{
+				{StringVal(" Tree ")},
+				{StringVal("Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  105,
+		},
+		// --- empty database ---
+		{
+			name: "empty database returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- duplicate criteria rows ---
+		{
+			name: "duplicate criteria rows still max correctly",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Pear")},
+				{StringVal("Pear")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  96,
+		},
+		// --- multiple AND columns with OR rows ---
+		{
+			name: "multiple AND columns with multiple OR rows",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Yield")},
+				{StringVal("Apple"), StringVal("<8")},
+				{StringVal("Pear"), StringVal(">9")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  96, // Apple y<8: Apple(y=6,p=45); Pear y>9: Pear(y=10,p=96) -> max=96
+		},
+		// --- field not found ---
+		{
+			name:     "field name not found returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    `"NonExistent"`,
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		// --- field index errors ---
+		{
+			name:     "field index 0 returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "0",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index negative returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "-1",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index out of range returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "99",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		// --- single negative value ---
+		{
+			name: "single negative matching value",
+			db: [][]Value{
+				{StringVal("Cat"), StringVal("Val")},
+				{StringVal("X"), NumberVal(-42)},
+				{StringVal("Y"), NumberVal(10)},
+			},
+			crit:     [][]Value{{StringVal("Cat")}, {StringVal("X")}},
+			field:    `"Val"`,
+			wantType: ValueNumber,
+			wantNum:  -42,
+		},
+		// --- boolean column not considered for max ---
+		{
+			name: "boolean column returns 0 for max",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Flag")},
+				{StringVal("A"), BoolVal(true)},
+				{StringVal("B"), BoolVal(false)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Flag"`,
+			wantType: ValueNumber,
+			wantNum:  0, // booleans not numeric
+		},
+		// --- case-insensitive criteria ---
+		{
+			name: "case-insensitive text criteria match for max",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("APPLE")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  105,
+		},
 	}
 
 	runDBTests(t, "DMAX", tests)
@@ -4685,6 +5277,231 @@ func TestDMIN(t *testing.T) {
 			field:    `"Profit"`,
 			wantType: ValueNumber,
 			wantNum:  75, // Apple h=14, age=15 matches; h=18 age=20 excluded by <16
+		},
+		// --- mixed positive and negative ---
+		{
+			name: "min of mixed positive and negative",
+			db: [][]Value{
+				{StringVal("Type"), StringVal("Value")},
+				{StringVal("A"), NumberVal(-10)},
+				{StringVal("A"), NumberVal(5)},
+				{StringVal("A"), NumberVal(-3)},
+				{StringVal("A"), NumberVal(2)},
+			},
+			crit:     [][]Value{{StringVal("Type")}, {StringVal("A")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  -10,
+		},
+		// --- very close values (precision) ---
+		{
+			name: "min distinguishes very close values",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(1.0000001)},
+				{StringVal("B"), NumberVal(1.0000002)},
+				{StringVal("C"), NumberVal(1.0000000)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  1.0000000,
+		},
+		// --- field as float column number ---
+		{
+			name: "field as float 5.5 truncates to column 5",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Apple")},
+			},
+			field:    "5.5",
+			wantType: ValueNumber,
+			wantNum:  45, // column 5 = Profit, min Apple = 45
+		},
+		// --- criteria on same column as field ---
+		{
+			name: "criteria on same column as field - min of Height where Height>10",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Height")},
+				{StringVal(">10")},
+			},
+			field:    `"Height"`,
+			wantType: ValueNumber,
+			wantNum:  12, // h=18,12,13,14 -> min=12
+		},
+		// --- = empty matches only empty cells ---
+		{
+			name: "= empty criteria matches empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(50)},
+				{StringVal("C"), NumberVal(30)},
+				{EmptyVal(), NumberVal(40)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("=")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  40, // min of 50 and 40
+		},
+		// --- <> empty matches non-empty cells ---
+		{
+			name: "<> empty criteria matches non-empty cells",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Score")},
+				{StringVal("A"), NumberVal(10)},
+				{EmptyVal(), NumberVal(5)},
+				{StringVal("C"), NumberVal(30)},
+			},
+			crit: [][]Value{
+				{StringVal("Name")},
+				{StringVal("<>")},
+			},
+			field:    `"Score"`,
+			wantType: ValueNumber,
+			wantNum:  10, // min of 10 and 30 (empty Name row excluded)
+		},
+		// --- whitespace-padded criteria header ---
+		{
+			name: "whitespace-padded criteria header still matches",
+			db:   db,
+			crit: [][]Value{
+				{StringVal(" Tree ")},
+				{StringVal("Apple")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  45,
+		},
+		// --- empty database ---
+		{
+			name: "empty database returns 0",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Value"`,
+			wantType: ValueNumber,
+			wantNum:  0,
+		},
+		// --- duplicate criteria rows ---
+		{
+			name: "duplicate criteria rows still min correctly",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("Pear")},
+				{StringVal("Pear")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  76.8,
+		},
+		// --- multiple AND columns with OR rows ---
+		{
+			name: "multiple AND columns with multiple OR rows",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree"), StringVal("Yield")},
+				{StringVal("Apple"), StringVal("<8")},
+				{StringVal("Pear"), StringVal(">9")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  45, // Apple y<8: Apple(y=6,p=45); Pear y>9: Pear(y=10,p=96) -> min=45
+		},
+		// --- field not found ---
+		{
+			name:     "field name not found returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    `"NonExistent"`,
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		// --- field index errors ---
+		{
+			name:     "field index 0 returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "0",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index negative returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "-1",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		{
+			name:     "field index out of range returns VALUE error",
+			db:       db,
+			crit:     [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field:    "99",
+			wantType: ValueError,
+			wantErr:  ErrValVALUE,
+		},
+		// --- single positive value among text/empty ---
+		{
+			name: "single numeric value among text and empty",
+			db: [][]Value{
+				{StringVal("Cat"), StringVal("Val")},
+				{StringVal("X"), StringVal("hello")},
+				{StringVal("X"), NumberVal(42)},
+				{StringVal("X"), EmptyVal()},
+			},
+			crit:     [][]Value{{StringVal("Cat")}, {StringVal("X")}},
+			field:    `"Val"`,
+			wantType: ValueNumber,
+			wantNum:  42,
+		},
+		// --- boolean column not considered for min ---
+		{
+			name: "boolean column returns 0 for min",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Flag")},
+				{StringVal("A"), BoolVal(true)},
+				{StringVal("B"), BoolVal(false)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Flag"`,
+			wantType: ValueNumber,
+			wantNum:  0, // booleans not numeric
+		},
+		// --- case-insensitive criteria ---
+		{
+			name: "case-insensitive text criteria match for min",
+			db:   db,
+			crit: [][]Value{
+				{StringVal("Tree")},
+				{StringVal("APPLE")},
+			},
+			field:    `"Profit"`,
+			wantType: ValueNumber,
+			wantNum:  45,
+		},
+		// --- min with only one positive and rest negative ---
+		{
+			name: "min where positives and negatives both present",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Val")},
+				{StringVal("A"), NumberVal(100)},
+				{StringVal("B"), NumberVal(-1)},
+				{StringVal("C"), NumberVal(-200)},
+				{StringVal("D"), NumberVal(50)},
+			},
+			crit:     [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field:    `"Val"`,
+			wantType: ValueNumber,
+			wantNum:  -200,
 		},
 	}
 
@@ -7627,6 +8444,232 @@ func TestDFunctions_ErrorPropagation(t *testing.T) {
 			}
 			if got.Type != ValueError || got.Err != ErrValDIV0 {
 				t.Errorf("%s with error cell = %+v, want #DIV/0!", fn, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-check tests: DMAX >= DMIN and DCOUNT <= DCOUNTA
+// ---------------------------------------------------------------------------
+
+func TestDMAX_GE_DMIN_CrossCheck(t *testing.T) {
+	// For the same database and criteria, DMAX should always be >= DMIN.
+	testCases := []struct {
+		name string
+		db   [][]Value
+		crit [][]Value
+		field string
+	}{
+		{
+			name: "standard DB all records",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("")}},
+			field: `"Profit"`,
+		},
+		{
+			name: "standard DB Apple only",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field: `"Profit"`,
+		},
+		{
+			name: "standard DB Pear only",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("Pear")}},
+			field: `"Height"`,
+		},
+		{
+			name: "standard DB Height>10",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Height")}, {StringVal(">10")}},
+			field: `"Yield"`,
+		},
+		{
+			name: "negative values",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Val")},
+				{StringVal("A"), NumberVal(-10)},
+				{StringVal("B"), NumberVal(-5)},
+				{StringVal("C"), NumberVal(-20)},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Val"`,
+		},
+		{
+			name: "mixed positive and negative",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Val")},
+				{StringVal("A"), NumberVal(-10)},
+				{StringVal("B"), NumberVal(5)},
+				{StringVal("C"), NumberVal(0)},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Val"`,
+		},
+		{
+			name: "single record",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("Cherry")}},
+			field: `"Profit"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbRows := len(tc.db)
+			dbCols := len(tc.db[0])
+			critRows := len(tc.crit)
+			critCols := len(tc.crit[0])
+
+			resolver := makeDBResolver(tc.db, 1, 1, tc.crit, 7, 1)
+
+			maxFormula := "DMAX(" +
+				dbRange(1, 1, dbCols, dbRows) + "," +
+				tc.field + "," +
+				dbRange(7, 1, critCols, critRows) + ")"
+			minFormula := "DMIN(" +
+				dbRange(1, 1, dbCols, dbRows) + "," +
+				tc.field + "," +
+				dbRange(7, 1, critCols, critRows) + ")"
+
+			cfMax := evalCompile(t, maxFormula)
+			gotMax, err := Eval(cfMax, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval DMAX: %v", err)
+			}
+
+			cfMin := evalCompile(t, minFormula)
+			gotMin, err := Eval(cfMin, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval DMIN: %v", err)
+			}
+
+			if gotMax.Type != ValueNumber || gotMin.Type != ValueNumber {
+				t.Fatalf("Expected numbers: DMAX=%+v, DMIN=%+v", gotMax, gotMin)
+			}
+
+			if gotMax.Num < gotMin.Num {
+				t.Errorf("DMAX(%g) < DMIN(%g), expected DMAX >= DMIN", gotMax.Num, gotMin.Num)
+			}
+		})
+	}
+}
+
+func TestDCOUNT_LE_DCOUNTA_CrossCheck(t *testing.T) {
+	// For the same database and criteria, DCOUNT should always be <= DCOUNTA.
+	testCases := []struct {
+		name string
+		db   [][]Value
+		crit [][]Value
+		field string
+	}{
+		{
+			name: "standard DB all records - numeric column",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("")}},
+			field: `"Profit"`,
+		},
+		{
+			name: "standard DB all records - text column",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("")}},
+			field: `"Tree"`,
+		},
+		{
+			name: "mixed types column",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Value")},
+				{StringVal("A"), NumberVal(10)},
+				{StringVal("B"), StringVal("text")},
+				{StringVal("C"), NumberVal(20)},
+				{StringVal("D"), BoolVal(true)},
+				{StringVal("E"), EmptyVal()},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Value"`,
+		},
+		{
+			name: "all text",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Val")},
+				{StringVal("A"), StringVal("x")},
+				{StringVal("B"), StringVal("y")},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Val"`,
+		},
+		{
+			name: "all empty",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Val")},
+				{StringVal("A"), EmptyVal()},
+				{StringVal("B"), EmptyVal()},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Val"`,
+		},
+		{
+			name: "all booleans",
+			db: [][]Value{
+				{StringVal("Name"), StringVal("Flag")},
+				{StringVal("A"), BoolVal(true)},
+				{StringVal("B"), BoolVal(false)},
+				{StringVal("C"), BoolVal(true)},
+			},
+			crit: [][]Value{{StringVal("Name")}, {StringVal("")}},
+			field: `"Flag"`,
+		},
+		{
+			name: "standard DB Apple - numeric field",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("Apple")}},
+			field: `"Profit"`,
+		},
+		{
+			name: "no matches",
+			db:   standardDB(),
+			crit: [][]Value{{StringVal("Tree")}, {StringVal("Orange")}},
+			field: `"Profit"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbRows := len(tc.db)
+			dbCols := len(tc.db[0])
+			critRows := len(tc.crit)
+			critCols := len(tc.crit[0])
+
+			resolver := makeDBResolver(tc.db, 1, 1, tc.crit, 7, 1)
+
+			dcountFormula := "DCOUNT(" +
+				dbRange(1, 1, dbCols, dbRows) + "," +
+				tc.field + "," +
+				dbRange(7, 1, critCols, critRows) + ")"
+			dcountaFormula := "DCOUNTA(" +
+				dbRange(1, 1, dbCols, dbRows) + "," +
+				tc.field + "," +
+				dbRange(7, 1, critCols, critRows) + ")"
+
+			cfCount := evalCompile(t, dcountFormula)
+			gotCount, err := Eval(cfCount, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval DCOUNT: %v", err)
+			}
+
+			cfCountA := evalCompile(t, dcountaFormula)
+			gotCountA, err := Eval(cfCountA, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval DCOUNTA: %v", err)
+			}
+
+			if gotCount.Type != ValueNumber || gotCountA.Type != ValueNumber {
+				t.Fatalf("Expected numbers: DCOUNT=%+v, DCOUNTA=%+v", gotCount, gotCountA)
+			}
+
+			if gotCount.Num > gotCountA.Num {
+				t.Errorf("DCOUNT(%g) > DCOUNTA(%g), expected DCOUNT <= DCOUNTA", gotCount.Num, gotCountA.Num)
 			}
 		})
 	}
