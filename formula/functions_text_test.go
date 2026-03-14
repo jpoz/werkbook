@@ -1206,6 +1206,306 @@ func TestTRIMErrors(t *testing.T) {
 	}
 }
 
+func TestTRIMComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("basic trimming", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Leading spaces only
+			{`TRIM("   hello")`, "hello"},
+			// Trailing spaces only
+			{`TRIM("hello   ")`, "hello"},
+			// Both leading and trailing
+			{`TRIM("  hello  ")`, "hello"},
+			// Internal multiple spaces collapsed to single
+			{`TRIM("hello   world")`, "hello world"},
+			// Mixed: leading, trailing, and internal
+			{`TRIM("  hello   world  ")`, "hello world"},
+			// No trimming needed
+			{`TRIM("hello")`, "hello"},
+			// Empty string
+			{`TRIM("")`, ""},
+			// Single space
+			{`TRIM(" ")`, ""},
+			// All spaces
+			{`TRIM("     ")`, ""},
+			// Single character
+			{`TRIM("a")`, "a"},
+			// Single character with spaces
+			{`TRIM("  a  ")`, "a"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("multiple words with various spacing", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			{`TRIM("  the   quick   brown   fox  ")`, "the quick brown fox"},
+			{`TRIM("a  b  c  d  e")`, "a b c d e"},
+			{`TRIM("  one   two   three  ")`, "one two three"},
+			// Single spaces between words — no change
+			{`TRIM("hello world foo")`, "hello world foo"},
+			// Many internal spaces
+			{`TRIM("a          b")`, "a b"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("whitespace characters", func(t *testing.T) {
+		// strings.Fields splits on all Unicode whitespace, so tabs and
+		// newlines are treated as separators and collapsed. This differs
+		// from Excel's TRIM which only handles ASCII space (0x20).
+		tests := []struct {
+			name    string
+			input   []Value
+			want    string
+		}{
+			// Tab between words
+			{"tab between words", []Value{StringVal("hello\tworld")}, "hello world"},
+			// Newline between words
+			{"newline between words", []Value{StringVal("hello\nworld")}, "hello world"},
+			// Carriage return
+			{"cr between words", []Value{StringVal("hello\rworld")}, "hello world"},
+			// Mixed whitespace
+			{"mixed whitespace", []Value{StringVal("  hello\t\n  world  ")}, "hello world"},
+			// Only tabs
+			{"only tabs", []Value{StringVal("\t\t\t")}, ""},
+			// Only newlines
+			{"only newlines", []Value{StringVal("\n\n\n")}, ""},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got, err := fnTRIM(tt.input)
+				if err != nil {
+					t.Fatalf("fnTRIM: %v", err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("fnTRIM(%q) = %q, want %q", tt.input[0].Str, got.Str, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("non-breaking space", func(t *testing.T) {
+		// Non-breaking space (U+00A0) — strings.Fields treats it as whitespace
+		// in Go, so it will be collapsed like regular spaces.
+		input := "hello\u00A0\u00A0world"
+		got, err := fnTRIM([]Value{StringVal(input)})
+		if err != nil {
+			t.Fatalf("fnTRIM: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "hello world" {
+			t.Fatalf("fnTRIM with NBSP = %q, want %q", got.Str, "hello world")
+		}
+	})
+
+	t.Run("unicode characters with spaces", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Unicode characters preserved, spaces trimmed
+			{`TRIM("  ` + "\u00e9\u00e0\u00fc" + `  ")`, "\u00e9\u00e0\u00fc"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			})
+		}
+
+		// CJK characters via direct call
+		got, err := fnTRIM([]Value{StringVal("  \u4e16\u754c   \u4f60\u597d  ")})
+		if err != nil {
+			t.Fatalf("fnTRIM: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "\u4e16\u754c \u4f60\u597d" {
+			t.Fatalf("fnTRIM CJK = %q, want %q", got.Str, "\u4e16\u754c \u4f60\u597d")
+		}
+	})
+
+	t.Run("type coercion", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			// Number coercion: 42 → "42"
+			{`TRIM(42)`, "42"},
+			// Negative number
+			{`TRIM(-3.14)`, "-3.14"},
+			// Zero
+			{`TRIM(0)`, "0"},
+			// Boolean TRUE → "TRUE"
+			{`TRIM(TRUE)`, "TRUE"},
+			// Boolean FALSE → "FALSE"
+			{`TRIM(FALSE)`, "FALSE"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("error handling", func(t *testing.T) {
+		// TRIM converts errors to their string representation via ValueToString
+		tests := []struct {
+			formula string
+			want    string
+		}{
+			{`TRIM(1/0)`, "#DIV/0!"},
+			{`TRIM(NA())`, "#N/A"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count direct", func(t *testing.T) {
+		// No args
+		got, err := fnTRIM([]Value{})
+		if err != nil {
+			t.Fatalf("fnTRIM: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnTRIM() = %#v, want #VALUE!", got)
+		}
+
+		// Two args
+		got, err = fnTRIM([]Value{StringVal("a"), StringVal("b")})
+		if err != nil {
+			t.Fatalf("fnTRIM: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnTRIM(a,b) = %#v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("very long string with many spaces", func(t *testing.T) {
+		// Build a string with many spaces
+		input := "  word1"
+		for i := 2; i <= 10; i++ {
+			input += "     word" + string(rune('0'+i))
+		}
+		input += "  "
+		got, err := fnTRIM([]Value{StringVal(input)})
+		if err != nil {
+			t.Fatalf("fnTRIM: %v", err)
+		}
+		// All multiple spaces should be collapsed to single
+		want := "word1"
+		for i := 2; i <= 10; i++ {
+			want += " word" + string(rune('0'+i))
+		}
+		if got.Type != ValueString || got.Str != want {
+			t.Fatalf("fnTRIM(long string) = %q, want %q", got.Str, want)
+		}
+	})
+
+	t.Run("empty value", func(t *testing.T) {
+		// Empty Value → ValueToString returns ""
+		got, err := fnTRIM([]Value{EmptyVal()})
+		if err != nil {
+			t.Fatalf("fnTRIM: %v", err)
+		}
+		if got.Type != ValueString || got.Str != "" {
+			t.Fatalf("fnTRIM(empty) = %q, want %q", got.Str, "")
+		}
+	})
+
+	t.Run("TRIM in formula expressions", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			// TRIM result used in LEN
+			{`LEN(TRIM("  hello  "))`, NumberVal(5)},
+			// TRIM result used in concatenation
+			{`TRIM("  hi  ")&" there"`, StringVal("hi there")},
+			// TRIM with nested TRIM (idempotent)
+			{`TRIM(TRIM("  hello   world  "))`, StringVal("hello world")},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if got.Type != tt.want.Type {
+					t.Fatalf("Eval(%q) type = %v, want type %v", tt.formula, got.Type, tt.want.Type)
+				}
+				switch tt.want.Type {
+				case ValueString:
+					if got.Str != tt.want.Str {
+						t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want.Str)
+					}
+				case ValueNumber:
+					if got.Num != tt.want.Num {
+						t.Fatalf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.Num)
+					}
+				}
+			})
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // CHOOSE edge cases
 // ---------------------------------------------------------------------------

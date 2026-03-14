@@ -864,6 +864,169 @@ func TestNOT(t *testing.T) {
 	}
 }
 
+func TestNOTComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("value tests", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			// Basic boolean negation
+			{"NOT(TRUE)", BoolVal(false)},
+			{"NOT(FALSE)", BoolVal(true)},
+
+			// Numeric arguments: nonzero = TRUE, zero = FALSE
+			{"NOT(1)", BoolVal(false)},
+			{"NOT(0)", BoolVal(true)},
+			{"NOT(-1)", BoolVal(false)},
+			{"NOT(0.001)", BoolVal(false)},
+			{"NOT(100)", BoolVal(false)},
+			{"NOT(-0.5)", BoolVal(false)},
+
+			// Double negation
+			{"NOT(NOT(TRUE))", BoolVal(true)},
+			{"NOT(NOT(FALSE))", BoolVal(false)},
+
+			// NOT with comparison operators
+			{"NOT(1>2)", BoolVal(true)},
+			{"NOT(2>1)", BoolVal(false)},
+			{"NOT(1=1)", BoolVal(false)},
+			{"NOT(1=2)", BoolVal(true)},
+			{"NOT(3>=3)", BoolVal(false)},
+			{"NOT(2<=1)", BoolVal(true)},
+
+			// NOT with nested logical functions
+			{"NOT(AND(TRUE,FALSE))", BoolVal(true)},
+			{"NOT(AND(TRUE,TRUE))", BoolVal(false)},
+			{"NOT(OR(FALSE,FALSE))", BoolVal(true)},
+			{"NOT(OR(TRUE,FALSE))", BoolVal(false)},
+
+			// NOT in arithmetic context: TRUE=1, FALSE=0
+			{"NOT(TRUE)+NOT(FALSE)", NumberVal(1)},
+			{"NOT(FALSE)*2", NumberVal(2)},
+			{"NOT(TRUE)+0", NumberVal(0)},
+
+			// String "1" is truthy (non-empty), so NOT("1") = FALSE
+			{`NOT("1")`, BoolVal(false)},
+			// Empty string is falsy, so NOT("") = TRUE
+			{`NOT("")`, BoolVal(true)},
+
+			// NOT with TRUE()/FALSE() function calls
+			{"NOT(TRUE())", BoolVal(false)},
+			{"NOT(FALSE())", BoolVal(true)},
+
+			// Deeply nested NOT
+			{"NOT(NOT(NOT(TRUE)))", BoolVal(false)},
+			{"NOT(NOT(NOT(FALSE)))", BoolVal(true)},
+
+			// NOT used inside IF
+			{`IF(NOT(FALSE),"yes","no")`, StringVal("yes")},
+			{`IF(NOT(TRUE),"yes","no")`, StringVal("no")},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		tests := []struct {
+			formula  string
+			wantErr  ErrorValue
+		}{
+			// #N/A propagation
+			{"NOT(NA())", ErrValNA},
+			// #DIV/0! propagation
+			{"NOT(1/0)", ErrValDIV0},
+			// Wrong arg count: 0 args
+			{"NOT()", ErrValVALUE},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected Go error: %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Fatalf("Eval(%q) = %#v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count two args", func(t *testing.T) {
+		// NOT with 2 arguments should return #VALUE!
+		// Direct function call since parser may not allow 2 args easily
+		got, err := fnNOT([]Value{BoolVal(true), BoolVal(false)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnNOT(TRUE,FALSE) = %#v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("direct function call with error values", func(t *testing.T) {
+		// Passing an error value directly should propagate it
+		got, err := fnNOT([]Value{ErrorVal(ErrValNA)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Fatalf("fnNOT(#N/A) = %#v, want #N/A", got)
+		}
+
+		got, err = fnNOT([]Value{ErrorVal(ErrValDIV0)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Fatalf("fnNOT(#DIV/0!) = %#v, want #DIV/0!", got)
+		}
+
+		got, err = fnNOT([]Value{ErrorVal(ErrValREF)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Fatalf("fnNOT(#REF!) = %#v, want #REF!", got)
+		}
+	})
+
+	t.Run("direct function call with empty value", func(t *testing.T) {
+		// Empty value is falsy, so NOT(empty) = TRUE
+		got, err := fnNOT([]Value{EmptyVal()})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Fatalf("fnNOT(empty) = %#v, want TRUE", got)
+		}
+	})
+
+	t.Run("direct function call with zero args", func(t *testing.T) {
+		got, err := fnNOT([]Value{})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnNOT() = %#v, want #VALUE!", got)
+		}
+	})
+}
+
 func TestIF(t *testing.T) {
 	resolver := &mockResolver{}
 

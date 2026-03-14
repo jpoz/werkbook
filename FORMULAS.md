@@ -185,7 +185,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 23 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
-| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 34 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 36 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 76 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 44 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
@@ -241,7 +241,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 31 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
-| LEN | Returns the number of characters in text. | Text | 33 |
+| LEN | Returns the number of characters in text. | Text | 34 |
 | LET | Assigns names to intermediate values within a formula. | Logical | 33 |
 | LINEST | Returns linear regression statistics. | Statistical | 3 |
 | LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
@@ -287,7 +287,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | NORM.INV | Returns the inverse of the normal cumulative distribution. | Statistical | 28 |
 | NORM.S.DIST | Returns the standard normal distribution. | Statistical | 27 |
 | NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
-| NOT | Returns the opposite of a logical value. | Logical | 13 |
+| NOT | Returns the opposite of a logical value. | Logical | 45 |
 | NOW | Returns the current date and time. | Date & Time | 2 |
 | NPER | Returns the number of periods for an investment or loan. | Financial | 14 |
 | NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
@@ -412,7 +412,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | TOROW | Flattens an array into a single row. | Lookup & Reference | 46 |
 | TRANSPOSE | Swaps the rows and columns of an array. | Lookup & Reference | 58 |
 | TREND | Returns values along a linear trend. | Statistical | 10 |
-| TRIM | Removes extra spaces from text. | Text | 18 |
+| TRIM | Removes extra spaces from text. | Text | 44 |
 | TRIMMEAN | Returns the mean after trimming values from both tails of a data set. | Statistical | 23 |
 | TRUE | Returns the logical value TRUE. | Logical | 10 |
 | TRUNC | Truncates a number to an integer or fixed precision. | Math & Trig | 34 |
