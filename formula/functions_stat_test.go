@@ -38158,3 +38158,894 @@ func TestSUMIFS_Comprehensive(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// CORREL — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestCORREL_Comprehensive(t *testing.T) {
+	const tol = 1e-9
+
+	// y = 2x + 3 for x={1,2,3,4,5} → perfect positive r=1
+	linearPosResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(7),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(9),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(11),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(13),
+		},
+	}
+
+	// y = -x + 5 for x={1,2,3,4,5} → perfect negative r=-1
+	linearNegResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(2),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(1),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(0),
+		},
+	}
+
+	// Constant y: x={1,2,3,4}, y={7,7,7,7} → #DIV/0!
+	constYResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(7),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(7),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(7),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// High correlation (~0.95): x={1,2,3,4,5,6,7,8,9,10},
+	// y = 3x + noise: {3.2, 5.8, 9.1, 12.3, 14.9, 18.2, 20.8, 24.1, 27.0, 30.1}
+	// Excel gives CORREL ≈ 0.999756178
+	highCorrResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(3.2),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5.8),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(9.1),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(12.3),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(14.9),
+			{Col: 1, Row: 6}: NumberVal(6), {Col: 2, Row: 6}: NumberVal(18.2),
+			{Col: 1, Row: 7}: NumberVal(7), {Col: 2, Row: 7}: NumberVal(20.8),
+			{Col: 1, Row: 8}: NumberVal(8), {Col: 2, Row: 8}: NumberVal(24.1),
+			{Col: 1, Row: 9}: NumberVal(9), {Col: 2, Row: 9}: NumberVal(27.0),
+			{Col: 1, Row: 10}: NumberVal(10), {Col: 2, Row: 10}: NumberVal(30.1),
+		},
+	}
+
+	// Low correlation (~0.3): x={1,2,3,4,5,6,7,8}, y={5,3,6,4,7,2,8,6}
+	lowCorrResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(7),
+			{Col: 1, Row: 6}: NumberVal(6), {Col: 2, Row: 6}: NumberVal(2),
+			{Col: 1, Row: 7}: NumberVal(7), {Col: 2, Row: 7}: NumberVal(8),
+			{Col: 1, Row: 8}: NumberVal(8), {Col: 2, Row: 8}: NumberVal(6),
+		},
+	}
+
+	// Negative correlation: x={1,2,3,4,5}, y={10,8,5,4,1}
+	negCorrResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(8),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(1),
+		},
+	}
+
+	// Large array (25 points): y = 3x + 1
+	large25Resolver := &mockResolver{cells: map[CellAddr]Value{}}
+	for i := 1; i <= 25; i++ {
+		large25Resolver.cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		large25Resolver.cells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(3*i + 1))
+	}
+
+	// Two-point array (exact line): x={10,20}, y={100,200}
+	twoPointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10), {Col: 2, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(20), {Col: 2, Row: 2}: NumberVal(200),
+		},
+	}
+
+	// All same x: x={3,3,3}, y={1,2,3} → #DIV/0!
+	allSameXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(3), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// All same y: x={1,2,3}, y={5,5,5} → #DIV/0!
+	allSameYResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Different size arrays: A1:A3 vs B1:B4 → #N/A
+	diffSizeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+			{Col: 2, Row: 4}: NumberVal(7),
+		},
+	}
+
+	// Single element: A1, B1 → #DIV/0!
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(42),
+			{Col: 2, Row: 1}: NumberVal(99),
+		},
+	}
+
+	// Error propagation: #NUM! in first arg
+	errNumResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: ErrorVal(ErrValNUM),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Error propagation: #REF! in second arg
+	errRefResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: ErrorVal(ErrValREF),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Large values: x={1e6,2e6,3e6}, y={5e6,10e6,15e6} → r=1
+	largeValResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1e6), {Col: 2, Row: 1}: NumberVal(5e6),
+			{Col: 1, Row: 2}: NumberVal(2e6), {Col: 2, Row: 2}: NumberVal(10e6),
+			{Col: 1, Row: 3}: NumberVal(3e6), {Col: 2, Row: 3}: NumberVal(15e6),
+		},
+	}
+
+	// Small fractional values: x={0.001,0.002,0.003}, y={0.01,0.02,0.03} → r=1
+	smallFracResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0.001), {Col: 2, Row: 1}: NumberVal(0.01),
+			{Col: 1, Row: 2}: NumberVal(0.002), {Col: 2, Row: 2}: NumberVal(0.02),
+			{Col: 1, Row: 3}: NumberVal(0.003), {Col: 2, Row: 3}: NumberVal(0.03),
+		},
+	}
+
+	// Compute expected CORREL for lowCorrResolver manually:
+	// x={1,2,3,4,5,6,7,8}, y={5,3,6,4,7,2,8,6}
+	// mean_x=4.5, mean_y=5.125
+	// Numerator = sum((xi-4.5)*(yi-5.125))
+	// = (-3.5)(-0.125)+(-2.5)(-2.125)+(-1.5)(0.875)+(-0.5)(-1.125)
+	//   +(0.5)(1.875)+(1.5)(-3.125)+(2.5)(2.875)+(3.5)(0.875)
+	// = 0.4375 + 5.3125 + (-1.3125) + 0.5625
+	//   + 0.9375 + (-4.6875) + 7.1875 + 3.0625
+	// = 11.5
+	// Denom_x = sum((xi-4.5)^2) = 12.25+6.25+2.25+0.25+0.25+2.25+6.25+12.25 = 42
+	// Denom_y = sum((yi-5.125)^2)
+	// = 0.015625+4.515625+0.765625+1.265625+3.515625+9.765625+8.265625+0.765625
+	// = 28.875
+	// r = 11.5 / sqrt(42*28.875) = 11.5 / sqrt(1212.75)
+	lowCorrExpected := 11.5 / math.Sqrt(42.0*28.875)
+
+	// Compute expected CORREL for negCorrResolver:
+	// x={1,2,3,4,5}, y={10,8,5,4,1}
+	// mean_x=3, mean_y=5.6
+	// cov = (-2)(4.4)+(-1)(2.4)+(0)(-0.6)+(1)(-1.6)+(2)(-4.6)
+	//     = -8.8 + (-2.4) + 0 + (-1.6) + (-9.2) = -22
+	// ssqX = 4+1+0+1+4 = 10
+	// ssqY = 19.36+5.76+0.36+2.56+21.16 = 49.2
+	// r = -22 / sqrt(10*49.2) = -22 / sqrt(492)
+	negCorrExpected := -22.0 / math.Sqrt(10.0*49.2)
+
+	// Compute expected CORREL for highCorrResolver:
+	// x={1..10}, y={3.2,5.8,9.1,12.3,14.9,18.2,20.8,24.1,27.0,30.1}
+	// mean_x=5.5, mean_y=16.55
+	highCorrX := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	highCorrY := []float64{3.2, 5.8, 9.1, 12.3, 14.9, 18.2, 20.8, 24.1, 27.0, 30.1}
+	highCorrExpected := computeCorrel(highCorrX, highCorrY)
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Perfect positive: y = 2x + 3
+		{"perfect_pos_y_eq_2x_plus_3", "CORREL(A1:A5,B1:B5)", linearPosResolver, 1.0, false, 0},
+		// Perfect negative: y = -x + 5
+		{"perfect_neg_y_eq_neg_x_plus_5", "CORREL(A1:A5,B1:B5)", linearNegResolver, -1.0, false, 0},
+		// Zero correlation: constant y
+		{"constant_y_div0", "CORREL(A1:A4,B1:B4)", constYResolver, 0, true, ErrValDIV0},
+		// High correlation
+		{"high_correlation", "CORREL(A1:A10,B1:B10)", highCorrResolver, highCorrExpected, false, 0},
+		// Low correlation
+		{"low_correlation", "CORREL(A1:A8,B1:B8)", lowCorrResolver, lowCorrExpected, false, 0},
+		// Negative correlation
+		{"negative_correlation", "CORREL(A1:A5,B1:B5)", negCorrResolver, negCorrExpected, false, 0},
+		// Large array (25 points)
+		{"large_25_points", "CORREL(A1:A25,B1:B25)", large25Resolver, 1.0, false, 0},
+		// Two-point array (exact line)
+		{"two_point_exact_line", "CORREL(A1:A2,B1:B2)", twoPointResolver, 1.0, false, 0},
+		// All same x → #DIV/0!
+		{"all_same_x_div0", "CORREL(A1:A3,B1:B3)", allSameXResolver, 0, true, ErrValDIV0},
+		// All same y → #DIV/0!
+		{"all_same_y_div0", "CORREL(A1:A3,B1:B3)", allSameYResolver, 0, true, ErrValDIV0},
+		// Different size arrays → #N/A
+		{"diff_size_na", "CORREL(A1:A3,B1:B4)", diffSizeResolver, 0, true, ErrValNA},
+		// Single element → #DIV/0!
+		{"single_element_div0", "CORREL(A1:A1,B1:B1)", singleResolver, 0, true, ErrValDIV0},
+		// Error propagation: #NUM!
+		{"error_num_propagation", "CORREL(A1:A3,B1:B3)", errNumResolver, 0, true, ErrValNUM},
+		// Error propagation: #REF! in second arg
+		{"error_ref_propagation", "CORREL(A1:A3,B1:B3)", errRefResolver, 0, true, ErrValREF},
+		// Wrong arg count: 0 args
+		{"zero_args", "CORREL()", linearPosResolver, 0, true, ErrValVALUE},
+		// Wrong arg count: 1 arg
+		{"one_arg", "CORREL(A1:A5)", linearPosResolver, 0, true, ErrValVALUE},
+		// Wrong arg count: 3 args
+		{"three_args", "CORREL(A1:A5,B1:B5,A1:A5)", linearPosResolver, 0, true, ErrValVALUE},
+		// Large values: numerical stability
+		{"large_values", "CORREL(A1:A3,B1:B3)", largeValResolver, 1.0, false, 0},
+		// Small fractional values
+		{"small_fractions", "CORREL(A1:A3,B1:B3)", smallFracResolver, 1.0, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f (diff=%e)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+
+	// Symmetry cross-check: CORREL(a,b) == CORREL(b,a)
+	t.Run("symmetry_check", func(t *testing.T) {
+		cf1 := evalCompile(t, "CORREL(A1:A5,B1:B5)")
+		cf2 := evalCompile(t, "CORREL(B1:B5,A1:A5)")
+		r := negCorrResolver
+		g1, err1 := Eval(cf1, r, nil)
+		g2, err2 := Eval(cf2, r, nil)
+		if err1 != nil || err2 != nil {
+			t.Fatalf("Eval errors: %v, %v", err1, err2)
+		}
+		if g1.Type != ValueNumber || g2.Type != ValueNumber {
+			t.Fatalf("expected numbers, got %d and %d", g1.Type, g2.Type)
+		}
+		if math.Abs(g1.Num-g2.Num) > tol {
+			t.Errorf("symmetry violated: CORREL(a,b)=%.12f, CORREL(b,a)=%.12f", g1.Num, g2.Num)
+		}
+	})
+
+	// Cross-check: CORREL == PEARSON for same data
+	t.Run("correl_equals_pearson", func(t *testing.T) {
+		cf1 := evalCompile(t, "CORREL(A1:A10,B1:B10)")
+		cf2 := evalCompile(t, "PEARSON(A1:A10,B1:B10)")
+		r := highCorrResolver
+		g1, err1 := Eval(cf1, r, nil)
+		g2, err2 := Eval(cf2, r, nil)
+		if err1 != nil || err2 != nil {
+			t.Fatalf("Eval errors: %v, %v", err1, err2)
+		}
+		if g1.Type != ValueNumber || g2.Type != ValueNumber {
+			t.Fatalf("expected numbers, got %d and %d", g1.Type, g2.Type)
+		}
+		if math.Abs(g1.Num-g2.Num) > tol {
+			t.Errorf("CORREL(%.12f) != PEARSON(%.12f)", g1.Num, g2.Num)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// PEARSON — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestPEARSON_Comprehensive(t *testing.T) {
+	const tol = 1e-9
+
+	// y = 2x + 3 for x={1,2,3,4,5} → r=1
+	linearPosResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(7),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(9),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(11),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(13),
+		},
+	}
+
+	// y = -x + 5 for x={1,2,3,4,5} → r=-1
+	linearNegResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(2),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(1),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(0),
+		},
+	}
+
+	// Constant y: x={1,2,3}, y={10,10,10} → #DIV/0!
+	constYResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(10),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(10),
+		},
+	}
+
+	// Constant x: x={4,4,4}, y={1,2,3} → #DIV/0!
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(4), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(4), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// 10-point non-trivial: x={1..10}, y={2,4,5,4,5,7,8,9,8,10}
+	tenPointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(5),
+			{Col: 1, Row: 6}: NumberVal(6), {Col: 2, Row: 6}: NumberVal(7),
+			{Col: 1, Row: 7}: NumberVal(7), {Col: 2, Row: 7}: NumberVal(8),
+			{Col: 1, Row: 8}: NumberVal(8), {Col: 2, Row: 8}: NumberVal(9),
+			{Col: 1, Row: 9}: NumberVal(9), {Col: 2, Row: 9}: NumberVal(8),
+			{Col: 1, Row: 10}: NumberVal(10), {Col: 2, Row: 10}: NumberVal(10),
+		},
+	}
+
+	// Large 30-point: y = -0.5x + 100
+	large30Resolver := &mockResolver{cells: map[CellAddr]Value{}}
+	for i := 1; i <= 30; i++ {
+		large30Resolver.cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		large30Resolver.cells[CellAddr{Col: 2, Row: i}] = NumberVal(-0.5*float64(i) + 100)
+	}
+
+	// Two-point negative: x={1,2}, y={5,3}
+	twoPointNegResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+		},
+	}
+
+	// Single element → #DIV/0!
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// Mixed text/numbers: only numeric pairs count
+	// A = {1,"a",3,"b",5}, B = {10,"x",30,"y",50}
+	// Numeric pairs: (1,10),(3,30),(5,50) → r=1
+	mixedResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: StringVal("a"), {Col: 2, Row: 2}: StringVal("x"),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(30),
+			{Col: 1, Row: 4}: StringVal("b"), {Col: 2, Row: 4}: StringVal("y"),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(50),
+		},
+	}
+
+	// Error in first array: #NA
+	errNAResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Negative values: x={-5,-3,-1,1,3,5}, y={-10,-6,-2,2,6,10} → r=1
+	negLinResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-5), {Col: 2, Row: 1}: NumberVal(-10),
+			{Col: 1, Row: 2}: NumberVal(-3), {Col: 2, Row: 2}: NumberVal(-6),
+			{Col: 1, Row: 3}: NumberVal(-1), {Col: 2, Row: 3}: NumberVal(-2),
+			{Col: 1, Row: 4}: NumberVal(1), {Col: 2, Row: 4}: NumberVal(2),
+			{Col: 1, Row: 5}: NumberVal(3), {Col: 2, Row: 5}: NumberVal(6),
+			{Col: 1, Row: 6}: NumberVal(5), {Col: 2, Row: 6}: NumberVal(10),
+		},
+	}
+
+	tenPtX := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	tenPtY := []float64{2, 4, 5, 4, 5, 7, 8, 9, 8, 10}
+	tenPtExpected := computeCorrel(tenPtX, tenPtY)
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		{"perfect_pos_y_eq_2x_plus_3", "PEARSON(A1:A5,B1:B5)", linearPosResolver, 1.0, false, 0},
+		{"perfect_neg_y_eq_neg_x_plus_5", "PEARSON(A1:A5,B1:B5)", linearNegResolver, -1.0, false, 0},
+		{"constant_y_div0", "PEARSON(A1:A3,B1:B3)", constYResolver, 0, true, ErrValDIV0},
+		{"constant_x_div0", "PEARSON(A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		{"ten_point_data", "PEARSON(A1:A10,B1:B10)", tenPointResolver, tenPtExpected, false, 0},
+		{"large_30_perfect_neg", "PEARSON(A1:A30,B1:B30)", large30Resolver, -1.0, false, 0},
+		{"two_point_negative", "PEARSON(A1:A2,B1:B2)", twoPointNegResolver, -1.0, false, 0},
+		{"single_element_div0", "PEARSON(A1:A1,B1:B1)", singleResolver, 0, true, ErrValDIV0},
+		{"mixed_text_numeric_pairs", "PEARSON(A1:A5,B1:B5)", mixedResolver, 1.0, false, 0},
+		{"error_na_propagation", "PEARSON(A1:A3,B1:B3)", errNAResolver, 0, true, ErrValNA},
+		{"negative_values_perfect_pos", "PEARSON(A1:A6,B1:B6)", negLinResolver, 1.0, false, 0},
+		// Wrong arg count
+		{"zero_args", "PEARSON()", linearPosResolver, 0, true, ErrValVALUE},
+		{"one_arg", "PEARSON(A1:A5)", linearPosResolver, 0, true, ErrValVALUE},
+		{"three_args", "PEARSON(A1:A5,B1:B5,A1:A5)", linearPosResolver, 0, true, ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f (diff=%e)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+
+	// Symmetry: PEARSON(a,b) == PEARSON(b,a)
+	t.Run("symmetry_check", func(t *testing.T) {
+		cf1 := evalCompile(t, "PEARSON(A1:A10,B1:B10)")
+		cf2 := evalCompile(t, "PEARSON(B1:B10,A1:A10)")
+		r := tenPointResolver
+		g1, err1 := Eval(cf1, r, nil)
+		g2, err2 := Eval(cf2, r, nil)
+		if err1 != nil || err2 != nil {
+			t.Fatalf("Eval errors: %v, %v", err1, err2)
+		}
+		if g1.Type != ValueNumber || g2.Type != ValueNumber {
+			t.Fatalf("expected numbers, got %d and %d", g1.Type, g2.Type)
+		}
+		if math.Abs(g1.Num-g2.Num) > tol {
+			t.Errorf("symmetry violated: PEARSON(a,b)=%.12f, PEARSON(b,a)=%.12f", g1.Num, g2.Num)
+		}
+	})
+
+	// Cross-check: PEARSON == CORREL for multiple datasets
+	t.Run("pearson_equals_correl_linear_pos", func(t *testing.T) {
+		cfC := evalCompile(t, "CORREL(A1:A5,B1:B5)")
+		cfP := evalCompile(t, "PEARSON(A1:A5,B1:B5)")
+		r := linearPosResolver
+		gC, _ := Eval(cfC, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gC.Type != ValueNumber || gP.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		if math.Abs(gC.Num-gP.Num) > tol {
+			t.Errorf("CORREL(%.12f) != PEARSON(%.12f)", gC.Num, gP.Num)
+		}
+	})
+
+	t.Run("pearson_equals_correl_ten_point", func(t *testing.T) {
+		cfC := evalCompile(t, "CORREL(A1:A10,B1:B10)")
+		cfP := evalCompile(t, "PEARSON(A1:A10,B1:B10)")
+		r := tenPointResolver
+		gC, _ := Eval(cfC, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gC.Type != ValueNumber || gP.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		if math.Abs(gC.Num-gP.Num) > tol {
+			t.Errorf("CORREL(%.12f) != PEARSON(%.12f)", gC.Num, gP.Num)
+		}
+	})
+
+	t.Run("pearson_equals_correl_negative_line", func(t *testing.T) {
+		cfC := evalCompile(t, "CORREL(A1:A5,B1:B5)")
+		cfP := evalCompile(t, "PEARSON(A1:A5,B1:B5)")
+		r := linearNegResolver
+		gC, _ := Eval(cfC, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gC.Type != ValueNumber || gP.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		if math.Abs(gC.Num-gP.Num) > tol {
+			t.Errorf("CORREL(%.12f) != PEARSON(%.12f)", gC.Num, gP.Num)
+		}
+	})
+
+	t.Run("pearson_equals_correl_large_30", func(t *testing.T) {
+		cfC := evalCompile(t, "CORREL(A1:A30,B1:B30)")
+		cfP := evalCompile(t, "PEARSON(A1:A30,B1:B30)")
+		r := large30Resolver
+		gC, _ := Eval(cfC, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gC.Type != ValueNumber || gP.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		if math.Abs(gC.Num-gP.Num) > tol {
+			t.Errorf("CORREL(%.12f) != PEARSON(%.12f)", gC.Num, gP.Num)
+		}
+	})
+
+	// Cross-check: PEARSON == CORREL for error conditions too
+	t.Run("pearson_equals_correl_error_div0", func(t *testing.T) {
+		cfC := evalCompile(t, "CORREL(A1:A3,B1:B3)")
+		cfP := evalCompile(t, "PEARSON(A1:A3,B1:B3)")
+		r := constYResolver
+		gC, _ := Eval(cfC, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gC.Type != ValueError || gP.Type != ValueError {
+			t.Fatalf("expected errors, got types %d and %d", gC.Type, gP.Type)
+		}
+		if gC.Err != gP.Err {
+			t.Errorf("CORREL err=%v, PEARSON err=%v", gC.Err, gP.Err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// RSQ — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestRSQ_Comprehensive(t *testing.T) {
+	const tol = 1e-9
+
+	// Perfect fit: y = 2x + 3 → RSQ = 1
+	perfectFitResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(7),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(9),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(11),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(13),
+		},
+	}
+
+	// Perfect negative: y = -x + 5 → RSQ = 1
+	perfectNegResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(4),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(2),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(1),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(0),
+		},
+	}
+
+	// Near-zero fit: x={1,2,3,4,5,6,7,8}, y={5,3,6,4,7,2,8,6}
+	nearZeroResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(6),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(7),
+			{Col: 1, Row: 6}: NumberVal(6), {Col: 2, Row: 6}: NumberVal(2),
+			{Col: 1, Row: 7}: NumberVal(7), {Col: 2, Row: 7}: NumberVal(8),
+			{Col: 1, Row: 8}: NumberVal(8), {Col: 2, Row: 8}: NumberVal(6),
+		},
+	}
+
+	// Negative correlation: x={1,2,3,4,5}, y={10,8,5,4,1} → RSQ still positive
+	negCorrResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(8),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(1),
+		},
+	}
+
+	// 10-point data: x={1..10}, y={2,4,5,4,5,7,8,9,8,10}
+	tenPointResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: NumberVal(4),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(5),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(5),
+			{Col: 1, Row: 6}: NumberVal(6), {Col: 2, Row: 6}: NumberVal(7),
+			{Col: 1, Row: 7}: NumberVal(7), {Col: 2, Row: 7}: NumberVal(8),
+			{Col: 1, Row: 8}: NumberVal(8), {Col: 2, Row: 8}: NumberVal(9),
+			{Col: 1, Row: 9}: NumberVal(9), {Col: 2, Row: 9}: NumberVal(8),
+			{Col: 1, Row: 10}: NumberVal(10), {Col: 2, Row: 10}: NumberVal(10),
+		},
+	}
+
+	// Large 25-point perfect: y = 3x + 1 → RSQ = 1
+	large25Resolver := &mockResolver{cells: map[CellAddr]Value{}}
+	for i := 1; i <= 25; i++ {
+		large25Resolver.cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		large25Resolver.cells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(3*i + 1))
+	}
+
+	// Single element → #DIV/0!
+	singleResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+		},
+	}
+
+	// Constant x: x={5,5,5}, y={1,2,3} → #DIV/0!
+	constXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(5), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Error propagation: #DIV/0! in data
+	errDivResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: ErrorVal(ErrValDIV0),
+			{Col: 2, Row: 1}: NumberVal(4),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(6),
+		},
+	}
+
+	// Different size arrays → #N/A
+	diffSizeResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 1}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+
+	// Compute expected values
+	nearZeroX := []float64{1, 2, 3, 4, 5, 6, 7, 8}
+	nearZeroY := []float64{5, 3, 6, 4, 7, 2, 8, 6}
+	nearZeroR := computeCorrel(nearZeroX, nearZeroY)
+	nearZeroRSQ := nearZeroR * nearZeroR
+
+	negCorrX := []float64{1, 2, 3, 4, 5}
+	negCorrY := []float64{10, 8, 5, 4, 1}
+	negCorrR := computeCorrel(negCorrX, negCorrY)
+	negCorrRSQ := negCorrR * negCorrR
+
+	tenPtX := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	tenPtY := []float64{2, 4, 5, 4, 5, 7, 8, 9, 8, 10}
+	tenPtR := computeCorrel(tenPtX, tenPtY)
+	tenPtRSQ := tenPtR * tenPtR
+
+	tests := []struct {
+		name      string
+		formula   string
+		resolver  *mockResolver
+		wantNum   float64
+		wantError bool
+		wantErr   ErrorValue
+	}{
+		// Perfect fit: RSQ = 1
+		{"perfect_fit_rsq_1", "RSQ(A1:A5,B1:B5)", perfectFitResolver, 1.0, false, 0},
+		// Perfect negative: RSQ still = 1
+		{"perfect_neg_rsq_1", "RSQ(A1:A5,B1:B5)", perfectNegResolver, 1.0, false, 0},
+		// Near-zero fit: RSQ close to 0
+		{"near_zero_fit", "RSQ(A1:A8,B1:B8)", nearZeroResolver, nearZeroRSQ, false, 0},
+		// Negative correlation: RSQ is positive
+		{"neg_corr_rsq_positive", "RSQ(A1:A5,B1:B5)", negCorrResolver, negCorrRSQ, false, 0},
+		// 10-point data
+		{"ten_point_rsq", "RSQ(A1:A10,B1:B10)", tenPointResolver, tenPtRSQ, false, 0},
+		// Large 25-point: RSQ = 1
+		{"large_25_points_rsq_1", "RSQ(A1:A25,B1:B25)", large25Resolver, 1.0, false, 0},
+		// Single element → #DIV/0!
+		{"single_element_div0", "RSQ(A1:A1,B1:B1)", singleResolver, 0, true, ErrValDIV0},
+		// Constant x → #DIV/0!
+		{"constant_x_div0", "RSQ(A1:A3,B1:B3)", constXResolver, 0, true, ErrValDIV0},
+		// Error propagation: #DIV/0!
+		{"error_div0_propagation", "RSQ(A1:A3,B1:B3)", errDivResolver, 0, true, ErrValDIV0},
+		// Different sizes → #N/A
+		{"diff_size_na", "RSQ(A1:A2,B1:B3)", diffSizeResolver, 0, true, ErrValNA},
+		// Wrong arg count
+		{"zero_args", "RSQ()", perfectFitResolver, 0, true, ErrValVALUE},
+		{"one_arg", "RSQ(A1:A5)", perfectFitResolver, 0, true, ErrValVALUE},
+		{"three_args", "RSQ(A1:A5,B1:B5,A1:A5)", perfectFitResolver, 0, true, ErrValVALUE},
+		// Reversed args: same RSQ (squaring removes sign)
+		{"reversed_args", "RSQ(B1:B5,A1:A5)", negCorrResolver, negCorrRSQ, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, tt.resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if tt.wantError {
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Errorf("want error %v, got type=%d err=%v num=%g", tt.wantErr, got.Type, got.Err, got.Num)
+				}
+				return
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-tt.wantNum) > tol {
+				t.Errorf("got %.12f, want %.12f (diff=%e)", got.Num, tt.wantNum, math.Abs(got.Num-tt.wantNum))
+			}
+		})
+	}
+
+	// RSQ always in [0, 1] for valid results
+	t.Run("rsq_in_range_0_1", func(t *testing.T) {
+		resolvers := map[string]struct {
+			r       *mockResolver
+			formula string
+		}{
+			"near_zero": {nearZeroResolver, "RSQ(A1:A8,B1:B8)"},
+			"neg_corr":  {negCorrResolver, "RSQ(A1:A5,B1:B5)"},
+			"ten_point": {tenPointResolver, "RSQ(A1:A10,B1:B10)"},
+			"perfect":   {perfectFitResolver, "RSQ(A1:A5,B1:B5)"},
+		}
+		for name, tc := range resolvers {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, tc.r, nil)
+			if err != nil {
+				t.Fatalf("%s: Eval error: %v", name, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: expected number, got type=%d", name, got.Type)
+			}
+			if got.Num < -tol || got.Num > 1.0+tol {
+				t.Errorf("%s: RSQ=%.12f out of [0,1]", name, got.Num)
+			}
+		}
+	})
+
+	// Cross-check: RSQ = CORREL^2
+	t.Run("rsq_equals_correl_squared_ten_point", func(t *testing.T) {
+		cfR := evalCompile(t, "RSQ(A1:A10,B1:B10)")
+		cfC := evalCompile(t, "CORREL(A1:A10,B1:B10)")
+		r := tenPointResolver
+		gR, _ := Eval(cfR, r, nil)
+		gC, _ := Eval(cfC, r, nil)
+		if gR.Type != ValueNumber || gC.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		expected := gC.Num * gC.Num
+		if math.Abs(gR.Num-expected) > tol {
+			t.Errorf("RSQ(%.12f) != CORREL^2(%.12f)", gR.Num, expected)
+		}
+	})
+
+	t.Run("rsq_equals_correl_squared_neg_corr", func(t *testing.T) {
+		cfR := evalCompile(t, "RSQ(A1:A5,B1:B5)")
+		cfC := evalCompile(t, "CORREL(A1:A5,B1:B5)")
+		r := negCorrResolver
+		gR, _ := Eval(cfR, r, nil)
+		gC, _ := Eval(cfC, r, nil)
+		if gR.Type != ValueNumber || gC.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		expected := gC.Num * gC.Num
+		if math.Abs(gR.Num-expected) > tol {
+			t.Errorf("RSQ(%.12f) != CORREL^2(%.12f)", gR.Num, expected)
+		}
+	})
+
+	t.Run("rsq_equals_correl_squared_near_zero", func(t *testing.T) {
+		cfR := evalCompile(t, "RSQ(A1:A8,B1:B8)")
+		cfC := evalCompile(t, "CORREL(A1:A8,B1:B8)")
+		r := nearZeroResolver
+		gR, _ := Eval(cfR, r, nil)
+		gC, _ := Eval(cfC, r, nil)
+		if gR.Type != ValueNumber || gC.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		expected := gC.Num * gC.Num
+		if math.Abs(gR.Num-expected) > tol {
+			t.Errorf("RSQ(%.12f) != CORREL^2(%.12f)", gR.Num, expected)
+		}
+	})
+
+	// Cross-check: RSQ = PEARSON^2
+	t.Run("rsq_equals_pearson_squared", func(t *testing.T) {
+		cfR := evalCompile(t, "RSQ(A1:A10,B1:B10)")
+		cfP := evalCompile(t, "PEARSON(A1:A10,B1:B10)")
+		r := tenPointResolver
+		gR, _ := Eval(cfR, r, nil)
+		gP, _ := Eval(cfP, r, nil)
+		if gR.Type != ValueNumber || gP.Type != ValueNumber {
+			t.Fatalf("expected numbers")
+		}
+		expected := gP.Num * gP.Num
+		if math.Abs(gR.Num-expected) > tol {
+			t.Errorf("RSQ(%.12f) != PEARSON^2(%.12f)", gR.Num, expected)
+		}
+	})
+}
+
+// computeCorrel is a test helper that calculates the Pearson correlation coefficient.
+func computeCorrel(xs, ys []float64) float64 {
+	n := len(xs)
+	if n == 0 {
+		return 0
+	}
+	sumX, sumY := 0.0, 0.0
+	for i := 0; i < n; i++ {
+		sumX += xs[i]
+		sumY += ys[i]
+	}
+	meanX := sumX / float64(n)
+	meanY := sumY / float64(n)
+	cov, ssqX, ssqY := 0.0, 0.0, 0.0
+	for i := 0; i < n; i++ {
+		dx := xs[i] - meanX
+		dy := ys[i] - meanY
+		cov += dx * dy
+		ssqX += dx * dx
+		ssqY += dy * dy
+	}
+	denom := math.Sqrt(ssqX * ssqY)
+	if denom == 0 {
+		return 0
+	}
+	return cov / denom
+}

@@ -74,7 +74,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | CONFIDENCE.NORM | Returns a normal-distribution confidence interval half-width. | Statistical | 25 |
 | CONFIDENCE.T | Returns a Student's t-distribution confidence interval half-width. | Statistical | 29 |
 | CONVERT | Converts a number from one measurement system to another. | Engineering | 185 |
-| CORREL | Returns the correlation coefficient between two data sets. | Statistical | 20 |
+| CORREL | Returns the correlation coefficient between two data sets. | Statistical | 51 |
 | COS | Returns the cosine of an angle. | Math & Trig | 28 |
 | COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
 | COT | Returns the cotangent of an angle. | Math & Trig | 26 |
@@ -299,7 +299,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | OFFSET | Returns a reference offset from a starting reference. | Lookup & Reference | 25 |
 | OR | Returns TRUE when any supplied condition is TRUE. | Logical | 51 |
 | PDURATION | Returns the periods required for an investment to reach a target value. | Financial | 23 |
-| PEARSON | Returns the Pearson correlation coefficient. | Statistical | 23 |
+| PEARSON | Returns the Pearson correlation coefficient. | Statistical | 47 |
 | PERCENTILE | Returns the percentile of a data set. | Statistical | 33 |
 | PERCENTILE.EXC | Returns the exclusive percentile of a data set. | Statistical | 31 |
 | PERCENTILE.INC | Returns the inclusive percentile of a data set. | Statistical | 46 |
@@ -345,7 +345,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | ROW | Returns the row number of a reference. | Information | 41 |
 | ROWS | Returns the number of rows in a reference or array. | Information | 37 |
 | RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
-| RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 23 |
+| RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 42 |
 | SCAN | Returns the running accumulation produced by a lambda over an array. | Logical | 25 |
 | SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 51 |
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
