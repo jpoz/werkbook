@@ -29595,6 +29595,332 @@ func TestZTEST_LargeDataset(t *testing.T) {
 	}
 }
 
+func TestZTEST_NegativeValues(t *testing.T) {
+	// Array of negative values.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-10),
+			{Col: 1, Row: 2}: NumberVal(-5),
+			{Col: 1, Row: 3}: NumberVal(-3),
+			{Col: 1, Row: 4}: NumberVal(-1),
+			{Col: 1, Row: 5}: NumberVal(-8),
+		},
+	}
+	// mean = -5.4, x = 0 (above mean) → p near 1.
+	cf := evalCompile(t, "Z.TEST(A1:A5,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num < 0.9 || got.Num > 1.0 {
+		t.Errorf("negative values with x=0: got %g, want near 1.0", got.Num)
+	}
+}
+
+func TestZTEST_NegativeValuesXBelowMean(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(-10),
+			{Col: 1, Row: 2}: NumberVal(-5),
+			{Col: 1, Row: 3}: NumberVal(-3),
+			{Col: 1, Row: 4}: NumberVal(-1),
+			{Col: 1, Row: 5}: NumberVal(-8),
+		},
+	}
+	// mean = -5.4, x = -20 (far below mean) → p near 0.
+	cf := evalCompile(t, "Z.TEST(A1:A5,-20)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num > 0.01 {
+		t.Errorf("negative values with x far below mean: got %g, want near 0", got.Num)
+	}
+}
+
+func TestZTEST_VeryLargeSigma(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	// mean=3, x=100, sigma=1e6 → z = (3-100)/(1e6/sqrt(5)) ≈ -2.17e-4 → p ≈ 0.5
+	cf := evalCompile(t, "Z.TEST(A1:A5,100,1000000)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.5) > 0.01 {
+		t.Errorf("very large sigma: got %g, want ~0.5", got.Num)
+	}
+}
+
+func TestZTEST_VerySmallSigma(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	// mean=3, x=2, sigma=0.0001 → z = (3-2)/(0.0001/sqrt(5)) ≈ 22360 → p ≈ 0.
+	cf := evalCompile(t, "Z.TEST(A1:A5,2,0.0001)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num > 1e-10 {
+		t.Errorf("very small sigma, x below mean: got %g, want ~0", got.Num)
+	}
+}
+
+func TestZTEST_VerySmallSigmaXAboveMean(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	// mean=3, x=4, sigma=0.0001 → z = (3-4)/(0.0001/sqrt(5)) ≈ -22360 → p ≈ 1.
+	cf := evalCompile(t, "Z.TEST(A1:A5,4,0.0001)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num < 0.999 {
+		t.Errorf("very small sigma, x above mean: got %g, want ~1", got.Num)
+	}
+}
+
+func TestZTEST_ArrayLiteral(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// Same data as doc example but using array literal syntax.
+	cf := evalCompile(t, "Z.TEST({3,6,7,8,6,5,4,2,1,9},4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.090574) > tol {
+		t.Errorf("array literal: got %g, want ~0.090574", got.Num)
+	}
+}
+
+func TestZTEST_CrossCheckMean(t *testing.T) {
+	// Z.TEST(array, mean(array)) should return approximately 0.5.
+	resolver := &mockResolver{}
+	const tol = 1e-4
+
+	tests := []struct {
+		name    string
+		formula string
+	}{
+		{"simple", "Z.TEST({10,20,30,40,50},30)"},
+		{"negative", "Z.TEST({-5,-3,-1,1,3,5},0)"},
+		{"fractional", "Z.TEST({0.1,0.2,0.3,0.4,0.5},0.3)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval error: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+			}
+			if math.Abs(got.Num-0.5) > tol {
+				t.Errorf("%s = %g, want ~0.5", tt.formula, got.Num)
+			}
+		})
+	}
+}
+
+func TestZTEST_FractionalValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0.5),
+			{Col: 1, Row: 2}: NumberVal(1.5),
+			{Col: 1, Row: 3}: NumberVal(2.5),
+			{Col: 1, Row: 4}: NumberVal(3.5),
+			{Col: 1, Row: 5}: NumberVal(4.5),
+		},
+	}
+	// mean=2.5, x=1, sample stdev ~= 1.5811
+	// z = (2.5-1)/(1.5811/sqrt(5)) ≈ 2.1213 → p ≈ 1 - normSDistCDF(2.1213) ≈ 0.0170
+	cf := evalCompile(t, "Z.TEST(A1:A5,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.0170) > 0.005 {
+		t.Errorf("fractional values: got %g, want ~0.017", got.Num)
+	}
+}
+
+func TestZTEST_XZero(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	// mean=3, x=0 → z=(3-0)/(stdev/sqrt(5)) → positive → p near 0.
+	cf := evalCompile(t, "Z.TEST(A1:A5,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num > 0.05 {
+		t.Errorf("x=0, mean=3: got %g, want near 0", got.Num)
+	}
+}
+
+func TestZTEST_NegativeSigma(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	// Negative sigma: produces a result because the formula squares effectively
+	// via sigma/sqrt(n). A negative sigma flips the sign of z.
+	cf := evalCompile(t, "Z.TEST(A1:A3,1,-2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	// Should produce a number (not an error). Excel allows negative sigma.
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num < 0 || got.Num > 1 {
+		t.Errorf("negative sigma: got %g, want value in [0,1]", got.Num)
+	}
+}
+
+func TestZTEST_AllSameWithExplicitSigma(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(5),
+			{Col: 1, Row: 3}: NumberVal(5),
+		},
+	}
+	// All same values but with explicit sigma → should not error.
+	// mean=5, x=3, sigma=2, n=3 → z=(5-3)/(2/sqrt(3))≈1.732 → p≈1-normSDistCDF(1.732)≈0.0416
+	cf := evalCompile(t, "Z.TEST(A1:A3,3,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.0416) > 0.005 {
+		t.Errorf("all same with explicit sigma: got %g, want ~0.0416", got.Num)
+	}
+}
+
+func TestZTEST_ErrorPropagation_NAME(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: ErrorVal(ErrValNAME),
+			{Col: 1, Row: 3}: NumberVal(7),
+		},
+	}
+	cf := evalCompile(t, "Z.TEST(A1:A3,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNAME {
+		t.Errorf("error propagation: want #NAME?, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestZTEST_TwoElements(t *testing.T) {
+	resolver := &mockResolver{}
+	// Minimum n for sample stdev: n=2.
+	// {1,3} → mean=2, stdev_s=sqrt(2)≈1.4142
+	// x=0 → z=(2-0)/(1.4142/sqrt(2))=2/1=2 → p=1-normSDistCDF(2)≈0.02275
+	cf := evalCompile(t, "Z.TEST({1,3},0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.02275) > 0.005 {
+		t.Errorf("two elements: got %g, want ~0.02275", got.Num)
+	}
+}
+
+func TestZTEST_LargeDatasetAtMean(t *testing.T) {
+	// Large dataset with x = mean → p ≈ 0.5.
+	cells := make(map[CellAddr]Value)
+	n := 500
+	sum := 0.0
+	for i := 1; i <= n; i++ {
+		v := float64(i)
+		cells[CellAddr{Col: 1, Row: i}] = NumberVal(v)
+		sum += v
+	}
+	mean := sum / float64(n)
+	resolver := &mockResolver{cells: cells}
+
+	cf := evalCompile(t, fmt.Sprintf("Z.TEST(A1:A%d,%g)", n, mean))
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-0.5) > 1e-4 {
+		t.Errorf("large dataset at mean: got %g, want 0.5", got.Num)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CHISQ.TEST
 // ---------------------------------------------------------------------------
@@ -30223,6 +30549,287 @@ func TestFTEST_MixedNonNumeric(t *testing.T) {
 	// {1,5,10} var=20.333, {2,6,11} var=20.333 → F=1 → p=1.0
 	if math.Abs(got.Num-1.0) > 1e-4 {
 		t.Errorf("F.TEST with equal-variance filtered arrays = %g, want 1.0", got.Num)
+	}
+}
+
+func TestFTEST_SymmetryProperty(t *testing.T) {
+	// F.TEST(a,b) should equal F.TEST(b,a) because it is two-tailed.
+	resolver := &mockResolver{}
+	const tol = 1e-6
+
+	pairs := []struct {
+		name string
+		fwd  string
+		rev  string
+	}{
+		{"simple", "F.TEST({1,2,3,4,5},{10,20,30,40,50})", "F.TEST({10,20,30,40,50},{1,2,3,4,5})"},
+		{"unequal_size", "F.TEST({1,2,3},{10,20,30,40,50})", "F.TEST({10,20,30,40,50},{1,2,3})"},
+		{"negative", "F.TEST({-5,-3,-1},{1,10,100})", "F.TEST({1,10,100},{-5,-3,-1})"},
+	}
+	for _, tt := range pairs {
+		t.Run(tt.name, func(t *testing.T) {
+			cf1 := evalCompile(t, tt.fwd)
+			got1, err := Eval(cf1, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval fwd error: %v", err)
+			}
+			cf2 := evalCompile(t, tt.rev)
+			got2, err := Eval(cf2, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval rev error: %v", err)
+			}
+			if got1.Type != ValueNumber || got2.Type != ValueNumber {
+				t.Fatalf("want numbers, got types %d and %d", got1.Type, got2.Type)
+			}
+			if math.Abs(got1.Num-got2.Num) > tol {
+				t.Errorf("symmetry: F.TEST(a,b)=%g != F.TEST(b,a)=%g", got1.Num, got2.Num)
+			}
+		})
+	}
+}
+
+func TestFTEST_FractionalValues(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// Fractional values with different variances.
+	cf := evalCompile(t, "F.TEST({0.1,0.2,0.3,0.4,0.5},{1.0,2.0,3.0,4.0,5.0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// Both arrays have variance ratio 100:1, so p should be very small.
+	// Variance of {0.1,..,0.5} = 0.025, variance of {1,..,5} = 2.5 → F=0.01 (or 100).
+	if got.Num > 0.01 {
+		t.Errorf("fractional values with variance ratio 100: got %g, want near 0", got.Num)
+	}
+}
+
+func TestFTEST_VeryLargeArrays(t *testing.T) {
+	// Build two large arrays: one with small variance, one with large variance.
+	cells := make(map[CellAddr]Value)
+	n := 50
+	for i := 1; i <= n; i++ {
+		// A: values 1..50 (variance ~212.5)
+		cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		// B: values 100+0.1*i (variance ~2.125)
+		cells[CellAddr{Col: 2, Row: i}] = NumberVal(100 + 0.1*float64(i))
+	}
+	resolver := &mockResolver{cells: cells}
+
+	cf := evalCompile(t, fmt.Sprintf("F.TEST(A1:A%d,B1:B%d)", n, n))
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// Variance ratio ~100, 50 elements each → p very small.
+	if got.Num > 1e-10 {
+		t.Errorf("large arrays different variance: got %g, want very small p", got.Num)
+	}
+}
+
+func TestFTEST_VeryLargeEqualVariance(t *testing.T) {
+	// Two large arrays with same variance, different means.
+	cells := make(map[CellAddr]Value)
+	n := 50
+	for i := 1; i <= n; i++ {
+		cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+		cells[CellAddr{Col: 2, Row: i}] = NumberVal(float64(i) + 1000)
+	}
+	resolver := &mockResolver{cells: cells}
+
+	cf := evalCompile(t, fmt.Sprintf("F.TEST(A1:A%d,B1:B%d)", n, n))
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-1.0) > 1e-4 {
+		t.Errorf("large equal variance: got %g, want 1.0", got.Num)
+	}
+}
+
+func TestFTEST_ErrorPropagation_REF(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: ErrorVal(ErrValREF),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: NumberVal(20),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, "F.TEST(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("error propagation in arr1: want #REF!, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestFTEST_ErrorPropagation_NAME(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+			{Col: 2, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 2}: ErrorVal(ErrValNAME),
+			{Col: 2, Row: 3}: NumberVal(30),
+		},
+	}
+	cf := evalCompile(t, "F.TEST(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNAME {
+		t.Errorf("error propagation in arr2: want #NAME?, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestFTEST_MixedPositiveNegative(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// Array1 crosses zero, array2 is all positive.
+	cf := evalCompile(t, "F.TEST({-3,-1,1,3},{10,20,30,40})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// var1 ≈ 5.333, var2 ≈ 166.667 → F ≈ 0.032 → p very small.
+	if got.Num < 0 || got.Num > 1 {
+		t.Errorf("mixed pos/neg: got %g, want value in [0,1]", got.Num)
+	}
+	if got.Num > 0.05 {
+		t.Errorf("mixed pos/neg: got %g, want small p-value", got.Num)
+	}
+}
+
+func TestFTEST_BothConstantDifferent(t *testing.T) {
+	// Both arrays have zero variance → #DIV/0!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "F.TEST({7,7,7,7},{3,3,3,3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("both constant: want #DIV/0!, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestFTEST_OneConstantOneVariable(t *testing.T) {
+	// One array constant → zero variance → #DIV/0!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "F.TEST({5,5,5},{1,2,3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("one constant: want #DIV/0!, got type=%d err=%v", got.Type, got.Err)
+	}
+}
+
+func TestFTEST_SmallArraysMinimumSize(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// n=2 each: minimum valid arrays.
+	cf := evalCompile(t, "F.TEST({1,3},{2,4})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// var1=2, var2=2 → F=1 → p=1.0.
+	if math.Abs(got.Num-1.0) > tol {
+		t.Errorf("min size equal var: got %g, want 1.0", got.Num)
+	}
+}
+
+func TestFTEST_SmallArraysDifferentVariance(t *testing.T) {
+	resolver := &mockResolver{}
+	// n=2 each with very different variances.
+	// {1,100} → var=4900.5, {50,51} → var=0.5, F=9801 → very small p.
+	cf := evalCompile(t, "F.TEST({1,100},{50,51})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if got.Num > 0.05 {
+		t.Errorf("small arrays diff variance: got %g, want small p", got.Num)
+	}
+}
+
+func TestFTEST_SameArrayLiteral(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// Same data as both arrays → p = 1.
+	cf := evalCompile(t, "F.TEST({2,4,6,8,10},{2,4,6,8,10})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num-1.0) > tol {
+		t.Errorf("same array literal: got %g, want 1.0", got.Num)
+	}
+}
+
+func TestFTEST_UnequalSizesSmallLarge(t *testing.T) {
+	resolver := &mockResolver{}
+	// 3 elements vs 10 elements with similar variance.
+	cf := evalCompile(t, "F.TEST({1,2,3},{1,2,3,4,5,6,7,8,9,10})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// Variance of {1,2,3}=1, variance of {1..10}=9.167, ratio ~9.2 → moderate p.
+	if got.Num < 0 || got.Num > 1 {
+		t.Errorf("unequal sizes: got %g, want value in [0,1]", got.Num)
+	}
+}
+
+func TestFTEST_ScaledArrays(t *testing.T) {
+	resolver := &mockResolver{}
+	const tol = 1e-4
+	// Arrays that are exact multiples of each other: variance ratio = k^2.
+	// {1,2,3,4,5} var=2.5, {10,20,30,40,50} var=250 → F=0.01 (or 100).
+	cf := evalCompile(t, "F.TEST({1,2,3,4,5},{10,20,30,40,50})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	// With df1=df2=4, F=100 → very small p.
+	if got.Num > 0.001 {
+		t.Errorf("scaled arrays (10x): got %g, want very small p", got.Num)
 	}
 }
 

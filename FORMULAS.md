@@ -148,7 +148,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | F.DIST.RT | Returns the right-tailed F probability distribution. | Statistical | 19 |
 | F.INV | Returns the inverse of the F cumulative distribution. | Statistical | 36 |
 | F.INV.RT | Returns the inverse of the right-tailed F distribution. | Statistical | 21 |
-| F.TEST | Returns the result of an F-test for two arrays. | Statistical | 26 |
+| F.TEST | Returns the result of an F-test for two arrays. | Statistical | 42 |
 | FACT | Returns the factorial of a number. | Math & Trig | 28 |
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
@@ -449,7 +449,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | YIELD | Returns the yield of a coupon-paying security. | Financial | 19 |
 | YIELDDISC | Returns the annual yield of a discounted security. | Financial | 23 |
 | YIELDMAT | Returns the annual yield of a security that pays interest at maturity. | Financial | 27 |
-| Z.TEST | Returns the one-tailed probability value of a z-test. | Statistical | 22 |
+| Z.TEST | Returns the one-tailed probability value of a z-test. | Statistical | 38 |
 
 # No Planned Support
 
