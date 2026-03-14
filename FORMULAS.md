@@ -41,8 +41,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | BIN2HEX | Converts a binary number to hexadecimal. | Engineering | 49 |
 | BIN2OCT | Converts a binary number to octal. | Engineering | 45 |
 | BINOM.DIST | Returns the binomial distribution. | Statistical | 30 |
-| BINOM.DIST.RANGE | Returns the probability that a binomial result falls within a range. | Statistical | 39 |
-| BINOM.INV | Returns the smallest value whose binomial cumulative distribution meets a criterion. | Statistical | 33 |
+| BINOM.DIST.RANGE | Returns the probability that a binomial result falls within a range. | Statistical | 66 |
+| BINOM.INV | Returns the smallest value whose binomial cumulative distribution meets a criterion. | Statistical | 56 |
 | BITAND | Returns the bitwise AND of two integers. | Math & Trig | 28 |
 | BITLSHIFT | Returns a number shifted left by a requested number of bits. | Math & Trig | 27 |
 | BITOR | Returns the bitwise OR of two integers. | Math & Trig | 27 |

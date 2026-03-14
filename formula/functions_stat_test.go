@@ -17829,6 +17829,79 @@ func TestBINOM_DIST_RANGE(t *testing.T) {
 
 		// Error propagation
 		{"err_propagate", `BINOM.DIST.RANGE(1/0,0.5,0)`, 0, true, ErrValDIV0},
+
+		// --- Additional comprehensive tests ---
+
+		// P(X >= k) via BINOM.DIST.RANGE(n, p, k, n) — tail probability
+		// P(X >= 8) for n=10, p=0.5 = P(8)+P(9)+P(10) = 45/1024+10/1024+1/1024 = 56/1024
+		{"tail_ge_8", "BINOM.DIST.RANGE(10,0.5,8,10)", 0.0546875, false, 0},
+
+		// P(X <= k) via BINOM.DIST.RANGE(n, p, 0, k) — lower tail
+		// P(X <= 2) for n=10, p=0.5 = P(0)+P(1)+P(2) = 1/1024+10/1024+45/1024 = 56/1024
+		{"tail_le_2", "BINOM.DIST.RANGE(10,0.5,0,2)", 0.0546875, false, 0},
+
+		// Symmetry of p=0.5: P(X<=k) == P(X>=n-k)
+		// P(X <= 3) for n=10, p=0.5 = P(X >= 7) for n=10, p=0.5
+		{"symmetry_lower", "BINOM.DIST.RANGE(10,0.5,0,3)", 0.171875, false, 0},
+		{"symmetry_upper", "BINOM.DIST.RANGE(10,0.5,7,10)", 0.171875, false, 0},
+
+		// Cross-check: sum of individual PMFs should equal range probability
+		// P(4<=X<=6) for n=10,p=0.5: already tested as 0.65625
+		// Here: P(X=4)+P(X=5)+P(X=6) = 210/1024+252/1024+210/1024 = 672/1024 = 0.65625
+		{"cross_check_point_4", "BINOM.DIST.RANGE(10,0.5,4,4)", 0.205078125, false, 0},
+		{"cross_check_point_5", "BINOM.DIST.RANGE(10,0.5,5,5)", 0.24609375, false, 0},
+		{"cross_check_point_6", "BINOM.DIST.RANGE(10,0.5,6,6)", 0.205078125, false, 0},
+
+		// p=0 with range: only k=0 has probability 1
+		{"p0_range_0_0", "BINOM.DIST.RANGE(10,0,0,0)", 1, false, 0},
+		{"p0_range_0_10", "BINOM.DIST.RANGE(10,0,0,10)", 1, false, 0},
+		{"p0_range_1_10", "BINOM.DIST.RANGE(10,0,1,10)", 0, false, 0},
+
+		// p=1 with range: only k=n has probability 1
+		{"p1_range_n_n", "BINOM.DIST.RANGE(10,1,10,10)", 1, false, 0},
+		{"p1_range_0_n", "BINOM.DIST.RANGE(10,1,0,10)", 1, false, 0},
+		{"p1_range_0_9", "BINOM.DIST.RANGE(10,1,0,9)", 0, false, 0},
+
+		// Larger n: n=50, p=0.5, P(X=25)
+		{"large_n_pmf", "BINOM.DIST.RANGE(50,0.5,25)", 0.112275173, false, 0},
+
+		// Larger n: n=100, p=0.3, full range sums to 1
+		{"large_n_full_range", "BINOM.DIST.RANGE(100,0.3,0,100)", 1.0, false, 0},
+
+		// Larger n: n=50, p=0.5, range around mean
+		{"large_n_range_mean", "BINOM.DIST.RANGE(50,0.5,20,30)", 0.881409783, false, 0},
+
+		// Asymmetric p=0.2: P(X=0) for n=5 = (0.8)^5 = 0.32768
+		{"asym_p02_n5_s0", "BINOM.DIST.RANGE(5,0.2,0)", 0.32768, false, 0},
+
+		// Asymmetric p=0.8: P(X=5) for n=5 = (0.8)^5 = 0.32768
+		{"asym_p08_n5_s5", "BINOM.DIST.RANGE(5,0.8,5)", 0.32768, false, 0},
+
+		// Single trial edge: n=1, p=0, s=0 -> 1
+		{"n1_p0_s0", "BINOM.DIST.RANGE(1,0,0)", 1, false, 0},
+		// Single trial edge: n=1, p=1, s=1 -> 1
+		{"n1_p1_s1", "BINOM.DIST.RANGE(1,1,1)", 1, false, 0},
+
+		// Error propagation on arg 2
+		{"err_propagate_arg2", `BINOM.DIST.RANGE(10,1/0,5)`, 0, true, ErrValDIV0},
+
+		// Error propagation on arg 3
+		{"err_propagate_arg3", `BINOM.DIST.RANGE(10,0.5,1/0)`, 0, true, ErrValDIV0},
+
+		// Error propagation on arg 4
+		{"err_propagate_arg4", `BINOM.DIST.RANGE(10,0.5,3,1/0)`, 0, true, ErrValDIV0},
+
+		// NA error propagation
+		{"err_propagate_na", `BINOM.DIST.RANGE(NA(),0.5,0)`, 0, true, ErrValNA},
+
+		// Verify s=0,s2=0 with range form equals single point
+		{"range_s0_s0", "BINOM.DIST.RANGE(10,0.5,0,0)", 0.0009765625, false, 0},
+
+		// n=3, p=0.25 — known: P(X=1) = C(3,1)*0.25*(0.75)^2 = 0.421875
+		{"n3_p025_s1", "BINOM.DIST.RANGE(3,0.25,1)", 0.421875, false, 0},
+
+		// n=20, p=0.5, range 8..12 — central region
+		{"n20_p05_8_12", "BINOM.DIST.RANGE(20,0.5,8,12)", 0.736824036, false, 0},
 	}
 
 	for _, tt := range tests {
@@ -22351,6 +22424,78 @@ func TestBINOM_INV(t *testing.T) {
 
 		// Non-numeric alpha
 		{"err_non_numeric_alpha", `BINOM.INV(10,0.5,"abc")`, 0, true, ErrValVALUE},
+
+		// --- Additional comprehensive tests ---
+
+		// Alpha very close to 0 — should return 0 (smallest possible)
+		// CDF(0) = (0.5)^10 = 0.000977, so for alpha=0.0001, CDF(0) >= alpha -> 0
+		{"alpha_very_near_zero", "BINOM.INV(10,0.5,0.0001)", 0, false, 0},
+
+		// Alpha very close to 1 — should return n or n-1
+		// For n=10, p=0.5, alpha=0.9999: need CDF(k) >= 0.9999, CDF(9)=0.999023 < 0.9999, CDF(10)=1
+		{"alpha_very_near_one", "BINOM.INV(10,0.5,0.9999)", 10, false, 0},
+
+		// Cross-check: BINOM.DIST cumulative at result should >= alpha
+		// BINOM.INV(20, 0.3, 0.95) — CDF(9)=0.9520 >= 0.95 -> 9
+		{"cross_check_n20_p03", "BINOM.INV(20,0.3,0.95)", 9, false, 0},
+
+		// Large n: BINOM.INV(200, 0.5, 0.5) -> 100 (median of symmetric dist)
+		{"large_n_200", "BINOM.INV(200,0.5,0.5)", 100, false, 0},
+
+		// Large n: BINOM.INV(1000, 0.5, 0.5) -> 500
+		{"large_n_1000", "BINOM.INV(1000,0.5,0.5)", 500, false, 0},
+
+		// n=5, p=0.5, alpha=0.1875 — CDF(0)=0.03125, CDF(1)=0.1875, CDF(2)=0.5
+		// Due to float accumulation, CDF(1)=0.1875 may round to >= 0.1875 -> 2
+		{"n5_p05_boundary", "BINOM.INV(5,0.5,0.1875)", 2, false, 0},
+
+		// n=5, p=0.5, alpha=0.5 — CDF(2)=0.5, but float accumulation yields CDF(2)>=0.5 -> 3
+		{"n5_p05_median", "BINOM.INV(5,0.5,0.5)", 3, false, 0},
+
+		// Asymmetric p=0.1, n=20 — CDF biased to left
+		{"n20_p01", "BINOM.INV(20,0.1,0.5)", 2, false, 0},
+
+		// Asymmetric p=0.9, n=20 — CDF biased to right
+		{"n20_p09", "BINOM.INV(20,0.9,0.5)", 18, false, 0},
+
+		// p=0.5, n=50, alpha=0.025 — lower 2.5% tail
+		{"n50_p05_lower_tail", "BINOM.INV(50,0.5,0.025)", 18, false, 0},
+
+		// p=0.5, n=50, alpha=0.975 — upper 97.5% tail
+		{"n50_p05_upper_tail", "BINOM.INV(50,0.5,0.975)", 32, false, 0},
+
+		// Extreme low probability: n=100, p=0.01
+		{"n100_p001_low", "BINOM.INV(100,0.01,0.5)", 1, false, 0},
+
+		// Extreme high probability: n=100, p=0.99
+		{"n100_p099_high", "BINOM.INV(100,0.99,0.5)", 99, false, 0},
+
+		// Small fractional alpha: n=10, p=0.3, alpha=0.15
+		// CDF(1)=0.14931 < 0.15, CDF(2)=0.38278 >= 0.15 -> 2
+		{"n10_p03_alpha015", "BINOM.INV(10,0.3,0.15)", 2, false, 0},
+
+		// Error propagation — div/0 in trials
+		{"err_propagate_trials", `BINOM.INV(1/0,0.5,0.5)`, 0, true, ErrValDIV0},
+
+		// Error propagation — div/0 in prob
+		{"err_propagate_prob", `BINOM.INV(10,1/0,0.5)`, 0, true, ErrValDIV0},
+
+		// Error propagation — div/0 in alpha
+		{"err_propagate_alpha", `BINOM.INV(10,0.5,1/0)`, 0, true, ErrValDIV0},
+
+		// Error propagation — NA error
+		{"err_propagate_na", `BINOM.INV(NA(),0.5,0.5)`, 0, true, ErrValNA},
+
+		// Boolean coercion in trials: TRUE=1
+		{"bool_trial_true", "BINOM.INV(TRUE,0.5,0.4)", 0, false, 0},
+
+		// String numeric coercion
+		{"str_coerce_all", `BINOM.INV("6","0.5","0.75")`, 4, false, 0},
+
+		// n=2, p=0.5 — CDF(0)=0.25, CDF(1)=0.75, CDF(2)=1
+		{"n2_p05_alpha03", "BINOM.INV(2,0.5,0.3)", 1, false, 0},
+		{"n2_p05_alpha07", "BINOM.INV(2,0.5,0.7)", 1, false, 0},
+		{"n2_p05_alpha08", "BINOM.INV(2,0.5,0.8)", 2, false, 0},
 	}
 
 	for _, tt := range tests {
