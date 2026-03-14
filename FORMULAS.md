@@ -164,8 +164,8 @@ Werkbook supports **445** spreadsheet formula functions.
 | FORECAST.LINEAR | Predicts a future value using linear regression. | Statistical | 22 |
 | FORMULATEXT | Returns the formula text from a referenced cell. | Information | 39 |
 | FREQUENCY | Returns a frequency distribution for numeric bins. | Statistical | 25 |
-| FV | Returns the future value of an investment or annuity. | Financial | 4 |
-| FVSCHEDULE | Returns a future value after applying a schedule of interest rates. | Financial | 4 |
+| FV | Returns the future value of an investment or annuity. | Financial | 13 |
+| FVSCHEDULE | Returns a future value after applying a schedule of interest rates. | Financial | 9 |
 | GAMMA | Returns the gamma function value. | Math & Trig | 31 |
 | GAMMA.DIST | Returns the gamma distribution. | Statistical | 41 |
 | GAMMA.INV | Returns the inverse of the gamma cumulative distribution. | Statistical | 34 |
@@ -289,7 +289,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
 | NOT | Returns the opposite of a logical value. | Logical | 13 |
 | NOW | Returns the current date and time. | Date & Time | 2 |
-| NPER | Returns the number of periods for an investment or loan. | Financial | 5 |
+| NPER | Returns the number of periods for an investment or loan. | Financial | 14 |
 | NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
 | NUMBERVALUE | Converts locale-formatted text to a number. | Text | 27 |
 | OCT2BIN | Converts a octal number to binary. | Engineering | 38 |

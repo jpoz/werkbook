@@ -17819,3 +17819,874 @@ func TestAMORLINC_ViaEval(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// Additional comprehensive tests for FV, FVSCHEDULE, NPER
+// =============================================================================
+
+// --- FV additional tests ---
+
+func TestFV_AdditionalComprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Known cross-check: $100/month at 6%/12 for 10 years = ~$16,387.93 ---
+		{
+			name: "known cross-check 100/mo 6% 10yr",
+			args: numArgs(0.06/12, 120, -100),
+			want: 16387.93,
+		},
+		// --- Monthly deposits at 5%/12 for 30 years ---
+		{
+			name: "monthly savings 5%/12 over 30yr",
+			args: numArgs(0.05/12, 360, -100),
+			want: 83225.86,
+		},
+		// --- Loan: FV of payments should approach 0 ---
+		// PMT for $200k at 5%/12 for 360 months = -1073.64
+		// FV(0.05/12, 360, -1073.64, 200000) should be ~0 (small rounding residual)
+		{
+			name: "loan payoff FV approaches zero",
+			args: numArgs(0.05/12, 360, -1073.64, 200000),
+			want: -2.70,
+		},
+		// --- Zero rate: FV = -pmt*nper - pv ---
+		{
+			name: "zero rate formula check: -pmt*nper - pv",
+			args: numArgs(0, 36, -250, -3000),
+			want: 12000.0, // -(-250)*36 - (-3000) = 9000 + 3000 = 12000
+		},
+		// --- Type=1 vs Type=0 difference visible ---
+		{
+			name: "type 0: 8%/12, 24mo, -500",
+			args: numArgs(0.08/12, 24, -500, 0, 0),
+			want: 12966.59,
+		},
+		{
+			name: "type 1: 8%/12, 24mo, -500 (higher than type=0)",
+			args: numArgs(0.08/12, 24, -500, 0, 1),
+			want: 13053.04,
+		},
+		// --- With pv, without pmt (compound growth only) ---
+		{
+			name: "compound growth only: 7% annual 20yr",
+			args: numArgs(0.07, 20, 0, -10000),
+			want: 38696.84,
+		},
+		// --- With pmt, without pv (pure savings) ---
+		{
+			name: "pure savings: 4%/12 monthly 120mo",
+			args: numArgs(0.04/12, 120, -300),
+			want: 44174.94,
+		},
+		// --- Negative rate scenarios ---
+		{
+			name: "negative rate -3% annual 10yr compound only",
+			args: numArgs(-0.03, 10, 0, -10000),
+			want: 7374.24,
+		},
+		{
+			name: "negative rate -1%/month 12mo savings",
+			args: numArgs(-0.01, 12, -100),
+			want: 1136.15,
+		},
+		// --- High rate short term ---
+		{
+			name: "high rate 50% per period 3 periods",
+			args: numArgs(0.50, 3, -1000),
+			want: 4750.00,
+		},
+		{
+			name: "high rate 25% per period 4 periods pv only",
+			args: numArgs(0.25, 4, 0, -1000),
+			want: 2441.41,
+		},
+		// --- Low rate long term ---
+		{
+			name: "low rate 0.1%/mo 600mo (50yr)",
+			args: numArgs(0.001, 600, -50),
+			want: 41078.63,
+		},
+		// --- nper = 1 ---
+		{
+			name: "nper=1 with all params type=0",
+			args: numArgs(0.05, 1, -500, -1000, 0),
+			want: 1550.0, // -(-1000)*1.05 - (-500)*(1.05-1)/0.05 = 1050 + 500 = 1550
+		},
+		{
+			name: "nper=1 with all params type=1",
+			args: numArgs(0.05, 1, -500, -1000, 1),
+			want: 1575.0, // 1050 + 500*1.05 = 1050 + 525 = 1575
+		},
+		// --- Large nper: 360 months = 30yr mortgage ---
+		{
+			name: "large nper 360 at 0.5%/mo with pv",
+			args: numArgs(0.005, 360, -200, -5000),
+			want: 231015.88,
+		},
+		// --- FV + PV consistency: FV(r,n,PMT(r,n,PV),PV) ~ 0 ---
+		// PMT(0.08/12, 60, 25000) ~ -506.91; FV(0.08/12, 60, -506.91, 25000) ~ 0.01
+		{
+			name: "FV+PV consistency: should be near zero",
+			args: numArgs(0.08/12, 60, -506.91, 25000),
+			want: 0.01,
+		},
+		// --- Fractional nper ---
+		{
+			name: "fractional nper 6.5 periods",
+			args: numArgs(0.10, 6.5, -1000),
+			want: 8580.29,
+		},
+		// --- Very large pv compound only ---
+		{
+			name: "large pv 10M compound 5% 10yr",
+			args: numArgs(0.05, 10, 0, -10000000),
+			want: 16288946.27,
+		},
+		// --- Negative pmt and negative pv (both investing) ---
+		{
+			name: "negative pmt negative pv 6%/12 60mo",
+			args: numArgs(0.06/12, 60, -500, -20000),
+			want: 61862.02,
+		},
+		// --- Positive pmt (withdrawals) with large pv ---
+		{
+			name: "withdrawals from large pv: 4% 20yr annual",
+			args: numArgs(0.04, 20, 5000, -200000),
+			want: 289334.24,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnFV(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestFV_EvalCompile(t *testing.T) {
+	// Test FV through the full formula evaluation pipeline
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{
+			name:    "basic FV formula",
+			formula: "FV(0.05/12,360,-100,0,0)",
+			want:    83225.86,
+		},
+		{
+			name:    "FV with only 3 args",
+			formula: "FV(0.06/12,120,-100)",
+			want:    16387.93,
+		},
+		{
+			name:    "FV zero rate",
+			formula: "FV(0,10,-100,-1000)",
+			want:    2000.0,
+		},
+		{
+			name:    "FV type=1 beginning of period",
+			formula: "FV(0.06/12,12,-100,0,1)",
+			want:    1239.72,
+		},
+		{
+			name:    "FV compound growth no pmt",
+			formula: "FV(0.08,10,0,-5000)",
+			want:    10794.62,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got %v", got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > 0.01 {
+				t.Errorf("%s: got %f, want %f", tc.name, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestFV_PVConsistencyRoundtrip(t *testing.T) {
+	// FV(r, n, PMT(r,n,pv), pv) should be approximately 0
+	// This tests the mathematical identity between FV and PMT.
+	resolver := &mockResolver{}
+
+	cases := []struct {
+		name string
+		rate float64
+		nper float64
+		pv   float64
+	}{
+		{"5%/12 360mo 200k", 0.05 / 12, 360, 200000},
+		{"8%/12 60mo 25k", 0.08 / 12, 60, 25000},
+		{"6% 10yr 50k", 0.06, 10, 50000},
+		{"3%/12 120mo 100k", 0.03 / 12, 120, 100000},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// First compute PMT
+			formula := fmt.Sprintf("FV(%.15f,%.15f,PMT(%.15f,%.15f,%.15f),%.15f)",
+				tc.rate, tc.nper, tc.rate, tc.nper, tc.pv, tc.pv)
+			cf := evalCompile(t, formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got %v", got.Type)
+			}
+			// Should be very close to 0
+			if math.Abs(got.Num) > 0.01 {
+				t.Errorf("FV(r,n,PMT(r,n,pv),pv) = %f, want ~0", got.Num)
+			}
+		})
+	}
+}
+
+// --- FVSCHEDULE additional tests ---
+
+func TestFVSchedule_AdditionalComprehensive(t *testing.T) {
+	mkArr := func(vals ...Value) Value {
+		return Value{Type: ValueArray, Array: [][]Value{vals}}
+	}
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Single rate same as compound growth ---
+		{
+			name: "single rate 5% equivalent to compound",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05))},
+			want: 1050.0,
+		},
+		// --- Known cross-check: 1000 * (1+0.05) * (1+0.10) = 1155 ---
+		{
+			name: "known cross-check 1000 * 1.05 * 1.10",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05), NumberVal(0.10))},
+			want: 1155.0,
+		},
+		// --- Two rates ---
+		{
+			name: "two rates 3% and 7%",
+			args: []Value{NumberVal(5000), mkArr(NumberVal(0.03), NumberVal(0.07))},
+			want: 5000 * 1.03 * 1.07,
+		},
+		// --- Three rates ---
+		{
+			name: "three rates 2%, 4%, 6%",
+			args: []Value{NumberVal(2000), mkArr(NumberVal(0.02), NumberVal(0.04), NumberVal(0.06))},
+			want: 2000 * 1.02 * 1.04 * 1.06,
+		},
+		// --- Five rates ---
+		{
+			name: "five rates 1% each",
+			args: []Value{NumberVal(10000), mkArr(NumberVal(0.01), NumberVal(0.01), NumberVal(0.01), NumberVal(0.01), NumberVal(0.01))},
+			want: 10000 * 1.01 * 1.01 * 1.01 * 1.01 * 1.01,
+		},
+		// --- All zero rates: principal unchanged ---
+		{
+			name: "all zero rates unchanged",
+			args: []Value{NumberVal(7777), mkArr(NumberVal(0), NumberVal(0), NumberVal(0), NumberVal(0))},
+			want: 7777.0,
+		},
+		// --- One rate of 100% doubles ---
+		{
+			name: "100% rate doubles principal",
+			args: []Value{NumberVal(500), mkArr(NumberVal(1.0))},
+			want: 1000.0,
+		},
+		// --- Two 100% rates quadruples ---
+		{
+			name: "two 100% rates quadruples",
+			args: []Value{NumberVal(250), mkArr(NumberVal(1.0), NumberVal(1.0))},
+			want: 1000.0,
+		},
+		// --- Negative rates (losses) ---
+		{
+			name: "single -20% loss",
+			args: []Value{NumberVal(10000), mkArr(NumberVal(-0.20))},
+			want: 8000.0,
+		},
+		{
+			name: "two negative rates -10% each",
+			args: []Value{NumberVal(10000), mkArr(NumberVal(-0.10), NumberVal(-0.10))},
+			want: 10000 * 0.90 * 0.90,
+		},
+		// --- Mixed positive/negative rates ---
+		{
+			name: "gain then loss: 20% then -15%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.20), NumberVal(-0.15))},
+			want: 1000 * 1.20 * 0.85,
+		},
+		{
+			name: "loss then recovery: -30% then +50%",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(-0.30), NumberVal(0.50))},
+			want: 1000 * 0.70 * 1.50,
+		},
+		{
+			name: "alternating gain/loss four periods",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.10), NumberVal(-0.05), NumberVal(0.08), NumberVal(-0.03))},
+			want: 1000 * 1.10 * 0.95 * 1.08 * 0.97,
+		},
+		// --- Large number of rates (12 monthly rates) ---
+		{
+			name: "12 monthly rates varying",
+			args: []Value{NumberVal(10000), mkArr(
+				NumberVal(0.005), NumberVal(0.006), NumberVal(0.004), NumberVal(0.007),
+				NumberVal(0.005), NumberVal(0.003), NumberVal(0.008), NumberVal(0.004),
+				NumberVal(0.006), NumberVal(0.005), NumberVal(0.007), NumberVal(0.003),
+			)},
+			want: 10000 * 1.005 * 1.006 * 1.004 * 1.007 * 1.005 * 1.003 * 1.008 * 1.004 * 1.006 * 1.005 * 1.007 * 1.003,
+		},
+		// --- Principal = 0 gives 0 ---
+		{
+			name: "zero principal stays zero",
+			args: []Value{NumberVal(0), mkArr(NumberVal(0.50), NumberVal(1.00))},
+			want: 0.0,
+		},
+		// --- Very large principal ---
+		{
+			name: "very large principal 1 billion",
+			args: []Value{NumberVal(1e9), mkArr(NumberVal(0.01), NumberVal(0.02), NumberVal(0.03))},
+			want: 1e9 * 1.01 * 1.02 * 1.03,
+		},
+		// --- Negative principal ---
+		{
+			name: "negative principal with positive rates",
+			args: []Value{NumberVal(-5000), mkArr(NumberVal(0.05), NumberVal(0.10))},
+			want: -5000 * 1.05 * 1.10,
+		},
+		// --- Empty cells in schedule treated as zero rate ---
+		{
+			name: "empty cells are zero rate in middle",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.10), EmptyVal(), EmptyVal(), NumberVal(0.05))},
+			want: 1000 * 1.10 * 1.0 * 1.0 * 1.05,
+		},
+		// --- Rate of -100% wipes everything ---
+		{
+			name: "rate -100% then positive rate still zero",
+			args: []Value{NumberVal(5000), mkArr(NumberVal(-1.0), NumberVal(0.50))},
+			want: 0.0,
+		},
+		// --- Fractional principal ---
+		{
+			name: "fractional principal 0.01",
+			args: []Value{NumberVal(0.01), mkArr(NumberVal(0.10))},
+			want: 0.011,
+		},
+		// --- Rate > 100% (more than doubling) ---
+		{
+			name: "rate 200% triples",
+			args: []Value{NumberVal(100), mkArr(NumberVal(2.0))},
+			want: 300.0,
+		},
+		{
+			name: "rate 500% sextuples",
+			args: []Value{NumberVal(100), mkArr(NumberVal(5.0))},
+			want: 600.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := fnFVSchedule(tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr {
+				assertError(t, tt.name, v)
+				return
+			}
+			assertClose(t, tt.name, v, tt.want)
+		})
+	}
+}
+
+func TestFVSchedule_AdditionalErrorCases(t *testing.T) {
+	mkArr := func(vals ...Value) Value {
+		return Value{Type: ValueArray, Array: [][]Value{vals}}
+	}
+
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "string in schedule middle",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05), StringVal("bad"), NumberVal(0.10))},
+		},
+		{
+			name: "boolean in schedule",
+			args: []Value{NumberVal(1000), mkArr(NumberVal(0.05), BoolVal(true))},
+		},
+		{
+			name: "error value in principal",
+			args: []Value{ErrorVal(ErrValDIV0), mkArr(NumberVal(0.10))},
+		},
+		{
+			name: "error value in schedule",
+			args: []Value{NumberVal(1000), mkArr(ErrorVal(ErrValNA))},
+		},
+		{
+			name: "non-numeric principal",
+			args: []Value{StringVal("not a number"), mkArr(NumberVal(0.05))},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnFVSchedule(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+func TestFVSchedule_EvalCompile(t *testing.T) {
+	// Test FVSCHEDULE through formula evaluation pipeline with array constants
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{
+			name:    "doc example via eval",
+			formula: "FVSCHEDULE(1,{0.09,0.11,0.1})",
+			want:    1.33089,
+		},
+		{
+			name:    "simple single rate",
+			formula: "FVSCHEDULE(1000,{0.05})",
+			want:    1050.0,
+		},
+		{
+			name:    "two rates",
+			formula: "FVSCHEDULE(1000,{0.05,0.10})",
+			want:    1155.0,
+		},
+		{
+			name:    "zero principal",
+			formula: "FVSCHEDULE(0,{0.05,0.10})",
+			want:    0.0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got %v", got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > 0.01 {
+				t.Errorf("%s: got %f, want %f", tc.name, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestFVSchedule_CellRangeAdditional(t *testing.T) {
+	// FVSCHEDULE with cell range containing many values
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(0.05),
+			{Col: 1, Row: 2}: NumberVal(0.10),
+			{Col: 1, Row: 3}: NumberVal(-0.03),
+			{Col: 1, Row: 4}: NumberVal(0.08),
+			{Col: 1, Row: 5}: NumberVal(0.02),
+		},
+	}
+
+	cf := evalCompile(t, "FVSCHEDULE(10000, A1:A5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	want := 10000.0 * 1.05 * 1.10 * 0.97 * 1.08 * 1.02
+	if got.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", got.Type)
+	}
+	if math.Abs(got.Num-want) > 0.01 {
+		t.Errorf("FVSCHEDULE(10000,A1:A5) = %f, want %f", got.Num, want)
+	}
+}
+
+// --- NPER additional tests ---
+
+func TestNPER_AdditionalComprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Known cross-check: $200k loan at 5%/12 with $1073.64/month ~ 360 periods ---
+		{
+			name: "known cross-check 200k at 5%/12 1073.64/mo",
+			args: numArgs(0.05/12, -1073.64, 200000),
+			want: 360.00,
+		},
+		// --- Basic loan payoff ---
+		{
+			name: "basic loan: 5k at 1%/mo $200/mo",
+			args: numArgs(0.01, -200, 5000),
+			want: 28.91,
+		},
+		// --- Zero rate: NPER = -(pv+fv)/pmt ---
+		{
+			name: "zero rate simple",
+			args: numArgs(0, -200, 5000),
+			want: 25.0,
+		},
+		{
+			name: "zero rate with fv",
+			args: numArgs(0, -300, 2000, 4000),
+			want: 20.0,
+		},
+		{
+			name: "zero rate: pv=0, fv only",
+			args: numArgs(0, -500, 0, 10000),
+			want: 20.0,
+		},
+		// --- Type=1 vs Type=0 ---
+		{
+			name: "type=0: 6%/12 $300/mo 20k loan",
+			args: numArgs(0.06/12, -300, 20000, 0, 0),
+			want: 81.30,
+		},
+		{
+			name: "type=1: 6%/12 $300/mo 20k loan (fewer periods)",
+			args: numArgs(0.06/12, -300, 20000, 0, 1),
+			want: 80.80,
+		},
+		// --- With fv target (savings goal) ---
+		{
+			name: "savings goal: $500/mo to $100k at 5%/12",
+			args: numArgs(0.05/12, -500, 0, 100000),
+			want: 145.78,
+		},
+		{
+			name: "savings with initial deposit: $200/mo at 4%/12 from $5000 to $50000",
+			args: numArgs(0.04/12, -200, -5000, 50000),
+			want: 158.09,
+		},
+		// --- Monthly at various rates ---
+		{
+			name: "3%/12 monthly $1000/mo 50k loan",
+			args: numArgs(0.03/12, -1000, 50000),
+			want: 53.48,
+		},
+		{
+			name: "8%/12 monthly $800/mo 40k loan",
+			args: numArgs(0.08/12, -800, 40000),
+			want: 61.02,
+		},
+		{
+			name: "12%/12 monthly $500/mo 15k loan",
+			args: numArgs(0.12/12, -500, 15000),
+			want: 35.85,
+		},
+		// --- Impossible scenario: pmt too small (should give #NUM!) ---
+		{
+			name:    "impossible: pmt less than interest",
+			args:    numArgs(0.10, -50, 1000),
+			wantErr: true,
+		},
+		{
+			name:    "impossible: pmt equals interest exactly",
+			args:    numArgs(0.05, -50, 1000),
+			wantErr: true, // pmt = pv*rate, never pays down principal
+		},
+		// positive pmt on positive pv: mathematically produces negative nper
+		{
+			name: "positive pmt on positive pv gives negative nper",
+			args: numArgs(0.05, 100, 1000),
+			want: -8.31,
+		},
+		// --- Large pmt gives small nper ---
+		{
+			name: "large pmt: $5000/mo on 10k at 5%/12",
+			args: numArgs(0.05/12, -5000, 10000),
+			want: 2.01, // very quick payoff
+		},
+		{
+			name: "very large pmt: $50k/mo on 100k at 6%/12",
+			args: numArgs(0.06/12, -50000, 100000),
+			want: 2.02, // very quick payoff
+		},
+		// --- String coercion ---
+		{
+			name: "string coercion: rate as string",
+			args: []Value{StringVal("0.01"), NumberVal(-100), NumberVal(1000)},
+			want: 10.58,
+		},
+		{
+			name: "string coercion: pmt as string",
+			args: []Value{NumberVal(0.01), StringVal("-100"), NumberVal(1000)},
+			want: 10.58,
+		},
+		{
+			name: "string coercion: pv as string",
+			args: []Value{NumberVal(0.01), NumberVal(-100), StringVal("1000")},
+			want: 10.58,
+		},
+		{
+			name: "string coercion: fv as string",
+			args: []Value{NumberVal(0.05/12), NumberVal(-500), NumberVal(0), StringVal("100000")},
+			want: 145.78,
+		},
+		// --- NPER/PMT consistency: PMT(r,NPER(r,pmt,pv),pv) ~ pmt ---
+		// We test via the NPER side: NPER(r, pmt, pv) gives n;
+		// then FV(r, n, pmt, pv) should be ~0
+		// This is an indirect consistency check.
+		// --- Boolean coercion ---
+		{
+			name: "bool TRUE as type",
+			args: []Value{NumberVal(0.06 / 12), NumberVal(-200), NumberVal(10000), NumberVal(0), BoolVal(true)},
+			want: 57.35,
+		},
+		{
+			name: "bool FALSE as type",
+			args: []Value{NumberVal(0.06 / 12), NumberVal(-200), NumberVal(10000), NumberVal(0), BoolVal(false)},
+			want: 57.68,
+		},
+		// --- Empty cell references ---
+		{
+			name: "empty fv treated as 0",
+			args: []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), EmptyVal()},
+			want: 10.58,
+		},
+		{
+			name: "empty type treated as 0",
+			args: []Value{NumberVal(0.01), NumberVal(-100), NumberVal(1000), NumberVal(0), EmptyVal()},
+			want: 10.58,
+		},
+		// --- Error propagation ---
+		{
+			name:    "error in rate",
+			args:    []Value{ErrorVal(ErrValNUM), NumberVal(-100), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name:    "error in pmt",
+			args:    []Value{NumberVal(0.05), ErrorVal(ErrValDIV0), NumberVal(1000)},
+			wantErr: true,
+		},
+		{
+			name:    "error in pv",
+			args:    []Value{NumberVal(0.05), NumberVal(-100), ErrorVal(ErrValREF)},
+			wantErr: true,
+		},
+		{
+			name:    "error in fv",
+			args:    []Value{NumberVal(0.05), NumberVal(-100), NumberVal(1000), ErrorVal(ErrValNA)},
+			wantErr: true,
+		},
+		{
+			name:    "error in type",
+			args:    []Value{NumberVal(0.05), NumberVal(-100), NumberVal(1000), NumberVal(0), ErrorVal(ErrValVALUE)},
+			wantErr: true,
+		},
+		// --- Negative rate (deflation) ---
+		{
+			name: "negative rate: -2% per period",
+			args: numArgs(-0.02, -100, 1000),
+			want: 9.02,
+		},
+		// --- Single period needed ---
+		{
+			name: "exactly one period",
+			args: numArgs(0.10, -1100, 1000),
+			want: 1.0,
+		},
+		// --- Annual payments ---
+		{
+			name: "annual: 6% $15k/yr 200k loan",
+			args: numArgs(0.06, -15000, 200000),
+			want: 27.62,
+		},
+		// --- Negative rate with fv ---
+		{
+			name: "negative rate with fv target",
+			args: numArgs(-0.01, -100, 0, 5000),
+			want: 68.97,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnNPER(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+func TestNPER_EvalCompile(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		{
+			name:    "basic NPER formula",
+			formula: "NPER(0.01,-100,1000)",
+			want:    10.58,
+		},
+		{
+			name:    "zero rate",
+			formula: "NPER(0,-100,1000)",
+			want:    10.0,
+		},
+		{
+			name:    "with fv target",
+			formula: "NPER(0.05/12,-500,0,100000)",
+			want:    145.78,
+		},
+		{
+			name:    "30yr mortgage cross-check",
+			formula: "NPER(0.05/12,-1073.64,200000)",
+			want:    360.00,
+		},
+		{
+			name:    "type=1",
+			formula: "NPER(0.12/12,-100,-1000,10000,1)",
+			want:    59.67,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("expected number, got %v", got.Type)
+			}
+			if math.Abs(got.Num-tc.want) > 0.01 {
+				t.Errorf("%s: got %f, want %f", tc.name, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestNPER_PMTConsistencyRoundtrip(t *testing.T) {
+	// If NPER(r, pmt, pv) = n, then FV(r, n, pmt, pv) should be ~0
+	// This validates NPER and FV are consistent.
+	cases := []struct {
+		name string
+		rate float64
+		pmt  float64
+		pv   float64
+	}{
+		{"1%/mo $100 on $1000", 0.01, -100, 1000},
+		{"0.5%/mo $500 on $20000", 0.005, -500, 20000},
+		{"6%/yr $1000 on $8000", 0.06, -1000, 8000},
+		{"8%/12 $800 on $40000", 0.08 / 12, -800, 40000},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Get NPER
+			nperVal, err := fnNPER(numArgs(tc.rate, tc.pmt, tc.pv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if nperVal.Type != ValueNumber {
+				t.Fatalf("expected number from NPER, got %v", nperVal.Type)
+			}
+			nper := nperVal.Num
+
+			// Compute FV with that NPER
+			fvVal, err := fnFV(numArgs(tc.rate, nper, tc.pmt, tc.pv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fvVal.Type != ValueNumber {
+				t.Fatalf("expected number from FV, got %v", fvVal.Type)
+			}
+
+			// FV should be ~0 since NPER was computed to reach fv=0
+			if math.Abs(fvVal.Num) > 0.01 {
+				t.Errorf("FV(r, NPER(r,pmt,pv), pmt, pv) = %f, want ~0", fvVal.Num)
+			}
+		})
+	}
+}
+
+func TestNPER_ArgCountErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{
+			name: "zero args",
+			args: []Value{},
+		},
+		{
+			name: "one arg",
+			args: numArgs(0.05),
+		},
+		{
+			name: "two args",
+			args: numArgs(0.05, -100),
+		},
+		{
+			name: "six args",
+			args: numArgs(0.05, -100, 1000, 0, 0, 99),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnNPER(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
