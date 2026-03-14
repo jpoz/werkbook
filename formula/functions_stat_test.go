@@ -9462,6 +9462,46 @@ func TestFORECAST(t *testing.T) {
 		},
 	}
 
+	// Perfect linear y=2x+3: y={5,7,9,11}, x={1,2,3,4}
+	linear2x3Resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(7), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(9), {Col: 2, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(11), {Col: 2, Row: 4}: NumberVal(4),
+		},
+	}
+
+	// Scattered data: y={2,4,5,4,5}, x={1,2,3,4,5}
+	// slope=0.6, intercept=2.2 (from least squares)
+	scatteredDataResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(5), {Col: 2, Row: 3}: NumberVal(3),
+			{Col: 1, Row: 4}: NumberVal(4), {Col: 2, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(5), {Col: 2, Row: 5}: NumberVal(5),
+		},
+	}
+
+	// Horizontal line: y={7,7,7}, x={1,2,3} -> slope=0, intercept=7
+	horizontalResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(7), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(7), {Col: 2, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(7), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
+	// Error in x-array: x contains #VALUE!
+	errXResolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2), {Col: 2, Row: 2}: ErrorVal(ErrValVALUE),
+			{Col: 1, Row: 3}: NumberVal(3), {Col: 2, Row: 3}: NumberVal(3),
+		},
+	}
+
 	// String x that parses as number: "30" -> 30
 	stringXResolver := &mockResolver{
 		cells: map[CellAddr]Value{
@@ -9583,6 +9623,44 @@ func TestFORECAST(t *testing.T) {
 		{"fl_mixed_types_skip", "FORECAST.LINEAR(10,A1:A4,B1:B4)", mixedResolver, 11.0, false, 0},
 		// FORECAST.LINEAR: very large x value
 		{"fl_very_large_x", "FORECAST.LINEAR(1000000,A1:A3,B1:B3)", linearResolver, 2000001.0, false, 0},
+
+		// --- Additional FORECAST tests ---
+
+		// FORECAST: perfect linear y=2x+3 at x=10 -> 23
+		{"perfect_linear_2x3", "FORECAST(10,A1:A4,B1:B4)", linear2x3Resolver, 23.0, false, 0},
+		// FORECAST: scattered data, predict x=6 -> 0.6*6+2.2 = 5.8
+		{"scattered_data", "FORECAST(6,A1:A5,B1:B5)", scatteredDataResolver, 5.8, false, 0},
+		// FORECAST: scattered data, predict x=0 -> intercept = 2.2
+		{"scattered_data_intercept", "FORECAST(0,A1:A5,B1:B5)", scatteredDataResolver, 2.2, false, 0},
+		// FORECAST: horizontal line (all same y), any x -> same y
+		{"horizontal_line", "FORECAST(42,A1:A3,B1:B3)", horizontalResolver, 7.0, false, 0},
+		// FORECAST: horizontal line, negative x -> same y
+		{"horizontal_line_neg_x", "FORECAST(-100,A1:A3,B1:B3)", horizontalResolver, 7.0, false, 0},
+		// FORECAST: negative forecast value (slope=2, intercept=-8, x=1 -> -6)
+		{"negative_forecast_value", "FORECAST(1,A1:A3,B1:B3)", negValsResolver, -6.0, false, 0},
+		// FORECAST: error propagation from x-array
+		{"error_in_x_array", "FORECAST(5,A1:A3,B1:B3)", errXResolver, 0, true, ErrValVALUE},
+		// FORECAST: large x with y=2x+3
+		{"large_x_2x3", "FORECAST(1000,A1:A4,B1:B4)", linear2x3Resolver, 2003.0, false, 0},
+		// FORECAST: y=2x+3 at x=-5 -> -7
+		{"negative_x_2x3", "FORECAST(-5,A1:A4,B1:B4)", linear2x3Resolver, -7.0, false, 0},
+		// FORECAST: y=2x+3 at x=0 -> intercept = 3
+		{"x_zero_2x3", "FORECAST(0,A1:A4,B1:B4)", linear2x3Resolver, 3.0, false, 0},
+
+		// --- Additional FORECAST.LINEAR tests ---
+
+		// FORECAST.LINEAR: perfect linear y=2x+3 at x=10 -> 23
+		{"fl_perfect_linear_2x3", "FORECAST.LINEAR(10,A1:A4,B1:B4)", linear2x3Resolver, 23.0, false, 0},
+		// FORECAST.LINEAR: scattered data, predict x=6 -> 5.8
+		{"fl_scattered_data", "FORECAST.LINEAR(6,A1:A5,B1:B5)", scatteredDataResolver, 5.8, false, 0},
+		// FORECAST.LINEAR: horizontal line -> same y regardless of x
+		{"fl_horizontal_line_any_x", "FORECAST.LINEAR(42,A1:A3,B1:B3)", horizontalResolver, 7.0, false, 0},
+		// FORECAST.LINEAR: negative forecast value
+		{"fl_negative_forecast_value", "FORECAST.LINEAR(1,A1:A3,B1:B3)", negValsResolver, -6.0, false, 0},
+		// FORECAST.LINEAR: error in x-array propagation
+		{"fl_error_in_x_array", "FORECAST.LINEAR(5,A1:A3,B1:B3)", errXResolver, 0, true, ErrValVALUE},
+		// FORECAST.LINEAR: y=2x+3, x=-5 -> -7
+		{"fl_negative_x_2x3", "FORECAST.LINEAR(-5,A1:A4,B1:B4)", linear2x3Resolver, -7.0, false, 0},
 	}
 
 	for _, tt := range tests {
@@ -9606,6 +9684,96 @@ func TestFORECAST(t *testing.T) {
 			}
 		})
 	}
+
+	// Cross-check: FORECAST(x) == SLOPE*x + INTERCEPT using scattered data
+	t.Run("cross_check_forecast_slope_intercept", func(t *testing.T) {
+		cfSlope := evalCompile(t, "SLOPE(A1:A5,B1:B5)")
+		cfIntercept := evalCompile(t, "INTERCEPT(A1:A5,B1:B5)")
+		cfForecast := evalCompile(t, "FORECAST(7,A1:A5,B1:B5)")
+
+		slope, err := Eval(cfSlope, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval SLOPE: %v", err)
+		}
+		intercept, err := Eval(cfIntercept, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval INTERCEPT: %v", err)
+		}
+		forecast, err := Eval(cfForecast, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval FORECAST: %v", err)
+		}
+
+		expected := slope.Num*7 + intercept.Num
+		if math.Abs(forecast.Num-expected) > tol {
+			t.Errorf("cross-check failed: FORECAST(7)=%f, SLOPE*7+INTERCEPT=%f", forecast.Num, expected)
+		}
+	})
+
+	// Cross-check: FORECAST(AVERAGE(x_array)) == AVERAGE(y_array)
+	// Regression line passes through the point (mean_x, mean_y)
+	t.Run("cross_check_forecast_at_mean_x_equals_mean_y", func(t *testing.T) {
+		cfAvgX := evalCompile(t, "AVERAGE(B1:B5)")
+		cfAvgY := evalCompile(t, "AVERAGE(A1:A5)")
+		cfForecast := evalCompile(t, "FORECAST(AVERAGE(B1:B5),A1:A5,B1:B5)")
+
+		avgX, err := Eval(cfAvgX, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AVERAGE(x): %v", err)
+		}
+		avgY, err := Eval(cfAvgY, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AVERAGE(y): %v", err)
+		}
+		forecast, err := Eval(cfForecast, scatteredDataResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval FORECAST(AVERAGE(x)): %v", err)
+		}
+
+		if math.Abs(forecast.Num-avgY.Num) > tol {
+			t.Errorf("regression through means failed: FORECAST(mean_x=%f)=%f, mean_y=%f",
+				avgX.Num, forecast.Num, avgY.Num)
+		}
+	})
+
+	// Cross-check: FORECAST.LINEAR(x) == FORECAST(x) for same data
+	t.Run("cross_check_forecast_linear_equals_forecast", func(t *testing.T) {
+		cfForecast := evalCompile(t, "FORECAST(15,A1:A5,B1:B5)")
+		cfLinear := evalCompile(t, "FORECAST.LINEAR(15,A1:A5,B1:B5)")
+
+		forecast, err := Eval(cfForecast, testResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval FORECAST: %v", err)
+		}
+		linear, err := Eval(cfLinear, testResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval FORECAST.LINEAR: %v", err)
+		}
+
+		if math.Abs(forecast.Num-linear.Num) > tol {
+			t.Errorf("FORECAST(15)=%f != FORECAST.LINEAR(15)=%f", forecast.Num, linear.Num)
+		}
+	})
+
+	// Cross-check: FORECAST.LINEAR(AVERAGE(x_array)) == AVERAGE(y_array)
+	t.Run("cross_check_forecast_linear_at_mean_x_equals_mean_y", func(t *testing.T) {
+		cfAvgY := evalCompile(t, "AVERAGE(A1:A5)")
+		cfForecast := evalCompile(t, "FORECAST.LINEAR(AVERAGE(B1:B5),A1:A5,B1:B5)")
+
+		avgY, err := Eval(cfAvgY, testResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AVERAGE(y): %v", err)
+		}
+		forecast, err := Eval(cfForecast, testResolver, nil)
+		if err != nil {
+			t.Fatalf("Eval FORECAST.LINEAR(AVERAGE(x)): %v", err)
+		}
+
+		if math.Abs(forecast.Num-avgY.Num) > tol {
+			t.Errorf("regression through means failed: FORECAST.LINEAR(mean_x)=%f, mean_y=%f",
+				forecast.Num, avgY.Num)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

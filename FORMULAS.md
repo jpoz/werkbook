@@ -26,7 +26,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | ATAN2 | Returns the arctangent from x and y coordinates. | Math & Trig | 30 |
 | ATANH | Returns the inverse hyperbolic tangent of a number. | Math & Trig | 31 |
 | AVEDEV | Returns the average absolute deviation from the mean. | Statistical | 22 |
-| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 39 |
+| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 42 |
 | AVERAGEA | Returns the average of supplied values, including logical values and text coercions. | Statistical | 24 |
 | AVERAGEIF | Returns the average of values that match one condition. | Statistical | 42 |
 | AVERAGEIFS | Returns the average of values that match all supplied conditions. | Statistical | 48 |
@@ -160,8 +160,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | FLOOR | Rounds a number down to the nearest multiple of a significance. | Math & Trig | 50 |
 | FLOOR.MATH | Rounds a number down using Excel's FLOOR.MATH rules. | Math & Trig | 37 |
 | FLOOR.PRECISE | Rounds a number down to the nearest significance, ignoring the sign of the significance. | Math & Trig | 36 |
-| FORECAST | Predicts a future value using linear regression. | Statistical | 22 |
-| FORECAST.LINEAR | Predicts a future value using linear regression. | Statistical | 22 |
+| FORECAST | Predicts a future value using linear regression. | Statistical | 35 |
+| FORECAST.LINEAR | Predicts a future value using linear regression. | Statistical | 30 |
 | FORMULATEXT | Returns the formula text from a referenced cell. | Information | 39 |
 | FREQUENCY | Returns a frequency distribution for numeric bins. | Statistical | 69 |
 | FV | Returns the future value of an investment or annuity. | Financial | 13 |
@@ -217,7 +217,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 132 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 61 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
-| INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 38 |
+| INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 39 |
 | INTRATE | Returns the interest rate for a fully invested security. | Financial | 11 |
 | IPMT | Returns the interest portion of a payment for a given period. | Financial | 4 |
 | IRR | Returns the internal rate of return for periodic cash flows. | Financial | 19 |
@@ -361,7 +361,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | SKEW | Returns the sample skewness of a data set. | Statistical | 23 |
 | SKEW.P | Returns the population skewness of a data set. | Statistical | 27 |
 | SLN | Returns straight-line depreciation for one period. | Financial | 53 |
-| SLOPE | Returns the slope of a linear regression line. | Statistical | 38 |
+| SLOPE | Returns the slope of a linear regression line. | Statistical | 39 |
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 29 |
 | SORT | Sorts an array by row or column order. | Logical | 50 |
 | SORTBY | Sorts an array by one or more companion arrays. | Logical | 4 |
