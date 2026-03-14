@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **445** spreadsheet formula functions.
+Werkbook supports **446** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
@@ -476,11 +476,10 @@ effects, or require locale-specific behavior that cannot be reproduced in a serv
 
 # Not Yet Implemented
 
-The following **10** functions are not yet supported.
+The following **9** functions are not yet supported.
 
 | Function | Description | Category |
 |----------|-------------|----------|
-| AREAS | Counts the number of areas in a reference. | Lookup & Reference |
 | FORECAST.ETS | Predicts a future value using exponential smoothing. | Statistical |
 | FORECAST.ETS.CONFINT | Returns a confidence interval for an exponential smoothing forecast. | Statistical |
 | FORECAST.ETS.SEASONALITY | Returns the detected seasonality length for exponential smoothing. | Statistical |
