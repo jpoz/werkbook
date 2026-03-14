@@ -5947,3 +5947,316 @@ func TestT_ErrorCellRef(t *testing.T) {
 		t.Errorf("T(A1) where A1=#DIV/0! = %v, want error #DIV/0!", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SUBSTITUTE — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestSUBSTITUTEComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		// Replace all occurrences of a repeated pattern
+		{name: "replace_all_repeated", formula: `SUBSTITUTE("xyzxyzxyz","xyz","A")`, want: "AAA"},
+
+		// Replace specific instances (1st, 2nd, 3rd)
+		{name: "replace_1st_of_three", formula: `SUBSTITUTE("abcabcabc","abc","X",1)`, want: "Xabcabc"},
+		{name: "replace_2nd_of_three", formula: `SUBSTITUTE("abcabcabc","abc","X",2)`, want: "abcXabc"},
+		{name: "replace_3rd_of_three", formula: `SUBSTITUTE("abcabcabc","abc","X",3)`, want: "abcabcX"},
+
+		// Instance beyond count returns original unchanged
+		{name: "instance_beyond_count", formula: `SUBSTITUTE("abc","a","X",2)`, want: "abc"},
+		{name: "instance_way_beyond", formula: `SUBSTITUTE("hello","l","X",10)`, want: "hello"},
+
+		// Case-sensitive matching — no match for wrong case
+		{name: "case_no_match_upper", formula: `SUBSTITUTE("HELLO","hello","X")`, want: "HELLO"},
+		{name: "case_no_match_mixed", formula: `SUBSTITUTE("Hello World","hello","X")`, want: "Hello World"},
+		{name: "case_exact_match", formula: `SUBSTITUTE("Hello World","Hello","Goodbye")`, want: "Goodbye World"},
+
+		// Replace with empty string (deletion)
+		{name: "delete_all_occurrences", formula: `SUBSTITUTE("banana","a","")`, want: "bnn"},
+		{name: "delete_specific_instance", formula: `SUBSTITUTE("banana","a","",2)`, want: "banna"},
+		{name: "delete_only_match", formula: `SUBSTITUTE("abc","b","")`, want: "ac"},
+
+		// Replace empty old_text returns original unchanged
+		{name: "empty_old_all", formula: `SUBSTITUTE("test","","replacement")`, want: "test"},
+		{name: "empty_old_instance_1", formula: `SUBSTITUTE("test","","replacement",1)`, want: "test"},
+
+		// old_text not found returns original unchanged
+		{name: "not_found_simple", formula: `SUBSTITUTE("hello","xyz","A")`, want: "hello"},
+		{name: "not_found_with_instance", formula: `SUBSTITUTE("hello","xyz","A",1)`, want: "hello"},
+
+		// Special characters in old_text and new_text
+		{name: "special_chars_dot", formula: `SUBSTITUTE("a.b.c",".","-")`, want: "a-b-c"},
+		{name: "special_chars_star", formula: `SUBSTITUTE("a*b*c","*","+")`, want: "a+b+c"},
+		{name: "special_chars_paren", formula: `SUBSTITUTE("f(x)","(","[")`, want: "f[x)"},
+		{name: "special_chars_backslash", formula: `SUBSTITUTE("a\b\c","\","/")`, want: "a/b/c"},
+		{name: "special_chars_newline_replacement", formula: `SUBSTITUTE("hello world"," ",", ")`, want: "hello, world"},
+
+		// Numeric text arguments (coercion)
+		{name: "numeric_all_args", formula: `SUBSTITUTE(100,"0","9")`, want: "199"},
+		{name: "numeric_old_text", formula: `SUBSTITUTE(12345,"3","X")`, want: "12X45"},
+		{name: "numeric_bool_text", formula: `SUBSTITUTE(TRUE,"RU","es")`, want: "TesE"},
+
+		// Boolean arguments
+		{name: "bool_true_text", formula: `SUBSTITUTE(TRUE,"TRUE","YES")`, want: "YES"},
+		{name: "bool_false_text", formula: `SUBSTITUTE(FALSE,"FALSE","NO")`, want: "NO"},
+
+		// Long replacement text (expands string)
+		{name: "long_replacement", formula: `SUBSTITUTE("a","a","ABCDEFGHIJKLMNOP")`, want: "ABCDEFGHIJKLMNOP"},
+		{name: "long_replacement_multi", formula: `SUBSTITUTE("aaa","a","XYZ")`, want: "XYZXYZXYZ"},
+
+		// Replace in empty string
+		{name: "empty_text_no_match", formula: `SUBSTITUTE("","x","y")`, want: ""},
+		{name: "empty_text_empty_old", formula: `SUBSTITUTE("","","y")`, want: ""},
+
+		// old_text longer than text
+		{name: "old_longer_than_text", formula: `SUBSTITUTE("ab","abcdef","X")`, want: "ab"},
+
+		// Unicode characters
+		{name: "unicode_replace", formula: `SUBSTITUTE("caf`+"\u00e9"+`","e","E")`, want: "caf\u00e9"},
+		{name: "unicode_replace_accent", formula: `SUBSTITUTE("caf`+"\u00e9"+`","`+"\u00e9"+`","e")`, want: "cafe"},
+		{name: "unicode_emoji", formula: `SUBSTITUTE("hello `+"\U0001F600"+` world","`+"\U0001F600"+`","!")`, want: "hello ! world"},
+		{name: "unicode_cjk", formula: `SUBSTITUTE("`+"\u4f60\u597d\u4e16\u754c"+`","`+"\u4e16\u754c"+`","`+"\u5730\u7403"+`")`, want: "\u4f60\u597d\u5730\u7403"},
+
+		// Whitespace handling
+		{name: "replace_spaces", formula: `SUBSTITUTE("a b c"," ","")`, want: "abc"},
+		{name: "replace_tab", formula: `SUBSTITUTE("a` + "\t" + `b","` + "\t" + `"," ")`, want: "a b"},
+
+		// Consecutive identical old_text
+		{name: "consecutive_replace_all", formula: `SUBSTITUTE("aaa","a","bb")`, want: "bbbbbb"},
+		{name: "consecutive_replace_2nd", formula: `SUBSTITUTE("aaa","a","bb",2)`, want: "abba"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Errorf("Eval(%q) = %v (str=%q), want %q", tt.formula, got, got.Str, tt.want)
+			}
+		})
+	}
+}
+
+func TestSUBSTITUTEErrorPropagation(t *testing.T) {
+	// Error in cell references should propagate through SUBSTITUTE.
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValDIV0),
+			{Col: 2, Row: 1}: ErrorVal(ErrValNA),
+			{Col: 3, Row: 1}: ErrorVal(ErrValREF),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "error_in_text", formula: `SUBSTITUTE(A1,"a","b")`},
+		{name: "error_in_instance", formula: `SUBSTITUTE("hello","l","L",A1)`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+func TestSUBSTITUTEInvalidArgsExtended(t *testing.T) {
+	resolver := &mockResolver{}
+
+	errTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "instance_zero_v2", formula: `SUBSTITUTE("hello","l","L",0)`},
+		{name: "instance_neg_large", formula: `SUBSTITUTE("hello","l","L",-100)`},
+		{name: "instance_non_numeric", formula: `SUBSTITUTE("hello","l","L","abc")`},
+	}
+
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// REPLACE — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestREPLACEComprehensiveExtended(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+		isErr   bool
+	}{
+		// Replace entire string
+		{name: "replace_entire_string", formula: `REPLACE("hello",1,5,"world")`, want: "world"},
+		{name: "replace_entire_short", formula: `REPLACE("ab",1,2,"XYZ")`, want: "XYZ"},
+
+		// Replace with empty (deletion) at various positions
+		{name: "delete_middle_chars", formula: `REPLACE("abcdef",2,4,"")`, want: "af"},
+		{name: "delete_last_char", formula: `REPLACE("hello",5,1,"")`, want: "hell"},
+		{name: "delete_entire_string", formula: `REPLACE("xyz",1,3,"")`, want: ""},
+
+		// num_chars = 0 — pure insertion
+		{name: "insert_before_2nd_char", formula: `REPLACE("abcd",2,0,"XY")`, want: "aXYbcd"},
+		{name: "insert_before_last_char", formula: `REPLACE("abcd",4,0,"XY")`, want: "abcXYd"},
+		{name: "insert_after_string", formula: `REPLACE("abc",4,0,"DEF")`, want: "abcDEF"},
+		{name: "insert_at_beginning", formula: `REPLACE("xyz",1,0,"ABC")`, want: "ABCxyz"},
+
+		// Replace beyond end of string
+		{name: "replace_past_end", formula: `REPLACE("abc",3,5,"X")`, want: "abX"},
+		{name: "replace_way_past_end", formula: `REPLACE("ab",1,1000,"!")`, want: "!"},
+
+		// Large start_num beyond string length — appends
+		{name: "start_far_beyond_length", formula: `REPLACE("abc",100,0,"X")`, want: "abcX"},
+		{name: "start_far_beyond_with_chars", formula: `REPLACE("abc",100,5,"X")`, want: "abcX"},
+
+		// Numeric text coercion
+		{name: "numeric_text_float", formula: `REPLACE(3.14,1,1,"_")`, want: "_.14"},
+		{name: "numeric_text_negative", formula: `REPLACE(-42,1,1,"")`, want: "42"},
+		{name: "numeric_new_text", formula: `REPLACE("abc",2,1,123)`, want: "a123c"},
+
+		// Boolean arguments
+		{name: "bool_true_old_text", formula: `REPLACE(TRUE,1,4,"YES")`, want: "YES"},
+		{name: "bool_false_replace_all", formula: `REPLACE(FALSE,1,5,"NO")`, want: "NO"},
+		{name: "bool_new_text_true", formula: `REPLACE("abc",2,1,TRUE)`, want: "aTRUEc"},
+		{name: "bool_new_text_false", formula: `REPLACE("abc",2,1,FALSE)`, want: "aFALSEc"},
+
+		// Unicode characters
+		{name: "unicode_replace_chars", formula: `REPLACE("caf` + "\u00e9" + `",4,1,"e")`, want: "cafe"},
+		{name: "unicode_insert", formula: `REPLACE("cafe",4,1,"` + "\u00e9" + `")`, want: "caf\u00e9"},
+		{name: "unicode_cjk_replace", formula: `REPLACE("` + "\u4f60\u597d\u4e16\u754c" + `",3,2,"!")`, want: "\u4f60\u597d!"},
+		{name: "unicode_emoji_replace", formula: `REPLACE("A` + "\U0001F600" + `B",2,1,"!")`, want: "A!B"},
+		{name: "unicode_multibyte_insert", formula: `REPLACE("AB",2,0,"` + "\u00e9" + `")`, want: "A\u00e9B"},
+
+		// Long replacement text
+		{name: "long_new_text", formula: `REPLACE("ab",2,0,"XXXXXXXXXXXXXXXXXXXX")`, want: "aXXXXXXXXXXXXXXXXXXXXb"},
+		{name: "long_replace_single", formula: `REPLACE("abcdef",3,1,"1234567890")`, want: "ab1234567890def"},
+
+		// Single character string edge cases
+		{name: "single_char_replace", formula: `REPLACE("a",1,1,"X")`, want: "X"},
+		{name: "single_char_delete", formula: `REPLACE("a",1,1,"")`, want: ""},
+		{name: "single_char_insert_before", formula: `REPLACE("a",1,0,"X")`, want: "Xa"},
+		{name: "single_char_insert_after", formula: `REPLACE("a",2,0,"X")`, want: "aX"},
+
+		// Float values for start_num and num_chars (truncated to int)
+		{name: "float_start_truncated", formula: `REPLACE("abcde",3.7,1,"X")`, want: "abXde"},
+		{name: "float_num_chars_truncated", formula: `REPLACE("abcde",1,3.9,"X")`, want: "Xde"},
+		{name: "float_both_truncated", formula: `REPLACE("abcde",2.1,2.9,"X")`, want: "aXde"},
+
+		// Error cases
+		{name: "start_num_zero", formula: `REPLACE("hello",0,1,"X")`, isErr: true},
+		{name: "start_num_negative_2", formula: `REPLACE("hello",-5,1,"X")`, isErr: true},
+		{name: "num_chars_negative_2", formula: `REPLACE("hello",1,-3,"X")`, isErr: true},
+		{name: "non_numeric_start_bool_like", formula: `REPLACE("hello","two",3,"X")`, isErr: true},
+		{name: "non_numeric_num_chars_text", formula: `REPLACE("hello",1,"three","X")`, isErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if tt.isErr {
+				if got.Type != ValueError {
+					t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+				}
+			} else {
+				if got.Type != ValueString || got.Str != tt.want {
+					t.Errorf("Eval(%q) = %v (str=%q), want %q", tt.formula, got, got.Str, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestREPLACEErrorPropagation(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValDIV0),
+			{Col: 2, Row: 1}: ErrorVal(ErrValNA),
+			{Col: 3, Row: 1}: ErrorVal(ErrValREF),
+			{Col: 4, Row: 1}: StringVal("hello"),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+	}{
+		// Error in start_num
+		{name: "error_in_start_num", formula: `REPLACE("hello",A1,3,"X")`},
+		// Error in num_chars
+		{name: "error_in_num_chars", formula: `REPLACE("hello",1,B1,"X")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}
+
+func TestREPLACEWrongArgCountExtended(t *testing.T) {
+	resolver := &mockResolver{}
+
+	wrongArgTests := []struct {
+		name    string
+		formula string
+	}{
+		{name: "one_arg", formula: `REPLACE("hello")`},
+		{name: "two_args", formula: `REPLACE("hello",1)`},
+		{name: "six_args", formula: `REPLACE("hello",1,2,"X","extra","more")`},
+	}
+
+	for _, tt := range wrongArgTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != ValueError {
+				t.Errorf("Eval(%q) = %v, want error", tt.formula, got)
+			}
+		})
+	}
+}

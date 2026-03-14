@@ -335,7 +335,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | RATE | Returns the interest rate per period for an annuity. | Financial | 6 |
 | RECEIVED | Returns the amount received at maturity for a fully invested security. | Financial | 11 |
 | REDUCE | Folds an array to a single result by repeatedly applying a lambda. | Logical | 25 |
-| REPLACE | Replaces characters within text at a given position. | Text | 38 |
+| REPLACE | Replaces characters within text at a given position. | Text | 82 |
 | REPT | Repeats text a specified number of times. | Text | 26 |
 | RIGHT | Returns characters from the right side of a text value. | Text | 41 |
 | ROMAN | Converts an Arabic number to Roman numeral text. | Text | 38 |
@@ -375,7 +375,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | STDEVP | Returns the population standard deviation. | Statistical | 11 |
 | STDEVPA | Returns the population standard deviation including logical values and text coercions. | Statistical | 29 |
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
-| SUBSTITUTE | Replaces matching text within a string. | Text | 25 |
+| SUBSTITUTE | Replaces matching text within a string. | Text | 69 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 75 |
 | SUM | Returns the sum of supplied numbers. | Statistical | 65 |
 | SUMIF | Returns the sum of values that match one condition. | Statistical | 71 |
