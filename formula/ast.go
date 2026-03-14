@@ -269,6 +269,18 @@ func (n *ScanExpr) String() string {
 	return fmt.Sprintf("(SCAN params=%v)", n.ParamNames)
 }
 
+// ByRowExpr represents a BYROW(array, LAMBDA(row, body)) expression.
+type ByRowExpr struct {
+	Array      Node     // array expression
+	ParamNames []string // single param name for the row
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ByRowExpr) nodeMarker() {}
+func (n *ByRowExpr) String() string {
+	return fmt.Sprintf("(BYROW params=%v)", n.ParamNames)
+}
+
 // needsQuoting returns true if a sheet name contains characters that require quoting.
 func needsQuoting(name string) bool {
 	for _, c := range name {

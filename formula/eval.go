@@ -620,6 +620,66 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			}
 			push(Value{Type: ValueArray, Array: result})
 
+		case OpByRow:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Determine dimensions
+			var byrowRows, byrowCols int
+			if arr.Type == ValueArray {
+				byrowRows = len(arr.Array)
+				if byrowRows > 0 {
+					byrowCols = len(arr.Array[0])
+				}
+			} else {
+				// Scalar treated as 1x1
+				byrowRows, byrowCols = 1, 1
+				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+			}
+			_ = byrowCols // cols used only to construct row arrays
+
+			// For each row, create a 1-row array and call lambda
+			byrowResult := make([][]Value, byrowRows)
+			byrowParamVals := make([]Value, 1)
+			for i := 0; i < byrowRows; i++ {
+				// Create a 1-row array from this row
+				var rowValues []Value
+				if i < len(arr.Array) {
+					rowValues = make([]Value, len(arr.Array[i]))
+					copy(rowValues, arr.Array[i])
+				} else {
+					rowValues = make([]Value, byrowCols)
+					for j := range rowValues {
+						rowValues[j] = EmptyVal()
+					}
+				}
+				rowArray := Value{Type: ValueArray, Array: [][]Value{rowValues}}
+
+				byrowParamVals[0] = rowArray
+				res, err := evalWithParams(subFormula, resolver, ctx, byrowParamVals)
+				if err != nil {
+					return Value{}, err
+				}
+
+				// BYROW lambda must return a scalar. If it returns an array, #CALC!
+				if res.Type == ValueArray {
+					res = ErrorVal(ErrValCALC)
+				}
+
+				byrowResult[i] = []Value{res}
+			}
+
+			push(Value{Type: ValueArray, Array: byrowResult})
+
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)
 		}
