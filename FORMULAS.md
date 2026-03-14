@@ -98,7 +98,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | CUMIPMT | Returns cumulative interest paid over a span of payment periods. | Financial | 33 |
 | CUMPRINC | Returns cumulative principal paid over a span of payment periods. | Financial | 29 |
 | DATE | Builds a date from year, month, and day numbers. | Date & Time | 72 |
-| DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 18 |
+| DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 72 |
 | DATEVALUE | Converts date text to a serial date number. | Date & Time | 39 |
 | DAVERAGE | Returns the average of matching records in a database range. | Db | 5 |
 | DAY | Returns the day of the month from a date. | Date & Time | 28 |
@@ -130,7 +130,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | DURATION | Returns the Macauley duration of a security. | Financial | 27 |
 | DVAR | Returns the sample variance of matching database records. | Db | 3 |
 | DVARP | Returns the population variance of matching database records. | Db | 3 |
-| EDATE | Shifts a date by a number of whole months. | Date & Time | 19 |
+| EDATE | Shifts a date by a number of whole months. | Date & Time | 40 |
 | EFFECT | Returns the effective annual interest rate for a nominal rate. | Financial | 18 |
 | ENCODEURL | Encodes text so it can be safely used in a URL. | Text | 44 |
 | EOMONTH | Returns the last day of a month offset from a start date. | Date & Time | 18 |

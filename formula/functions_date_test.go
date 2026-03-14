@@ -1311,6 +1311,49 @@ func TestEDATE(t *testing.T) {
 		{"invalid_start", `EDATE("abc",1)`, 0, true, ErrValVALUE},
 		{"invalid_months", `EDATE(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
 		{"error_propagation", "EDATE(1/0,1)", 0, true, ErrValDIV0},
+
+		// --- Additional comprehensive EDATE tests ---
+
+		// Basic: EDATE(Jan 15, 1) = Feb 15
+		{"basic_jan_to_feb", "EDATE(DATE(2023,1,15),1)", dateSerial(2023, time.February, 15), false, 0},
+		// Negative months: EDATE(Mar 15, -1) = Feb 15
+		{"negative_mar_to_feb", "EDATE(DATE(2023,3,15),-1)", dateSerial(2023, time.February, 15), false, 0},
+		// End of month: EDATE(Jan 31, 1) = Feb 28 (non-leap year)
+		{"eom_jan31_to_feb28", "EDATE(DATE(2023,1,31),1)", dateSerial(2023, time.February, 28), false, 0},
+		// End of month: EDATE(Jan 31, 1) = Feb 29 (leap year)
+		{"eom_jan31_to_feb29_leap", "EDATE(DATE(2024,1,31),1)", dateSerial(2024, time.February, 29), false, 0},
+		// EDATE(Mar 31, -1) = Feb 28 non-leap
+		{"eom_mar31_back_to_feb28", "EDATE(DATE(2023,3,31),-1)", dateSerial(2023, time.February, 28), false, 0},
+		// EDATE(Mar 31, -1) = Feb 29 leap
+		{"eom_mar31_back_to_feb29_leap", "EDATE(DATE(2024,3,31),-1)", dateSerial(2024, time.February, 29), false, 0},
+		// Leap year: EDATE(Feb 29 2020, 12) = Feb 28 2021
+		{"leap_feb29_plus_12", "EDATE(DATE(2020,2,29),12)", dateSerial(2021, time.February, 28), false, 0},
+		// Leap year: EDATE(Feb 29 2020, 48) = Feb 29 2024
+		{"leap_feb29_plus_48", "EDATE(DATE(2020,2,29),48)", dateSerial(2024, time.February, 29), false, 0},
+		// Zero months: EDATE(date, 0) = date
+		{"zero_months_mid", "EDATE(DATE(2023,6,15),0)", dateSerial(2023, time.June, 15), false, 0},
+		// Large month offsets (24 months = 2 years)
+		{"large_offset_24", "EDATE(DATE(2020,3,15),24)", dateSerial(2022, time.March, 15), false, 0},
+		// Large month offsets (60 months = 5 years)
+		{"large_offset_60", "EDATE(DATE(2020,3,15),60)", dateSerial(2025, time.March, 15), false, 0},
+		// Negative large offsets
+		{"negative_large_24", "EDATE(DATE(2025,3,15),-24)", dateSerial(2023, time.March, 15), false, 0},
+		{"negative_large_60", "EDATE(DATE(2025,3,15),-60)", dateSerial(2020, time.March, 15), false, 0},
+		// Cross year boundary forward (Nov -> Feb)
+		{"cross_year_nov_to_feb", "EDATE(DATE(2023,11,15),3)", dateSerial(2024, time.February, 15), false, 0},
+		// December to January
+		{"dec_to_jan", "EDATE(DATE(2023,12,15),1)", dateSerial(2024, time.January, 15), false, 0},
+		// January to December (negative)
+		{"jan_to_dec_neg", "EDATE(DATE(2024,1,15),-1)", dateSerial(2023, time.December, 15), false, 0},
+		// EOM: Apr 30 + 1 = May 30 (not clamped since May has 31 days)
+		{"apr30_plus1", "EDATE(DATE(2023,4,30),1)", dateSerial(2023, time.May, 30), false, 0},
+		// EOM: May 31 + 1 = Jun 30
+		{"may31_plus1", "EDATE(DATE(2023,5,31),1)", dateSerial(2023, time.June, 30), false, 0},
+		// EOM chain: Jan 31 -> Feb 28 -> Mar 28 (not 31!)
+		{"eom_chain_step1", "EDATE(DATE(2023,1,31),1)", dateSerial(2023, time.February, 28), false, 0},
+		{"eom_chain_step2", "EDATE(EDATE(DATE(2023,1,31),1),1)", dateSerial(2023, time.March, 28), false, 0},
+		// Error propagation for months arg
+		{"error_propagation_months", "EDATE(DATE(2023,1,15),1/0)", 0, true, ErrValDIV0},
 	}
 
 	for _, tc := range tests {
@@ -1586,6 +1629,141 @@ func TestDATEDIF(t *testing.T) {
 			}
 			if got.Num != tc.want {
 				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEDIFComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Tests that expect a numeric result.
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// --- Each unit type with basic dates ---
+		{"Y_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"Y")`, 5},
+		{"M_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"M")`, 62},
+		{"D_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"D")`, 1891},
+		{"MD_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"MD")`, 5},
+		{"YM_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"YM")`, 2},
+		{"YD_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"YD")`, 65},
+
+		// --- Exactly 1 year apart ---
+		{"Y_exact_1yr", `DATEDIF(DATE(2020,6,15),DATE(2021,6,15),"Y")`, 1},
+		{"M_exact_1yr", `DATEDIF(DATE(2020,6,15),DATE(2021,6,15),"M")`, 12},
+		{"D_exact_1yr_non_leap", `DATEDIF(DATE(2021,6,15),DATE(2022,6,15),"D")`, 365},
+		{"D_exact_1yr_leap", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"D")`, 366},
+
+		// --- Same date: all units = 0 ---
+		{"Y_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"Y")`, 0},
+		{"M_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"M")`, 0},
+		{"D_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"D")`, 0},
+		{"MD_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"MD")`, 0},
+		{"YM_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"YM")`, 0},
+		{"YD_same_date2", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"YD")`, 0},
+
+		// --- Leap year crossing: Feb 29 handling ---
+		{"Y_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"Y")`, 4},
+		{"M_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"M")`, 48},
+		{"D_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"D")`, 1461},
+		{"Y_leap_to_nonleap", `DATEDIF(DATE(2020,2,29),DATE(2021,2,28),"Y")`, 0},
+		{"M_leap_to_nonleap", `DATEDIF(DATE(2020,2,29),DATE(2021,2,28),"M")`, 11},
+
+		// --- End of month alignment (Jan 31 -> Feb 28) ---
+		{"M_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"M")`, 0},
+		{"D_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"D")`, 28},
+		{"MD_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"MD")`, 28},
+
+		// --- Multi-year spans ---
+		{"Y_5_years", `DATEDIF(DATE(2015,3,10),DATE(2020,3,10),"Y")`, 5},
+		{"Y_10_years", `DATEDIF(DATE(2010,6,1),DATE(2020,6,1),"Y")`, 10},
+		{"M_10_years", `DATEDIF(DATE(2010,6,1),DATE(2020,6,1),"M")`, 120},
+
+		// --- Short spans ---
+		{"D_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"D")`, 1},
+		{"D_1_week", `DATEDIF(DATE(2023,5,15),DATE(2023,5,22),"D")`, 7},
+		{"Y_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"Y")`, 0},
+		{"M_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"M")`, 0},
+
+		// --- "MD" tricky cases ---
+		{"MD_jan31_to_mar1", `DATEDIF(DATE(2023,1,31),DATE(2023,3,1),"MD")`, 1},
+		{"MD_jan31_to_mar31", `DATEDIF(DATE(2023,1,31),DATE(2023,3,31),"MD")`, 0},
+		{"MD_feb15_to_mar10", `DATEDIF(DATE(2023,2,15),DATE(2023,3,10),"MD")`, 23},
+		{"MD_across_months", `DATEDIF(DATE(2023,3,25),DATE(2023,4,5),"MD")`, 11},
+
+		// --- "YM" for 13 months = 1 ---
+		{"YM_13_months", `DATEDIF(DATE(2022,1,15),DATE(2023,2,20),"YM")`, 1},
+		{"YM_25_months", `DATEDIF(DATE(2020,6,10),DATE(2022,7,15),"YM")`, 1},
+		{"YM_11_months", `DATEDIF(DATE(2023,1,15),DATE(2023,12,20),"YM")`, 11},
+
+		// --- "YD" crossing year boundary ---
+		{"YD_dec_to_jan", `DATEDIF(DATE(2022,12,15),DATE(2023,1,15),"YD")`, 31},
+		{"YD_oct_to_feb", `DATEDIF(DATE(2022,10,1),DATE(2024,2,1),"YD")`, 123},
+
+		// --- Case insensitive unit ---
+		{"case_lower_y", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"y")`, 1},
+		{"case_lower_m", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"m")`, 12},
+		{"case_lower_d", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"d")`, 366},
+		{"case_lower_md", `DATEDIF(DATE(2020,1,1),DATE(2020,2,15),"md")`, 14},
+		{"case_lower_ym", `DATEDIF(DATE(2020,1,1),DATE(2021,3,1),"ym")`, 2},
+		{"case_lower_yd", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"yd")`, 0},
+
+		// --- Cross-check: DATEDIF("Y")*12 + DATEDIF("YM") = DATEDIF("M") ---
+		// We verify both sides evaluate to the same number.
+		{"crosscheck_M_via_Y_and_YM",
+			`DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"Y")*12+DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"YM")`,
+			88}, // 7*12+4 = 88, same as DATEDIF "M"
+		{"crosscheck_M_direct",
+			`DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"M")`,
+			88},
+
+		// --- Known age calculation pattern ---
+		{"age_calc", `DATEDIF(DATE(1990,5,20),DATE(2025,3,14),"Y")`, 34},
+	}
+
+	for _, tc := range numTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+
+	// Tests that expect an error.
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		{"start_after_end", `DATEDIF(DATE(2025,1,1),DATE(2020,1,1),"Y")`, ErrValNUM},
+		{"invalid_unit_X", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"X")`, ErrValNUM},
+		{"invalid_unit_empty", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"")`, ErrValNUM},
+		{"error_propagation_start", `DATEDIF(1/0,DATE(2021,1,1),"Y")`, ErrValDIV0},
+		{"error_propagation_end", `DATEDIF(DATE(2020,1,1),1/0,"Y")`, ErrValDIV0},
+		{"too_few_args", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1))`, ErrValVALUE},
+		{"too_many_args", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"Y",1)`, ErrValVALUE},
+	}
+
+	for _, tc := range errTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): unexpected Go error: %v", tc.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tc.errVal {
+				t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
 			}
 		})
 	}

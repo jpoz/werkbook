@@ -353,6 +353,13 @@ func fnDATEDIF(args []Value) (Value, error) {
 		if d < 0 {
 			prevMonth := time.Date(end.Year(), end.Month(), 0, 0, 0, 0, 0, time.UTC)
 			d = prevMonth.Day() - start.Day() + end.Day()
+			// When start day exceeds the previous month's length (e.g. start=31,
+			// prev month has 28 days), the subtraction can still be negative.
+			// In that case the start day is effectively clamped to the last day
+			// of the previous month, so the result is just end.Day().
+			if d < 0 {
+				d = end.Day()
+			}
 		}
 		return NumberVal(float64(d)), nil
 	case "YM":
