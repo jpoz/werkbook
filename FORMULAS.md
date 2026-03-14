@@ -95,8 +95,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | COVARIANCE.S | Returns the sample covariance of two data sets. | Statistical | 7 |
 | CSC | Returns the cosecant of an angle. | Math & Trig | 27 |
 | CSCH | Returns the hyperbolic cosecant of a number. | Math & Trig | 28 |
-| CUMIPMT | Returns cumulative interest paid over a span of payment periods. | Financial | 33 |
-| CUMPRINC | Returns cumulative principal paid over a span of payment periods. | Financial | 29 |
+| CUMIPMT | Returns cumulative interest paid over a span of payment periods. | Financial | 56 |
+| CUMPRINC | Returns cumulative principal paid over a span of payment periods. | Financial | 53 |
 | DATE | Builds a date from year, month, and day numbers. | Date & Time | 72 |
 | DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 72 |
 | DATEVALUE | Converts date text to a serial date number. | Date & Time | 39 |
