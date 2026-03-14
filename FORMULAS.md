@@ -116,7 +116,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | DELTA | Tests whether two numbers are equal and returns 1 or 0. | Engineering | 24 |
 | DEVSQ | Returns the sum of squared deviations from the sample mean. | Statistical | 23 |
 | DGET | Returns a single value from matching records in a database range. | Db | 1 |
-| DISC | Returns the discount rate for a security. | Financial | 3 |
+| DISC | Returns the discount rate for a security. | Financial | 14 |
 | DMAX | Returns the maximum value from matching records in a database range. | Db | 5 |
 | DMIN | Returns the minimum value from matching records in a database range. | Db | 5 |
 | DOLLAR | Formats a number as currency text. | Text | 25 |
@@ -218,7 +218,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 61 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 16 |
-| INTRATE | Returns the interest rate for a fully invested security. | Financial | 3 |
+| INTRATE | Returns the interest rate for a fully invested security. | Financial | 11 |
 | IPMT | Returns the interest portion of a payment for a given period. | Financial | 4 |
 | IRR | Returns the internal rate of return for periodic cash flows. | Financial | 19 |
 | ISBLANK | Returns TRUE when a value is blank. | Information | 23 |
@@ -333,7 +333,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | RANK.AVG | Returns the average rank of a number in a list with ties. | Statistical | 21 |
 | RANK.EQ | Returns the rank of a number in a list with ties sharing the same rank. | Statistical | 46 |
 | RATE | Returns the interest rate per period for an annuity. | Financial | 6 |
-| RECEIVED | Returns the amount received at maturity for a fully invested security. | Financial | 3 |
+| RECEIVED | Returns the amount received at maturity for a fully invested security. | Financial | 11 |
 | REDUCE | Folds an array to a single result by repeatedly applying a lambda. | Logical | 25 |
 | REPLACE | Replaces characters within text at a given position. | Text | 38 |
 | REPT | Repeats text a specified number of times. | Text | 26 |

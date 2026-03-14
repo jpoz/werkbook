@@ -9560,6 +9560,952 @@ func TestRECEIVED_ViaEval(t *testing.T) {
 	}
 }
 
+// === DISC additional tests ===
+
+func TestDISC_Additional(t *testing.T) {
+	// Additional serial numbers:
+	// DATE(2024,1,15) = 45306, DATE(2024,4,15) = 45397 (90 days actual, 90 30/360)
+	// DATE(2024,7,15) = 45488 (182 days from 1/15)
+	// DATE(2024,1,1) = 45292, DATE(2024,12,31) = 45657
+	// DATE(2025,1,1) = 45658, DATE(2025,7,1) = 45839
+	// DATE(2020,1,1) = 43831, DATE(2020,7,1) = 44013 (leap year)
+	// DATE(2024,2,15) = 45337, DATE(2024,8,15) = 45519
+	// DATE(2023,4,1) = 45017, DATE(2023,10,1) = 45200
+	// DATE(2024,1,1) = 45292, DATE(2024,3,31) = 45382
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64
+	}{
+		// --- Basic 90-day discount security (price=98, redemption=100) ---
+		// 1/15/2024 to 4/15/2024: 30/360=90 days, B=360
+		// DISC = (100-98)/100 * (360/90) = 0.02 * 4 = 0.08
+		{
+			name: "basic 90-day pr=98 red=100 basis 0",
+			args: numArgs(45306, 45397, 98, 100, 0),
+			want: 0.08,
+		},
+		// --- 180-day term ---
+		// 1/15/2024 to 7/15/2024: 30/360=180 days, B=360
+		// DISC = (100-98)/100 * (360/180) = 0.02 * 2 = 0.04
+		{
+			name: "180-day term pr=98 basis 0",
+			args: numArgs(45306, 45488, 98, 100, 0),
+			want: 0.04,
+		},
+		// --- 365-day term (full year basis 3) ---
+		// 1/1/2024 to 12/31/2024: actual 365 days (2024 is leap so 366 actual but basis 3 uses B=365)
+		// DISC = (100-98)/100 * (365/366) = 0.02 * 0.99727 = 0.019945
+		{
+			name: "365-day term basis 3 actual/365",
+			args: numArgs(45292, 45657, 98, 100, 3),
+			want: 0.019945,
+			tol:  0.001,
+		},
+		// --- All 5 basis types with 1/15/2024 to 4/15/2024, pr=98, redemption=100 ---
+		// basis 1: actual/actual, 91 actual days, B=366 (2024 is leap)
+		// DISC = (2/100) * (366/91) = 0.02 * 4.02198 = 0.08044
+		{
+			name: "basis 1 2024 leap year",
+			args: numArgs(45306, 45397, 98, 100, 1),
+			want: 0.08044,
+			tol:  0.001,
+		},
+		// basis 2: actual/360, 91 actual days, B=360
+		// DISC = (2/100) * (360/91) = 0.02 * 3.95604 = 0.07912
+		{
+			name: "basis 2 actual/360 91 days",
+			args: numArgs(45306, 45397, 98, 100, 2),
+			want: 0.07912,
+			tol:  0.001,
+		},
+		// basis 3: actual/365, 91 actual days, B=365
+		// DISC = (2/100) * (365/91) = 0.02 * 4.01099 = 0.08022
+		{
+			name: "basis 3 actual/365 91 days",
+			args: numArgs(45306, 45397, 98, 100, 3),
+			want: 0.08022,
+			tol:  0.001,
+		},
+		// basis 4: European 30/360, DSM=90, B=360
+		// DISC = (2/100) * (360/90) = 0.08
+		{
+			name: "basis 4 European 30/360 91 days",
+			args: numArgs(45306, 45397, 98, 100, 4),
+			want: 0.08,
+		},
+		// --- High discount (price=80) ---
+		// 30/360: DSM=90, B=360
+		// DISC = (100-80)/100 * (360/90) = 0.20 * 4 = 0.8
+		{
+			name: "high discount pr=80",
+			args: numArgs(45306, 45397, 80, 100, 0),
+			want: 0.8,
+		},
+		// --- Low discount (price=99.9) ---
+		// DSM=90, B=360
+		// DISC = (100-99.9)/100 * (360/90) = 0.001 * 4 = 0.004
+		{
+			name: "low discount pr=99.9",
+			args: numArgs(45306, 45397, 99.9, 100, 0),
+			want: 0.004,
+			tol:  0.0001,
+		},
+		// --- Price = redemption → discount = 0 ---
+		{
+			name: "pr equals redemption gives zero",
+			args: numArgs(45306, 45397, 100, 100, 0),
+			want: 0.0,
+			tol:  0.0001,
+		},
+		// --- Short term (30 days) ---
+		// 4/1/2023 to 5/1/2023 (serial 45017 to 45047): 30/360 US=30, B=360
+		// DISC = (100-99)/100 * (360/30) = 0.01 * 12 = 0.12
+		{
+			name: "short 30-day term pr=99",
+			args: numArgs(45017, 45047, 99, 100, 0),
+			want: 0.12,
+		},
+		// --- Known cross-check: T-bill style ---
+		// 90-day T-bill, price=99.5, face=100
+		// DISC = 0.5/100 * (360/90) = 0.02
+		{
+			name: "T-bill style 90 day",
+			args: numArgs(45306, 45397, 99.5, 100, 0),
+			want: 0.02,
+			tol:  0.001,
+		},
+		// --- Leap year basis 1 with longer term ---
+		// 1/1/2020 to 7/1/2020: actual 182 days, B=366 (2020 is leap)
+		// DISC = (100-97)/100 * (366/182) = 0.03 * 2.01099 = 0.06033
+		{
+			name: "leap year 2020 basis 1 half year",
+			args: numArgs(43831, 44013, 97, 100, 1),
+			want: 0.06033,
+			tol:  0.001,
+		},
+		// --- String coercion for numeric args ---
+		// String "98" should be coerced to numeric 98
+		{
+			name: "string coercion for pr",
+			args: []Value{NumberVal(45306), NumberVal(45397), StringVal("98"), NumberVal(100), NumberVal(0)},
+			want: 0.08,
+		},
+		{
+			name: "string coercion for redemption",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(98), StringVal("100"), NumberVal(0)},
+			want: 0.08,
+		},
+		{
+			name: "string coercion for basis",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(98), NumberVal(100), StringVal("0")},
+			want: 0.08,
+		},
+		// --- Additional basis 2 and 3 verification with half year ---
+		// 2/15/2024 to 8/15/2024: actual 182 days
+		// basis 2: DISC = (100-97)/100 * (360/182) = 0.03 * 1.97802 = 0.05934
+		{
+			name: "half year 2024 basis 2",
+			args: numArgs(45337, 45519, 97, 100, 2),
+			want: 0.05934,
+			tol:  0.001,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnDisc(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestDISC_ViaEval_Additional(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		wantErr bool
+	}{
+		{
+			name:    "90-day T-bill via eval",
+			formula: "DISC(DATE(2024,1,15),DATE(2024,4,15),98,100,0)",
+			want:    0.08,
+		},
+		{
+			name:    "180-day term via eval",
+			formula: "DISC(DATE(2024,1,15),DATE(2024,7,15),98,100,0)",
+			want:    0.04,
+		},
+		{
+			name:    "default basis via eval",
+			formula: "DISC(DATE(2024,1,15),DATE(2024,4,15),98,100)",
+			want:    0.08,
+		},
+		{
+			name:    "basis 1 via eval",
+			formula: "DISC(DATE(2024,1,15),DATE(2024,4,15),98,100,1)",
+			want:    0.08044,
+			tol:     0.001,
+		},
+		{
+			name:    "error settlement >= maturity via eval",
+			formula: "DISC(DATE(2024,7,15),DATE(2024,1,15),98,100,0)",
+			wantErr: true,
+		},
+		{
+			name:    "string numeric arg via eval",
+			formula: `DISC(DATE(2024,1,15),DATE(2024,4,15),98,100,0)`,
+			want:    0.08,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			v, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				if v.Type != ValueError {
+					t.Fatalf("%s: expected error, got type %v", tc.name, v.Type)
+				}
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+// === INTRATE additional tests ===
+
+func TestINTRATE_Additional(t *testing.T) {
+	// Additional serial numbers:
+	// DATE(2024,1,15) = 45306, DATE(2024,4,15) = 45397 (90/91 days)
+	// DATE(2024,7,15) = 45488
+	// DATE(2024,1,1) = 45292, DATE(2024,12,31) = 45657
+	// DATE(2020,1,1) = 43831, DATE(2020,7,1) = 44013 (leap year)
+	// DATE(2024,2,15) = 45337, DATE(2024,8,15) = 45519
+	// DATE(2023,4,1) = 45017
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64
+	}{
+		// --- Basic: investment=98, redemption=100, 90-day, basis 0 ---
+		// 30/360: DSM=90, B=360
+		// INTRATE = (100-98)/98 * (360/90) = 0.020408 * 4 = 0.08163
+		{
+			name: "basic 90-day inv=98 red=100 basis 0",
+			args: numArgs(45306, 45397, 98, 100, 0),
+			want: 0.08163,
+			tol:  0.001,
+		},
+		// --- All 5 basis types (1/15/2024 to 4/15/2024, inv=98, red=100) ---
+		// basis 1: actual/actual, 91 actual days, B=366 (2024 is leap)
+		// INTRATE = (2/98) * (366/91) = 0.020408 * 4.02198 = 0.08208
+		{
+			name: "basis 1 2024 leap year inv=98",
+			args: numArgs(45306, 45397, 98, 100, 1),
+			want: 0.08208,
+			tol:  0.001,
+		},
+		// basis 2: actual/360, 91 actual days
+		// INTRATE = (2/98) * (360/91) = 0.020408 * 3.95604 = 0.08074
+		{
+			name: "basis 2 actual/360 inv=98",
+			args: numArgs(45306, 45397, 98, 100, 2),
+			want: 0.08074,
+			tol:  0.001,
+		},
+		// basis 3: actual/365, 91 actual days
+		// INTRATE = (2/98) * (365/91) = 0.020408 * 4.01099 = 0.08186
+		{
+			name: "basis 3 actual/365 inv=98",
+			args: numArgs(45306, 45397, 98, 100, 3),
+			want: 0.08186,
+			tol:  0.001,
+		},
+		// basis 4: European 30/360, DSM=90, B=360
+		// INTRATE = (2/98) * (360/90) = 0.08163
+		{
+			name: "basis 4 European 30/360 inv=98",
+			args: numArgs(45306, 45397, 98, 100, 4),
+			want: 0.08163,
+			tol:  0.001,
+		},
+		// --- Short term (30 days) ---
+		// 4/1/2023 to 5/1/2023 (serial 45017 to 45047): 30 actual days, 30/360 US=30
+		// INTRATE = (100-98)/98 * (360/30) = 0.020408 * 12 = 0.24490
+		{
+			name: "short 30-day term inv=98",
+			args: numArgs(45017, 45047, 98, 100, 0),
+			want: 0.24490,
+			tol:  0.001,
+		},
+		// --- Long term (180 days) ---
+		// 1/15/2024 to 7/15/2024: 30/360=180 days
+		// INTRATE = (2/98) * (360/180) = 0.020408 * 2 = 0.04082
+		{
+			name: "180-day term inv=98",
+			args: numArgs(45306, 45488, 98, 100, 0),
+			want: 0.04082,
+			tol:  0.001,
+		},
+		// --- High return (investment=80, redemption=100) ---
+		// DSM=90, B=360
+		// INTRATE = (20/80) * (360/90) = 0.25 * 4 = 1.0
+		{
+			name: "high return inv=80",
+			args: numArgs(45306, 45397, 80, 100, 0),
+			want: 1.0,
+		},
+		// --- Low return (investment=99.9, redemption=100) ---
+		// INTRATE = (0.1/99.9) * (360/90) = 0.001001 * 4 = 0.004004
+		{
+			name: "low return inv=99.9",
+			args: numArgs(45306, 45397, 99.9, 100, 0),
+			want: 0.004004,
+			tol:  0.0001,
+		},
+		// --- Investment = redemption → rate = 0 ---
+		{
+			name: "inv equals red gives zero",
+			args: numArgs(45306, 45397, 100, 100, 0),
+			want: 0.0,
+			tol:  0.0001,
+		},
+		// --- Leap year basis 1 ---
+		// 1/1/2020 to 7/1/2020: 182 actual days, B=366
+		// INTRATE = (1010-1000)/1000 * (366/182) = 0.01 * 2.01099 = 0.02011
+		{
+			name: "leap year 2020 basis 1",
+			args: numArgs(43831, 44013, 1000, 1010, 1),
+			want: 0.02011,
+			tol:  0.001,
+		},
+		// --- Full year basis 0 ---
+		// 1/1/2024 to 12/31/2024: 360 (30/360), B=360
+		// INTRATE = (1050-1000)/1000 * (360/360) = 0.05
+		{
+			name: "full year basis 0 inv=1000",
+			args: numArgs(45292, 45657, 1000, 1050, 0),
+			want: 0.05,
+		},
+		// --- String coercion for numeric args ---
+		{
+			name: "string coercion for investment",
+			args: []Value{NumberVal(45306), NumberVal(45397), StringVal("98"), NumberVal(100), NumberVal(0)},
+			want: 0.08163,
+			tol:  0.001,
+		},
+		{
+			name: "string coercion for redemption",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(98), StringVal("100"), NumberVal(0)},
+			want: 0.08163,
+			tol:  0.001,
+		},
+		{
+			name: "string coercion for basis",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(98), NumberVal(100), StringVal("0")},
+			want: 0.08163,
+			tol:  0.001,
+		},
+		// --- Verify INTRATE > DISC for same params ---
+		// For pr=98, red=100, DISC = 2/100 * 4 = 0.08, INTRATE = 2/98 * 4 = 0.08163
+		// This is tested by the combination of basic tests above; INTRATE uses investment as denominator
+		// which is smaller than redemption, so the result is larger.
+		// Additional: pr=95, red=100
+		// DISC = 5/100 * 4 = 0.2, INTRATE = 5/95 * 4 = 0.21053
+		{
+			name: "INTRATE > DISC verification pr=95",
+			args: numArgs(45306, 45397, 95, 100, 0),
+			want: 0.21053,
+			tol:  0.001,
+		},
+		// --- Half-year basis 2 ---
+		// 2/15/2024 to 8/15/2024: 182 actual days, B=360
+		// INTRATE = (100-97)/97 * (360/182) = 0.030928 * 1.97802 = 0.06117
+		{
+			name: "half year 2024 basis 2",
+			args: numArgs(45337, 45519, 97, 100, 2),
+			want: 0.06117,
+			tol:  0.001,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnIntrate(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestINTRATE_ViaEval_Additional(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		wantErr bool
+	}{
+		{
+			name:    "90-day investment via eval",
+			formula: "INTRATE(DATE(2024,1,15),DATE(2024,4,15),98,100,0)",
+			want:    0.08163,
+			tol:     0.001,
+		},
+		{
+			name:    "180-day term via eval",
+			formula: "INTRATE(DATE(2024,1,15),DATE(2024,7,15),98,100,0)",
+			want:    0.04082,
+			tol:     0.001,
+		},
+		{
+			name:    "default basis via eval",
+			formula: "INTRATE(DATE(2024,1,15),DATE(2024,4,15),98,100)",
+			want:    0.08163,
+			tol:     0.001,
+		},
+		{
+			name:    "basis 2 via eval",
+			formula: "INTRATE(DATE(2024,1,15),DATE(2024,4,15),1000000,1014420,2)",
+			want:    0.05768,
+			tol:     0.001,
+		},
+		{
+			name:    "error settlement >= maturity via eval",
+			formula: "INTRATE(DATE(2024,7,15),DATE(2024,1,15),98,100,0)",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			v, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				if v.Type != ValueError {
+					t.Fatalf("%s: expected error, got type %v", tc.name, v.Type)
+				}
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+// === RECEIVED additional tests ===
+
+func TestRECEIVED_Additional(t *testing.T) {
+	// Additional serial numbers:
+	// DATE(2024,1,15) = 45306, DATE(2024,4,15) = 45397
+	// DATE(2024,7,15) = 45488
+	// DATE(2024,1,1) = 45292, DATE(2024,12,31) = 45657
+	// DATE(2020,1,1) = 43831, DATE(2020,7,1) = 44013 (leap year)
+	// DATE(2024,2,15) = 45337, DATE(2024,8,15) = 45519
+	// DATE(2023,4,1) = 45017
+
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+		tol     float64
+	}{
+		// --- Basic: investment=1000, discount=0.05, 90-day, basis 0 ---
+		// 30/360: DSM=90, B=360
+		// RECEIVED = 1000 / (1 - 0.05*90/360) = 1000 / (1-0.0125) = 1000/0.9875 = 1012.66
+		{
+			name: "basic 90-day inv=1000 disc=0.05 basis 0",
+			args: numArgs(45306, 45397, 1000, 0.05, 0),
+			want: 1012.66,
+			tol:  0.1,
+		},
+		// --- All 5 basis types (1/15/2024 to 4/15/2024, inv=1000, disc=0.05) ---
+		// basis 1: actual/actual, 91 days, B=366 (2024 leap)
+		// RECEIVED = 1000 / (1 - 0.05*91/366) = 1000 / (1-0.01243) = 1000/0.98757 = 1012.59
+		{
+			name: "basis 1 2024 leap inv=1000 disc=0.05",
+			args: numArgs(45306, 45397, 1000, 0.05, 1),
+			want: 1012.59,
+			tol:  0.1,
+		},
+		// basis 2: actual/360, 91 days, B=360
+		// RECEIVED = 1000 / (1 - 0.05*91/360) = 1000 / (1-0.01264) = 1000/0.98736 = 1012.80
+		{
+			name: "basis 2 actual/360 inv=1000 disc=0.05",
+			args: numArgs(45306, 45397, 1000, 0.05, 2),
+			want: 1012.80,
+			tol:  0.1,
+		},
+		// basis 3: actual/365, 91 days, B=365
+		// RECEIVED = 1000 / (1 - 0.05*91/365) = 1000 / (1-0.01247) = 1000/0.98753 = 1012.62
+		{
+			name: "basis 3 actual/365 inv=1000 disc=0.05",
+			args: numArgs(45306, 45397, 1000, 0.05, 3),
+			want: 1012.62,
+			tol:  0.1,
+		},
+		// basis 4: European 30/360, DSM=90, B=360
+		// RECEIVED = 1000 / (1 - 0.05*90/360) = 1000 / 0.9875 = 1012.66
+		{
+			name: "basis 4 European 30/360 inv=1000 disc=0.05",
+			args: numArgs(45306, 45397, 1000, 0.05, 4),
+			want: 1012.66,
+			tol:  0.1,
+		},
+		// --- Short term (30 days) ---
+		// 4/1/2023 to 5/1/2023 (serial 45017 to 45047): 30 actual days, 30/360 US=30
+		// RECEIVED = 1000 / (1 - 0.05*30/360) = 1000 / (1-0.004167) = 1000/0.995833 = 1004.18
+		{
+			name: "short 30-day disc=0.05",
+			args: numArgs(45017, 45047, 1000, 0.05, 0),
+			want: 1004.18,
+			tol:  0.1,
+		},
+		// --- Long term (180 days) ---
+		// 1/15/2024 to 7/15/2024: 30/360=180 days
+		// RECEIVED = 1000 / (1 - 0.05*180/360) = 1000 / (1-0.025) = 1000/0.975 = 1025.64
+		{
+			name: "180-day term disc=0.05",
+			args: numArgs(45306, 45488, 1000, 0.05, 0),
+			want: 1025.64,
+			tol:  0.1,
+		},
+		// --- High discount rate (20%) ---
+		// DSM=90, B=360
+		// RECEIVED = 1000 / (1 - 0.20*90/360) = 1000 / (1-0.05) = 1000/0.95 = 1052.63
+		{
+			name: "high discount rate 20%",
+			args: numArgs(45306, 45397, 1000, 0.20, 0),
+			want: 1052.63,
+			tol:  0.1,
+		},
+		// --- Low discount rate (0.1%) ---
+		// DSM=90, B=360
+		// RECEIVED = 1000 / (1 - 0.001*90/360) = 1000 / (1-0.00025) = 1000/0.99975 = 1000.25
+		{
+			name: "low discount rate 0.1%",
+			args: numArgs(45306, 45397, 1000, 0.001, 0),
+			want: 1000.25,
+			tol:  0.01,
+		},
+		// --- Full year, basis 0 ---
+		// 1/1/2024 to 12/31/2024: 360 (30/360), B=360
+		// RECEIVED = 1000 / (1 - 0.05*360/360) = 1000 / 0.95 = 1052.63
+		{
+			name: "full year basis 0",
+			args: numArgs(45292, 45657, 1000, 0.05, 0),
+			want: 1052.63,
+			tol:  0.1,
+		},
+		// --- Leap year basis 1 ---
+		// 1/1/2020 to 7/1/2020: 182 actual days, B=366
+		// RECEIVED = 1000 / (1 - 0.05*182/366) = 1000 / (1-0.02486) = 1000/0.97514 = 1025.49
+		{
+			name: "leap year 2020 basis 1",
+			args: numArgs(43831, 44013, 1000, 0.05, 1),
+			want: 1025.49,
+			tol:  0.1,
+		},
+		// --- Large investment ---
+		{
+			name: "large investment 50M",
+			args: numArgs(45306, 45397, 50000000, 0.05, 0),
+			want: 50632911.39,
+			tol:  100.0,
+		},
+		// --- String coercion for numeric args ---
+		{
+			name: "string coercion for investment",
+			args: []Value{NumberVal(45306), NumberVal(45397), StringVal("1000"), NumberVal(0.05), NumberVal(0)},
+			want: 1012.66,
+			tol:  0.1,
+		},
+		{
+			name: "string coercion for discount",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(1000), StringVal("0.05"), NumberVal(0)},
+			want: 1012.66,
+			tol:  0.1,
+		},
+		{
+			name: "string coercion for basis",
+			args: []Value{NumberVal(45306), NumberVal(45397), NumberVal(1000), NumberVal(0.05), StringVal("0")},
+			want: 1012.66,
+			tol:  0.1,
+		},
+		// --- Half-year basis 2 ---
+		// 2/15/2024 to 8/15/2024: 182 actual days, B=360
+		// RECEIVED = 1000 / (1 - 0.06*182/360) = 1000 / (1-0.03033) = 1000/0.96967 = 1031.27
+		{
+			name: "half year 2024 basis 2",
+			args: numArgs(45337, 45519, 1000, 0.06, 2),
+			want: 1031.27,
+			tol:  0.1,
+		},
+		// --- Denominator close to zero (very high discount, long term) ---
+		// This shouldn't error, just give a large result
+		// DSM=360, B=360, discount=0.90 => denom = 1-0.90 = 0.10
+		// RECEIVED = 1000 / 0.10 = 10000
+		{
+			name: "near-zero denominator large result",
+			args: numArgs(45292, 45657, 1000, 0.90, 0),
+			want: 10000.0,
+			tol:  100.0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnReceived(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+func TestRECEIVED_ViaEval_Additional(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		tol     float64
+		wantErr bool
+	}{
+		{
+			name:    "90-day basic via eval",
+			formula: "RECEIVED(DATE(2024,1,15),DATE(2024,4,15),1000,0.05,0)",
+			want:    1012.66,
+			tol:     0.1,
+		},
+		{
+			name:    "180-day term via eval",
+			formula: "RECEIVED(DATE(2024,1,15),DATE(2024,7,15),1000,0.05,0)",
+			want:    1025.64,
+			tol:     0.1,
+		},
+		{
+			name:    "default basis via eval",
+			formula: "RECEIVED(DATE(2024,1,15),DATE(2024,4,15),1000,0.05)",
+			want:    1012.66,
+			tol:     0.1,
+		},
+		{
+			name:    "basis 1 via eval",
+			formula: "RECEIVED(DATE(2024,1,15),DATE(2024,4,15),1000,0.05,1)",
+			want:    1012.59,
+			tol:     0.1,
+		},
+		{
+			name:    "error settlement >= maturity via eval",
+			formula: "RECEIVED(DATE(2024,7,15),DATE(2024,1,15),1000,0.05,0)",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			v, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				if v.Type != ValueError {
+					t.Fatalf("%s: expected error, got type %v", tc.name, v.Type)
+				}
+			} else {
+				tol := tc.tol
+				if tol == 0 {
+					tol = 0.01
+				}
+				if v.Type != ValueNumber {
+					t.Fatalf("%s: expected number, got type %v (str=%q)", tc.name, v.Type, v.Str)
+				}
+				if math.Abs(v.Num-tc.want) > tol {
+					t.Errorf("%s: got %f, want %f (tol=%g)", tc.name, v.Num, tc.want, tol)
+				}
+			}
+		})
+	}
+}
+
+// === Cross-check tests: DISC / INTRATE / RECEIVED consistency ===
+
+func TestDISC_INTRATE_Relationship(t *testing.T) {
+	// For the same settlement, maturity, price (=investment), and redemption:
+	// DISC = (red - pr) / red * (B/DSM)
+	// INTRATE = (red - pr) / pr * (B/DSM)
+	// Since pr < red, INTRATE > DISC (because pr < red as denominator).
+	// Specifically: INTRATE = DISC * (red/pr)
+
+	testCases := []struct {
+		name       string
+		settlement float64
+		maturity   float64
+		pr         float64 // same value used as both pr (DISC) and investment (INTRATE)
+		redemption float64
+		basis      int
+	}{
+		{"90-day basis 0", 45306, 45397, 98, 100, 0},
+		{"90-day basis 1", 45306, 45397, 98, 100, 1},
+		{"90-day basis 2", 45306, 45397, 98, 100, 2},
+		{"90-day basis 3", 45306, 45397, 98, 100, 3},
+		{"90-day basis 4", 45306, 45397, 98, 100, 4},
+		{"180-day basis 0", 45306, 45488, 95, 100, 0},
+		{"full year basis 0", 45292, 45657, 90, 100, 0},
+		{"high discount basis 0", 45306, 45397, 80, 100, 0},
+		{"low discount basis 0", 45306, 45397, 99.9, 100, 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			discArgs := numArgs(tc.settlement, tc.maturity, tc.pr, tc.redemption, float64(tc.basis))
+			intrateArgs := numArgs(tc.settlement, tc.maturity, tc.pr, tc.redemption, float64(tc.basis))
+
+			discV, err := fnDisc(discArgs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if discV.Type != ValueNumber {
+				t.Fatalf("DISC: expected number, got %v", discV.Type)
+			}
+
+			intrateV, err := fnIntrate(intrateArgs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if intrateV.Type != ValueNumber {
+				t.Fatalf("INTRATE: expected number, got %v", intrateV.Type)
+			}
+
+			disc := discV.Num
+			intrate := intrateV.Num
+
+			// INTRATE should be > DISC when pr < redemption
+			if tc.pr < tc.redemption {
+				if intrate <= disc {
+					t.Errorf("expected INTRATE(%f) > DISC(%f) when pr < redemption", intrate, disc)
+				}
+			}
+
+			// Verify mathematical relationship: INTRATE = DISC * (redemption / pr)
+			expectedIntrate := disc * (tc.redemption / tc.pr)
+			if math.Abs(intrate-expectedIntrate) > 0.0001 {
+				t.Errorf("INTRATE=%f, expected DISC*red/pr=%f*%f/%f=%f",
+					intrate, disc, tc.redemption, tc.pr, expectedIntrate)
+			}
+		})
+	}
+}
+
+func TestDISC_INTRATE_RECEIVED_RoundTrip(t *testing.T) {
+	// Mathematical relationship:
+	// If we have a discount rate d = DISC(settle, mat, pr, red, basis),
+	// then RECEIVED(settle, mat, pr, d, basis) should give back red.
+	//
+	// DISC = (red - pr) / red * (B/DSM)
+	// RECEIVED = inv / (1 - disc * DSM / B)
+	//
+	// Substituting inv=pr, disc=DISC result:
+	// RECEIVED = pr / (1 - ((red-pr)/red * B/DSM) * DSM/B)
+	//          = pr / (1 - (red-pr)/red)
+	//          = pr / (pr/red)
+	//          = red
+	//
+	// So RECEIVED(settle, mat, pr, DISC(settle, mat, pr, red, basis), basis) == red
+
+	testCases := []struct {
+		name       string
+		settlement float64
+		maturity   float64
+		pr         float64
+		redemption float64
+		basis      int
+	}{
+		{"90-day basis 0", 45306, 45397, 98, 100, 0},
+		{"90-day basis 1", 45306, 45397, 98, 100, 1},
+		{"90-day basis 2", 45306, 45397, 98, 100, 2},
+		{"90-day basis 3", 45306, 45397, 98, 100, 3},
+		{"90-day basis 4", 45306, 45397, 98, 100, 4},
+		{"180-day basis 0", 45306, 45488, 95, 100, 0},
+		{"full year basis 0", 45292, 45657, 90, 100, 0},
+		{"high discount", 45306, 45397, 80, 100, 0},
+		{"low discount", 45306, 45397, 99.9, 100, 0},
+		{"T-bill style", 45306, 45397, 99.5, 100, 2},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Step 1: compute DISC
+			discV, err := fnDisc(numArgs(tc.settlement, tc.maturity, tc.pr, tc.redemption, float64(tc.basis)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if discV.Type != ValueNumber {
+				t.Fatalf("DISC: expected number, got %v (str=%q)", discV.Type, discV.Str)
+			}
+			discRate := discV.Num
+
+			// Step 2: use RECEIVED with the discount rate to recover redemption
+			recV, err := fnReceived(numArgs(tc.settlement, tc.maturity, tc.pr, discRate, float64(tc.basis)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if recV.Type != ValueNumber {
+				t.Fatalf("RECEIVED: expected number, got %v (str=%q)", recV.Type, recV.Str)
+			}
+
+			// The round-trip should recover the redemption value
+			if math.Abs(recV.Num-tc.redemption) > 0.01 {
+				t.Errorf("round-trip: RECEIVED(settle, mat, %f, DISC(...)=%f, %d) = %f, want %f",
+					tc.pr, discRate, tc.basis, recV.Num, tc.redemption)
+			}
+		})
+	}
+}
+
+func TestDISC_INTRATE_RECEIVED_RoundTrip_ViaEval(t *testing.T) {
+	// Test the round-trip relationship via formula evaluation:
+	// RECEIVED(settle, mat, pr, DISC(settle, mat, pr, red, basis), basis) == red
+	formula := "RECEIVED(DATE(2024,1,15),DATE(2024,4,15),98,DISC(DATE(2024,1,15),DATE(2024,4,15),98,100,0),0)"
+	cf := evalCompile(t, formula)
+	v, err := Eval(cf, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != ValueNumber {
+		t.Fatalf("expected number, got %v (str=%q)", v.Type, v.Str)
+	}
+	// Should recover redemption = 100
+	if math.Abs(v.Num-100.0) > 0.01 {
+		t.Errorf("round-trip via eval: got %f, want 100.0", v.Num)
+	}
+}
+
+func TestINTRATE_RECEIVED_Consistency(t *testing.T) {
+	// For INTRATE: rate = (red - inv) / inv * (B/DIM)
+	// If we know the interest rate, we can verify:
+	// red = inv * (1 + rate * DIM / B)
+	//
+	// Meanwhile RECEIVED gives: received = inv / (1 - disc * DIM / B)
+	// These are different formulas with different parameters (interest rate vs discount rate).
+	// But we can verify: given an investment and discount rate,
+	// INTRATE on (inv, RECEIVED(inv, disc)) should give a specific rate.
+
+	settle := 45306.0  // 1/15/2024
+	mat := 45397.0     // 4/15/2024
+	inv := 1000.0
+	disc := 0.05
+	basis := 0.0
+
+	// Step 1: Compute RECEIVED
+	recV, err := fnReceived(numArgs(settle, mat, inv, disc, basis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recV.Type != ValueNumber {
+		t.Fatalf("RECEIVED: expected number, got %v", recV.Type)
+	}
+	received := recV.Num
+
+	// Step 2: Compute INTRATE using investment and received amount
+	intrateV, err := fnIntrate(numArgs(settle, mat, inv, received, basis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intrateV.Type != ValueNumber {
+		t.Fatalf("INTRATE: expected number, got %v", intrateV.Type)
+	}
+	intrate := intrateV.Num
+
+	// The relationship between discount rate and interest rate for discount securities:
+	// disc_rate and int_rate satisfy: int_rate = disc_rate / (1 - disc_rate * DSM/B)
+	// For DSM=90, B=360: int_rate = 0.05 / (1 - 0.05*90/360) = 0.05 / 0.9875 = 0.05063
+	expectedRate := disc / (1.0 - disc*90.0/360.0)
+	if math.Abs(intrate-expectedRate) > 0.001 {
+		t.Errorf("INTRATE(inv, RECEIVED(inv, disc))=%f, expected %f", intrate, expectedRate)
+	}
+}
+
 // === ACCRINT ===
 
 func TestACCRINT_Comprehensive(t *testing.T) {
