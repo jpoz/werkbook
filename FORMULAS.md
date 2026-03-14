@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **443** spreadsheet formula functions.
+Werkbook supports **445** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
@@ -353,6 +353,8 @@ Werkbook supports **443** spreadsheet formula functions.
 | SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |
 | SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 46 |
 | SERIESSUM | Returns the sum of a power series. | Math & Trig | 27 |
+| SHEET | Returns the sheet index of a reference. | Information | 14 |
+| SHEETS | Returns the number of sheets in a reference or workbook scope. | Information | 8 |
 | SIGN | Returns the sign of a number. | Math & Trig | 30 |
 | SIN | Returns the sine of an angle. | Math & Trig | 33 |
 | SINH | Returns the hyperbolic sine of a number. | Math & Trig | 23 |
@@ -474,7 +476,7 @@ effects, or require locale-specific behavior that cannot be reproduced in a serv
 
 # Not Yet Implemented
 
-The following **12** functions are not yet supported.
+The following **10** functions are not yet supported.
 
 | Function | Description | Category |
 |----------|-------------|----------|
@@ -488,5 +490,3 @@ The following **12** functions are not yet supported.
 | ODDFYIELD | Returns the yield of a security with an odd first period. | Financial |
 | ODDLPRICE | Returns the price of a security with an odd last period. | Financial |
 | ODDLYIELD | Returns the yield of a security with an odd last period. | Financial |
-| SHEET | Returns the sheet index of a reference. | Information |
-| SHEETS | Returns the number of sheets in a reference or workbook scope. | Information |

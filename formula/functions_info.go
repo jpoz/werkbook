@@ -1,6 +1,9 @@
 package formula
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 func init() {
 	Register("AREAS", NoCtx(fnAREAS))
@@ -26,6 +29,8 @@ func init() {
 	Register("TYPE", NoCtx(fnTYPE))
 	Register("ISFORMULA", fnISFORMULA)
 	Register("FORMULATEXT", fnFORMULATEXT)
+	Register("SHEET", fnSHEET)
+	Register("SHEETS", fnSHEETS)
 }
 
 func fnIFNA(args []Value) (Value, error) {
@@ -372,4 +377,169 @@ func fnFORMULATEXT(args []Value, ctx *EvalContext) (Value, error) {
 		return ErrorVal(ErrValNA), nil
 	}
 	return StringVal("=" + text), nil
+}
+
+// fnSHEET implements SHEET(value). It returns the 1-based sheet index of
+// the given sheet reference or name. With no arguments it returns the index
+// of the current sheet.
+func fnSHEET(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) > 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// No args: return current sheet index.
+	if len(args) == 0 {
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValNA), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		sheets := slp.GetSheetNames()
+		for i, name := range sheets {
+			if strings.EqualFold(name, ctx.CurrentSheet) {
+				return NumberVal(float64(i + 1)), nil
+			}
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	arg := args[0]
+
+	// Error propagation.
+	if arg.Type == ValueError {
+		return arg, nil
+	}
+
+	// ValueRef: extract sheet from reference.
+	if arg.Type == ValueRef {
+		sheetName := arg.Str // Str holds the sheet name for ValueRef
+		if sheetName == "" && ctx != nil {
+			sheetName = ctx.CurrentSheet
+		}
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValNA), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		sheets := slp.GetSheetNames()
+		for i, name := range sheets {
+			if strings.EqualFold(name, sheetName) {
+				return NumberVal(float64(i + 1)), nil
+			}
+		}
+		return ErrorVal(ErrValREF), nil
+	}
+
+	// String arg: look up sheet by name.
+	if arg.Type == ValueString {
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValNA), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		sheets := slp.GetSheetNames()
+		for i, name := range sheets {
+			if strings.EqualFold(name, arg.Str) {
+				return NumberVal(float64(i + 1)), nil
+			}
+		}
+		return ErrorVal(ErrValNA), nil
+	}
+
+	// For arrays (range references), return sheet of the range origin.
+	if arg.Type == ValueArray && arg.RangeOrigin != nil {
+		sheetName := arg.RangeOrigin.Sheet
+		if sheetName == "" && ctx != nil {
+			sheetName = ctx.CurrentSheet
+		}
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValNA), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		sheets := slp.GetSheetNames()
+		for i, name := range sheets {
+			if strings.EqualFold(name, sheetName) {
+				return NumberVal(float64(i + 1)), nil
+			}
+		}
+		return ErrorVal(ErrValREF), nil
+	}
+
+	// Other types: #VALUE!
+	return ErrorVal(ErrValVALUE), nil
+}
+
+// fnSHEETS implements SHEETS(reference). It returns the number of sheets
+// in a reference. With no arguments it returns the total number of sheets
+// in the workbook.
+func fnSHEETS(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) > 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+
+	// No args: return total sheet count.
+	if len(args) == 0 {
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValNA), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValNA), nil
+		}
+		return NumberVal(float64(len(slp.GetSheetNames()))), nil
+	}
+
+	arg := args[0]
+
+	if arg.Type == ValueError {
+		return arg, nil
+	}
+
+	// For a 3D range reference (SheetEnd set), count sheets in the range.
+	if arg.Type == ValueArray && arg.RangeOrigin != nil && arg.RangeOrigin.SheetEnd != "" {
+		if ctx == nil || ctx.Resolver == nil {
+			return ErrorVal(ErrValREF), nil
+		}
+		slp, ok := ctx.Resolver.(SheetListProvider)
+		if !ok {
+			return ErrorVal(ErrValREF), nil
+		}
+		sheets := slp.GetSheetNames()
+		startIdx, endIdx := -1, -1
+		startLower := strings.ToLower(arg.RangeOrigin.Sheet)
+		endLower := strings.ToLower(arg.RangeOrigin.SheetEnd)
+		for i, name := range sheets {
+			nameLower := strings.ToLower(name)
+			if nameLower == startLower {
+				startIdx = i
+			}
+			if nameLower == endLower {
+				endIdx = i
+			}
+		}
+		if startIdx < 0 || endIdx < 0 {
+			return ErrorVal(ErrValREF), nil
+		}
+		if startIdx > endIdx {
+			startIdx, endIdx = endIdx, startIdx
+		}
+		return NumberVal(float64(endIdx - startIdx + 1)), nil
+	}
+
+	// Single reference or range: always 1 sheet.
+	if arg.Type == ValueRef || arg.Type == ValueArray {
+		return NumberVal(1), nil
+	}
+
+	// Other types: #VALUE!
+	return ErrorVal(ErrValVALUE), nil
 }
