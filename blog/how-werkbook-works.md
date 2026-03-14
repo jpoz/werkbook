@@ -40,6 +40,30 @@ When you open or create a workbook in werkbook, you're working with a tree of Go
 
 ### File: The Workbook Container
 
+The in-memory object tree looks like this:
+
+```
+                         ┌──────────┐
+                         │   File   │
+                         └────┬─────┘
+               ┌──────────────┼──────────────┐
+               │              │              │
+          ┌────▼────┐   ┌─────▼─────┐  ┌─────▼─────┐
+          │ Sheet 1 │   │  Sheet 2  │  │  Sheet N  │
+          └────┬────┘   └───────────┘  └───────────┘
+               │
+      ┌────────┼────────┐
+      │        │        │
+  ┌───▼──┐ ┌──▼───┐ ┌──▼───┐
+  │ Row 1│ │ Row 2│ │ Row N│
+  └───┬──┘ └──┬───┘ └──────┘
+      │        │
+  ┌───▼──┐ ┌──▼───┐
+  │Cell  │ │Cell  │  ...
+  │A1    │ │A2    │
+  └──────┘ └──────┘
+```
+
 The `File` struct is the root of everything:
 
 ```go
@@ -76,7 +100,29 @@ Sheet.rows = map[int]*Row    // row number → Row
 Row.cells  = map[int]*Cell   // column number → Cell
 ```
 
-This means a sheet with data in A1 and Z1000 doesn't allocate memory for the 25,998 empty cells between them. It's a natural fit for the way real spreadsheets are used, where data tends to cluster in specific regions.
+This means a sheet with data in A1 and Z1000 doesn't allocate memory for the 25,998 empty cells between them. Compare dense vs. sparse storage:
+
+```
+Dense array (what werkbook does NOT do):
+┌─────┬───┬───┬───┬───┬───┬─── ── ──┬───┐
+│     │ A │ B │ C │ D │ E │ ...     │ Z │
+├─────┼───┼───┼───┼───┼───┼─── ── ──┼───┤
+│   1 │ x │   │   │   │   │         │   │  ← 26 cells allocated per row
+│   2 │   │   │   │   │   │         │   │  ← even if only 1 has data
+│   3 │   │   │   │   │   │         │   │
+│ ... │   │   │   │   │   │         │   │  25,974 empty cells wasting memory
+│1000 │   │   │   │   │   │         │ x │
+└─────┴───┴───┴───┴───┴───┴─── ── ──┴───┘
+
+Sparse map (what werkbook DOES):
+rows: {
+  1 → cells: { 1 → Cell{A1} }       ← only 1 entry
+  1000 → cells: { 26 → Cell{Z1000} } ← only 1 entry
+}
+Total: 2 rows, 2 cells allocated  ✓
+```
+
+It's a natural fit for the way real spreadsheets are used, where data tends to cluster in specific regions.
 
 Each `Cell` holds its value, its formula text (if any), a compiled formula (lazily computed), the generation at which its cached value was computed, a dirty flag for dependency-based invalidation, and an optional style:
 
@@ -127,7 +173,22 @@ file.xlsx (ZIP archive)
 
 ### The Shared String Table
 
-One of XLSX's optimizations is the **Shared String Table (SST)**. Instead of repeating the string "Revenue" in every cell that contains it, the file stores it once in `sharedStrings.xml` and references it by index. During reading, werkbook resolves these indices back to actual strings. During writing, it builds a new SST by deduplicating all string values across the workbook.
+One of XLSX's optimizations is the **Shared String Table (SST)**. Instead of repeating the string "Revenue" in every cell that contains it, the file stores it once in `sharedStrings.xml` and references it by index:
+
+```
+sharedStrings.xml              worksheet1.xml
+┌─────────────────┐            ┌──────────────────────────┐
+│ 0: "Revenue"    │◄───────────│ A1: type="s" value="0"   │
+│ 1: "Expenses"   │◄───────────│ A2: type="s" value="1"   │
+│ 2: "Profit"     │◄───────────│ A3: type="s" value="2"   │
+└─────────────────┘       ┌────│ B1: type="s" value="0"   │
+                          │    └──────────────────────────┘
+                          │
+                          └──── Same string "Revenue" —
+                               stored once, referenced twice
+```
+
+During reading, werkbook resolves these indices back to actual strings. During writing, it builds a new SST by deduplicating all string values across the workbook.
 
 ### The Reading Pipeline
 
@@ -167,7 +228,23 @@ Before serializing, werkbook recalculates any dirty formulas. This ensures the s
 
 ### Style Deduplication
 
-XLSX stores styles in a shared pool. If 1,000 cells have bold text, there's one font definition and 1,000 cells referencing it by index. Werkbook handles this deduplication automatically during the write phase: it collects all unique fonts, fills, borders, alignments, and number formats, assigns each an index, and writes cells with references to those indices.
+XLSX stores styles in a shared pool. If 1,000 cells have bold text, there's one font definition and 1,000 cells referencing it by index:
+
+```
+styles.xml                         worksheet.xml
+┌────────────────────────┐         ┌─────────────────────┐
+│ fonts:                 │         │ A1: styleIdx=0      │──┐
+│   0: {bold, 12pt}      │◄────────│ A2: styleIdx=0      │──┘
+│   1: {italic, 10pt}    │◄────────│ B1: styleIdx=1      │
+│                        │         │ B2: styleIdx=0      │──── same font
+│ fills:                 │         │ C1: styleIdx=0      │──── reused, not
+│   0: {yellow, solid}   │         │ ...                 │     duplicated
+│   1: {none}            │         │ Z99: styleIdx=0     │
+└────────────────────────┘         └─────────────────────┘
+                                    1,000 cells → 2 font definitions
+```
+
+Werkbook handles this deduplication automatically during the write phase: it collects all unique fonts, fills, borders, alignments, and number formats, assigns each an index, and writes cells with references to those indices.
 
 ### The Writing Pipeline
 
@@ -204,6 +281,43 @@ The formula engine is the crown jewel of werkbook. It takes a formula string lik
 
 The pipeline has four stages: **Lexing → Parsing → Compilation → Evaluation**.
 
+```
+                        The Formula Pipeline
+
+  "SUM(A1:A10)*1.08"
+         │
+         ▼
+  ┌─────────────┐     ┌─────┬─────┬───┬─────┬───┬──────┬───┬──────┐
+  │    LEXER     │────▶│ SUM │  (  │A1 │  :  │A10│  )   │ * │ 1.08 │
+  └─────────────┘     └─────┴─────┴───┴─────┴───┴──────┴───┴──────┘
+                                       tokens
+         │
+         ▼
+  ┌─────────────┐              ×
+  │   PARSER    │────▶        / \
+  │  (Pratt)    │          Call   1.08
+  └─────────────┘          |
+                          SUM
+                           |              AST
+                        Range
+                        /    \
+                      A1     A10
+         │
+         ▼
+  ┌─────────────┐     ┌──────────────────────────────┐
+  │  COMPILER   │────▶│ OpLoadRange  0               │
+  └─────────────┘     │ OpCall       <SUM>           │
+                      │ OpPushNum    0   (=1.08)     │
+                      │ OpMul                        │  bytecode
+                      └──────────────────────────────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  VM (eval)  │────▶  Result: 11664.0
+  │  stack-based│
+  └─────────────┘
+```
+
 ### Stage 1: Lexing
 
 The lexer (`formula/lexer.go`) transforms a formula string into a stream of tokens. It handles all the quirks of Excel's formula syntax:
@@ -217,6 +331,17 @@ The lexer (`formula/lexer.go`) transforms a formula string into a stream of toke
 - **Parentheses and commas** for function calls and grouping
 
 The lexer is careful to distinguish between unary minus (negation) and binary minus (subtraction) based on context — a minus sign at the start of a formula or after an operator is unary.
+
+Here's what the token stream looks like for a moderately complex formula:
+
+```
+Formula: IF(A1>0, A1*B1, "N/A")
+
+Tokens:  ┌────┐┌───┐┌────┐┌───┐┌───┐┌───┐┌────┐┌───┐┌────┐┌───┐┌───────┐┌───┐
+         │ IF ││ ( ││ A1 ││ > ││ 0 ││ , ││ A1 ││ * ││ B1 ││ , ││ "N/A" ││ ) │
+         └────┘└───┘└────┘└───┘└───┘└───┘└────┘└───┘└────┘└───┘└───────┘└───┘
+Type:    func  open  ref   op   num  sep  ref   op   ref   sep  str     close
+```
 
 ### Stage 2: Parsing (Pratt Precedence Parser)
 
@@ -234,6 +359,18 @@ Precedence levels (lowest to highest):
 
 The Pratt parser handles left and right associativity naturally. Exponentiation (`^`) is right-associative (so `2^3^4` means `2^(3^4)`), while arithmetic operators are left-associative (so `1-2-3` means `(1-2)-3`).
 
+```
+Left-associative: 1 - 2 - 3         Right-associative: 2 ^ 3 ^ 4
+
+         -                                    ^
+        / \                                  / \
+       -   3                                2   ^
+      / \                                      / \
+     1   2                                    3   4
+
+  = (1 - 2) - 3 = -4                 = 2 ^ (3 ^ 4) = 2⁸¹
+```
+
 The resulting AST contains node types for:
 - **Literals:** numbers, strings, booleans, errors
 - **Cell references:** single cells and ranges
@@ -241,6 +378,21 @@ The resulting AST contains node types for:
 - **Unary operations:** negation, percentage
 - **Function calls:** with argument lists
 - **Array literals:** `{1,2,3;4,5,6}`
+
+Here's a more complex AST example for `IF(A1>0, A1*B1, "N/A")`:
+
+```
+              CallNode
+             /   |   \
+          "IF"  args:
+               /  |  \
+              /   |   \
+          BinOp  BinOp  StringLit
+          (>)    (*)     "N/A"
+         / \    / \
+       Ref  Num Ref  Ref
+       A1   0   A1   B1
+```
 
 ### Stage 3: Compilation (AST to Bytecode)
 
@@ -273,13 +425,18 @@ The full instruction set has **27 opcodes**:
 | Comparison | `OpEq`, `OpNe`, `OpLt`, `OpLe`, `OpGt`, `OpGe` |
 | Other | `OpConcat`, `OpCall`, `OpMakeArray`, `OpEnterArrayCtx`, `OpLeaveArrayCtx`, `OpRefResultToBool` |
 
-For example, the formula `SUM(A1:A10)*1.08` compiles to something like:
+For example, the formula `SUM(A1:A10)*1.08` compiles to:
 
 ```
-OpLoadRange  0      # Push range A1:A10 (index 0 in range pool)
-OpCall       <SUM>  # Call SUM function
-OpPushNum    0      # Push 1.08 (index 0 in constant pool)
-OpMul               # Multiply top two stack values
+Bytecode:                     Constant Pool:       Range Pool:
+┌────┬──────────────┬─────┐   ┌───┬────────┐       ┌───┬──────────┐
+│ #  │ Opcode       │ Arg │   │ 0 │ 1.08   │       │ 0 │ A1:A10   │
+├────┼──────────────┼─────┤   └───┴────────┘       └───┴──────────┘
+│ 0  │ OpLoadRange  │  0  │─── loads range pool[0]
+│ 1  │ OpCall       │ <S> │─── calls SUM (func ID)
+│ 2  │ OpPushNum    │  0  │─── pushes const pool[0] = 1.08
+│ 3  │ OpMul        │  -  │─── multiplies top two stack values
+└────┴──────────────┴─────┘
 ```
 
 ### Stage 4: Evaluation (Stack-Based Virtual Machine)
@@ -304,10 +461,74 @@ type CellResolver interface {
 
 This separation is key to testability — formula functions can be tested with mock resolvers without creating full workbook structures.
 
+Let's visualize the VM executing `A1+A2*A3` where A1=2, A2=3, A3=4:
+
+```
+Bytecode: OpLoadCell 0(A1), OpLoadCell 1(A2), OpLoadCell 2(A3), OpMul, OpAdd
+
+Step 1: OpLoadCell A1     Step 2: OpLoadCell A2     Step 3: OpLoadCell A3
+┌─────┐                  ┌─────┐                  ┌─────┐
+│     │                  │     │                  │  4  │ ← top
+│     │                  │  3  │ ← top            ├─────┤
+│  2  │ ← top            ├─────┤                  │  3  │
+├─────┤                  │  2  │                  ├─────┤
+│stack│                  ├─────┤                  │  2  │
+└─────┘                  │stack│                  ├─────┤
+                         └─────┘                  │stack│
+                                                  └─────┘
+
+Step 4: OpMul             Step 5: OpAdd
+  pop 4 and 3,              pop 12 and 2,
+  push 3*4=12               push 2+12=14
+┌─────┐                  ┌─────┐
+│     │                  │     │
+│ 12  │ ← top            │ 14  │ ← top = result!
+├─────┤                  ├─────┤
+│  2  │                  │stack│
+├─────┤                  └─────┘
+│stack│
+└─────┘
+```
+
 The VM also handles some subtle Excel behaviors:
 
 - **Implicit intersection:** When a formula references an entire column (like `A:A`) in a non-array context, the VM intersects it with the current row, returning just the single value at that intersection point.
+
+```
+Implicit Intersection Example:
+
+Cell C3 contains: =A:A + 1
+
+        A:A (entire column)          After implicit intersection
+       ┌─────┐                       at row 3:
+  row 1│ 10  │
+       ├─────┤                       A3 = 30
+  row 2│ 20  │
+       ├─────┤                       Result: 30 + 1 = 31
+  row 3│ 30  │ ◄── current row
+       ├─────┤
+  row 4│ 40  │
+       └─────┘
+```
+
 - **Type coercion:** Excel has complex implicit type conversion rules. In numeric contexts, the string "42" becomes the number 42, and `TRUE` becomes 1. In string contexts, the number 42 becomes "42". Werkbook faithfully reproduces these rules.
+
+```
+Type Coercion Rules:
+
+  Numeric context (+ - * /)        String context (&)
+  ┌───────────┬──────────┐         ┌───────────┬──────────┐
+  │ Input     │ Becomes  │         │ Input     │ Becomes  │
+  ├───────────┼──────────┤         ├───────────┼──────────┤
+  │ "42"      │ 42       │         │ 42        │ "42"     │
+  │ "3.14"    │ 3.14     │         │ TRUE      │ "TRUE"   │
+  │ TRUE      │ 1        │         │ FALSE     │ "FALSE"  │
+  │ FALSE     │ 0        │         │ #N/A      │ #N/A ✗   │
+  │ "" (empty)│ 0        │         │ "" (empty)│ ""       │
+  │ "hello"   │ #VALUE!  │         └───────────┴──────────┘
+  └───────────┴──────────┘
+```
+
 - **Error propagation:** Most operations propagate errors — if one operand is `#DIV/0!`, the result is `#DIV/0!`. But some functions (like `IFERROR`) intentionally catch errors.
 
 ### The Function Registry: 438 Functions and Counting
@@ -342,6 +563,29 @@ At compile time, function names are resolved to integer IDs via `LookupFunc`. At
 - **Compact bytecode:** function IDs are small integers encoded in the instruction operand
 - **Extensibility:** external packages can register new functions or override existing ones
 
+```
+Function Registry Lifecycle:
+
+  ┌──────── init() time ────────┐   ┌──── compile time ────┐   ┌── eval time ──┐
+  │                             │   │                       │   │               │
+  │ Register("SUM",   sumFn)    │   │ LookupFunc("SUM")     │   │ CallFunc(0,   │
+  │ Register("AVG",   avgFn)    │   │   → returns ID: 0     │   │   args, ctx)  │
+  │ Register("IF",    ifFn)     │   │                       │   │   → sumFn()   │
+  │ ...                         │   │ Emits: OpCall 0       │   │               │
+  │                             │   │                       │   │               │
+  │ Registry:                   │   └───────────────────────┘   └───────────────┘
+  │ ┌────┬──────┬───────────┐   │
+  │ │ ID │ Name │ Function  │   │
+  │ ├────┼──────┼───────────┤   │
+  │ │  0 │ SUM  │ sumFn     │   │
+  │ │  1 │ AVG  │ avgFn     │   │
+  │ │  2 │ IF   │ ifFn      │   │
+  │ │... │ ...  │ ...       │   │
+  │ │437 │ ...  │ ...       │   │
+  │ └────┴──────┴───────────┘   │
+  └─────────────────────────────┘
+```
+
 ---
 
 ## Dependency Tracking and Incremental Recalculation
@@ -368,6 +612,35 @@ There are two types of dependencies:
 1. **Point dependencies:** Cell A5 contains `=A1+A2`. The graph records that A5 depends on A1 and A2. If either changes, A5 needs recalculation.
 
 2. **Range subscriptions:** Cell B1 contains `=SUM(A1:A100)`. Rather than creating 100 individual point dependencies, the graph stores a range subscription. When any cell is modified, the graph checks if it falls within any subscribed range.
+
+```
+Dependency Graph Example:
+
+  Spreadsheet:                    Dependency Graph:
+  ┌─────┬─────┬──────────────┐
+  │     │  A  │      B       │    Forward edges (dependsOn):
+  ├─────┼─────┼──────────────┤      B3 → {A1, A2}
+  │  1  │ 10  │              │      B4 → {range A1:A3}
+  ├─────┼─────┼──────────────┤      B5 → {B3, B4}
+  │  2  │ 20  │              │
+  ├─────┼─────┼──────────────┤    Reverse edges (dependents):
+  │  3  │ 30  │  =A1+A2      │      A1 → {B3}        ┐
+  ├─────┼─────┼──────────────┤      A2 → {B3}        ├─ point deps
+  │  4  │     │  =SUM(A1:A3) │      B3 → {B5}        │
+  ├─────┼─────┼──────────────┤      B4 → {B5}        ┘
+  │  5  │     │  =B3+B4      │
+  └─────┴─────┴──────────────┘    Range subscriptions:
+                                     B4 subscribes to A1:A3
+
+  If A1 changes:
+  ┌────────────────────────────────────────────────┐
+  │  A1 modified                                   │
+  │   ├── point dep → B3 marked dirty              │
+  │   │                 └── point dep → B5 dirty   │
+  │   └── range sub → B4 marked dirty (A1 ∈ A1:A3)│
+  │                     └── point dep → B5 dirty   │
+  └────────────────────────────────────────────────┘
+```
 
 ### Registration
 
@@ -416,6 +689,24 @@ GetValue("A5"):
 
 This lazy approach means that if you change 1,000 cells in a loop, the recalculation cost is paid only for the formulas you actually read afterward — not for every intermediate state.
 
+```
+Lazy vs. Eager Recalculation:
+
+Eager (what werkbook does NOT do):
+  SetValue(A1) → recalc B1, C1, D1, E1, F1    ← wasted work
+  SetValue(A2) → recalc B1, C1, D1, E1, F1    ← wasted work
+  SetValue(A3) → recalc B1, C1, D1, E1, F1    ← wasted work
+  GetValue(F1) → return cached                  Total: 15 recalculations
+
+Lazy (what werkbook DOES):
+  SetValue(A1) → mark B1,C1,D1,E1,F1 dirty    ← O(1) per dependent
+  SetValue(A2) → mark B1,C1,D1,E1,F1 dirty    ← already dirty, no-op
+  SetValue(A3) → mark B1,C1,D1,E1,F1 dirty    ← already dirty, no-op
+  GetValue(F1) → recalc chain: B1→C1→D1→E1→F1  Total: 5 recalculations
+                                                         ▲
+                                                    3x fewer!
+```
+
 ### Circular Reference Detection
 
 Circular references (A1 = B1, B1 = A1) are detected at evaluation time using the `evaluating` map on the `File` struct:
@@ -430,6 +721,27 @@ defer delete(f.evaluating, cellKey)
 ```
 
 This is simple and effective. The `evaluating` map acts as a call stack: if we encounter a cell that's already on the stack, we've found a cycle.
+
+```
+Circular Reference Detection:
+
+  A1 = B1 + 1
+  B1 = A1 + 1
+
+  Evaluating A1:
+    evaluating = {A1: true}
+    │
+    ├── needs B1 → evaluate B1
+    │     evaluating = {A1: true, B1: true}
+    │     │
+    │     ├── needs A1 → evaluate A1
+    │     │     A1 ∈ evaluating? YES!
+    │     │     └── return #REF! ✗ cycle detected
+    │     │
+    │     └── B1 = #REF!
+    │
+    └── A1 = #REF!
+```
 
 ---
 
@@ -449,10 +761,28 @@ The 1900 system has a deliberate bug inherited from Lotus 1-2-3: it treats 1900 
 
 Werkbook faithfully reproduces this bug, because compatibility with Excel is more important than mathematical correctness:
 
-```go
-// From date.go: handling the Lotus 1-2-3 leap year bug
-// Serial 60 = Feb 29, 1900 (doesn't exist, but Excel says it does)
-// Serial 61 = Mar 1, 1900
+```
+1900 Date System — The Leap Year Bug:
+
+Serial#   Excel says:        Reality:           Notes
+──────────────────────────────────────────────────────────────
+   1      Jan 1, 1900        Jan 1, 1900        ✓ correct
+   2      Jan 2, 1900        Jan 2, 1900        ✓ correct
+  ...         ...                ...
+  59      Feb 28, 1900       Feb 28, 1900       ✓ correct
+  60      Feb 29, 1900       ██ NEVER EXISTED   ✗ phantom date!
+  61      Mar 1, 1900        Feb 29... wait,    ← off by one
+                              actually Mar 1         from here on
+  ...         ...                ...
+44927     Dec 31, 2022       Dec 31, 2022       ✓ (bug cancels out)
+
+1904 Date System (Mac):
+
+Serial#   Date               Notes
+──────────────────────────────────────────────────────────────
+   0      Jan 1, 1904        No leap year bug
+   1      Jan 2, 1904        Clean and correct
+  ...         ...
 ```
 
 The `timeToSerialForDateSystem()` function handles the conversion between Go's `time.Time` and Excel serial numbers, accounting for the appropriate date system and the leap year bug.
@@ -482,7 +812,31 @@ type Table struct {
 }
 ```
 
-During formula expansion (before compilation), structured references are resolved to concrete cell ranges. `Sales[Revenue]` might expand to `C2:C100` if the Revenue column is column C and the data spans rows 2–100. This expansion happens transparently — the formula engine works with regular cell references after expansion.
+During formula expansion (before compilation), structured references are resolved to concrete cell ranges. This expansion happens transparently — the formula engine works with regular cell references after expansion.
+
+```
+Structured Reference Expansion:
+
+  Table "Sales" on Sheet1, range A1:D100:
+
+  ┌─────────┬────────┬─────────┬───────┐
+  │ Product │ Region │ Revenue │ Cost  │  ← row 1 (#Headers)
+  ├─────────┼────────┼─────────┼───────┤
+  │ Widget  │ North  │  1200   │  800  │  ← row 2
+  │ Gadget  │ South  │  3400   │ 2100  │       (#Data rows)
+  │ ...     │ ...    │  ...    │  ...  │
+  │ Gizmo   │ East   │   900   │  600  │  ← row 100
+  └─────────┴────────┴─────────┴───────┘
+       A         B        C        D
+
+  Formula                     Expands to
+  ─────────────────────────────────────────────
+  Sales[Revenue]          →   C2:C100
+  Sales[#Headers]         →   A1:D1
+  Sales[[#Data],[Cost]]   →   D2:D100
+  Sales[@Revenue]         →   C{current_row}
+  SUM(Sales[Revenue])     →   SUM(C2:C100)
+```
 
 ---
 
@@ -523,7 +877,28 @@ The CLI has an `--mode agent` flag that wraps all output in a structured JSON en
 }
 ```
 
-This is a thoughtful design choice — the same tool serves both humans (with tree-formatted text output) and machines (with structured JSON).
+This is a thoughtful design choice — the same tool serves both humans and machines:
+
+```
+Same data, different output modes:
+
+┌─── Human mode (default) ──────────────┐   ┌─── Agent mode (--mode agent) ──────┐
+│                                        │   │                                    │
+│  Sheet1                                │   │  {                                 │
+│  ├─ A1: Product                        │   │    "ok": true,                     │
+│  ├─ A2: Widget                         │   │    "data": {                       │
+│  ├─ B1: Price                          │   │      "sheets": [{                  │
+│  ├─ B2: 29.99                          │   │        "name": "Sheet1",           │
+│  └─ C1: =A2&" costs $"&B2             │   │        "cells": [                  │
+│                                        │   │          {"ref":"A1","v":"Product"},│
+│  Readable, scannable                   │   │          ...                       │
+│                                        │   │        ]                           │
+└────────────────────────────────────────┘   │      }]                            │
+                                             │    }                               │
+                                             │  }                                 │
+                                             │  Parseable, automatable            │
+                                             └────────────────────────────────────┘
+```
 
 ### Patch Operations
 
@@ -554,6 +929,28 @@ One of werkbook's most notable characteristics is its complete lack of external 
 - `fmt`, `strings`, `sort`, `io` for utilities
 
 This is a deliberate design choice with real benefits:
+
+```
+Dependency tree comparison:
+
+  Typical XLSX library:              Werkbook:
+
+  my-app                             my-app
+  └── xlsx-lib                       └── werkbook
+      ├── xml-parser v2.3                 └── (Go stdlib only)
+      │   └── encoding-utils v1.1
+      ├── zip-handler v4.0                    That's it.
+      │   ├── compress-lib v3.2
+      │   └── io-utils v2.0
+      ├── formula-engine v1.5
+      │   ├── math-ext v2.1
+      │   └── parser-combinators v3.0
+      └── date-utils v1.8
+
+  12 packages to audit              0 packages to audit
+  12 packages that can break        0 packages that can break
+  12 packages to keep updated       0 packages to keep updated
+```
 
 1. **No supply chain risk.** No transitive dependencies means no risk of a dependency being compromised, abandoned, or introducing breaking changes.
 
@@ -619,6 +1016,37 @@ These verify that cell styles (fonts, colors, borders, number formats) survive s
 
 Werkbook makes several design choices that favor performance:
 
+```
+Performance Strategy Overview:
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                    OPEN / READ                                  │
+  │                                                                 │
+  │  Open("file.xlsx")     GetValue("A1")    GetValue("A1") again  │
+  │       │                     │                    │              │
+  │       ▼                     ▼                    ▼              │
+  │  Parse XML only        Compile once         Return cached      │
+  │  No formula eval       Lex→Parse→Compile    value immediately  │
+  │                        Cache bytecode       (calcGen match)    │
+  │                        Eval via VM                             │
+  │                                                                 │
+  │  Cost: O(cells)        Cost: O(formula)     Cost: O(1) ✓       │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                    WRITE / MODIFY                               │
+  │                                                                 │
+  │  SetValue("A1", 42)   GetValue("B1")      SaveAs("out.xlsx")  │
+  │       │                     │                    │              │
+  │       ▼                     ▼                    ▼              │
+  │  Bump calcGen          Only recalc if       Recalc dirty only  │
+  │  Mark dependents       B1 is dirty or       Dedup styles       │
+  │  as dirty              stale                Build SST          │
+  │                                             Serialize ZIP      │
+  │  Cost: O(dependents)   Cost: O(chain)       Cost: O(cells)     │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
 1. **Sparse data structures:** Maps instead of dense arrays mean memory usage scales with actual data, not with the dimensions of the sheet.
 
 2. **Lazy formula evaluation:** Formulas are computed on demand, not on load. Opening a large workbook with thousands of formulas is fast because nothing is recalculated until you ask for a value.
@@ -630,6 +1058,30 @@ Werkbook makes several design choices that favor performance:
 5. **Incremental recalculation:** The dependency graph means that changing one cell doesn't trigger recalculation of every formula — only the transitive dependents.
 
 6. **Generation-based caching:** The `calcGen` counter provides O(1) staleness checking for cached formula values, avoiding timestamp comparisons or hash computations.
+
+```
+Generation-Based Caching:
+
+  File.calcGen:  1        2              2              3
+                 │        │              │              │
+  Timeline: ─────┼────────┼──────────────┼──────────────┼─────────
+                 │        │              │              │
+              New()   SetValue(A1,10)  GetValue(B1)  SetValue(A1,20)
+                          │              │              │
+                          │         B1.cachedGen=1      │
+                          │         1 ≠ 2 → stale!      │
+                          │         recompute → cache    │
+                          │         B1.cachedGen=2      │
+                          │              │              │
+                          │         GetValue(B1) again  │
+                          │         B1.cachedGen=2      │
+                          │         2 = 2 → fresh!      │
+                          │         return cached ✓      │
+                          │                              │
+                          │                         B1.dirty=true
+                          │                         next read will
+                          │                         recompute
+```
 
 ---
 
@@ -664,6 +1116,22 @@ total, _ := sheet.GetValue("D4")
 fmt.Println(total) // 5498.5
 ```
 
+The spreadsheet in memory looks like:
+
+```
+  ┌─────────┬──────────┬─────────┬──────────────────┐
+  │    A    │    B     │    C    │        D         │
+  ├─────────┼──────────┼─────────┼──────────────────┤
+  │Product  │ Price    │  Qty    │ ="Total"         │
+  ├─────────┼──────────┼─────────┼──────────────────┤
+  │Widget   │  29.99   │  100    │ =B2*C2  → ?      │
+  ├─────────┼──────────┼─────────┼──────────────────┤
+  │Gadget   │  49.99   │   50    │ =B3*C3  → ?      │
+  ├─────────┼──────────┼─────────┼──────────────────┤
+  │         │          │         │ =SUM(D2:D3) → ?  │
+  └─────────┴──────────┴─────────┴──────────────────┘
+```
+
 Here's what happens under the hood when `GetValue("D4")` is called:
 
 1. **Cell lookup:** The sheet looks up cell D4 in its sparse map.
@@ -694,7 +1162,45 @@ Now if you modify a cell:
 sheet.SetValue("C2", 200) // Change Widget quantity
 ```
 
-This increments `calcGen`, and the dependency graph marks D2 and D4 as dirty (D2 directly depends on C2, and D4 transitively depends on it through D2). The next `GetValue("D4")` will recompute the chain and return 8498.5.
+This triggers the following cascade:
+
+```
+  SetValue(C2, 200)
+       │
+       ▼
+  calcGen: 5 → 6
+       │
+       ▼
+  DepGraph lookup: who depends on C2?
+       │
+       ├──► D2 (=B2*C2)  → marked dirty
+       │         │
+       │         ▼
+       │    who depends on D2?
+       │         │
+       │         └──► D4 (=SUM(D2:D3)) → marked dirty
+       │
+       ▼
+  GetValue("D4")
+       │
+       ├── D4 is dirty → needs eval
+       │     └── needs D2:D3
+       │           ├── D2 is dirty → recompute: 29.99 * 200 = 5998.0
+       │           └── D3 is clean → cached: 2499.5
+       │
+       └── SUM(5998.0, 2499.5) = 8497.5 ✓
+
+  Final spreadsheet state:
+  ┌─────────┬──────────┬─────────┬──────────────────────┐
+  │    A    │    B     │    C    │          D           │
+  ├─────────┼──────────┼─────────┼──────────────────────┤
+  │Widget   │  29.99   │  200    │ =B2*C2    → 5998.0  │ ← updated
+  ├─────────┼──────────┼─────────┼──────────────────────┤
+  │Gadget   │  49.99   │   50    │ =B3*C3    → 2499.5  │ ← unchanged
+  ├─────────┼──────────┼─────────┼──────────────────────┤
+  │         │          │         │ =SUM(...) → 8497.5  │ ← updated
+  └─────────┴──────────┴─────────┴──────────────────────┘
+```
 
 ---
 
