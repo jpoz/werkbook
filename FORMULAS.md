@@ -19,7 +19,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | AND | Returns TRUE when every supplied condition is TRUE. | Logical | 31 |
 | ARABIC | Converts Roman numeral text to an Arabic number. | Math & Trig | 38 |
 | AREAS | Counts the number of areas in a reference. | Information | 23 |
-| ARRAYTOTEXT | Converts an array into a text representation. | Text | 24 |
+| ARRAYTOTEXT | Converts an array into a text representation. | Text | 48 |
 | ASIN | Returns the arcsine of a number. | Math & Trig | 30 |
 | ASINH | Returns the inverse hyperbolic sine of a number. | Math & Trig | 26 |
 | ATAN | Returns the arctangent of a number. | Math & Trig | 25 |
@@ -69,7 +69,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | COMBIN | Returns the number of combinations for a given number of items. | Math & Trig | 40 |
 | COMBINA | Returns the number of combinations with repetitions. | Math & Trig | 31 |
 | COMPLEX | Builds a complex number from real and imaginary parts. | Engineering | 51 |
-| CONCAT | Joins text from multiple values or ranges. | Text | 33 |
+| CONCAT | Joins text from multiple values or ranges. | Text | 34 |
 | CONCATENATE | Joins multiple text values into one string. | Text | 45 |
 | CONFIDENCE.NORM | Returns a normal-distribution confidence interval half-width. | Statistical | 25 |
 | CONFIDENCE.T | Returns a Student's t-distribution confidence interval half-width. | Statistical | 29 |
@@ -241,7 +241,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 31 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
-| LEN | Returns the number of characters in text. | Text | 34 |
+| LEN | Returns the number of characters in text. | Text | 37 |
 | LET | Assigns names to intermediate values within a formula. | Logical | 33 |
 | LINEST | Returns linear regression statistics. | Statistical | 3 |
 | LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
@@ -422,7 +422,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | UNIQUE | Returns distinct rows or columns from an array. | Lookup & Reference | 53 |
 | UPPER | Converts text to uppercase. | Text | 62 |
 | VALUE | Converts text that looks like a number into a numeric value. | Text | 31 |
-| VALUETOTEXT | Converts a value to a text representation. | Text | 26 |
+| VALUETOTEXT | Converts a value to a text representation. | Text | 47 |
 | VAR | Returns the sample variance. | Statistical | 26 |
 | VAR.P | Returns the population variance. | Statistical | 25 |
 | VAR.S | Returns the sample variance. | Statistical | 31 |

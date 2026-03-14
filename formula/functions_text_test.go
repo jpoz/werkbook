@@ -3128,6 +3128,41 @@ func TestVALUETOTEXT(t *testing.T) {
 		{"number_concise", `VALUETOTEXT(123,0)`, "123"},
 		{"number_strict", `VALUETOTEXT(123,1)`, "123"},
 		{"float_strict", `VALUETOTEXT(1.5,1)`, "1.5"},
+
+		// Additional: negative numbers with format
+		{"negative_concise", `VALUETOTEXT(-99.5,0)`, "-99.5"},
+		{"negative_strict", `VALUETOTEXT(-99.5,1)`, "-99.5"},
+
+		// Additional: large and very large numbers
+		{"very_large_number", `VALUETOTEXT(999999999999999)`, "999999999999999"},
+		{"negative_large", `VALUETOTEXT(-1000000)`, "-1000000"},
+
+		// Additional: decimal precision
+		{"decimal_two_places", `VALUETOTEXT(3.14)`, "3.14"},
+		{"decimal_many_places", `VALUETOTEXT(1.23456789)`, "1.23456789"},
+
+		// Additional: integer-valued float
+		{"integer_float_concise", `VALUETOTEXT(5.0)`, "5"},
+		{"integer_float_strict", `VALUETOTEXT(5.0,1)`, "5"},
+
+		// Additional: string with special characters
+		{"string_with_numbers", `VALUETOTEXT("abc123")`, "abc123"},
+		{"string_special_chars", `VALUETOTEXT("a-b_c")`, "a-b_c"},
+		{"string_strict_special", `VALUETOTEXT("a-b_c",1)`, `"a-b_c"`},
+
+		// Additional: boolean coerced from expression
+		{"bool_true_expr", `VALUETOTEXT(1=1)`, "TRUE"},
+		{"bool_false_expr", `VALUETOTEXT(1=2)`, "FALSE"},
+
+		// Additional: number from expression
+		{"expr_result", `VALUETOTEXT(2+3)`, "5"},
+		{"expr_result_strict", `VALUETOTEXT(2+3,1)`, "5"},
+
+		// Additional: negative zero
+		{"negative_zero", `VALUETOTEXT(0*-1)`, "0"},
+
+		// Additional: number one
+		{"number_one", `VALUETOTEXT(1)`, "1"},
 	}
 
 	for _, tt := range strTests {
@@ -3152,6 +3187,9 @@ func TestVALUETOTEXT(t *testing.T) {
 		{"too_many_args", `VALUETOTEXT(1,2,3)`},
 		{"invalid_format_2", `VALUETOTEXT(1,2)`},
 		{"invalid_format_neg", `VALUETOTEXT(1,-1)`},
+		{"invalid_format_3", `VALUETOTEXT("x",3)`},
+		{"invalid_format_99", `VALUETOTEXT("x",99)`},
+		{"format_arg_error", `VALUETOTEXT("hello","abc")`},
 	}
 
 	for _, tt := range errTests {
@@ -3187,6 +3225,42 @@ func TestVALUETOTEXT(t *testing.T) {
 		}
 		if got.Type != ValueError {
 			t.Errorf("VALUETOTEXT(NA()) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagation_ref", func(t *testing.T) {
+		cf := evalCompile(t, `VALUETOTEXT(#REF!)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("VALUETOTEXT(#REF!) = %v, want error", got)
+		}
+	})
+
+	// Via eval with inline expression in nested function
+	t.Run("nested_in_concat", func(t *testing.T) {
+		cf := evalCompile(t, `CONCAT(VALUETOTEXT(42),"-",VALUETOTEXT("hi",1))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := `42-"hi"`
+		if got.Type != ValueString || got.Str != want {
+			t.Errorf("got %v (%q), want %q", got, got.Str, want)
+		}
+	})
+
+	t.Run("in_len", func(t *testing.T) {
+		cf := evalCompile(t, `LEN(VALUETOTEXT("abc",1))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// "abc" with quotes = 5 chars
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
 		}
 	})
 }
@@ -3230,6 +3304,47 @@ func TestARRAYTOTEXT(t *testing.T) {
 		{"scalar_string_strict", `ARRAYTOTEXT("hello",1)`, `{"hello"}`},
 		{"scalar_bool", `ARRAYTOTEXT(TRUE)`, "TRUE"},
 		{"scalar_number_strict", `ARRAYTOTEXT(42,1)`, "{42}"},
+
+		// Additional: multi-row with strings
+		{"multirow_strings_concise", `ARRAYTOTEXT({"a","b";"c","d"})`, "a, b, c, d"},
+		{"multirow_strings_strict", `ARRAYTOTEXT({"a","b";"c","d"},1)`, `{"a","b";"c","d"}`},
+
+		// Additional: multi-row mixed types
+		{"multirow_mixed_concise", `ARRAYTOTEXT({1,"hi";TRUE,3.5})`, "1, hi, TRUE, 3.5"},
+		{"multirow_mixed_strict", `ARRAYTOTEXT({1,"hi";TRUE,3.5},1)`, `{1,"hi";TRUE,3.5}`},
+
+		// Additional: 3-column row
+		{"three_col_concise", `ARRAYTOTEXT({1,2,3;4,5,6})`, "1, 2, 3, 4, 5, 6"},
+		{"three_col_strict", `ARRAYTOTEXT({1,2,3;4,5,6},1)`, "{1,2,3;4,5,6}"},
+
+		// Additional: all booleans multi-row
+		{"bools_multirow_concise", `ARRAYTOTEXT({TRUE,FALSE;FALSE,TRUE})`, "TRUE, FALSE, FALSE, TRUE"},
+		{"bools_multirow_strict", `ARRAYTOTEXT({TRUE,FALSE;FALSE,TRUE},1)`, "{TRUE,FALSE;FALSE,TRUE}"},
+
+		// Additional: negative numbers in array
+		{"negatives_concise", `ARRAYTOTEXT({-1,-2,-3})`, "-1, -2, -3"},
+		{"negatives_strict", `ARRAYTOTEXT({-1,-2,-3},1)`, "{-1,-2,-3}"},
+
+		// Additional: single element array of string in strict
+		{"single_quoted_strict", `ARRAYTOTEXT({"hello"},1)`, `{"hello"}`},
+
+		// Additional: floats in multi-row strict
+		{"floats_multirow_strict", `ARRAYTOTEXT({1.1,2.2;3.3,4.4},1)`, "{1.1,2.2;3.3,4.4}"},
+
+		// Additional: scalar bool strict
+		{"scalar_bool_strict", `ARRAYTOTEXT(TRUE,1)`, "{TRUE}"},
+		{"scalar_false_strict", `ARRAYTOTEXT(FALSE,1)`, "{FALSE}"},
+
+		// Additional: large array concise
+		{"five_elem_concise", `ARRAYTOTEXT({10,20,30,40,50})`, "10, 20, 30, 40, 50"},
+		{"five_elem_strict", `ARRAYTOTEXT({10,20,30,40,50},1)`, "{10,20,30,40,50}"},
+
+		// Additional: single row all strings strict (quoted)
+		{"all_strings_strict", `ARRAYTOTEXT({"a","b","c"},1)`, `{"a","b","c"}`},
+
+		// Additional: scalar expression
+		{"scalar_expr_concise", `ARRAYTOTEXT(2+3)`, "5"},
+		{"scalar_expr_strict", `ARRAYTOTEXT(2+3,1)`, "{5}"},
 	}
 
 	for _, tt := range strTests {
@@ -3254,6 +3369,9 @@ func TestARRAYTOTEXT(t *testing.T) {
 		{"too_many_args", `ARRAYTOTEXT({1},2,3)`},
 		{"invalid_format_2", `ARRAYTOTEXT({1},2)`},
 		{"invalid_format_neg", `ARRAYTOTEXT({1},-1)`},
+		{"invalid_format_3", `ARRAYTOTEXT({1},3)`},
+		{"invalid_format_99", `ARRAYTOTEXT({1},99)`},
+		{"format_arg_error", `ARRAYTOTEXT({1},"abc")`},
 	}
 
 	for _, tt := range errTests {
@@ -3268,6 +3386,54 @@ func TestARRAYTOTEXT(t *testing.T) {
 			}
 		})
 	}
+
+	// Error propagation from array argument
+	t.Run("error_propagation_div0", func(t *testing.T) {
+		cf := evalCompile(t, `ARRAYTOTEXT(1/0)`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("ARRAYTOTEXT(1/0) = %v, want error", got)
+		}
+	})
+
+	t.Run("error_propagation_na", func(t *testing.T) {
+		cf := evalCompile(t, `ARRAYTOTEXT(NA())`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("ARRAYTOTEXT(NA()) = %v, want error", got)
+		}
+	})
+
+	// Nested in another function
+	t.Run("nested_in_len", func(t *testing.T) {
+		cf := evalCompile(t, `LEN(ARRAYTOTEXT({1,2,3}))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// "1, 2, 3" = 7 chars
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	t.Run("nested_strict_in_len", func(t *testing.T) {
+		cf := evalCompile(t, `LEN(ARRAYTOTEXT({1,2,3},1))`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// "{1,2,3}" = 7 chars
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
 }
 
 func TestTEXTBEFORE(t *testing.T) {
