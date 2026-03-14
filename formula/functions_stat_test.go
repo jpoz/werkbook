@@ -21440,6 +21440,48 @@ func TestT_INV_2T(t *testing.T) {
 		// Error: wrong arg count
 		{"err_too_few", "T.INV.2T(0.05)", 0, true, ErrValVALUE},
 		{"err_too_many", "T.INV.2T(0.05,10,1)", 0, true, ErrValVALUE},
+
+		// --- Additional comprehensive tests ---
+
+		// Various df values with p=0.05
+		{"p05_df5", "T.INV.2T(0.05,5)", 2.57058184, false, 0},
+		{"p05_df1000", "T.INV.2T(0.05,1000)", 1.96233876, false, 0},
+
+		// Small probability → large t-value
+		{"p001_df5", "T.INV.2T(0.001,5)", 6.86882663, false, 0},
+		{"p001_df30", "T.INV.2T(0.001,30)", 3.64595864, false, 0},
+		{"p001_df100", "T.INV.2T(0.001,100)", 3.39049131, false, 0},
+
+		// Large probability → small t-value
+		{"p80_df10", "T.INV.2T(0.80,10)", 0.26018483, false, 0},
+		{"p95_df10", "T.INV.2T(0.95,10)", 0.06429815, false, 0},
+		{"p99_df10", "T.INV.2T(0.99,10)", 0.01285028, false, 0},
+
+		// df=1 (Cauchy distribution, heavy tails)
+		{"p01_df1", "T.INV.2T(0.01,1)", 63.6567412, false, 0},
+		{"p50_df1", "T.INV.2T(0.5,1)", 1.0, false, 0},
+
+		// Cross-check: T.INV.2T(p, df) = T.INV(1-p/2, df)
+		// T.INV(0.975, 10) = 2.22813885, T.INV.2T(0.05, 10) = 2.22813885
+		{"cross_tinv_p05_df10", "T.INV.2T(0.05,10)-T.INV(1-0.05/2,10)", 0, false, 0},
+		{"cross_tinv_p01_df5", "T.INV.2T(0.01,5)-T.INV(1-0.01/2,5)", 0, false, 0},
+
+		// Round-trip: T.DIST.2T(T.INV.2T(p, df), df) ≈ p
+		{"roundtrip_p05_df10", "T.DIST.2T(T.INV.2T(0.05,10),10)", 0.05, false, 0},
+		{"roundtrip_p01_df30", "T.DIST.2T(T.INV.2T(0.01,30),30)", 0.01, false, 0},
+		{"roundtrip_p50_df5", "T.DIST.2T(T.INV.2T(0.5,5),5)", 0.5, false, 0},
+		{"roundtrip_p90_df20", "T.DIST.2T(T.INV.2T(0.9,20),20)", 0.9, false, 0},
+
+		// Boolean coercion: TRUE → 1, FALSE → 0
+		{"bool_p_true_df5", "T.INV.2T(TRUE,5)", 0, false, 0},             // T.INV.2T(1,5) = 0
+		{"bool_df_true", "T.INV.2T(0.05,TRUE)", 12.7062047, false, 0},    // T.INV.2T(0.05,1)
+		{"bool_p_false_err", "T.INV.2T(FALSE,10)", 0, true, ErrValNUM},   // p=0 → #NUM!
+
+		// Edge: p very close to 0 (but positive)
+		{"p_tiny", "T.INV.2T(0.0001,10)", 6.21105089, false, 0},
+
+		// Edge: df fractional truncation
+		{"trunc_df_1_9", "T.INV.2T(0.05,1.9)", 12.7062047, false, 0}, // truncates to 1
 	}
 
 	for _, tt := range tests {
@@ -31355,6 +31397,56 @@ func TestTTEST(t *testing.T) {
 		// Tails and type truncation (1.9 → 1, 2.7 → 2).
 		{"tails_truncated", "T.TEST(A1:A9,B1:B9,1.9,1)", 0.098008, false, 0},
 		{"type_truncated", "T.TEST(A1:A9,B1:B9,2,1.7)", 0.196016, false, 0},
+
+		// --- Additional comprehensive tests ---
+
+		// Two-tailed p = 2 * one-tailed p (verify relationship)
+		{"eq_var_1t_literal", "T.TEST({10,20,30,40,50},{15,25,35,45,55},1,2)", 0.315268, false, 0},
+		{"eq_var_2t_literal", "T.TEST({10,20,30,40,50},{15,25,35,45,55},2,2)", 0.630536, false, 0},
+
+		// Very significant difference → p near 0
+		{"very_sig_eq_var", "T.TEST({1,2,3,4,5},{100,200,300,400,500},2,2)", 0.002996, false, 0},
+		{"very_sig_uneq_var", "T.TEST({1,2,3,4,5},{100,200,300,400,500},2,3)", 0.013690, false, 0},
+
+		// No difference between means → p near 1 (type 2)
+		{"no_diff_eq_var", "T.TEST({1,3,5,7,9},{2,4,6,8,10},2,2)", 0.630536, false, 0},
+
+		// Large arrays (n=10) with controlled data
+		{"large_paired_2t", "T.TEST({1,2,3,4,5,6,7,8,9,10},{2,3,4,5,6,7,8,9,10,11},2,1)", 0, true, ErrValDIV0}, // constant diff → #DIV/0!
+		{"large_eq_var_2t", "T.TEST({1,2,3,4,5,6,7,8,9,10},{2,3,4,5,6,7,8,9,10,11},2,2)", 0.469702, false, 0},
+
+		// Small arrays (n=2) — minimum valid paired
+		{"small_paired_2t", "T.TEST({1,5},{3,2},2,1)", 0.874334, false, 0},
+		{"small_eq_var_2t", "T.TEST({1,5},{3,2},2,2)", 0.830969, false, 0},
+		{"small_uneq_var_2t", "T.TEST({1,5},{3,2},2,3)", 0.845028, false, 0},
+
+		// Different size arrays (type 2 and 3 only) — asymmetric sizes
+		{"diff_size_3v7_eq", "T.TEST({1,2,3},{10,11,12,13,14,15,16},2,2)", 0.000036, false, 0},
+		{"diff_size_3v7_uneq", "T.TEST({1,2,3},{10,11,12,13,14,15,16},2,3)", 0.000005, false, 0},
+
+		// Negative tails value
+		{"tails_neg", "T.TEST(A1:A9,B1:B9,-1,1)", 0, true, ErrValNUM},
+
+		// Negative type value
+		{"type_neg", "T.TEST(A1:A9,B1:B9,2,-1)", 0, true, ErrValNUM},
+
+		// Type 3 truncation: 3.9 → 3
+		{"type_3_truncated", "T.TEST(A1:A9,B1:B9,2,3.9)", 0.202294, false, 0},
+
+		// Paired with non-constant differences
+		{"paired_const_diff_3", "T.TEST({10,20,30},{1,2,3},2,1)", 0.074180, false, 0},
+		{"paired_mixed_diff", "T.TEST({10,20,30},{5,12,35},2,1)", 0.567410, false, 0},
+
+		// Boolean coercion in tails/type
+		{"tails_bool_true", "T.TEST(A1:A9,B1:B9,TRUE,1)", 0.098008, false, 0},  // TRUE=1 → 1 tail
+		{"type_bool_true", "T.TEST(A1:A9,B1:B9,2,TRUE)", 0.196016, false, 0},   // TRUE=1 → paired
+		{"tails_bool_false", "T.TEST(A1:A9,B1:B9,FALSE,1)", 0, true, ErrValNUM}, // FALSE=0 → invalid
+
+		// Welch's unequal variance with very different variances
+		{"welch_diff_var", "T.TEST({1,1,1,1,100},{50,50,50,50,50},2,3)", 0.214301, false, 0},
+
+		// Error propagation: error in array
+		{"err_in_array1", "T.TEST({1,2,1/0},{4,5,6},2,1)", 0, true, ErrValDIV0},
 	}
 
 	for _, tt := range tests {

@@ -389,11 +389,11 @@ Werkbook supports **446** spreadsheet formula functions.
 | SYD | Returns sum-of-years'-digits depreciation for a period. | Financial | 27 |
 | T | Returns text when a value is text, otherwise an empty string. | Text | 21 |
 | T.DIST | Returns the Student's t-distribution. | Statistical | 41 |
-| T.DIST.2T | Returns the two-tailed Student's t-distribution. | Statistical | 28 |
+| T.DIST.2T | Returns the two-tailed Student's t-distribution. | Statistical | 32 |
 | T.DIST.RT | Returns the right-tailed Student's t-distribution. | Statistical | 27 |
 | T.INV | Returns the inverse of the Student's t cumulative distribution. | Statistical | 33 |
-| T.INV.2T | Returns the inverse of the two-tailed Student's t-distribution. | Statistical | 20 |
-| T.TEST | Returns the probability associated with a Student's t-test. | Statistical | 34 |
+| T.INV.2T | Returns the inverse of the two-tailed Student's t-distribution. | Statistical | 37 |
+| T.TEST | Returns the probability associated with a Student's t-test. | Statistical | 56 |
 | TAKE | Returns a requested number of rows or columns from an array. | Lookup & Reference | 30 |
 | TAN | Returns the tangent of an angle. | Math & Trig | 23 |
 | TANH | Returns the hyperbolic tangent of a number. | Math & Trig | 27 |
