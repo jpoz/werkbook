@@ -314,7 +314,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | POISSON.DIST | Returns the Poisson distribution. | Statistical | 26 |
 | POWER | Returns a number raised to a power. | Math & Trig | 49 |
 | PPMT | Returns the principal portion of a payment for a given period. | Financial | 2 |
-| PRICE | Returns the price per 100 face value of a coupon-paying security. | Financial | 3 |
+| PRICE | Returns the price per 100 face value of a coupon-paying security. | Financial | 24 |
 | PRICEDISC | Returns the price per 100 face value of a discounted security. | Financial | 3 |
 | PRICEMAT | Returns the price per 100 face value of a security that pays interest at maturity. | Financial | 3 |
 | PROB | Returns the probability that values fall within a range. | Statistical | 27 |
@@ -446,7 +446,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | XOR | Returns TRUE when an odd number of supplied conditions are TRUE. | Logical | 34 |
 | YEAR | Returns the year from a date. | Date & Time | 26 |
 | YEARFRAC | Returns the fraction of a year between two dates. | Date & Time | 38 |
-| YIELD | Returns the yield of a coupon-paying security. | Financial | 2 |
+| YIELD | Returns the yield of a coupon-paying security. | Financial | 19 |
 | YIELDDISC | Returns the annual yield of a discounted security. | Financial | 3 |
 | YIELDMAT | Returns the annual yield of a security that pays interest at maturity. | Financial | 3 |
 | Z.TEST | Returns the one-tailed probability value of a z-test. | Statistical | 22 |

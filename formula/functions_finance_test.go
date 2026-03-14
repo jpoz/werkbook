@@ -13689,6 +13689,431 @@ func TestPRICE_YIELD_RoundTrip(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// PRICE — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestPRICE_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Par bonds (rate == yield → price ≈ 100) ---
+		{name: "par bond annual", args: numArgs(43832, 47485, 0.05, 0.05, 100, 1, 0), want: 100.0000},
+		{name: "par bond semi", args: numArgs(43832, 47485, 0.05, 0.05, 100, 2, 0), want: 100.0000},
+		{name: "par bond quarterly", args: numArgs(43832, 47485, 0.05, 0.05, 100, 4, 0), want: 100.0000},
+
+		// --- Premium bonds (rate > yield → price > 100) ---
+		{name: "premium annual 8/5", args: numArgs(43832, 47485, 0.08, 0.05, 100, 1, 0), want: 123.1652},
+		{name: "premium semi 10/6", args: numArgs(43832, 47485, 0.10, 0.06, 100, 2, 0), want: 129.7549},
+		{name: "premium quarterly 12/8", args: numArgs(43832, 47485, 0.12, 0.08, 100, 4, 0), want: 127.3555},
+
+		// --- Discount bonds (rate < yield → price < 100) ---
+		{name: "discount annual 3/6", args: numArgs(43832, 47485, 0.03, 0.06, 100, 1, 0), want: 77.9197},
+		{name: "discount semi 2/5", args: numArgs(43832, 47485, 0.02, 0.05, 100, 2, 0), want: 76.6163},
+		{name: "discount quarterly 1/4", args: numArgs(43832, 47485, 0.01, 0.04, 100, 4, 0), want: 75.3740},
+
+		// --- All 5 basis types with consistent parameters ---
+		// settlement=1/15/2020 (43846), maturity=1/15/2030 (47499), rate=0.06, yld=0.07, freq=2
+		{name: "basis 0 comprehensive", args: numArgs(43846, 47499, 0.06, 0.07, 100, 2, 0), want: 92.8938},
+		{name: "basis 1 comprehensive", args: numArgs(43846, 47499, 0.06, 0.07, 100, 2, 1), want: 92.8938},
+		{name: "basis 2 comprehensive", args: numArgs(43846, 47499, 0.06, 0.07, 100, 2, 2), want: 92.8583},
+		{name: "basis 3 comprehensive", args: numArgs(43846, 47499, 0.06, 0.07, 100, 2, 3), want: 92.9026},
+		{name: "basis 4 comprehensive", args: numArgs(43846, 47499, 0.06, 0.07, 100, 2, 4), want: 92.8938},
+
+		// --- Zero coupon ---
+		{name: "zero coupon 5yr semi", args: numArgs(43832, 45659, 0, 0.05, 100, 2, 0), want: 78.1198},
+		{name: "zero coupon 10yr annual", args: numArgs(43832, 47485, 0, 0.08, 100, 1, 0), want: 46.3193},
+		{name: "zero coupon 2yr quarterly", args: numArgs(43832, 44563, 0, 0.04, 100, 4, 0), want: 92.3483},
+
+		// --- Short term bond (< 1 coupon period) ---
+		// settlement=3/1/2020 (43892), maturity=6/1/2020 (43984), freq=2
+		{name: "short term semi", args: numArgs(43892, 43984, 0.05, 0.04, 100, 2, 0), want: 100.2351},
+		// settlement=5/1/2020 (43953), maturity=6/1/2020 (43984), freq=4
+		{name: "short term quarterly very short", args: numArgs(43953, 43984, 0.06, 0.05, 100, 4, 0), want: 100.0788},
+
+		// --- Long term bond (30 years) ---
+		// settlement=1/1/2020 (43832), maturity=1/1/2050 (54790), rate=0.04, yld=0.05, freq=2
+		{name: "30yr bond semi", args: numArgs(43832, 54790, 0.04, 0.05, 100, 2, 0), want: 84.5457},
+		// settlement=1/1/2020 (43832), maturity=1/1/2050 (54790), rate=0.04, yld=0.05, freq=1
+		{name: "30yr bond annual", args: numArgs(43832, 54790, 0.04, 0.05, 100, 1, 0), want: 84.6275},
+
+		// --- High yield (20%) ---
+		{name: "high yield 20% 10yr", args: numArgs(43832, 47485, 0.05, 0.20, 100, 2, 0), want: 36.1483},
+
+		// --- Low yield (1%) ---
+		{name: "low yield 1% 10yr", args: numArgs(43832, 47485, 0.05, 0.01, 100, 2, 0), want: 137.9748},
+
+		// --- High coupon (15%) ---
+		{name: "high coupon 15%", args: numArgs(43832, 47485, 0.15, 0.06, 100, 2, 0), want: 166.9486},
+
+		// --- Low coupon (0.5%) ---
+		{name: "low coupon 0.5%", args: numArgs(43832, 47485, 0.005, 0.06, 100, 2, 0), want: 59.0869},
+
+		// --- Redemption != 100 ---
+		{name: "redemption 105 call", args: numArgs(43832, 47485, 0.05, 0.06, 105, 2, 0), want: 95.3296},
+		{name: "redemption 95", args: numArgs(43832, 47485, 0.05, 0.06, 95, 2, 0), want: 89.7929},
+		{name: "redemption 50", args: numArgs(43832, 47485, 0.05, 0.06, 50, 2, 0), want: 64.8775},
+
+		// --- Zero yield ---
+		{name: "zero yield 10yr semi", args: numArgs(43832, 47485, 0.05, 0, 100, 2, 0), want: 150.0000},
+		{name: "zero yield zero coupon", args: numArgs(43832, 47485, 0, 0, 100, 2, 0), want: 100.0000},
+
+		// --- Very short maturity, 1 day apart ---
+		// settlement=1/1/2020 (43832), maturity=1/2/2020 (43833), freq=1
+		{name: "very short 1day", args: numArgs(43832, 43833, 0.05, 0.05, 100, 1, 0), want: 99.9993},
+
+		// --- Quarterly with basis 3 ---
+		{name: "quarterly basis 3", args: numArgs(43832, 47485, 0.06, 0.07, 100, 4, 3), want: 92.8559},
+
+		// --- Annual with basis 2 ---
+		{name: "annual basis 2", args: numArgs(43832, 47485, 0.06, 0.07, 100, 1, 2), want: 92.8716},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPrice(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+// TestPRICE_Errors tests all error conditions comprehensively.
+func TestPRICE_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{name: "too few 5 args", args: numArgs(39494, 43055, 0.0575, 0.065, 100)},
+		{name: "too many 8 args", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 2, 0, 1)},
+		{name: "negative rate -0.01", args: numArgs(39494, 43055, -0.01, 0.065, 100, 2, 0)},
+		{name: "negative yield -0.001", args: numArgs(39494, 43055, 0.0575, -0.001, 100, 2, 0)},
+		{name: "zero redemption", args: numArgs(39494, 43055, 0.0575, 0.065, 0, 2, 0)},
+		{name: "negative redemption -50", args: numArgs(39494, 43055, 0.0575, 0.065, -50, 2, 0)},
+		{name: "settlement after maturity", args: numArgs(43055, 39494, 0.0575, 0.065, 100, 2, 0)},
+		{name: "settlement equals maturity", args: numArgs(39494, 39494, 0.0575, 0.065, 100, 2, 0)},
+		{name: "invalid frequency 3", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 3, 0)},
+		{name: "invalid frequency 0", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 0, 0)},
+		{name: "invalid frequency 5", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 5, 0)},
+		{name: "invalid frequency -1", args: numArgs(39494, 43055, 0.0575, 0.065, 100, -1, 0)},
+		{name: "invalid basis -1", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 2, -1)},
+		{name: "invalid basis 5", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 2, 5)},
+		{name: "invalid basis 6", args: numArgs(39494, 43055, 0.0575, 0.065, 100, 2, 6)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnPrice(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+// TestPRICE_ViaEval_Comprehensive tests PRICE through the formula evaluation path.
+func TestPRICE_ViaEval_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr bool
+	}{
+		// Par bond
+		{name: "par bond eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.06,0.06,100,2,0)", want: 100.0000},
+		// Premium bond
+		{name: "premium bond eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.08,0.05,100,2,0)", want: 123.3837},
+		// Discount bond
+		{name: "discount bond eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.03,0.06,100,2,0)", want: 77.6838},
+		// All frequencies
+		{name: "annual eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.05,0.06,100,1,0)", want: 92.6399},
+		{name: "semi eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.05,0.06,100,2,0)", want: 92.5613},
+		{name: "quarterly eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.05,0.06,100,4,0)", want: 92.5210},
+		// All basis types
+		{name: "basis 0 eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,0)", want: 94.6344},
+		{name: "basis 1 eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,1)", want: 94.6354},
+		{name: "basis 2 eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,2)", want: 94.6024},
+		{name: "basis 3 eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,3)", want: 94.6436},
+		{name: "basis 4 eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,4)", want: 94.6344},
+		// Zero coupon
+		{name: "zero coupon eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0,0.06,100,2,0)", want: 55.3676},
+		// Default basis (omit)
+		{name: "default basis eval", formula: "PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2)", want: 94.6344},
+		// High coupon
+		{name: "high coupon 15% eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.15,0.06,100,2,0)", want: 166.9486},
+		// Non-100 redemption
+		{name: "redemption 110 eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),0.05,0.06,110,2,0)", want: 98.0980},
+		// Error: settlement >= maturity
+		{name: "error settle>=mat eval", formula: "PRICE(DATE(2030,1,1),DATE(2020,1,1),0.05,0.06,100,2,0)", wantErr: true},
+		// Error: negative rate
+		{name: "error neg rate eval", formula: "PRICE(DATE(2020,1,1),DATE(2030,1,1),-0.05,0.06,100,2,0)", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			v, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// YIELD — comprehensive additional tests
+// ---------------------------------------------------------------------------
+
+func TestYIELD_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []Value
+		want    float64
+		wantErr bool
+	}{
+		// --- Par bonds (price=100 → yield ≈ rate) ---
+		{name: "par bond annual 5%", args: numArgs(43832, 47485, 0.05, 100.0, 100, 1, 0), want: 0.0500},
+		{name: "par bond semi 6%", args: numArgs(43832, 47485, 0.06, 100.0, 100, 2, 0), want: 0.0600},
+		{name: "par bond quarterly 4%", args: numArgs(43832, 47485, 0.04, 100.0, 100, 4, 0), want: 0.0400},
+
+		// --- Premium bonds (price > 100 → yield < rate) ---
+		{name: "premium bond 110", args: numArgs(43832, 47485, 0.08, 110.0, 100, 2, 0), want: 0.0662},
+		{name: "premium bond 120", args: numArgs(43832, 47485, 0.08, 120.0, 100, 2, 0), want: 0.0539},
+		{name: "premium bond 130", args: numArgs(43832, 47485, 0.10, 130.0, 100, 2, 0), want: 0.0597},
+
+		// --- Discount bonds (price < 100 → yield > rate) ---
+		{name: "discount bond 90", args: numArgs(43832, 47485, 0.05, 90.0, 100, 2, 0), want: 0.0637},
+		{name: "discount bond 80", args: numArgs(43832, 47485, 0.05, 80.0, 100, 2, 0), want: 0.0793},
+		{name: "discount bond deep 50", args: numArgs(43832, 47485, 0.05, 50.0, 100, 2, 0), want: 0.1470},
+
+		// --- All 5 basis types ---
+		// Using round-trip values from PRICE: settlement=1/15/2020 (43846), maturity=1/15/2030 (47499)
+		{name: "yield basis 0", args: numArgs(43846, 47499, 0.06, 92.8938, 100, 2, 0), want: 0.0700},
+		{name: "yield basis 1", args: numArgs(43846, 47499, 0.06, 92.8938, 100, 2, 1), want: 0.0700},
+		{name: "yield basis 2", args: numArgs(43846, 47499, 0.06, 92.8583, 100, 2, 2), want: 0.0700},
+		{name: "yield basis 3", args: numArgs(43846, 47499, 0.06, 92.9026, 100, 2, 3), want: 0.0700},
+		{name: "yield basis 4", args: numArgs(43846, 47499, 0.06, 92.8938, 100, 2, 4), want: 0.0700},
+
+		// --- Zero coupon (rate=0) ---
+		{name: "zero coupon 5yr", args: numArgs(43832, 45659, 0, 78.1198, 100, 2, 0), want: 0.0500},
+		{name: "zero coupon 10yr", args: numArgs(43832, 47485, 0, 46.3193, 100, 1, 0), want: 0.0800},
+		{name: "zero coupon 2yr", args: numArgs(43832, 44563, 0, 92.3483, 100, 4, 0), want: 0.0400},
+
+		// --- Single coupon period (N=1) ---
+		{name: "single period semi", args: numArgs(43892, 43984, 0.05, 100.2351, 100, 2, 0), want: 0.0400},
+		{name: "single period quarterly", args: numArgs(43953, 43984, 0.06, 100.0788, 100, 4, 0), want: 0.0500},
+
+		// --- Long term (30 years) ---
+		{name: "30yr yield from price", args: numArgs(43832, 54790, 0.04, 84.5457, 100, 2, 0), want: 0.0500},
+
+		// --- High yield scenario ---
+		{name: "high yield 20%", args: numArgs(43832, 47485, 0.05, 36.1483, 100, 2, 0), want: 0.2000},
+
+		// --- Low yield scenario ---
+		{name: "low yield 1%", args: numArgs(43832, 47485, 0.05, 137.9748, 100, 2, 0), want: 0.0100},
+
+		// --- Non-100 redemption ---
+		{name: "redemption 105", args: numArgs(43832, 47485, 0.05, 95.3296, 105, 2, 0), want: 0.0600},
+		{name: "redemption 95", args: numArgs(43832, 47485, 0.05, 89.7929, 95, 2, 0), want: 0.0600},
+
+		// --- Default basis (6 args) ---
+		{name: "default basis yield", args: numArgs(43832, 47485, 0.05, 92.5613, 100, 2), want: 0.0600},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnYield(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+// TestYIELD_Errors tests all error conditions comprehensively.
+func TestYIELD_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []Value
+	}{
+		{name: "too few 5 args", args: numArgs(39494, 43055, 0.0575, 95, 100)},
+		{name: "too many 8 args", args: numArgs(39494, 43055, 0.0575, 95, 100, 2, 0, 1)},
+		{name: "negative rate -0.05", args: numArgs(39494, 43055, -0.05, 95, 100, 2, 0)},
+		{name: "negative rate -0.001", args: numArgs(39494, 43055, -0.001, 95, 100, 2, 0)},
+		{name: "zero price", args: numArgs(39494, 43055, 0.0575, 0, 100, 2, 0)},
+		{name: "negative price -10", args: numArgs(39494, 43055, 0.0575, -10, 100, 2, 0)},
+		{name: "negative price -0.01", args: numArgs(39494, 43055, 0.0575, -0.01, 100, 2, 0)},
+		{name: "zero redemption", args: numArgs(39494, 43055, 0.0575, 95, 0, 2, 0)},
+		{name: "negative redemption", args: numArgs(39494, 43055, 0.0575, 95, -100, 2, 0)},
+		{name: "settlement after maturity", args: numArgs(43055, 39494, 0.0575, 95, 100, 2, 0)},
+		{name: "settlement equals maturity", args: numArgs(39494, 39494, 0.0575, 95, 100, 2, 0)},
+		{name: "invalid frequency 3", args: numArgs(39494, 43055, 0.0575, 95, 100, 3, 0)},
+		{name: "invalid frequency 0", args: numArgs(39494, 43055, 0.0575, 95, 100, 0, 0)},
+		{name: "invalid frequency 5", args: numArgs(39494, 43055, 0.0575, 95, 100, 5, 0)},
+		{name: "invalid frequency -2", args: numArgs(39494, 43055, 0.0575, 95, 100, -2, 0)},
+		{name: "invalid basis -1", args: numArgs(39494, 43055, 0.0575, 95, 100, 2, -1)},
+		{name: "invalid basis 5", args: numArgs(39494, 43055, 0.0575, 95, 100, 2, 5)},
+		{name: "invalid basis 10", args: numArgs(39494, 43055, 0.0575, 95, 100, 2, 10)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v, err := fnYield(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertError(t, tc.name, v)
+		})
+	}
+}
+
+// TestYIELD_ViaEval_Comprehensive tests YIELD through the formula evaluation path.
+func TestYIELD_ViaEval_Comprehensive(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		want    float64
+		wantErr bool
+	}{
+		// Par bond
+		{name: "par bond eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.06,100,100,2,0)", want: 0.0600},
+		// Premium bond
+		{name: "premium bond eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.08,120,100,2,0)", want: 0.0539},
+		// Discount bond
+		{name: "discount bond eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.03,80,100,2,0)", want: 0.0564},
+		// All frequencies
+		{name: "annual eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.05,92.6399,100,1,0)", want: 0.0600},
+		{name: "semi eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.05,92.5613,100,2,0)", want: 0.0600},
+		{name: "quarterly eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.05,92.5210,100,4,0)", want: 0.0600},
+		// Basis types
+		{name: "basis 0 eval", formula: "YIELD(DATE(2008,2,15),DATE(2017,11,15),0.0575,94.6344,100,2,0)", want: 0.0650},
+		{name: "basis 1 eval", formula: "YIELD(DATE(2008,2,15),DATE(2017,11,15),0.0575,94.6354,100,2,1)", want: 0.0650},
+		{name: "basis 3 eval", formula: "YIELD(DATE(2008,2,15),DATE(2017,11,15),0.0575,94.6436,100,2,3)", want: 0.0650},
+		// Zero coupon
+		{name: "zero coupon eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0,55.3676,100,2,0)", want: 0.0600},
+		// Default basis
+		{name: "default basis eval", formula: "YIELD(DATE(2008,2,15),DATE(2016,11,15),0.0575,95.04287,100,2)", want: 0.0650},
+		// Error: settlement >= maturity
+		{name: "error settle>=mat eval", formula: "YIELD(DATE(2030,1,1),DATE(2020,1,1),0.05,95,100,2,0)", wantErr: true},
+		// Error: negative rate
+		{name: "error neg rate eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),-0.05,95,100,2,0)", wantErr: true},
+		// Error: zero price
+		{name: "error zero price eval", formula: "YIELD(DATE(2020,1,1),DATE(2030,1,1),0.05,0,100,2,0)", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			v, err := Eval(cf, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantErr {
+				assertError(t, tc.name, v)
+			} else {
+				assertClose(t, tc.name, v, tc.want)
+			}
+		})
+	}
+}
+
+// TestPRICE_YIELD_RoundTrip_Comprehensive verifies that YIELD(PRICE(yld)) ≈ yld
+// for a much wider variety of inputs than the original round-trip test.
+func TestPRICE_YIELD_RoundTrip_Comprehensive(t *testing.T) {
+	type roundTrip struct {
+		name                  string
+		settlement, maturity  float64
+		rate, yld, redemption float64
+		freq, basis           int
+	}
+
+	trips := []roundTrip{
+		// All basis types
+		{"basis 0 rt", 43846, 47499, 0.06, 0.07, 100, 2, 0},
+		{"basis 1 rt", 43846, 47499, 0.06, 0.07, 100, 2, 1},
+		{"basis 2 rt", 43846, 47499, 0.06, 0.07, 100, 2, 2},
+		{"basis 3 rt", 43846, 47499, 0.06, 0.07, 100, 2, 3},
+		{"basis 4 rt", 43846, 47499, 0.06, 0.07, 100, 2, 4},
+		// All frequencies
+		{"annual rt", 43832, 47485, 0.05, 0.06, 100, 1, 0},
+		{"semi rt", 43832, 47485, 0.05, 0.06, 100, 2, 0},
+		{"quarterly rt", 43832, 47485, 0.05, 0.06, 100, 4, 0},
+		// Par bonds
+		{"par 5% rt", 43832, 47485, 0.05, 0.05, 100, 2, 0},
+		{"par 8% rt", 43832, 47485, 0.08, 0.08, 100, 2, 0},
+		// Premium bond
+		{"premium rt", 43832, 47485, 0.10, 0.05, 100, 2, 0},
+		// Deep discount
+		{"deep discount rt", 43832, 47485, 0.01, 0.10, 100, 2, 0},
+		// Zero coupon
+		{"zero coupon rt", 43832, 47485, 0, 0.06, 100, 2, 0},
+		// High yield
+		{"high yield 15% rt", 43832, 47485, 0.05, 0.15, 100, 2, 0},
+		// Low yield
+		{"low yield 0.5% rt", 43832, 47485, 0.05, 0.005, 100, 2, 0},
+		// Non-100 redemption
+		{"redemption 105 rt", 43832, 47485, 0.05, 0.06, 105, 2, 0},
+		{"redemption 95 rt", 43832, 47485, 0.05, 0.06, 95, 2, 0},
+		{"redemption 110 rt", 43832, 47485, 0.05, 0.06, 110, 2, 0},
+		// Long bond
+		{"30yr semi long rt", 43832, 54790, 0.04, 0.05, 100, 2, 0},
+		// Short bond (single period)
+		{"single period semi rt", 43892, 43984, 0.05, 0.04, 100, 2, 0},
+		// High coupon
+		{"high coupon 15% rt", 43832, 47485, 0.15, 0.06, 100, 2, 0},
+		// Low coupon
+		{"low coupon 0.5% rt", 43832, 47485, 0.005, 0.06, 100, 2, 0},
+		// 2 year quarterly basis 1
+		{"2yr quarterly b1 rt", 43832, 44563, 0.04, 0.05, 100, 4, 1},
+	}
+
+	for _, tr := range trips {
+		t.Run(tr.name, func(t *testing.T) {
+			// Compute price from yield.
+			pv, err := fnPrice(numArgs(tr.settlement, tr.maturity, tr.rate, tr.yld, tr.redemption, float64(tr.freq), float64(tr.basis)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pv.Type != ValueNumber {
+				t.Fatalf("PRICE: expected number, got %v (%s)", pv.Type, pv.Str)
+			}
+
+			// Compute yield from that price.
+			yv, err := fnYield(numArgs(tr.settlement, tr.maturity, tr.rate, pv.Num, tr.redemption, float64(tr.freq), float64(tr.basis)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if yv.Type != ValueNumber {
+				t.Fatalf("YIELD: expected number, got %v (%s)", yv.Type, yv.Str)
+			}
+
+			if math.Abs(yv.Num-tr.yld) > 1e-6 {
+				t.Errorf("round-trip: got yield %f, want %f (price was %f)", yv.Num, tr.yld, pv.Num)
+			}
+		})
+	}
+}
+
 // === FVSCHEDULE ===
 
 func TestFVSchedule_Comprehensive(t *testing.T) {
