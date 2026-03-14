@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -990,6 +991,7 @@ func TestMOD(t *testing.T) {
 		formula string
 		wantNum float64
 	}{
+		// Original tests
 		{"positive_mod", "MOD(10,3)", 1},
 		{"exact_divisor", "MOD(10,5)", 0},
 		{"negative_dividend", "MOD(-10,3)", 2},
@@ -997,6 +999,58 @@ func TestMOD(t *testing.T) {
 		{"both_negative", "MOD(-10,-3)", -1},
 		{"fractional", "MOD(7.5,2)", 1.5},
 		{"small_divisor_ok", "MOD(10,0.1)", 0},
+
+		// Basic cases
+		{"basic_10_3", "MOD(10,3)", 1},
+		{"basic_3_2", "MOD(3,2)", 1},
+		{"basic_17_5", "MOD(17,5)", 2},
+		{"basic_100_7", "MOD(100,7)", 2},
+
+		// Zero dividend
+		{"zero_dividend", "MOD(0,5)", 0},
+		{"zero_dividend_neg_divisor", "MOD(0,-3)", 0},
+
+		// Number mod itself = 0
+		{"self_mod", "MOD(5,5)", 0},
+		{"self_mod_large", "MOD(123,123)", 0},
+		{"self_mod_neg", "MOD(-7,-7)", 0},
+
+		// Mod by 1 = 0 for integers
+		{"mod_by_1", "MOD(5,1)", 0},
+		{"mod_by_1_large", "MOD(999,1)", 0},
+		{"mod_by_1_neg_num", "MOD(-5,1)", 0},
+
+		// Sign follows divisor (Excel semantics)
+		{"sign_follows_divisor_pos", "MOD(3,2)", 1},
+		{"sign_follows_divisor_neg_d", "MOD(3,-2)", -1},
+		{"sign_follows_divisor_neg_n", "MOD(-3,2)", 1},
+		{"sign_follows_divisor_both_neg", "MOD(-3,-2)", -1},
+
+		// Decimal arguments
+		{"decimal_5_5_div_2", "MOD(5.5,2)", 1.5},
+		{"decimal_2_5_div_1_5", "MOD(2.5,1.5)", 1},
+		{"decimal_small", "MOD(0.7,0.3)", 0.1},
+		{"decimal_neg_dividend", "MOD(-5.5,2)", 0.5},
+		{"decimal_neg_divisor", "MOD(5.5,-2)", -0.5},
+
+		// Small divisor (near zero but not zero)
+		{"small_divisor_0_01", "MOD(1,0.01)", 0},
+		{"small_divisor_0_001", "MOD(1,0.001)", 0},
+
+		// Larger numbers within precision threshold
+		{"large_nums_ok", "MOD(10000,3)", 1},
+		{"large_nums_ok2", "MOD(999999,7)", 999999 - 142857*7},
+
+		// String coercion
+		{"string_num", `MOD("10","3")`, 1},
+		{"string_dividend", `MOD("10",3)`, 1},
+		{"string_divisor", `MOD(10,"3")`, 1},
+
+		// Boolean coercion
+		{"bool_true_dividend", "MOD(TRUE,2)", 1},
+		{"bool_false_dividend", "MOD(FALSE,5)", 0},
+		{"bool_true_divisor", "MOD(10,TRUE)", 0},
+		{"bool_true_both", "MOD(TRUE,TRUE)", 0},
 	}
 
 	const epsilon = 1e-10
@@ -1022,10 +1076,31 @@ func TestMOD(t *testing.T) {
 	}{
 		// Division by zero -> #DIV/0!
 		{"div_by_zero", "MOD(10,0)", ErrValDIV0},
+		{"div_by_zero_neg_num", "MOD(-5,0)", ErrValDIV0},
+		{"div_zero_by_zero", "MOD(0,0)", ErrValDIV0},
+
 		// Precision overflow: |n/d| >= 1e13 -> #NUM!
-		{"precision_overflow", "MOD(100,-1e-15)", ErrValNUM},
-		{"precision_overflow_large", "MOD(1e18,1)", ErrValNUM},
-		{"precision_overflow", "MOD(10^15,7)", ErrValNUM},
+		{"precision_overflow_tiny_neg_d", "MOD(100,-1e-15)", ErrValNUM},
+		{"precision_overflow_large_n", "MOD(1e18,1)", ErrValNUM},
+		{"precision_overflow_power", "MOD(10^15,7)", ErrValNUM},
+
+		// Wrong argument count
+		{"no_args", "MOD()", ErrValVALUE},
+		{"one_arg", "MOD(5)", ErrValVALUE},
+		{"three_args", "MOD(5,3,1)", ErrValVALUE},
+
+		// Non-numeric strings -> #VALUE!
+		{"non_numeric_num", `MOD("abc",2)`, ErrValVALUE},
+		{"non_numeric_den", `MOD(2,"abc")`, ErrValVALUE},
+		{"non_numeric_both", `MOD("abc","def")`, ErrValVALUE},
+
+		// Error propagation
+		{"err_div0_num", "MOD(1/0,2)", ErrValDIV0},
+		{"err_div0_den", "MOD(2,1/0)", ErrValDIV0},
+		{"err_na_num", "MOD(NA(),2)", ErrValNA},
+
+		// Boolean FALSE as divisor (coerces to 0 -> #DIV/0!)
+		{"bool_false_divisor", "MOD(5,FALSE)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
@@ -9410,39 +9485,68 @@ func TestQUOTIENT(t *testing.T) {
 		{"7_div_2", "QUOTIENT(7,2)", 3},
 		{"100_div_10", "QUOTIENT(100,10)", 10},
 		{"1_div_1", "QUOTIENT(1,1)", 1},
+		{"17_div_5", "QUOTIENT(17,5)", 3},
+		{"99_div_10", "QUOTIENT(99,10)", 9},
 
 		// QUOTIENT(x,1) equals INT(x) for positive x
 		{"x_div_1_integer", "QUOTIENT(7,1)", 7},
 		{"x_div_1_decimal", "QUOTIENT(5.9,1)", 5},
 		{"x_div_1_large", "QUOTIENT(123,1)", 123},
 
-		// Negative numerator
+		// Negative numerator (truncates toward zero)
 		{"neg_num_pos_den", "QUOTIENT(-7,2)", -3},
 		{"neg_num_pos_den2", "QUOTIENT(-1,2)", 0},
 		{"neg_num_pos_den3", "QUOTIENT(-13,4)", -3},
+		{"neg_num_pos_den4", "QUOTIENT(-17,5)", -3},
+		{"neg_num_pos_den5", "QUOTIENT(-99,10)", -9},
 
 		// Negative denominator
 		{"pos_num_neg_den", "QUOTIENT(7,-2)", -3},
 		{"pos_num_neg_den2", "QUOTIENT(10,-3)", -3},
+		{"pos_num_neg_den3", "QUOTIENT(17,-5)", -3},
+		{"pos_num_neg_den4", "QUOTIENT(1,-3)", 0},
 
-		// Both negative (result positive)
+		// Both negative (result positive, truncated toward zero)
 		{"both_neg", "QUOTIENT(-10,-3)", 3},
 		{"both_neg2", "QUOTIENT(-7,-2)", 3},
+		{"both_neg3", "QUOTIENT(-17,-5)", 3},
+		{"both_neg4", "QUOTIENT(-1,-3)", 0},
 
 		// Decimal truncation behavior (truncates toward zero)
 		{"trunc_pos", "QUOTIENT(7,3)", 2},
 		{"trunc_neg_num", "QUOTIENT(-7,3)", -2},
 		{"trunc_decimal_args", "QUOTIENT(9.9,3.1)", 3},
 		{"trunc_small_result", "QUOTIENT(1,3)", 0},
+		{"trunc_decimal_num", "QUOTIENT(5.5,2)", 2},
+		{"trunc_decimal_den", "QUOTIENT(10,2.5)", 4},
+		{"trunc_both_decimal", "QUOTIENT(7.7,2.2)", 3},
+		{"trunc_neg_decimal", "QUOTIENT(-5.5,2)", -2},
+
+		// Exact division (no truncation needed)
+		{"exact_div", "QUOTIENT(10,2)", 5},
+		{"exact_div2", "QUOTIENT(100,25)", 4},
+		{"exact_div_neg", "QUOTIENT(-10,2)", -5},
+		{"exact_div_self", "QUOTIENT(7,7)", 1},
 
 		// Zero numerator
 		{"zero_num", "QUOTIENT(0,5)", 0},
 		{"zero_num_neg_den", "QUOTIENT(0,-3)", 0},
+		{"zero_num_large_den", "QUOTIENT(0,1000000)", 0},
+
+		// Large numbers
+		{"large_nums", "QUOTIENT(1000000,3)", 333333},
+		{"large_nums2", "QUOTIENT(999999,1000)", 999},
+
+		// Numerator smaller than denominator
+		{"num_lt_den", "QUOTIENT(2,5)", 0},
+		{"num_lt_den_neg", "QUOTIENT(-2,5)", 0},
+		{"num_lt_den2", "QUOTIENT(1,100)", 0},
 
 		// String coercion
 		{"string_num", `QUOTIENT("10",3)`, 3},
 		{"string_den", `QUOTIENT(10,"3")`, 3},
 		{"string_both", `QUOTIENT("10","3")`, 3},
+		{"string_decimal", `QUOTIENT("7.5","2")`, 3},
 
 		// Boolean coercion
 		{"bool_true_num", "QUOTIENT(TRUE,1)", 1},
@@ -9491,9 +9595,13 @@ func TestQUOTIENT(t *testing.T) {
 		{"err_div0_num", "QUOTIENT(1/0,2)", ErrValDIV0},
 		{"err_div0_den", "QUOTIENT(2,1/0)", ErrValDIV0},
 		{"err_na_num", "QUOTIENT(NA(),2)", ErrValNA},
+		{"err_na_den", "QUOTIENT(2,NA())", ErrValNA},
 
 		// Boolean FALSE as denominator (coerces to 0 -> #DIV/0!)
 		{"bool_false_den", "QUOTIENT(5,FALSE)", ErrValDIV0},
+
+		// String "0" as denominator
+		{"string_zero_den", `QUOTIENT(5,"0")`, ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
@@ -9505,6 +9613,115 @@ func TestQUOTIENT(t *testing.T) {
 			}
 			if got.Type != ValueError || got.Err != tt.wantErr {
 				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestMODQUOTIENTCrossCheck verifies properties of MOD and QUOTIENT.
+//
+// Note: In Excel, MOD and QUOTIENT use *different* division semantics:
+//   - MOD(a,b)     = a - b*INT(a/b)   — remainder with INT (floor) division
+//   - QUOTIENT(a,b) = TRUNC(a/b)      — truncation toward zero
+//
+// Therefore a = QUOTIENT(a,b)*b + MOD(a,b) only holds when a and b have the
+// same sign (where INT and TRUNC agree). The always-true identity for MOD is:
+//   a = INT(a/b)*b + MOD(a,b)
+//
+// We test both properties here.
+func TestMODQUOTIENTCrossCheck(t *testing.T) {
+	resolver := &mockResolver{}
+	const epsilon = 1e-10
+
+	cases := []struct {
+		name string
+		a, b float64
+	}{
+		{"10_3", 10, 3},
+		{"neg10_3", -10, 3},
+		{"10_neg3", 10, -3},
+		{"neg10_neg3", -10, -3},
+		{"7_2", 7, 2},
+		{"neg7_2", -7, 2},
+		{"7_neg2", 7, -2},
+		{"neg7_neg2", -7, -2},
+		{"0_5", 0, 5},
+		{"5_5", 5, 5},
+		{"5_1", 5, 1},
+		{"17_5", 17, 5},
+		{"100_7", 100, 7},
+		{"5_5_2", 5.5, 2},
+		{"9_9_3_1", 9.9, 3.1},
+		{"1_3", 1, 3},
+		{"neg1_3", -1, 3},
+		{"3_2", 3, 2},
+		{"neg3_2", -3, 2},
+		{"3_neg2", 3, -2},
+		{"neg3_neg2", -3, -2},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			modFormula := fmt.Sprintf("MOD(%g,%g)", tt.a, tt.b)
+			quotFormula := fmt.Sprintf("QUOTIENT(%g,%g)", tt.a, tt.b)
+			intFormula := fmt.Sprintf("INT(%g/%g)", tt.a, tt.b)
+
+			cfMod := evalCompile(t, modFormula)
+			modVal, err := Eval(cfMod, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", modFormula, err)
+			}
+			if modVal.Type != ValueNumber {
+				t.Skipf("MOD returned non-number type %v (formula might hit precision limit)", modVal.Type)
+			}
+
+			cfQuot := evalCompile(t, quotFormula)
+			quotVal, err := Eval(cfQuot, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", quotFormula, err)
+			}
+			if quotVal.Type != ValueNumber {
+				t.Skipf("QUOTIENT returned non-number type %v", quotVal.Type)
+			}
+
+			cfInt := evalCompile(t, intFormula)
+			intVal, err := Eval(cfInt, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", intFormula, err)
+			}
+			if intVal.Type != ValueNumber {
+				t.Skipf("INT returned non-number type %v", intVal.Type)
+			}
+
+			// Always-true identity: a = INT(a/b)*b + MOD(a,b)
+			reconstructedINT := intVal.Num*tt.b + modVal.Num
+			if math.Abs(reconstructedINT-tt.a) > epsilon {
+				t.Errorf("INT(%g/%g)*%g + MOD(%g,%g) = %g*%g + %g = %g, want %g",
+					tt.a, tt.b, tt.b, tt.a, tt.b, intVal.Num, tt.b, modVal.Num, reconstructedINT, tt.a)
+			}
+
+			// When signs agree, QUOTIENT and INT should match, so the QUOTIENT identity also holds
+			sameSign := (tt.a >= 0 && tt.b > 0) || (tt.a <= 0 && tt.b < 0)
+			if sameSign {
+				reconstructedQUOT := quotVal.Num*tt.b + modVal.Num
+				if math.Abs(reconstructedQUOT-tt.a) > epsilon {
+					t.Errorf("same-sign: QUOTIENT(%g,%g)*%g + MOD(%g,%g) = %g*%g + %g = %g, want %g",
+						tt.a, tt.b, tt.b, tt.a, tt.b, quotVal.Num, tt.b, modVal.Num, reconstructedQUOT, tt.a)
+				}
+			}
+
+			// MOD result sign always matches divisor sign (or is zero)
+			if modVal.Num != 0 {
+				if (modVal.Num > 0) != (tt.b > 0) {
+					t.Errorf("MOD(%g,%g) = %g, sign should follow divisor %g", tt.a, tt.b, modVal.Num, tt.b)
+				}
+			}
+
+			// QUOTIENT truncates toward zero: |QUOTIENT(a,b)| <= |a/b|
+			exactQuot := tt.a / tt.b
+			if math.Abs(quotVal.Num) > math.Abs(exactQuot)+epsilon {
+				t.Errorf("QUOTIENT(%g,%g) = %g, should truncate toward zero from %g",
+					tt.a, tt.b, quotVal.Num, exactQuot)
 			}
 		})
 	}

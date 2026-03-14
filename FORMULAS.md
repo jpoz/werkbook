@@ -269,7 +269,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | MINVERSE | Returns the inverse of a matrix. | Math & Trig | 33 |
 | MIRR | Returns the modified internal rate of return. | Financial | 65 |
 | MMULT | Returns the matrix product of two arrays. | Math & Trig | 38 |
-| MOD | Returns the remainder after division. | Math & Trig | 16 |
+| MOD | Returns the remainder after division. | Math & Trig | 60 |
 | MODE | Returns the most frequently occurring value. | Statistical | 19 |
 | MODE.MULT | Returns all modes in a data set. | Statistical | 22 |
 | MODE.SNGL | Returns a single mode from a data set. | Statistical | 19 |
@@ -324,7 +324,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | QUARTILE | Returns a quartile of a data set. | Statistical | 37 |
 | QUARTILE.EXC | Returns the exclusive quartile of a data set. | Statistical | 27 |
 | QUARTILE.INC | Returns the inclusive quartile of a data set. | Statistical | 65 |
-| QUOTIENT | Returns the integer portion of a division. | Math & Trig | 43 |
+| QUOTIENT | Returns the integer portion of a division. | Math & Trig | 68 |
 | RADIANS | Converts degrees to radians. | Math & Trig | 30 |
 | RAND | Returns a random number between 0 and 1. | Math & Trig | 13 |
 | RANDARRAY | Returns an array of random numbers. | Math & Trig | 51 |
