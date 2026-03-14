@@ -28556,6 +28556,798 @@ func TestAGGREGATE(t *testing.T) {
 			t.Errorf("got %v, want 10", got)
 		}
 	})
+
+	// -----------------------------------------------------------------------
+	// Comprehensive tests for function modes 14-19 (k-based array form)
+	// -----------------------------------------------------------------------
+
+	// LARGE (14): k=1 (max), k=2, k=3
+	t.Run("large_14_k1", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(14,0,A1:A5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	t.Run("large_14_k3", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(14,0,A1:A5,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	// SMALL (15): k=1 (min), k=2, k=3
+	t.Run("small_15_k2", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(15,0,A1:A5,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("small_15_k3", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(15,0,A1:A5,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	// PERCENTILE.INC (16): k=0 (min), k=0.5 (median), k=1 (max)
+	t.Run("percentile_inc_16_k0", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(16,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("percentile_inc_16_k1", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(16,0,A1:A5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	// QUARTILE.INC (17): k=0 (min), k=1 (Q1), k=2 (median), k=3 (Q3), k=4 (max)
+	t.Run("quartile_inc_17_k0", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(17,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v, want 1", got)
+		}
+	})
+
+	t.Run("quartile_inc_17_k1", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(17,0,A1:A5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("quartile_inc_17_k3", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(17,0,A1:A5,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	t.Run("quartile_inc_17_k4", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(17,0,A1:A5,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v, want 5", got)
+		}
+	})
+
+	// PERCENTILE.EXC (18): k=0.5 → median
+	t.Run("percentile_exc_18_k025", func(t *testing.T) {
+		// For {1,2,3,4,5}, PERCENTILE.EXC(k=0.25) = 1.5
+		cf := evalCompile(t, "AGGREGATE(18,0,A1:A5,0.25)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1.5 {
+			t.Errorf("got %v, want 1.5", got)
+		}
+	})
+
+	t.Run("percentile_exc_18_k075", func(t *testing.T) {
+		// For {1,2,3,4,5}, PERCENTILE.EXC(k=0.75) = 4.5
+		cf := evalCompile(t, "AGGREGATE(18,0,A1:A5,0.75)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4.5 {
+			t.Errorf("got %v, want 4.5", got)
+		}
+	})
+
+	// QUARTILE.EXC (19): k=1 (Q1), k=2 (median), k=3 (Q3)
+	t.Run("quartile_exc_19_k2", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(19,0,A1:A5,2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	t.Run("quartile_exc_19_k3", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(19,0,A1:A5,3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4.5 {
+			t.Errorf("got %v, want 4.5", got)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// Option combinations with errors
+	// -----------------------------------------------------------------------
+
+	// option=0: errors propagate (LARGE with error in range)
+	t.Run("large_opt0_error_propagates", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(10),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 4, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(14,0,D1:D3,1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("expected #N/A, got %v", got)
+		}
+	})
+
+	// option=2: ignore errors (LARGE skips error, returns correct k-th value)
+	t.Run("large_opt2_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(10),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 4, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(14,2,D1:D3,1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	// option=6: ignore errors + nested subtotals (SMALL)
+	t.Run("small_opt6_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: ErrorVal(ErrValDIV0),
+				{Col: 4, Row: 2}: NumberVal(20),
+				{Col: 4, Row: 3}: NumberVal(10),
+				{Col: 4, Row: 4}: NumberVal(30),
+			},
+		}
+		// SMALL on {20,10,30} with k=2 → 20
+		cf := evalCompile(t, "AGGREGATE(15,6,D1:D4,2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	// option=0: error propagates for PERCENTILE.INC
+	t.Run("percentile_inc_opt0_error_propagates", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(1),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNUM),
+				{Col: 4, Row: 3}: NumberVal(3),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(16,0,D1:D3,0.5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNUM {
+			t.Errorf("expected #NUM!, got %v", got)
+		}
+	})
+
+	// option=2: ignore errors for PERCENTILE.INC
+	t.Run("percentile_inc_opt2_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(1),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNUM),
+				{Col: 4, Row: 3}: NumberVal(3),
+			},
+		}
+		// {1,3} PERCENTILE.INC(0.5) = 2
+		cf := evalCompile(t, "AGGREGATE(16,2,D1:D3,0.5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	// option=6: ignore errors for QUARTILE.EXC
+	t.Run("quartile_exc_opt6_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(1),
+				{Col: 4, Row: 2}: ErrorVal(ErrValREF),
+				{Col: 4, Row: 3}: NumberVal(2),
+				{Col: 4, Row: 4}: NumberVal(3),
+				{Col: 4, Row: 5}: NumberVal(4),
+				{Col: 4, Row: 6}: NumberVal(5),
+			},
+		}
+		// {1,2,3,4,5}, QUARTILE.EXC(2) = median = 3
+		cf := evalCompile(t, "AGGREGATE(19,6,D1:D6,2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// MEDIAN (12) and MODE.SNGL (13) additional tests
+	// -----------------------------------------------------------------------
+
+	// MEDIAN with even count: {1,2,3,4} → 2.5
+	t.Run("median_even_count", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 5, Row: 1}: NumberVal(1),
+				{Col: 5, Row: 2}: NumberVal(2),
+				{Col: 5, Row: 3}: NumberVal(3),
+				{Col: 5, Row: 4}: NumberVal(4),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(12,0,E1:E4)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2.5 {
+			t.Errorf("got %v, want 2.5", got)
+		}
+	})
+
+	// MEDIAN with odd count: {10,20,30} → 20
+	t.Run("median_odd_count", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 5, Row: 1}: NumberVal(10),
+				{Col: 5, Row: 2}: NumberVal(20),
+				{Col: 5, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(12,0,E1:E3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	// MEDIAN with error ignore, even count: {10,err,30,40} → {10,30,40} → 30
+	t.Run("median_error_ignore_odd_result", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 5, Row: 1}: NumberVal(10),
+				{Col: 5, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 5, Row: 3}: NumberVal(30),
+				{Col: 5, Row: 4}: NumberVal(40),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(12,6,E1:E4)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	// MODE.SNGL with clear mode value: {7,7,3,5,3,7} → 7
+	t.Run("mode_sngl_clear_mode", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 5, Row: 1}: NumberVal(7),
+				{Col: 5, Row: 2}: NumberVal(7),
+				{Col: 5, Row: 3}: NumberVal(3),
+				{Col: 5, Row: 4}: NumberVal(5),
+				{Col: 5, Row: 5}: NumberVal(3),
+				{Col: 5, Row: 6}: NumberVal(7),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(13,0,E1:E6)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("got %v, want 7", got)
+		}
+	})
+
+	// MODE.SNGL with error ignore: {4,4,err,6} → mode is 4
+	t.Run("mode_sngl_error_ignore", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 5, Row: 1}: NumberVal(4),
+				{Col: 5, Row: 2}: NumberVal(4),
+				{Col: 5, Row: 3}: ErrorVal(ErrValNA),
+				{Col: 5, Row: 4}: NumberVal(6),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(13,2,E1:E4)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v, want 4", got)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// Cross-check tests: AGGREGATE matches standalone functions
+	// -----------------------------------------------------------------------
+
+	// AGGREGATE(9,0,range) = SUM(range) for error-free range
+	t.Run("crosscheck_sum", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(9,0,A1:A5)")
+		cfSum := evalCompile(t, "SUM(A1:A5)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotSum, err := Eval(cfSum, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval SUM: %v", err)
+		}
+		if gotAgg.Num != gotSum.Num {
+			t.Errorf("AGGREGATE(9,0,A1:A5)=%g != SUM(A1:A5)=%g", gotAgg.Num, gotSum.Num)
+		}
+	})
+
+	// AGGREGATE(1,0,range) = AVERAGE(range)
+	t.Run("crosscheck_average", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(1,0,A1:A5)")
+		cfAvg := evalCompile(t, "AVERAGE(A1:A5)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotAvg, err := Eval(cfAvg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AVERAGE: %v", err)
+		}
+		if gotAgg.Num != gotAvg.Num {
+			t.Errorf("AGGREGATE(1,0,A1:A5)=%g != AVERAGE(A1:A5)=%g", gotAgg.Num, gotAvg.Num)
+		}
+	})
+
+	// AGGREGATE(4,0,range) = MAX(range)
+	t.Run("crosscheck_max", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(4,0,A1:A5)")
+		cfMax := evalCompile(t, "MAX(A1:A5)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotMax, err := Eval(cfMax, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval MAX: %v", err)
+		}
+		if gotAgg.Num != gotMax.Num {
+			t.Errorf("AGGREGATE(4,0,A1:A5)=%g != MAX(A1:A5)=%g", gotAgg.Num, gotMax.Num)
+		}
+	})
+
+	// AGGREGATE(14,0,range,1) = LARGE(range,1)
+	t.Run("crosscheck_large", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(14,0,A1:A5,1)")
+		cfLrg := evalCompile(t, "LARGE(A1:A5,1)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotLrg, err := Eval(cfLrg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval LARGE: %v", err)
+		}
+		if gotAgg.Num != gotLrg.Num {
+			t.Errorf("AGGREGATE(14,0,A1:A5,1)=%g != LARGE(A1:A5,1)=%g", gotAgg.Num, gotLrg.Num)
+		}
+	})
+
+	// AGGREGATE(5,0,range) = MIN(range)
+	t.Run("crosscheck_min", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(5,0,A1:A5)")
+		cfMin := evalCompile(t, "MIN(A1:A5)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotMin, err := Eval(cfMin, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval MIN: %v", err)
+		}
+		if gotAgg.Num != gotMin.Num {
+			t.Errorf("AGGREGATE(5,0,A1:A5)=%g != MIN(A1:A5)=%g", gotAgg.Num, gotMin.Num)
+		}
+	})
+
+	// AGGREGATE(15,0,range,1) = SMALL(range,1)
+	t.Run("crosscheck_small", func(t *testing.T) {
+		cfAgg := evalCompile(t, "AGGREGATE(15,0,A1:A5,1)")
+		cfSml := evalCompile(t, "SMALL(A1:A5,1)")
+		gotAgg, err := Eval(cfAgg, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval AGGREGATE: %v", err)
+		}
+		gotSml, err := Eval(cfSml, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval SMALL: %v", err)
+		}
+		if gotAgg.Num != gotSml.Num {
+			t.Errorf("AGGREGATE(15,0,A1:A5,1)=%g != SMALL(A1:A5,1)=%g", gotAgg.Num, gotSml.Num)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// Additional error tests
+	// -----------------------------------------------------------------------
+
+	// k out of range for LARGE: k=0 → #NUM!
+	t.Run("large_k0_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(14,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// k out of range for LARGE: k=6 (more than 5 elements) → #NUM!
+	t.Run("large_k_too_big", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(14,0,A1:A5,6)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// k out of range for SMALL: k=0 → #NUM!
+	t.Run("small_k0_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(15,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// PERCENTILE.INC with k out of range: k=-0.1 → error
+	t.Run("percentile_inc_k_negative", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(16,0,A1:A5,-0.1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// PERCENTILE.INC with k out of range: k=1.1 → error
+	t.Run("percentile_inc_k_too_big", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(16,0,A1:A5,1.1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// QUARTILE.INC with k=5 → error
+	t.Run("quartile_inc_k5_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(17,0,A1:A5,5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// PERCENTILE.EXC with k=0 → error (exclusive requires 0 < k < 1)
+	t.Run("percentile_exc_k0_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(18,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// PERCENTILE.EXC with k=1 → error
+	t.Run("percentile_exc_k1_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(18,0,A1:A5,1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// QUARTILE.EXC with k=0 → error
+	t.Run("quartile_exc_k0_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(19,0,A1:A5,0)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// QUARTILE.EXC with k=4 → error
+	t.Run("quartile_exc_k4_error", func(t *testing.T) {
+		cf := evalCompile(t, "AGGREGATE(19,0,A1:A5,4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError {
+			t.Errorf("expected error, got %v", got)
+		}
+	})
+
+	// Error propagation with option 1 (ignore hidden only, NOT errors)
+	t.Run("error_propagate_opt1", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(10),
+				{Col: 4, Row: 2}: ErrorVal(ErrValVALUE),
+				{Col: 4, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(9,1,D1:D3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("expected #VALUE!, got %v", got)
+		}
+	})
+
+	// Error propagation with option 5 (ignore hidden only, NOT errors)
+	t.Run("error_propagate_opt5", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(10),
+				{Col: 4, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 4, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(9,5,D1:D3)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("expected #DIV/0!, got %v", got)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// Additional option combinations: option=3 and option=7
+	// -----------------------------------------------------------------------
+
+	// Option 3 = ignore hidden + errors (LARGE)
+	t.Run("large_opt3_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(100),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNUM),
+				{Col: 4, Row: 3}: NumberVal(50),
+			},
+		}
+		// {100,50}, LARGE k=2 → 50
+		cf := evalCompile(t, "AGGREGATE(14,3,D1:D3,2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 50 {
+			t.Errorf("got %v, want 50", got)
+		}
+	})
+
+	// Option 7 = ignore hidden + errors + nested subtotals (SMALL)
+	t.Run("small_opt7_ignore_errors", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: ErrorVal(ErrValNA),
+				{Col: 4, Row: 2}: NumberVal(8),
+				{Col: 4, Row: 3}: NumberVal(3),
+				{Col: 4, Row: 4}: NumberVal(15),
+			},
+		}
+		// {8,3,15}, SMALL k=1 → 3
+		cf := evalCompile(t, "AGGREGATE(15,7,D1:D4,1)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v, want 3", got)
+		}
+	})
+
+	// STDEV.S with error ignore
+	t.Run("stdevs_error_ignore", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(2),
+				{Col: 4, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 4, Row: 3}: NumberVal(4),
+				{Col: 4, Row: 4}: NumberVal(6),
+			},
+		}
+		// STDEV.S({2,4,6}) = 2
+		cf := evalCompile(t, "AGGREGATE(7,2,D1:D4)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	// VAR.P with error ignore
+	t.Run("varp_error_ignore", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: NumberVal(2),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 4, Row: 3}: NumberVal(4),
+				{Col: 4, Row: 4}: NumberVal(6),
+			},
+		}
+		// VAR.P({2,4,6}) = ((2-4)^2 + (4-4)^2 + (6-4)^2) / 3 = 8/3
+		cf := evalCompile(t, "AGGREGATE(11,6,D1:D4)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		want := 8.0 / 3.0
+		if got.Type != ValueNumber || math.Abs(got.Num-want) > 1e-10 {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	// All errors removed leaves empty set → SUM should return 0
+	t.Run("all_errors_removed_sum", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: ErrorVal(ErrValDIV0),
+				{Col: 4, Row: 2}: ErrorVal(ErrValNA),
+			},
+		}
+		cf := evalCompile(t, "AGGREGATE(9,6,D1:D2)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	// Multiple error types in range with option 2
+	t.Run("multiple_error_types_opt2", func(t *testing.T) {
+		r := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 4, Row: 1}: ErrorVal(ErrValDIV0),
+				{Col: 4, Row: 2}: NumberVal(10),
+				{Col: 4, Row: 3}: ErrorVal(ErrValNA),
+				{Col: 4, Row: 4}: NumberVal(20),
+				{Col: 4, Row: 5}: ErrorVal(ErrValVALUE),
+			},
+		}
+		// SUM({10,20}) = 30
+		cf := evalCompile(t, "AGGREGATE(9,2,D1:D5)")
+		got, err := Eval(cf, r, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

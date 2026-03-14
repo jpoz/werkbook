@@ -12,7 +12,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | ACOT | Returns the arccotangent of a number. | Math & Trig | 27 |
 | ACOTH | Returns the inverse hyperbolic cotangent of a number. | Math & Trig | 32 |
 | ADDRESS | Builds a cell reference from row and column numbers. | Lookup & Reference | 44 |
-| AGGREGATE | Applies an aggregate calculation with options to ignore selected values. | Statistical | 49 |
+| AGGREGATE | Applies an aggregate calculation with options to ignore selected values. | Statistical | 98 |
 | AMORDEGRC | Returns depreciation for each accounting period using a French declining balance method. | Financial | 12 |
 | AMORLINC | Returns depreciation for each accounting period using a linear method. | Financial | 14 |
 | ANCHORARRAY | Returns the full spilled array produced by a dynamic array formula. | Lookup & Reference | 6 |
@@ -26,7 +26,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | ATAN2 | Returns the arctangent from x and y coordinates. | Math & Trig | 30 |
 | ATANH | Returns the inverse hyperbolic tangent of a number. | Math & Trig | 31 |
 | AVEDEV | Returns the average absolute deviation from the mean. | Statistical | 22 |
-| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 34 |
+| AVERAGE | Returns the arithmetic mean of the supplied values. | Statistical | 35 |
 | AVERAGEA | Returns the average of supplied values, including logical values and text coercions. | Statistical | 24 |
 | AVERAGEIF | Returns the average of values that match one condition. | Statistical | 42 |
 | AVERAGEIFS | Returns the average of values that match all supplied conditions. | Statistical | 48 |
@@ -238,7 +238,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | ISTEXT | Returns TRUE when a value is text. | Information | 25 |
 | KURT | Returns the kurtosis of a data set. | Statistical | 22 |
 | LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 12 |
-| LARGE | Returns the k-th largest value in a data set. | Statistical | 30 |
+| LARGE | Returns the k-th largest value in a data set. | Statistical | 31 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
 | LEN | Returns the number of characters in text. | Text | 33 |
@@ -255,14 +255,14 @@ Werkbook supports **445** spreadsheet formula functions.
 | MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 24 |
 | MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 24 |
 | MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 16 |
-| MAX | Returns the largest numeric value. | Statistical | 36 |
+| MAX | Returns the largest numeric value. | Statistical | 37 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
 | MDETERM | Returns the determinant of a matrix. | Math & Trig | 31 |
 | MDURATION | Returns the modified duration of a security. | Financial | 22 |
 | MEDIAN | Returns the median of a data set. | Statistical | 27 |
 | MID | Returns characters from the middle of a text value. | Text | 50 |
-| MIN | Returns the smallest numeric value. | Statistical | 33 |
+| MIN | Returns the smallest numeric value. | Statistical | 34 |
 | MINA | Returns the smallest value, counting logical values and text coercions. | Statistical | 16 |
 | MINIFS | Returns the minimum value that matches all supplied conditions. | Statistical | 49 |
 | MINUTE | Returns the minute from a time or datetime value. | Date & Time | 16 |
@@ -362,7 +362,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | SKEW.P | Returns the population skewness of a data set. | Statistical | 27 |
 | SLN | Returns straight-line depreciation for one period. | Financial | 53 |
 | SLOPE | Returns the slope of a linear regression line. | Statistical | 16 |
-| SMALL | Returns the k-th smallest value in a data set. | Statistical | 28 |
+| SMALL | Returns the k-th smallest value in a data set. | Statistical | 29 |
 | SORT | Sorts an array by row or column order. | Logical | 50 |
 | SORTBY | Sorts an array by one or more companion arrays. | Logical | 4 |
 | SQRT | Returns the square root of a number. | Math & Trig | 29 |
@@ -377,7 +377,7 @@ Werkbook supports **445** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 25 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 69 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 75 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 67 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 68 |
 | SUMIF | Returns the sum of values that match one condition. | Statistical | 71 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 65 |
 | SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 72 |
