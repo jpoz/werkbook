@@ -680,6 +680,61 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 
 			push(Value{Type: ValueArray, Array: byrowResult})
 
+		case OpByCol:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Determine dimensions
+			var bycolRows, bycolCols int
+			if arr.Type == ValueArray {
+				bycolRows = len(arr.Array)
+				if bycolRows > 0 {
+					bycolCols = len(arr.Array[0])
+				}
+			} else {
+				// Scalar treated as 1x1
+				bycolRows, bycolCols = 1, 1
+				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+			}
+
+			// For each column, create a column vector (rows x 1) and call lambda
+			bycolResult := make([][]Value, 1) // single row
+			bycolResult[0] = make([]Value, bycolCols)
+			bycolParamVals := make([]Value, 1)
+
+			for j := 0; j < bycolCols; j++ {
+				// Build column vector (rows x 1)
+				colValues := make([][]Value, bycolRows)
+				for i := 0; i < bycolRows; i++ {
+					colValues[i] = []Value{ArrayElement(arr, i, j)}
+				}
+				colArray := Value{Type: ValueArray, Array: colValues}
+
+				bycolParamVals[0] = colArray
+				res, err := evalWithParams(subFormula, resolver, ctx, bycolParamVals)
+				if err != nil {
+					return Value{}, err
+				}
+
+				// BYCOL lambda must return a scalar. If it returns an array, #CALC!
+				if res.Type == ValueArray {
+					res = ErrorVal(ErrValCALC)
+				}
+
+				bycolResult[0][j] = res
+			}
+
+			push(Value{Type: ValueArray, Array: bycolResult})
+
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)
 		}

@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **441** spreadsheet formula functions.
+Werkbook supports **442** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
@@ -48,6 +48,7 @@ Werkbook supports **441** spreadsheet formula functions.
 | BITOR | Returns the bitwise OR of two integers. | Math & Trig | 27 |
 | BITRSHIFT | Returns a number shifted right by a requested number of bits. | Math & Trig | 27 |
 | BITXOR | Returns the bitwise XOR of two integers. | Math & Trig | 27 |
+| BYCOL | Applies a lambda to each column of an array. | Logical | 24 |
 | BYROW | Applies a lambda to each row of an array. | Logical | 24 |
 | CEILING | Rounds a number up to the nearest multiple of a significance. | Math & Trig | 51 |
 | CEILING.MATH | Rounds a number up using Excel's CEILING.MATH rules. | Math & Trig | 37 |
@@ -236,7 +237,7 @@ Werkbook supports **441** spreadsheet formula functions.
 | ISREF | Returns TRUE when a value is a reference. | Information | 24 |
 | ISTEXT | Returns TRUE when a value is text. | Information | 25 |
 | KURT | Returns the kurtosis of a data set. | Statistical | 22 |
-| LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 10 |
+| LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 11 |
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 30 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
@@ -472,11 +473,11 @@ effects, or require locale-specific behavior that cannot be reproduced in a serv
 
 # Not Yet Implemented
 
-The following **14** functions are not yet supported.
+The following **13** functions are not yet supported.
 
 | Function | Description | Category |
 |----------|-------------|----------|
-| BYCOL | Applies a lambda to each column of an array. | Logical |
+| AREAS | Counts the number of areas in a reference. | Lookup & Reference |
 | FORECAST.ETS | Predicts a future value using exponential smoothing. | Statistical |
 | FORECAST.ETS.CONFINT | Returns a confidence interval for an exponential smoothing forecast. | Statistical |
 | FORECAST.ETS.SEASONALITY | Returns the detected seasonality length for exponential smoothing. | Statistical |

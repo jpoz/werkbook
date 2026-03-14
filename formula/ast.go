@@ -281,6 +281,18 @@ func (n *ByRowExpr) String() string {
 	return fmt.Sprintf("(BYROW params=%v)", n.ParamNames)
 }
 
+// ByColExpr represents a BYCOL(array, LAMBDA(col, body)) expression.
+type ByColExpr struct {
+	Array      Node     // array expression
+	ParamNames []string // single param name for the column
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ByColExpr) nodeMarker() {}
+func (n *ByColExpr) String() string {
+	return fmt.Sprintf("(BYCOL params=%v)", n.ParamNames)
+}
+
 // needsQuoting returns true if a sheet name contains characters that require quoting.
 func needsQuoting(name string) bool {
 	for _, c := range name {

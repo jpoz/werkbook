@@ -39,6 +39,7 @@ const (
 	OpReduce                        // operand: subFormulaIdx; pop array and initial value, fold with lambda body
 	OpScan                          // operand: subFormulaIdx; pop array and initial value, scan with lambda body returning array
 	OpByRow                         // operand: subFormulaIdx; pop array, apply lambda to each row, return column vector
+	OpByCol                         // operand: subFormulaIdx; pop array, apply lambda to each column, return row vector
 )
 
 var opNames = [...]string{
@@ -75,6 +76,7 @@ var opNames = [...]string{
 	OpReduce:          "Reduce",
 	OpScan:            "Scan",
 	OpByRow:           "ByRow",
+	OpByCol:           "ByCol",
 }
 
 func (op OpCode) String() string {
@@ -101,5 +103,5 @@ type CompiledFormula struct {
 	Consts      []Value            // constant pool (numbers and strings)
 	Refs        []CellAddr         // cell reference table
 	Ranges      []RangeAddr        // range reference table
-	SubFormulas []*CompiledFormula // lambda bodies for MAP/REDUCE/SCAN/BYROW
+	SubFormulas []*CompiledFormula // lambda bodies for MAP/REDUCE/SCAN/BYROW/BYCOL
 }
