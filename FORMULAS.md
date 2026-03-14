@@ -266,9 +266,9 @@ Werkbook supports **445** spreadsheet formula functions.
 | MINA | Returns the smallest value, counting logical values and text coercions. | Statistical | 16 |
 | MINIFS | Returns the minimum value that matches all supplied conditions. | Statistical | 49 |
 | MINUTE | Returns the minute from a time or datetime value. | Date & Time | 16 |
-| MINVERSE | Returns the inverse of a matrix. | Math & Trig | 33 |
+| MINVERSE | Returns the inverse of a matrix. | Math & Trig | 56 |
 | MIRR | Returns the modified internal rate of return. | Financial | 65 |
-| MMULT | Returns the matrix product of two arrays. | Math & Trig | 38 |
+| MMULT | Returns the matrix product of two arrays. | Math & Trig | 67 |
 | MOD | Returns the remainder after division. | Math & Trig | 60 |
 | MODE | Returns the most frequently occurring value. | Statistical | 19 |
 | MODE.MULT | Returns all modes in a data set. | Statistical | 22 |
