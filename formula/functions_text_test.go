@@ -3592,6 +3592,386 @@ func TestTEXTSPLIT_MatchModeZeroCaseSensitive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TEXTSPLIT — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestTEXTSPLIT_FiveElements(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("one,two,three,four,five", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"one", "two", "three", "four", "five"}
+	if len(got.Array[0]) != 5 {
+		t.Fatalf("expected 5 cols, got %d", len(got.Array[0]))
+	}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_LongDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("alpha<=>beta<=>gamma", "<=>")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"alpha", "beta", "gamma"}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_TabDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	// Use CHAR(9) for tab via TEXTJOIN to build tab-delimited text, or just pass literal
+	cf := evalCompile(t, `TEXTSPLIT("A"&CHAR(9)&"B"&CHAR(9)&"C", CHAR(9))`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"A", "B", "C"}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_OnlyRowDelimiter_MultiCol(t *testing.T) {
+	// Row delimiter only, col delimiter empty => each row is unsplit
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello|world|!", "", "|")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"hello", "world", "!"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_RowAndColSplit_3x3(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("1,2,3;4,5,6;7,8,9", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	expected := [][]string{{"1", "2", "3"}, {"4", "5", "6"}, {"7", "8", "9"}}
+	for r, row := range expected {
+		if len(got.Array[r]) != 3 {
+			t.Fatalf("row %d: expected 3 cols, got %d", r, len(got.Array[r]))
+		}
+		for c, w := range row {
+			if got.Array[r][c].Str != w {
+				t.Errorf("[%d][%d]: got %q, want %q", r, c, got.Array[r][c].Str, w)
+			}
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyBothDims(t *testing.T) {
+	// With ignore_empty=TRUE, empty segments in both row and col splits are dropped
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,,B;;C,,D", ",", ";", TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	// After ignore_empty: row split "A,,B" and "C,,D" (empty row removed)
+	// Then col split on each: "A","B" and "C","D"
+	if len(got.Array) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(got.Array))
+	}
+	if len(got.Array[0]) != 2 || len(got.Array[1]) != 2 {
+		t.Fatalf("expected 2 cols each, got %d, %d", len(got.Array[0]), len(got.Array[1]))
+	}
+	expected := [][]string{{"A", "B"}, {"C", "D"}}
+	for r, row := range expected {
+		for c, w := range row {
+			if got.Array[r][c].Str != w {
+				t.Errorf("[%d][%d]: got %q, want %q", r, c, got.Array[r][c].Str, w)
+			}
+		}
+	}
+}
+
+func TestTEXTSPLIT_CaseInsensitiveRowDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("AzBZC", "", "z",, 1)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, w := range []string{"A", "B", "C"} {
+		if got.Array[i][0].Str != w {
+			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_DelimiterAtBothEnds(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",A,B,", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 4 {
+		t.Fatalf("expected 4 cols, got %d", len(got.Array[0]))
+	}
+	want := []string{"", "A", "B", ""}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_IgnoreEmptyStartEnd(t *testing.T) {
+	// Delimiter at start/end with ignore_empty should drop the empty segments
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",A,B,", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "A" || got.Array[0][1].Str != "B" {
+		t.Errorf("got %v, want [A, B]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_PadWithEmptyString(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B;C", ",", ";",,,"")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	// Row 1 col 1 should be padded with ""
+	if got.Array[1][1].Type != ValueString || got.Array[1][1].Str != "" {
+		t.Errorf("pad: got %v, want empty string", got.Array[1][1])
+	}
+}
+
+func TestTEXTSPLIT_ErrorInText(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(1/0, ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_ErrorInColDelim(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello", 1/0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_ErrorInRowDelim(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello", ",", 1/0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_AllDelimitersConsecutive(t *testing.T) {
+	// Text is just delimiters: ",,," => 4 empty segments
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",,,", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 4 {
+		t.Fatalf("expected 4 cols, got %d", len(got.Array[0]))
+	}
+	for i := 0; i < 4; i++ {
+		if got.Array[0][i].Str != "" {
+			t.Errorf("col %d: got %q, want empty", i, got.Array[0][i].Str)
+		}
+	}
+}
+
+func TestTEXTSPLIT_AllDelimitersConsecutiveIgnoreEmpty(t *testing.T) {
+	// All delimiters with ignore_empty => everything filtered
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(",,,", ",",,TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// When everything is filtered out, should return empty string
+	if got.Type != ValueString || got.Str != "" {
+		t.Errorf("expected empty string, got %v", got)
+	}
+}
+
+func TestTEXTSPLIT_SingleDelimiterMatch(t *testing.T) {
+	// Only one delimiter in text => 2 parts
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("hello,world", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array[0]) != 2 {
+		t.Fatalf("expected 2 cols, got %d", len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "hello" || got.Array[0][1].Str != "world" {
+		t.Errorf("got %v, want [hello, world]", got.Array[0])
+	}
+}
+
+func TestTEXTSPLIT_WhitespaceText(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT(" a , b , c ", ",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{" a ", " b ", " c "}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_NumericColDelimiter(t *testing.T) {
+	// Numeric delimiter coerced to string "0"
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("a0b0c", 0)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := []string{"a", "b", "c"}
+	if len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3 cols, got %d", len(got.Array[0]))
+	}
+	for i, w := range want {
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
+		}
+	}
+}
+
+func TestTEXTSPLIT_DefaultPadIsNA(t *testing.T) {
+	// Verify the default pad_with is #N/A (not empty, not 0)
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTSPLIT("A,B,C;D", ",", ";")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(got.Array))
+	}
+	// Row 0: A, B, C
+	// Row 1: D, #N/A, #N/A
+	if got.Array[1][0].Str != "D" {
+		t.Errorf("row 1 col 0: got %v, want D", got.Array[1][0])
+	}
+	if got.Array[1][1].Type != ValueError || got.Array[1][1].Err != ErrValNA {
+		t.Errorf("row 1 col 1: got %v, want #N/A", got.Array[1][1])
+	}
+	if got.Array[1][2].Type != ValueError || got.Array[1][2].Err != ErrValNA {
+		t.Errorf("row 1 col 2: got %v, want #N/A", got.Array[1][2])
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TEXTJOIN comprehensive tests
 // ---------------------------------------------------------------------------
 
@@ -3964,6 +4344,300 @@ func TestTEXTJOIN(t *testing.T) {
 			t.Errorf("got %q, want %q", got.Str, "a,b,,,e,f")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TEXTJOIN — additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestTEXTJOIN_TwoArgs(t *testing.T) {
+	// Only delimiter + ignore_empty, no text args => #VALUE!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTJOIN_SingleArg(t *testing.T) {
+	// Only delimiter, no ignore_empty or text => #VALUE!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError {
+		t.Errorf("expected error, got %v", got)
+	}
+}
+
+func TestTEXTJOIN_DashDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN("-", TRUE, "a", "b", "c", "d")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "a-b-c-d" {
+		t.Errorf("got %q, want %q", got.Str, "a-b-c-d")
+	}
+}
+
+func TestTEXTJOIN_PipeDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN("|", TRUE, "x", "y", "z")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "x|y|z" {
+		t.Errorf("got %q, want %q", got.Str, "x|y|z")
+	}
+}
+
+func TestTEXTJOIN_ArrowDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(" -> ", TRUE, "start", "middle", "end")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "start -> middle -> end" {
+		t.Errorf("got %q, want %q", got.Str, "start -> middle -> end")
+	}
+}
+
+func TestTEXTJOIN_IgnoreEmptyFALSE_MultipleEmpty(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", FALSE, "", "a", "", "", "b", "")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != ",a,,,b," {
+		t.Errorf("got %q, want %q", got.Str, ",a,,,b,")
+	}
+}
+
+func TestTEXTJOIN_IgnoreEmptyTRUE_AllButOne(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, "", "", "only", "", "")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "only" {
+		t.Errorf("got %q, want %q", got.Str, "only")
+	}
+}
+
+func TestTEXTJOIN_MixedTypes(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(" ", TRUE, "count", 1, TRUE, "done")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "count 1 TRUE done" {
+		t.Errorf("got %q, want %q", got.Str, "count 1 TRUE done")
+	}
+}
+
+func TestTEXTJOIN_FloatingPoint(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, 1.5, 2.75, 3.125)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "1.5,2.75,3.125" {
+		t.Errorf("got %q, want %q", got.Str, "1.5,2.75,3.125")
+	}
+}
+
+func TestTEXTJOIN_NegativeNumbers(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, -1, -2, -3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "-1,-2,-3" {
+		t.Errorf("got %q, want %q", got.Str, "-1,-2,-3")
+	}
+}
+
+func TestTEXTJOIN_BooleanDelimiter(t *testing.T) {
+	// TRUE as delimiter => "TRUE"
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(TRUE, TRUE, "a", "b")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "aTRUEb" {
+		t.Errorf("got %q, want %q", got.Str, "aTRUEb")
+	}
+}
+
+func TestTEXTJOIN_RangeWithBooleans(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: BoolVal(true),
+			{Col: 1, Row: 2}: BoolVal(false),
+			{Col: 1, Row: 3}: StringVal("text"),
+		},
+	}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, A1:A3)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "TRUE,FALSE,text" {
+		t.Errorf("got %q, want %q", got.Str, "TRUE,FALSE,text")
+	}
+}
+
+func TestTEXTJOIN_RangeIgnoreEmptyMixed(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			// Row 2 empty
+			{Col: 1, Row: 3}: StringVal(""),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, A1:A4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "1,4" {
+		t.Errorf("got %q, want %q", got.Str, "1,4")
+	}
+}
+
+func TestTEXTJOIN_RangeIgnoreEmptyFALSE_Mixed(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			// Row 2 empty
+			{Col: 1, Row: 3}: StringVal(""),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, `TEXTJOIN(",", FALSE, A1:A4)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "1,,,4" {
+		t.Errorf("got %q, want %q", got.Str, "1,,,4")
+	}
+}
+
+func TestTEXTJOIN_MultipleTextArgs(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, "a", "b", "c", "d", "e", "f", "g")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "a,b,c,d,e,f,g" {
+		t.Errorf("got %q, want %q", got.Str, "a,b,c,d,e,f,g")
+	}
+}
+
+func TestTEXTJOIN_NewlineDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(CHAR(10), TRUE, "line1", "line2", "line3")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	want := "line1\nline2\nline3"
+	if got.Type != ValueString || got.Str != want {
+		t.Errorf("got %q, want %q", got.Str, want)
+	}
+}
+
+func TestTEXTJOIN_TabDelimiter(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `TEXTJOIN(CHAR(9), TRUE, "col1", "col2", "col3")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	want := "col1\tcol2\tcol3"
+	if got.Type != ValueString || got.Str != want {
+		t.Errorf("got %q, want %q", got.Str, want)
+	}
+}
+
+func TestTEXTJOIN_LargeResult32767(t *testing.T) {
+	// Build a range that would exceed 32767 characters
+	resolver := &mockResolver{
+		cells: func() map[CellAddr]Value {
+			m := make(map[CellAddr]Value)
+			// Each cell = 10 chars "AAAAAAAAAA", 3280 cells + commas = 3280*10 + 3279 = 36079 > 32767
+			for i := 1; i <= 3280; i++ {
+				m[CellAddr{Col: 1, Row: i}] = StringVal("AAAAAAAAAA")
+			}
+			return m
+		}(),
+	}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, A1:A3280)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE! for exceeding 32767 chars, got type %v", got.Type)
+	}
+}
+
+func TestTEXTJOIN_ExactlyAtLimit(t *testing.T) {
+	// Single item that is exactly 32767 chars should succeed
+	longStr := ""
+	for i := 0; i < 32767; i++ {
+		longStr += "A"
+	}
+	// We can't build 32767-char literal in a formula easily, so use a cell
+	resolver2 := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal(longStr),
+		},
+	}
+	cf := evalCompile(t, `TEXTJOIN("", TRUE, A1)`)
+	got, err := Eval(cf, resolver2, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || len(got.Str) != 32767 {
+		t.Errorf("expected 32767 char string, got type %v len %d", got.Type, len(got.Str))
+	}
+}
+
+func TestTEXTJOIN_RangeAndScalarArgs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("r1"),
+			{Col: 1, Row: 2}: StringVal("r2"),
+		},
+	}
+	cf := evalCompile(t, `TEXTJOIN(",", TRUE, "pre", A1:A2, "post")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "pre,r1,r2,post" {
+		t.Errorf("got %q, want %q", got.Str, "pre,r1,r2,post")
+	}
 }
 
 func TestLOWER(t *testing.T) {

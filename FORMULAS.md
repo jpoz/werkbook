@@ -403,8 +403,8 @@ Werkbook supports **445** spreadsheet formula functions.
 | TEXT | Formats a value as text using a number format pattern. | Text | 127 |
 | TEXTAFTER | Returns the text that appears after a delimiter. | Text | 34 |
 | TEXTBEFORE | Returns the text that appears before a delimiter. | Text | 34 |
-| TEXTJOIN | Joins text values with a delimiter. | Text | 26 |
-| TEXTSPLIT | Splits text into rows or columns around delimiters. | Text | 50 |
+| TEXTJOIN | Joins text values with a delimiter. | Text | 66 |
+| TEXTSPLIT | Splits text into rows or columns around delimiters. | Text | 88 |
 | TIME | Builds a time value from hour, minute, and second numbers. | Date & Time | 42 |
 | TIMEVALUE | Converts time text to a serial time value. | Date & Time | 48 |
 | TOCOL | Flattens an array into a single column. | Lookup & Reference | 22 |
