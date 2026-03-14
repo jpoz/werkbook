@@ -1375,6 +1375,604 @@ func TestSUMPRODUCT_Extended(t *testing.T) {
 	})
 }
 
+func TestSUMPRODUCT_Advanced(t *testing.T) {
+	t.Run("dot product identity {1,2,3}*{4,5,6}=32", func(t *testing.T) {
+		// Classic dot-product cross-check
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, "SUMPRODUCT({1,2,3},{4,5,6})")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 32 {
+			t.Errorf("got %v, want 32", got)
+		}
+	})
+
+	t.Run("single inline array sums elements", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, "SUMPRODUCT({10,20,30,40})")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 100 {
+			t.Errorf("got %v, want 100", got)
+		}
+	})
+
+	t.Run("three inline arrays", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		// 1*4*7 + 2*5*8 + 3*6*9 = 28 + 80 + 162 = 270
+		cf := evalCompile(t, "SUMPRODUCT({1,2,3},{4,5,6},{7,8,9})")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 270 {
+			t.Errorf("got %v, want 270", got)
+		}
+	})
+
+	t.Run("weighted average pattern", func(t *testing.T) {
+		// SUMPRODUCT(values,weights)/SUM(weights) = weighted average
+		// Values: 80, 90, 70; Weights: 2, 3, 5
+		// SUMPRODUCT = 80*2 + 90*3 + 70*5 = 160 + 270 + 350 = 780
+		// SUM(weights) = 10; weighted avg = 78
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(80),
+				{Col: 1, Row: 2}: NumberVal(90),
+				{Col: 1, Row: 3}: NumberVal(70),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 2, Row: 2}: NumberVal(3),
+				{Col: 2, Row: 3}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)/SUM(B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 78 {
+			t.Errorf("got %v, want 78", got)
+		}
+	})
+
+	t.Run("error in first array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got %v, want #N/A", got)
+		}
+	})
+
+	t.Run("error in second array propagates", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: ErrorVal(ErrValNAME),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNAME {
+			t.Errorf("got %v, want #NAME?", got)
+		}
+	})
+
+	t.Run("error stops early in product chain", func(t *testing.T) {
+		// With three arrays, error in middle array should still propagate
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: ErrorVal(ErrValREF),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 3, Row: 1}: NumberVal(5),
+				{Col: 3, Row: 2}: NumberVal(6),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2,C1:C2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Errorf("got %v, want #REF!", got)
+		}
+	})
+
+	t.Run("all empty cells yield zero", func(t *testing.T) {
+		// All cells empty => each treated as 0
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v, want 0", got)
+		}
+	})
+
+	t.Run("mixed empty and number cells", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				// A2 empty = 0
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 2, Row: 2}: NumberVal(3),
+				// B3 empty = 0
+			},
+		}
+		// 10*2 + 0*3 + 30*0 = 20
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v, want 20", got)
+		}
+	})
+
+	t.Run("text in second array treated as zero", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: NumberVal(10),
+				{Col: 2, Row: 1}: StringVal("abc"),
+				{Col: 2, Row: 2}: NumberVal(3),
+			},
+		}
+		// 5*0 + 10*3 = 30
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v, want 30", got)
+		}
+	})
+
+	t.Run("bool TRUE in single array treated as 0", func(t *testing.T) {
+		// Single array with a boolean: SUMPRODUCT({TRUE, 5, 10})
+		// TRUE is treated as 0, not 1
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: NumberVal(5),
+				{Col: 1, Row: 3}: NumberVal(10),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// TRUE→0, so sum = 0+5+10 = 15
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v, want 15", got)
+		}
+	})
+
+	t.Run("large array 50 elements", func(t *testing.T) {
+		cells := map[CellAddr]Value{}
+		want := 0.0
+		for i := 1; i <= 50; i++ {
+			cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+			cells[CellAddr{Col: 2, Row: i}] = NumberVal(1.0) // multiply by 1
+			want += float64(i)
+		}
+		resolver := &mockResolver{cells: cells}
+		// SUMPRODUCT(A1:A50,B1:B50) with B=all 1s => just sum 1..50 = 1275
+		cf := evalCompile(t, "SUMPRODUCT(A1:A50,B1:B50)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != want {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("large array 100 elements sum of squares", func(t *testing.T) {
+		cells := map[CellAddr]Value{}
+		want := 0.0
+		for i := 1; i <= 100; i++ {
+			cells[CellAddr{Col: 1, Row: i}] = NumberVal(float64(i))
+			want += float64(i) * float64(i)
+		}
+		resolver := &mockResolver{cells: cells}
+		// SUMPRODUCT(A,A) = sum of squares
+		cf := evalCompile(t, "SUMPRODUCT(A1:A100,A1:A100)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// sum of i^2 for i=1..100 = 100*101*201/6 = 338350
+		if got.Type != ValueNumber || got.Num != want {
+			t.Errorf("got %v, want %g", got, want)
+		}
+	})
+
+	t.Run("different column counts returns VALUE error", func(t *testing.T) {
+		// First array is 1x3, second is 1x2 (different column widths)
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 3, Row: 1}: NumberVal(3),
+				{Col: 4, Row: 1}: NumberVal(4),
+				{Col: 5, Row: 1}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:C1,D1:E1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("2D arrays different row count returns VALUE error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 3, Row: 1}: NumberVal(5),
+				{Col: 4, Row: 1}: NumberVal(6),
+				{Col: 3, Row: 2}: NumberVal(7),
+				{Col: 4, Row: 2}: NumberVal(8),
+				{Col: 3, Row: 3}: NumberVal(9),
+				{Col: 4, Row: 3}: NumberVal(10),
+			},
+		}
+		// A1:B2 is 2x2, C1:D3 is 3x2 — different row counts
+		cf := evalCompile(t, "SUMPRODUCT(A1:B2,C1:D3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("conditional sum with boolean expr", func(t *testing.T) {
+		// SUMPRODUCT((A1:A5="Yes")*B1:B5)
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("Yes"),
+				{Col: 1, Row: 2}: StringVal("No"),
+				{Col: 1, Row: 3}: StringVal("Yes"),
+				{Col: 1, Row: 4}: StringVal("Yes"),
+				{Col: 1, Row: 5}: StringVal("No"),
+				{Col: 2, Row: 1}: NumberVal(100),
+				{Col: 2, Row: 2}: NumberVal(200),
+				{Col: 2, Row: 3}: NumberVal(300),
+				{Col: 2, Row: 4}: NumberVal(400),
+				{Col: 2, Row: 5}: NumberVal(500),
+			},
+		}
+		ctx := &EvalContext{CurrentCol: 5, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, `SUMPRODUCT((A1:A5="Yes")*B1:B5)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Yes rows: 1,3,4 => 100+300+400 = 800
+		if got.Type != ValueNumber || got.Num != 800 {
+			t.Errorf("got %v, want 800", got)
+		}
+	})
+
+	t.Run("double boolean multi-criteria", func(t *testing.T) {
+		// SUMPRODUCT((A1:A4="X")*(B1:B4>10)*(C1:C4))
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				// A: category
+				{Col: 1, Row: 1}: StringVal("X"),
+				{Col: 1, Row: 2}: StringVal("Y"),
+				{Col: 1, Row: 3}: StringVal("X"),
+				{Col: 1, Row: 4}: StringVal("X"),
+				// B: threshold
+				{Col: 2, Row: 1}: NumberVal(15),
+				{Col: 2, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 3}: NumberVal(5),
+				{Col: 2, Row: 4}: NumberVal(25),
+				// C: values
+				{Col: 3, Row: 1}: NumberVal(1000),
+				{Col: 3, Row: 2}: NumberVal(2000),
+				{Col: 3, Row: 3}: NumberVal(3000),
+				{Col: 3, Row: 4}: NumberVal(4000),
+			},
+		}
+		ctx := &EvalContext{CurrentCol: 5, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, `SUMPRODUCT((A1:A4="X")*(B1:B4>10)*(C1:C4))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Row1: X & 15>10 => 1*1*1000 = 1000
+		// Row2: Y => 0
+		// Row3: X & 5>10=F => 0
+		// Row4: X & 25>10 => 1*1*4000 = 4000
+		// Total: 5000
+		if got.Type != ValueNumber || got.Num != 5000 {
+			t.Errorf("got %v, want 5000", got)
+		}
+	})
+
+	t.Run("double negation counting pattern", func(t *testing.T) {
+		// SUMPRODUCT(--(A1:A5>3)) — counts how many values > 3
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(2),
+				{Col: 1, Row: 4}: NumberVal(5),
+				{Col: 1, Row: 5}: NumberVal(3),
+			},
+		}
+		ctx := &EvalContext{CurrentCol: 3, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, "SUMPRODUCT(--(A1:A5>3))")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Values > 3: 4, 5 => count = 2
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("double negation equality counting", func(t *testing.T) {
+		// SUMPRODUCT(--(A1:A4="apple")) — count occurrences of "apple"
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: StringVal("apple"),
+				{Col: 1, Row: 2}: StringVal("banana"),
+				{Col: 1, Row: 3}: StringVal("apple"),
+				{Col: 1, Row: 4}: StringVal("cherry"),
+			},
+		}
+		ctx := &EvalContext{CurrentCol: 3, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, `SUMPRODUCT(--(A1:A4="apple"))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// "apple" appears in rows 1 and 3 => 2
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v, want 2", got)
+		}
+	})
+
+	t.Run("identity product with ones", func(t *testing.T) {
+		// Multiplying by array of all 1s should give same result as single array sum
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(7),
+				{Col: 1, Row: 2}: NumberVal(8),
+				{Col: 1, Row: 3}: NumberVal(9),
+				{Col: 2, Row: 1}: NumberVal(1),
+				{Col: 2, Row: 2}: NumberVal(1),
+				{Col: 2, Row: 3}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// 7*1 + 8*1 + 9*1 = 24
+		if got.Type != ValueNumber || got.Num != 24 {
+			t.Errorf("got %v, want 24", got)
+		}
+	})
+
+	t.Run("very small floating point values", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1e-10),
+				{Col: 1, Row: 2}: NumberVal(2e-10),
+				{Col: 2, Row: 1}: NumberVal(3e-10),
+				{Col: 2, Row: 2}: NumberVal(4e-10),
+			},
+		}
+		// 1e-10*3e-10 + 2e-10*4e-10 = 3e-20 + 8e-20 = 1.1e-19
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || math.Abs(got.Num-1.1e-19) > 1e-30 {
+			t.Errorf("got %v, want 1.1e-19", got)
+		}
+	})
+
+	t.Run("negative result from mixed signs", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 1}: NumberVal(-3),
+				{Col: 2, Row: 2}: NumberVal(-4),
+			},
+		}
+		// 10*(-3) + 20*(-4) = -30 + -80 = -110
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != -110 {
+			t.Errorf("got %v, want -110", got)
+		}
+	})
+
+	t.Run("five arrays product", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(3),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 3, Row: 1}: NumberVal(5),
+				{Col: 3, Row: 2}: NumberVal(6),
+				{Col: 4, Row: 1}: NumberVal(7),
+				{Col: 4, Row: 2}: NumberVal(8),
+				{Col: 5, Row: 1}: NumberVal(9),
+				{Col: 5, Row: 2}: NumberVal(10),
+			},
+		}
+		// 1*3*5*7*9 + 2*4*6*8*10 = 945 + 3840 = 4785
+		cf := evalCompile(t, "SUMPRODUCT(A1:A2,B1:B2,C1:C2,D1:D2,E1:E2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4785 {
+			t.Errorf("got %v, want 4785", got)
+		}
+	})
+
+	t.Run("3x3 2D array product", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				// A1:C3 = {{1,2,3},{4,5,6},{7,8,9}}
+				{Col: 1, Row: 1}: NumberVal(1), {Col: 2, Row: 1}: NumberVal(2), {Col: 3, Row: 1}: NumberVal(3),
+				{Col: 1, Row: 2}: NumberVal(4), {Col: 2, Row: 2}: NumberVal(5), {Col: 3, Row: 2}: NumberVal(6),
+				{Col: 1, Row: 3}: NumberVal(7), {Col: 2, Row: 3}: NumberVal(8), {Col: 3, Row: 3}: NumberVal(9),
+				// D1:F3 = {{9,8,7},{6,5,4},{3,2,1}}
+				{Col: 4, Row: 1}: NumberVal(9), {Col: 5, Row: 1}: NumberVal(8), {Col: 6, Row: 1}: NumberVal(7),
+				{Col: 4, Row: 2}: NumberVal(6), {Col: 5, Row: 2}: NumberVal(5), {Col: 6, Row: 2}: NumberVal(4),
+				{Col: 4, Row: 3}: NumberVal(3), {Col: 5, Row: 3}: NumberVal(2), {Col: 6, Row: 3}: NumberVal(1),
+			},
+		}
+		// 1*9 + 2*8 + 3*7 + 4*6 + 5*5 + 6*4 + 7*3 + 8*2 + 9*1
+		// = 9 + 16 + 21 + 24 + 25 + 24 + 21 + 16 + 9 = 165
+		cf := evalCompile(t, "SUMPRODUCT(A1:C3,D1:F3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 165 {
+			t.Errorf("got %v, want 165", got)
+		}
+	})
+
+	t.Run("text scattered in multiple arrays", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(5),
+				{Col: 1, Row: 2}: StringVal("x"),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: StringVal("y"),
+				{Col: 2, Row: 2}: NumberVal(4),
+				{Col: 2, Row: 3}: NumberVal(2),
+			},
+		}
+		// 5*0 + 0*4 + 3*2 = 0 + 0 + 6 = 6
+		cf := evalCompile(t, "SUMPRODUCT(A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 6 {
+			t.Errorf("got %v, want 6", got)
+		}
+	})
+
+	t.Run("single cell range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		// Single cell: product is 42, sum is 42
+		cf := evalCompile(t, "SUMPRODUCT(A1:A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v, want 42", got)
+		}
+	})
+
+	t.Run("inline arrays with zeros", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		// {0,1,2}*{3,4,5} = 0*3 + 1*4 + 2*5 = 0 + 4 + 10 = 14
+		cf := evalCompile(t, "SUMPRODUCT({0,1,2},{3,4,5})")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 14 {
+			t.Errorf("got %v, want 14", got)
+		}
+	})
+
+	t.Run("conditional sum vs manual check", func(t *testing.T) {
+		// SUMPRODUCT((A1:A6>3)*B1:B6) should equal manually-summed result
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(5),
+				{Col: 1, Row: 3}: NumberVal(2),
+				{Col: 1, Row: 4}: NumberVal(4),
+				{Col: 1, Row: 5}: NumberVal(6),
+				{Col: 1, Row: 6}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 3}: NumberVal(30),
+				{Col: 2, Row: 4}: NumberVal(40),
+				{Col: 2, Row: 5}: NumberVal(50),
+				{Col: 2, Row: 6}: NumberVal(60),
+			},
+		}
+		ctx := &EvalContext{CurrentCol: 5, CurrentRow: 1, CurrentSheet: "Sheet1"}
+		cf := evalCompile(t, "SUMPRODUCT((A1:A6>3)*B1:B6)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// Values > 3: row2(5),row4(4),row5(6) => B values: 20+40+50 = 110
+		if got.Type != ValueNumber || got.Num != 110 {
+			t.Errorf("got %v, want 110", got)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // MatchesCriteria — helper used by *IF functions
 // ---------------------------------------------------------------------------
