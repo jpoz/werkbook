@@ -20111,6 +20111,54 @@ func TestCONFIDENCE_NORM(t *testing.T) {
 		{"err_nonnumeric_stddev", `CONFIDENCE.NORM(0.05,"abc",50)`, 0, true, ErrValVALUE},
 		// Error: non-numeric size
 		{"err_nonnumeric_size", `CONFIDENCE.NORM(0.05,2.5,"abc")`, 0, true, ErrValVALUE},
+
+		// 99% confidence (alpha=0.01) with stdev=1, n=50 — wider than 95%
+		{"alpha_001_1_50", "CONFIDENCE.NORM(0.01,1,50)", 0.364277, false, 0},
+
+		// 90% confidence (alpha=0.10) with stdev=1, n=50 — narrower than 95%
+		{"alpha_010_1_50", "CONFIDENCE.NORM(0.10,1,50)", 0.232634, false, 0},
+
+		// Large sample n=1000 → narrow interval
+		{"large_sample_1000", "CONFIDENCE.NORM(0.05,1,1000)", 0.061980, false, 0},
+
+		// Small sample n=5 → wide interval
+		{"small_sample_5", "CONFIDENCE.NORM(0.05,1,5)", 0.876520, false, 0},
+
+		// Small sample n=2
+		{"small_sample_2", "CONFIDENCE.NORM(0.05,1,2)", 1.385904, false, 0},
+
+		// Size = 1 — valid, returns z * stdev
+		{"size_one", "CONFIDENCE.NORM(0.05,1,1)", 1.959964, false, 0},
+
+		// Double stdev → double confidence width
+		// CONFIDENCE.NORM(0.05,5,50) should be exactly 2x CONFIDENCE.NORM(0.05,2.5,50)
+		{"double_stdev", "CONFIDENCE.NORM(0.05,5,50)", 1.385904, false, 0},
+
+		// Quadruple sample → halve confidence width (sqrt relationship)
+		// CONFIDENCE.NORM(0.05,1,100) ≈ 0.5 * CONFIDENCE.NORM(0.05,1,25)
+		{"sqrt_relation_n25", "CONFIDENCE.NORM(0.05,1,25)", 0.391993, false, 0},
+		{"sqrt_relation_n100", "CONFIDENCE.NORM(0.05,1,100)", 0.196, false, 0},
+
+		// Very small alpha (near 0) → very wide interval
+		{"alpha_near_zero", "CONFIDENCE.NORM(0.0001,1,100)", 0.389059, false, 0},
+
+		// Alpha near 1 → very narrow interval
+		{"alpha_near_one", "CONFIDENCE.NORM(0.999,1,100)", 0.000125, false, 0},
+
+		// Boolean coercion: TRUE → 1 (alpha=1 → #NUM!)
+		{"bool_true_alpha", "CONFIDENCE.NORM(TRUE,2.5,50)", 0, true, ErrValNUM},
+
+		// Boolean coercion: FALSE → 0 (alpha=0 → #NUM!)
+		{"bool_false_alpha", "CONFIDENCE.NORM(FALSE,2.5,50)", 0, true, ErrValNUM},
+
+		// Error propagation: #N/A in first arg
+		{"err_prop_alpha", "CONFIDENCE.NORM(NA(),2.5,50)", 0, true, ErrValNA},
+
+		// Error propagation: #DIV/0! in second arg
+		{"err_prop_stddev", "CONFIDENCE.NORM(0.05,1/0,50)", 0, true, ErrValDIV0},
+
+		// Stdev = 0.001 (very small)
+		{"tiny_stdev", "CONFIDENCE.NORM(0.05,0.001,50)", 0.000277, false, 0},
 	}
 
 	for _, tt := range tests {
@@ -20135,6 +20183,67 @@ func TestCONFIDENCE_NORM(t *testing.T) {
 				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
 			}
 		})
+	}
+}
+
+func TestCONFIDENCE_NORM_doubleStdev(t *testing.T) {
+	// Double stdev → exactly double confidence width (linear relationship)
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "CONFIDENCE.NORM(0.05,2.5,50)")
+	v1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	cf2 := evalCompile(t, "CONFIDENCE.NORM(0.05,5,50)")
+	v2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	ratio := v2.Num / v1.Num
+	if math.Abs(ratio-2.0) > tol {
+		t.Errorf("double stdev ratio = %g, want 2.0", ratio)
+	}
+}
+
+func TestCONFIDENCE_NORM_sqrtRelation(t *testing.T) {
+	// Quadruple sample size → halve confidence width (sqrt relationship)
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "CONFIDENCE.NORM(0.05,1,25)")
+	v1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	cf2 := evalCompile(t, "CONFIDENCE.NORM(0.05,1,100)")
+	v2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	ratio := v1.Num / v2.Num
+	if math.Abs(ratio-2.0) > tol {
+		t.Errorf("sqrt relation ratio = %g, want 2.0 (n=25 vs n=100)", ratio)
+	}
+}
+
+func TestCONFIDENCE_NORM_crossCheck(t *testing.T) {
+	// Cross-check: CONFIDENCE.NORM(a,s,n) = NORM.S.INV(1-a/2) * s / SQRT(n)
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	formula := "CONFIDENCE.NORM(0.05,2.5,50) - NORM.S.INV(1-0.05/2)*2.5/SQRT(50)"
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num) > tol {
+		t.Errorf("cross-check diff = %g, want ~0", got.Num)
 	}
 }
 
@@ -20237,6 +20346,51 @@ func TestCONFIDENCE_T(t *testing.T) {
 		{"err_nonnumeric_stddev", `CONFIDENCE.T(0.05,"abc",50)`, 0, true, ErrValVALUE},
 		// Error: non-numeric size
 		{"err_nonnumeric_size", `CONFIDENCE.T(0.05,1,"abc")`, 0, true, ErrValVALUE},
+
+		// 99% confidence (alpha=0.01) with n=50 — wider than 95%
+		{"alpha_001_1_50", "CONFIDENCE.T(0.01,1,50)", 0.379002, false, 0},
+
+		// 90% confidence (alpha=0.10) with n=50 — narrower than 95%
+		{"alpha_010_1_50", "CONFIDENCE.T(0.10,1,50)", 0.237100, false, 0},
+
+		// Large sample n=1000 → narrow interval, close to NORM
+		{"large_sample_1000", "CONFIDENCE.T(0.05,1,1000)", 0.062071, false, 0},
+
+		// Small sample n=4 (df=3) — wide interval due to fat t-tails
+		{"small_sample_4", "CONFIDENCE.T(0.05,1,4)", 1.591223, false, 0},
+
+		// Double stdev → double confidence width (linear)
+		{"double_stdev", "CONFIDENCE.T(0.05,2,50)", 0.568393, false, 0},
+
+		// Very small alpha (near 0) → very wide
+		{"alpha_near_zero", "CONFIDENCE.T(0.0001,1,50)", 0.599022, false, 0},
+
+		// Alpha near 1 → very narrow
+		{"alpha_near_one", "CONFIDENCE.T(0.999,1,50)", 0.000178, false, 0},
+
+		// Boolean coercion: TRUE → 1 (alpha=1 → #NUM!)
+		{"bool_true_alpha", "CONFIDENCE.T(TRUE,1,50)", 0, true, ErrValNUM},
+
+		// Boolean coercion: FALSE → 0 (alpha=0 → #NUM!)
+		{"bool_false_alpha", "CONFIDENCE.T(FALSE,1,50)", 0, true, ErrValNUM},
+
+		// Error propagation: #N/A in first arg
+		{"err_prop_alpha", "CONFIDENCE.T(NA(),1,50)", 0, true, ErrValNA},
+
+		// Error propagation: #DIV/0! in second arg
+		{"err_prop_stddev", "CONFIDENCE.T(0.05,1/0,50)", 0, true, ErrValDIV0},
+
+		// Small stdev
+		{"tiny_stdev", "CONFIDENCE.T(0.05,0.001,50)", 0.000284, false, 0},
+
+		// n=10, alpha=0.05, stdev=3
+		{"basic_005_3_10", "CONFIDENCE.T(0.05,3,10)", 2.146071, false, 0},
+
+		// n=20, alpha=0.02, stdev=2
+		{"basic_002_2_20", "CONFIDENCE.T(0.02,2,20)", 1.135691, false, 0},
+
+		// Size truncation: 2.9 → 2 (df=1)
+		{"size_truncation_2_9", "CONFIDENCE.T(0.05,1,2.9)", 8.984644, false, 0},
 	}
 
 	for _, tt := range tests {
@@ -20261,6 +20415,88 @@ func TestCONFIDENCE_T(t *testing.T) {
 				t.Errorf("%s = %g, want %g", tt.formula, got.Num, tt.wantNum)
 			}
 		})
+	}
+}
+
+func TestCONFIDENCE_T_doubleStdev(t *testing.T) {
+	// Double stdev → exactly double confidence width (linear relationship)
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "CONFIDENCE.T(0.05,1,50)")
+	v1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	cf2 := evalCompile(t, "CONFIDENCE.T(0.05,2,50)")
+	v2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	ratio := v2.Num / v1.Num
+	if math.Abs(ratio-2.0) > tol {
+		t.Errorf("double stdev ratio = %g, want 2.0", ratio)
+	}
+}
+
+func TestCONFIDENCE_T_sqrtRelation(t *testing.T) {
+	// Quadruple sample size → halve confidence width (approximately, t-dist varies with df)
+	const tol = 1e-2 // looser tolerance since t-dist df changes
+	resolver := &mockResolver{}
+
+	// For large enough n, sqrt relationship should hold approximately
+	cf1 := evalCompile(t, "CONFIDENCE.T(0.05,1,250)")
+	v1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	cf2 := evalCompile(t, "CONFIDENCE.T(0.05,1,1000)")
+	v2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	ratio := v1.Num / v2.Num
+	// Expect approx 2.0 (sqrt(1000/250) = 2)
+	if math.Abs(ratio-2.0) > tol {
+		t.Errorf("sqrt relation ratio = %g, want ~2.0 (n=250 vs n=1000)", ratio)
+	}
+}
+
+func TestCONFIDENCE_T_crossCheck(t *testing.T) {
+	// Cross-check: CONFIDENCE.T(a,s,n) = T.INV.2T(a,n-1) * s / SQRT(n)
+	const tol = 1e-6
+	resolver := &mockResolver{}
+
+	formula := "CONFIDENCE.T(0.05,2.5,50) - T.INV.2T(0.05,49)*2.5/SQRT(50)"
+	cf := evalCompile(t, formula)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if got.Type != ValueNumber {
+		t.Fatalf("want number, got type=%d err=%v", got.Type, got.Err)
+	}
+	if math.Abs(got.Num) > tol {
+		t.Errorf("cross-check diff = %g, want ~0", got.Num)
+	}
+}
+
+func TestCONFIDENCE_T_widerThanNorm(t *testing.T) {
+	// For small samples, CONFIDENCE.T should be wider than CONFIDENCE.NORM
+	resolver := &mockResolver{}
+
+	cfT := evalCompile(t, "CONFIDENCE.T(0.05,1,5)")
+	vT, err := Eval(cfT, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	cfN := evalCompile(t, "CONFIDENCE.NORM(0.05,1,5)")
+	vN, err := Eval(cfN, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if vT.Num <= vN.Num {
+		t.Errorf("CONFIDENCE.T(0.05,1,5) = %g should be > CONFIDENCE.NORM(0.05,1,5) = %g for small samples", vT.Num, vN.Num)
 	}
 }
 
