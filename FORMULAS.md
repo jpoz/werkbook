@@ -184,7 +184,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | HOUR | Returns the hour from a time or datetime value. | Date & Time | 16 |
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 18 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 46 |
-| HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 37 |
+| HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 64 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 36 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 76 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 44 |
@@ -279,7 +279,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | MUNIT | Returns a unit matrix of a requested size. | Math & Trig | 38 |
 | N | Converts a value to a number using spreadsheet coercion rules. | Information | 19 |
 | NA | Returns the #N/A error value. | Information | 15 |
-| NEGBINOM.DIST | Returns the negative binomial distribution. | Statistical | 30 |
+| NEGBINOM.DIST | Returns the negative binomial distribution. | Statistical | 62 |
 | NETWORKDAYS | Counts working days between two dates. | Date & Time | 53 |
 | NETWORKDAYS.INTL | Counts working days between two dates using a custom weekend pattern. | Date & Time | 44 |
 | NOMINAL | Returns the nominal annual interest rate for an effective rate. | Financial | 17 |

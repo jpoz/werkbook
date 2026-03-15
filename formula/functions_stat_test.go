@@ -22091,6 +22091,93 @@ func TestHYPGEOM_DIST(t *testing.T) {
 
 		// Error: non-numeric fifth arg
 		{"err_non_numeric_5", `HYPGEOM.DIST(1,4,8,20,"abc")`, 0, true, ErrValVALUE},
+
+		// --- Additional comprehensive tests ---
+
+		// Lottery-type: 6 balls drawn from 49, 6 winning numbers, P(all 6)
+		// C(6,6)*C(43,0)/C(49,6) = 1/13983816
+		{"lottery_all6", "HYPGEOM.DIST(6,6,6,49,FALSE)", 1.0 / 13983816.0, false, 0},
+
+		// Lottery: P(0 winning) = C(6,0)*C(43,6)/C(49,6)
+		{"lottery_zero", "HYPGEOM.DIST(0,6,6,49,FALSE)", 0.435964975512, false, 0},
+
+		// Lottery: P(3 winning) = C(6,3)*C(43,3)/C(49,6)
+		{"lottery_three", "HYPGEOM.DIST(3,6,6,49,FALSE)", 0.017650403867, false, 0},
+
+		// Lottery CDF: P(X<=6) should be 1
+		{"lottery_cdf_max", "HYPGEOM.DIST(6,6,6,49,TRUE)", 1.0, false, 0},
+
+		// Lottery CDF: P(X<=0)
+		{"lottery_cdf_zero", "HYPGEOM.DIST(0,6,6,49,TRUE)", 0.435964975512, false, 0},
+
+		// Cross-check: sum of PMF from k=0..4 should equal 1 for n=4, M=8, N=20
+		// (verified by cdf_at_max above; here we test cdf at k=1 vs manual sum)
+		// PMF(0) + PMF(1) = 0.102167182663 + 0.363261093911 = 0.465428276574
+		{"cdf_manual_sum_k1", "HYPGEOM.DIST(1,4,8,20,TRUE)", 0.465428276574, false, 0},
+
+		// Entire population drawn: n = N, so k must equal M
+		// HYPGEOM.DIST(8,20,8,20,FALSE) = 1 (certain to get all 8)
+		{"entire_pop_drawn", "HYPGEOM.DIST(8,20,8,20,FALSE)", 1.0, false, 0},
+
+		// Entire population drawn CDF
+		{"entire_pop_drawn_cdf", "HYPGEOM.DIST(8,20,8,20,TRUE)", 1.0, false, 0},
+
+		// Quality inspection: 200 items, 10 defective, sample 20, P(0 defective)
+		{"quality_zero_defect", "HYPGEOM.DIST(0,20,10,200,FALSE)", 0.339774376237, false, 0},
+
+		// Quality inspection: P(1 defective)
+		{"quality_one_defect", "HYPGEOM.DIST(1,20,10,200,FALSE)", 0.397396931271, false, 0},
+
+		// Quality inspection: CDF P(X<=2)
+		{"quality_cdf_2", "HYPGEOM.DIST(2,20,10,200,TRUE)", 0.934714549506, false, 0},
+
+		// Large population: 1000 items, 100 successes, sample 50, k=5
+		{"large_pop_1000", "HYPGEOM.DIST(5,50,100,1000,FALSE)", 0.189720223669, false, 0},
+
+		// Large population CDF
+		{"large_pop_1000_cdf", "HYPGEOM.DIST(5,50,100,1000,TRUE)", 0.616635656393, false, 0},
+
+		// PMF where lower bound > 0: n+M-N > 0 → n=15, M=18, N=20 → lb=13
+		// k must be >= 13
+		{"high_lower_bound_pmf", "HYPGEOM.DIST(14,15,18,20,FALSE)", 0.394736842105, false, 0},
+
+		// CDF at that lower bound
+		{"high_lower_bound_cdf", "HYPGEOM.DIST(13,15,18,20,TRUE)", 0.552631578947, false, 0},
+
+		// sample_s = population_s (k = M), n > M: draw more than total successes
+		{"k_equals_M", "HYPGEOM.DIST(3,8,3,15,FALSE)", 0.123076923077, false, 0},
+
+		// Boolean coercion: TRUE = 1, FALSE = 0
+		{"bool_coerce_true", "HYPGEOM.DIST(TRUE,4,8,20,FALSE)", 0.363261093911, false, 0},
+		{"bool_coerce_false", "HYPGEOM.DIST(FALSE,4,8,20,FALSE)", 0.102167182663, false, 0},
+
+		// Boolean cumulative: 1 treated as TRUE
+		{"cum_1", "HYPGEOM.DIST(1,4,8,20,1)", 0.465428276574, false, 0},
+		// 0 treated as FALSE
+		{"cum_0", "HYPGEOM.DIST(1,4,8,20,0)", 0.363261093911, false, 0},
+
+		// String coercion: "1" should coerce to 1
+		{"string_coerce_num", `HYPGEOM.DIST("1",4,8,20,FALSE)`, 0.363261093911, false, 0},
+
+		// Symmetric case: n=M, k could be 0..min(n,M)
+		// C(5,3)*C(5,2)/C(10,5) = 10*10/252
+		{"symmetric_case", "HYPGEOM.DIST(3,5,5,10,FALSE)", 0.396825396825, false, 0},
+
+		// Edge: population_s = number_pop (all items are successes)
+		// Then k must equal n. HYPGEOM.DIST(4,4,20,20,FALSE) = 1
+		{"all_success_pop", "HYPGEOM.DIST(4,4,20,20,FALSE)", 1.0, false, 0},
+
+		// Edge: n=1, M=1, N=1 → k must be 1 (lb = 1+1-1 = 1)
+		{"minimal_pop", "HYPGEOM.DIST(1,1,1,1,FALSE)", 1.0, false, 0},
+
+		// Error: negative number_sample (truncated)
+		{"err_neg_n", "HYPGEOM.DIST(0,-1,8,20,FALSE)", 0, true, ErrValNUM},
+
+		// Error: negative population_s
+		{"err_neg_pop_s", "HYPGEOM.DIST(0,4,-1,20,FALSE)", 0, true, ErrValNUM},
+
+		// Error: negative number_pop
+		{"err_neg_pop", "HYPGEOM.DIST(0,4,8,-1,FALSE)", 0, true, ErrValNUM},
 	}
 
 	for _, tt := range tests {
@@ -22257,6 +22344,103 @@ func TestNEGBINOM_DIST(t *testing.T) {
 
 		// Error: non-numeric fourth arg
 		{"err_non_numeric_cum", `NEGBINOM.DIST(10,5,0.25,"abc")`, 0, true, ErrValVALUE},
+
+		// --- Additional comprehensive tests ---
+
+		// Known: P(0 failures before 1 success) = p
+		{"pmf_0_fail_1_succ_p03", "NEGBINOM.DIST(0,1,0.3,FALSE)", 0.3, false, 0},
+		{"pmf_0_fail_1_succ_p07", "NEGBINOM.DIST(0,1,0.7,FALSE)", 0.7, false, 0},
+		{"pmf_0_fail_1_succ_p05", "NEGBINOM.DIST(0,1,0.5,FALSE)", 0.5, false, 0},
+
+		// Geometric distribution (r=1): PMF = p*(1-p)^f
+		// f=1, p=0.5 → 0.5*0.5 = 0.25
+		{"geometric_f1_p05", "NEGBINOM.DIST(1,1,0.5,FALSE)", 0.25, false, 0},
+		// f=5, p=0.5 → 0.5*0.5^5 = 0.015625
+		{"geometric_f5_p05", "NEGBINOM.DIST(5,1,0.5,FALSE)", 0.015625, false, 0},
+		// f=0, p=0.5 → CDF = 1-(1-0.5)^1 = 0.5
+		{"geometric_cdf_f0_p05", "NEGBINOM.DIST(0,1,0.5,TRUE)", 0.5, false, 0},
+
+		// CDF at f=1, r=1, p=0.5: 1-0.5^2 = 0.75
+		{"geometric_cdf_f1_p05", "NEGBINOM.DIST(1,1,0.5,TRUE)", 0.75, false, 0},
+
+		// Coin flip until 3 heads: P(exactly 2 tails before 3rd head)
+		// C(4,2)*0.5^3*0.5^2 = 6*0.03125*0.25 = 0.046875... wait:
+		// C(2+3-1, 3-1)*0.5^3*0.5^2 = C(4,2)*0.125*0.25 = 6*0.03125 = 0.1875
+		{"coin_3heads_2tails", "NEGBINOM.DIST(2,3,0.5,FALSE)", 0.1875, false, 0},
+
+		// Coin flip: CDF P(X<=2) with r=3, p=0.5
+		// sum PMF(0)+PMF(1)+PMF(2) = 0.125 + 0.1875 + 0.1875 = 0.5
+		{"coin_3heads_cdf2", "NEGBINOM.DIST(2,3,0.5,TRUE)", 0.5, false, 0},
+
+		// Very low probability: p=0.01, r=1, f=0 → 0.01
+		{"very_low_p_f0", "NEGBINOM.DIST(0,1,0.01,FALSE)", 0.01, false, 0},
+
+		// Very low probability: p=0.01, r=1, f=99 → 0.01*0.99^99
+		{"very_low_p_f99", "NEGBINOM.DIST(99,1,0.01,FALSE)", 0.003697296376, false, 0},
+
+		// Very high probability: p=0.99, r=5, f=0 → 0.99^5
+		{"very_high_p_f0", "NEGBINOM.DIST(0,5,0.99,FALSE)", 0.9509900499, false, 0},
+
+		// CDF at large f should approach 1
+		{"cdf_large_f_approach1", "NEGBINOM.DIST(100,5,0.5,TRUE)", 1.0, false, 0},
+
+		// r=2, p=0.5, f=0: PMF = 0.5^2 = 0.25
+		{"pmf_r2_p05_f0", "NEGBINOM.DIST(0,2,0.5,FALSE)", 0.25, false, 0},
+
+		// r=2, p=0.5, f=1: PMF = C(2,1)*0.5^2*0.5 = 2*0.125 = 0.25
+		{"pmf_r2_p05_f1", "NEGBINOM.DIST(1,2,0.5,FALSE)", 0.25, false, 0},
+
+		// r=2, p=0.5, f=2: PMF = C(3,1)*0.5^2*0.5^2 = 3*0.0625 = 0.1875
+		{"pmf_r2_p05_f2", "NEGBINOM.DIST(2,2,0.5,FALSE)", 0.1875, false, 0},
+
+		// r=10, p=0.5, f=10 (symmetric-ish): C(19,9)*0.5^20
+		// C(19,9) = 92378, 0.5^20 ≈ 9.5367e-7
+		{"pmf_r10_p05_f10", "NEGBINOM.DIST(10,10,0.5,FALSE)", 0.088098526001, false, 0},
+
+		// Large r: r=20, p=0.3, f=30
+		{"pmf_large_r", "NEGBINOM.DIST(30,20,0.3,FALSE)", 0.014815505253, false, 0},
+
+		// Large r CDF
+		{"cdf_large_r", "NEGBINOM.DIST(30,20,0.3,TRUE)", 0.084802598554, false, 0},
+
+		// Truncation with decimals: 3.9 -> 3, 2.1 -> 2
+		{"truncation_2", "NEGBINOM.DIST(3.9,2.1,0.5,FALSE)", 0.125, false, 0},
+
+		// p=0, f=0, CDF: regBetaInc(0, r, 1) = 0
+		{"cdf_p0_f0_r5", "NEGBINOM.DIST(0,5,0,TRUE)", 0, false, 0},
+
+		// p=1, f=5: PMF = 0 (can't have failures when p=1)
+		{"pmf_p1_f5", "NEGBINOM.DIST(5,3,1,FALSE)", 0, false, 0},
+
+		// p=1, f=5: CDF should be 1 (all probability at f=0)
+		{"cdf_p1_f5", "NEGBINOM.DIST(5,3,1,TRUE)", 1, false, 0},
+
+		// Boolean coercion: TRUE = 1 for number_f
+		{"bool_coerce_f", "NEGBINOM.DIST(TRUE,5,0.5,FALSE)", 0.078125, false, 0},
+
+		// Boolean coercion: TRUE = 1 for number_s
+		{"bool_coerce_s", "NEGBINOM.DIST(3,TRUE,0.3,FALSE)", 0.1029, false, 0},
+
+		// String coercion: "10" for number_f
+		{"string_coerce_f", `NEGBINOM.DIST("10",5,0.25,FALSE)`, 0.0550487, false, 0},
+
+		// String coercion: "5" for number_s
+		{"string_coerce_s", `NEGBINOM.DIST(10,"5",0.25,FALSE)`, 0.0550487, false, 0},
+
+		// Cumulative with 1 instead of TRUE
+		{"cum_as_1", "NEGBINOM.DIST(10,5,0.25,1)", 0.3135141, false, 0},
+
+		// PMF with 0 instead of FALSE
+		{"cum_as_0", "NEGBINOM.DIST(10,5,0.25,0)", 0.0550487, false, 0},
+
+		// Error: negative number_s
+		{"err_neg_s", "NEGBINOM.DIST(5,-1,0.25,FALSE)", 0, true, ErrValNUM},
+
+		// Error: p exactly 0 with large f, PMF should be 0 (not error)
+		{"pmf_p0_large_f", "NEGBINOM.DIST(100,1,0,FALSE)", 0, false, 0},
+
+		// Very large failures: f=200, r=5, p=0.01
+		{"pmf_very_large_f", "NEGBINOM.DIST(200,5,0.01,FALSE)", 0.000938644868, false, 0},
 	}
 
 	for _, tt := range tests {
