@@ -177,16 +177,18 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 }
 
 func parseCellData(xc xlsxC, sst []string) CellData {
-	isDynamicArray := xc.IsDynamicArrayFormula()
-	if !isDynamicArray && xc.FE != nil && xc.FE.T == "array" && formula.IsDynamicArrayFormula(xc.F()) {
+	isArrayFormula := xc.IsArrayFormula()
+	isDynamicArray := false
+	if xc.FE != nil && formula.IsDynamicArrayFormula(xc.F()) {
 		isDynamicArray = true
+		isArrayFormula = false
 	}
 	cd := CellData{
 		Ref:            xc.R,
 		Formula:        xc.F(),
 		FormulaType:    formulaType(xc.FE),
 		FormulaRef:     formulaRef(xc.FE),
-		IsArrayFormula: xc.IsArrayFormula(),
+		IsArrayFormula: isArrayFormula,
 		IsDynamicArray: isDynamicArray,
 		StyleIdx:       xc.S,
 	}

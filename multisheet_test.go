@@ -96,6 +96,53 @@ func TestDeleteSheet(t *testing.T) {
 	}
 }
 
+func TestDeleteSheetDropsDefinedNamesForDeletedSheet(t *testing.T) {
+	f := werkbook.New()
+	if _, err := f.NewSheet("Drop"); err != nil {
+		t.Fatalf("NewSheet(Drop): %v", err)
+	}
+	if _, err := f.NewSheet("Later"); err != nil {
+		t.Fatalf("NewSheet(Later): %v", err)
+	}
+
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "KeepGlobal",
+		Value:        "'Sheet1'!$A$1",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatalf("SetDefinedName KeepGlobal: %v", err)
+	}
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "DropGlobal",
+		Value:        "'Drop'!$A$1",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatalf("SetDefinedName DropGlobal: %v", err)
+	}
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "LaterLocal",
+		Value:        "'Later'!$B$2",
+		LocalSheetID: 2,
+	}); err != nil {
+		t.Fatalf("SetDefinedName LaterLocal: %v", err)
+	}
+
+	if err := f.DeleteSheet("Drop"); err != nil {
+		t.Fatalf("DeleteSheet(Drop): %v", err)
+	}
+
+	got := f.DefinedNames()
+	if len(got) != 2 {
+		t.Fatalf("DefinedNames() len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Name != "KeepGlobal" || got[0].Value != "'Sheet1'!$A$1" || got[0].LocalSheetID != -1 {
+		t.Fatalf("KeepGlobal = %#v", got[0])
+	}
+	if got[1].Name != "LaterLocal" || got[1].Value != "'Later'!$B$2" || got[1].LocalSheetID != 1 {
+		t.Fatalf("LaterLocal = %#v, want LocalSheetID=1", got[1])
+	}
+}
+
 func TestNewSheetDuplicate(t *testing.T) {
 	f := werkbook.New()
 	_, err := f.NewSheet("Sheet1")

@@ -187,7 +187,7 @@ func TestDynamicArrayFormulaPrefixesInXML(t *testing.T) {
 	}
 
 	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
-	want := `<f t="array" ref="A1">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(B1:B10,B1:B10&lt;&gt;&#34;&#34;)))</f>`
+	want := `<f>_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(B1:B10,B1:B10&lt;&gt;&#34;&#34;)))</f>`
 	if !strings.Contains(sheetXML, want) {
 		t.Fatalf("dynamic array formula XML missing expected prefixes\nwant: %s\nxml: %s", want, sheetXML)
 	}
@@ -298,7 +298,7 @@ func TestOfficeEraFormulaPrefixesRestoredOnResave(t *testing.T) {
 	}
 }
 
-func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
+func TestDynamicArrayFormulaSerializationAvoidsMetadataXML(t *testing.T) {
 	f := werkbook.New(werkbook.FirstSheet("Out - Ledger Summary"))
 	s := f.Sheet("Out - Ledger Summary")
 	if _, err := f.NewSheet("treasury-ledger"); err != nil {
@@ -326,35 +326,30 @@ func TestDynamicArrayFormulaMetadataInXML(t *testing.T) {
 	}
 
 	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
-	if !strings.Contains(sheetXML, `<c r="A2" t="str" cm="1">`) {
-		t.Fatalf("expected A2 to be written as a dynamic-array string cell, XML: %s", sheetXML)
+	if !strings.Contains(sheetXML, `<c r="A2" t="str"><f>_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(`) {
+		t.Fatalf("expected A2 to be written as a plain formula string cell, XML: %s", sheetXML)
 	}
-	if !strings.Contains(sheetXML, `<f t="array" ref="A2">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(`) {
-		t.Fatalf("expected A2 dynamic-array formula markup, XML: %s", sheetXML)
+	if strings.Contains(sheetXML, `cm="1"`) {
+		t.Fatalf("expected dynamic-array cells to omit cm metadata, XML: %s", sheetXML)
 	}
-	if !strings.Contains(sheetXML, `<c r="B2" cm="1">`) || !strings.Contains(sheetXML, `<f t="array" ref="B2">COUNTIFS(`) {
-		t.Fatalf("expected B2 dynamic-array formula markup, XML: %s", sheetXML)
+	if strings.Contains(sheetXML, `<f t="array"`) {
+		t.Fatalf("expected dynamic-array cells to omit legacy array markup, XML: %s", sheetXML)
 	}
-	if !strings.Contains(sheetXML, `<c r="D2" t="str" cm="1">`) {
-		t.Fatalf("expected D2 to be written as a dynamic-array string cell, XML: %s", sheetXML)
-	}
-	if !strings.Contains(sheetXML, `<f t="array" ref="D2">_xlfn.SINGLE(`) {
-		t.Fatalf("expected D2 SINGLE formula to use _xlfn prefix and dynamic-array markup, XML: %s", sheetXML)
+	if !strings.Contains(sheetXML, `<c r="D2" t="e"><f>_xlfn.SINGLE(`) {
+		t.Fatalf("expected D2 SINGLE formula to use _xlfn prefix and normal error typing, XML: %s", sheetXML)
 	}
 
 	workbookRels := string(readSheetXML(t, path, "xl/_rels/workbook.xml.rels"))
-	if !strings.Contains(workbookRels, `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata"`) {
-		t.Fatalf("expected workbook relationships to include sheet metadata, XML: %s", workbookRels)
+	if strings.Contains(workbookRels, `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata"`) {
+		t.Fatalf("expected workbook relationships to omit sheet metadata, XML: %s", workbookRels)
 	}
 
 	contentTypes := string(readSheetXML(t, path, "[Content_Types].xml"))
-	if !strings.Contains(contentTypes, `PartName="/xl/metadata.xml"`) {
-		t.Fatalf("expected content types to include metadata.xml, XML: %s", contentTypes)
+	if strings.Contains(contentTypes, `PartName="/xl/metadata.xml"`) {
+		t.Fatalf("expected content types to omit metadata.xml, XML: %s", contentTypes)
 	}
-
-	metadataXML := string(readSheetXML(t, path, "xl/metadata.xml"))
-	if !strings.Contains(metadataXML, `dynamicArrayProperties`) {
-		t.Fatalf("expected metadata.xml to contain dynamic array properties, XML: %s", metadataXML)
+	if zipHasEntry(t, path, "xl/metadata.xml") {
+		t.Fatal("metadata.xml should not be written for dynamic array formulas")
 	}
 
 	r, err := os.Open(path)
@@ -490,6 +485,22 @@ func readSheetXML(t *testing.T, xlsxPath, entryName string) []byte {
 	}
 	t.Fatalf("%s not found in zip", entryName)
 	return nil
+}
+
+func zipHasEntry(t *testing.T, xlsxPath, entryName string) bool {
+	t.Helper()
+	zr, err := zip.OpenReader(xlsxPath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer zr.Close()
+
+	for _, zf := range zr.File {
+		if zf.Name == entryName {
+			return true
+		}
+	}
+	return false
 }
 
 func rewriteZipEntry(t *testing.T, srcPath, dstPath, entryName string, rewrite func([]byte) []byte) {
