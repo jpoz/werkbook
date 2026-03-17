@@ -90,6 +90,7 @@ Werkbook includes a built-in formula engine. See [FORMULAS.md](FORMULAS.md) for 
 ## Compatibility
 
 Werkbook targets `.xlsx` workbook interoperability and spreadsheet formula behavior compatibility.
+Interop parity checks treat numeric results as matching within `abs_tol=1e-12` and `rel_tol=1e-12` to avoid false mismatches from floating-point residue.
 
 ## Local interop loop
 

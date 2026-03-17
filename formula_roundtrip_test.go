@@ -410,6 +410,70 @@ func TestFormulaAndValueCoexist(t *testing.T) {
 	}
 }
 
+func TestDynamicArraySpillRoundTripAndRecalculate(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 3)
+	s.SetValue("A2", 1)
+	s.SetValue("A3", 2)
+	if err := s.SetFormula("E1", "SORT(A1:A3)"); err != nil {
+		t.Fatalf("SetFormula(E1): %v", err)
+	}
+	if err := s.SetFormula("H1", "E2*10"); err != nil {
+		t.Fatalf("SetFormula(H1): %v", err)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dynamic-array-spill-roundtrip.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	f2, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	s2 := f2.Sheet("Sheet1")
+
+	val, err := s2.GetValue("E2")
+	if err != nil {
+		t.Fatalf("GetValue(E2): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 2 {
+		t.Fatalf("E2 round-trip value = %#v, want 2", val)
+	}
+
+	val, err = s2.GetValue("H1")
+	if err != nil {
+		t.Fatalf("GetValue(H1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 20 {
+		t.Fatalf("H1 round-trip value = %#v, want 20", val)
+	}
+
+	if err := s2.SetValue("A2", 5); err != nil {
+		t.Fatalf("SetValue(A2): %v", err)
+	}
+	f2.Recalculate()
+
+	val, err = s2.GetValue("E2")
+	if err != nil {
+		t.Fatalf("GetValue(E2) after recalc: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 3 {
+		t.Fatalf("E2 after recalc = %#v, want 3", val)
+	}
+
+	val, err = s2.GetValue("H1")
+	if err != nil {
+		t.Fatalf("GetValue(H1) after recalc: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 30 {
+		t.Fatalf("H1 after recalc = %#v, want 30", val)
+	}
+}
+
 func TestEmptyFormulaIgnored(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

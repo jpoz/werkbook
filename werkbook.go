@@ -322,6 +322,7 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 				c.value = v
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
 				c.isArrayFormula = cd.IsArrayFormula
+				c.isDynamicArray = cd.IsDynamicArray
 				c.formulaRef = cd.FormulaRef
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
@@ -333,6 +334,7 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 				}
 			}
 		}
+		s.restoreDynamicSpillFollowers()
 	}
 	// Build table info from parsed table definitions.
 	for _, td := range data.Tables {
@@ -530,24 +532,39 @@ func (f *File) registerAllFormulas(strict bool) error {
 	return nil
 }
 
-// invalidateDependents queries the dep graph for all transitive dependents
-// of the given cell and marks them dirty.
+// invalidateDependents marks all transitive dependents of the given cell dirty.
+// In addition to the dep graph, dynamic-array spill followers are treated as
+// dependents of their anchor cell so formulas that reference spill cells are
+// invalidated when the anchor changes.
 func (f *File) invalidateDependents(sheet string, col, row int) {
 	changed := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
-	for _, dep := range f.deps.Dependents(changed) {
-		s := f.Sheet(dep.Sheet)
-		if s == nil {
-			continue
+
+	visited := map[formula.QualifiedCell]bool{changed: true}
+	queue := []formula.QualifiedCell{changed}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+
+		deps := f.deps.DirectDependents(cur)
+		if s := f.Sheet(cur.Sheet); s != nil {
+			deps = append(deps, s.spillDependents(cur.Col, cur.Row, f.deps)...)
 		}
-		r, ok := s.rows[dep.Row]
-		if !ok {
-			continue
+
+		for _, dep := range deps {
+			if visited[dep] {
+				continue
+			}
+			visited[dep] = true
+			s := f.Sheet(dep.Sheet)
+			if s != nil {
+				if r, ok := s.rows[dep.Row]; ok {
+					if c, ok := r.cells[dep.Col]; ok {
+						c.dirty = true
+					}
+				}
+			}
+			queue = append(queue, dep)
 		}
-		c, ok := r.cells[dep.Col]
-		if !ok {
-			continue
-		}
-		c.dirty = true
 	}
 }
 
@@ -570,7 +587,25 @@ func (f *File) DirectDependents(sheet, cell string) ([]formula.QualifiedCell, er
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
 	qc := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
-	return f.deps.DirectDependents(qc), nil
+	seen := make(map[formula.QualifiedCell]bool)
+	var deps []formula.QualifiedCell
+	for _, dep := range f.deps.DirectDependents(qc) {
+		if seen[dep] {
+			continue
+		}
+		seen[dep] = true
+		deps = append(deps, dep)
+	}
+	if s := f.Sheet(sheet); s != nil {
+		for _, dep := range s.spillDependents(col, row, f.deps) {
+			if seen[dep] {
+				continue
+			}
+			seen[dep] = true
+			deps = append(deps, dep)
+		}
+	}
+	return deps, nil
 }
 
 // Recalculate evaluates all dirty formula cells. Cells are evaluated lazily
@@ -578,13 +613,28 @@ func (f *File) DirectDependents(sheet, cell string) ([]formula.QualifiedCell, er
 func (f *File) Recalculate() {
 	f.calcGen++
 	for _, s := range f.sheets {
-		for _, r := range s.rows {
+		var formulaCells []sheetCoord
+		for rowNum, r := range s.rows {
 			for col, c := range r.cells {
-				if c.formula != "" && (c.dirty || c.cachedGen < f.calcGen) {
-					c.value = s.evaluateFormula(c, col, r.num)
-					c.cachedGen = f.calcGen
-					c.dirty = false
+				if c.formula == "" {
+					continue
 				}
+				formulaCells = append(formulaCells, sheetCoord{col: col, row: rowNum})
+			}
+		}
+		for _, coord := range formulaCells {
+			r := s.rows[coord.row]
+			if r == nil {
+				continue
+			}
+			c := r.cells[coord.col]
+			if c == nil || c.formula == "" {
+				continue
+			}
+			if c.dirty || c.cachedGen < f.calcGen {
+				c.value = s.evaluateFormula(c, coord.col, coord.row)
+				c.cachedGen = f.calcGen
+				c.dirty = false
 			}
 		}
 	}

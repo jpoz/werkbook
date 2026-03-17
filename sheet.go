@@ -63,6 +63,9 @@ func (s *Sheet) SetValue(cell string, v any) error {
 
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	s.prepareCellForWrite(c, col, row)
+	r = s.ensureRow(row)
+	c = r.ensureCell(col)
 	// Unregister old formula if any.
 	if c.formula != "" {
 		s.file.deps.Unregister(formula.QualifiedCell{Sheet: s.name, Col: col, Row: row})
@@ -70,11 +73,15 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	c.value = val
 	c.formula = ""
 	c.isArrayFormula = false
+	c.isDynamicArray = false
 	c.formulaRef = ""
+	c.spillParentCol = 0
+	c.spillParentRow = 0
 	c.compiled = nil
 	c.cachedGen = 0
 	s.file.calcGen++
 	s.file.invalidateDependents(s.name, col, row)
+	s.markDynamicArrayAnchorsDirty(col, row)
 	return nil
 }
 
@@ -91,6 +98,9 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	s.prepareCellForWrite(c, col, row)
+	r = s.ensureRow(row)
+	c = r.ensureCell(col)
 	// Unregister old formula if any.
 	qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
 	if c.formula != "" {
@@ -98,7 +108,10 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	}
 	c.formula = f
 	c.isArrayFormula = false
+	c.isDynamicArray = formula.IsDynamicArrayFormula(f)
 	c.formulaRef = ""
+	c.spillParentCol = 0
+	c.spillParentRow = 0
 	c.compiled = nil
 	c.value = Value{}
 	c.cachedGen = 0
@@ -114,6 +127,10 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 		}
 	}
 	s.file.invalidateDependents(s.name, col, row)
+	s.markDynamicArrayAnchorsDirty(col, row)
+	if c.isDynamicArray {
+		s.resolveCell(c, col, row)
+	}
 	return nil
 }
 
@@ -291,9 +308,300 @@ func (s *Sheet) GetValue(cell string) (Value, error) {
 	if !ok {
 		return Value{Type: TypeEmpty}, nil
 	}
+	if c.isSpillFollower() {
+		if anchor := s.cellAt(c.spillParentCol, c.spillParentRow); anchor != nil {
+			s.resolveCell(anchor, c.spillParentCol, c.spillParentRow)
+			r = s.rows[row]
+			if r == nil {
+				return Value{Type: TypeEmpty}, nil
+			}
+			c = r.cells[col]
+			if c == nil {
+				return Value{Type: TypeEmpty}, nil
+			}
+		}
+	}
 
 	s.resolveCell(c, col, row)
 	return c.value, nil
+}
+
+type sheetCoord struct {
+	col int
+	row int
+}
+
+func (s *Sheet) cellAt(col, row int) *Cell {
+	r, ok := s.rows[row]
+	if !ok {
+		return nil
+	}
+	return r.cells[col]
+}
+
+func spillRangeRef(col, row, rows, cols int) string {
+	start, err := CoordinatesToCellName(col, row)
+	if err != nil {
+		return ""
+	}
+	if rows <= 1 && cols <= 1 {
+		return start
+	}
+	end, err := CoordinatesToCellName(col+cols-1, row+rows-1)
+	if err != nil {
+		return start
+	}
+	return start + ":" + end
+}
+
+func formulaArraySize(array [][]formula.Value) (rows, cols int) {
+	rows = len(array)
+	for _, row := range array {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	return rows, cols
+}
+
+func formulaArrayValueAt(array [][]formula.Value, row, col int) formula.Value {
+	if row >= 0 && row < len(array) && col >= 0 && col < len(array[row]) {
+		return array[row][col]
+	}
+	return formula.EmptyVal()
+}
+
+func (s *Sheet) prepareCellForWrite(c *Cell, col, row int) {
+	if c == nil {
+		return
+	}
+	if c.isDynamicArray {
+		s.clearSpillFollowers(col, row)
+	}
+	if !c.isSpillFollower() {
+		return
+	}
+	anchorCol := c.spillParentCol
+	anchorRow := c.spillParentRow
+	s.clearSpillFollowers(anchorCol, anchorRow)
+	if anchor := s.cellAt(anchorCol, anchorRow); anchor != nil && anchor.formula != "" {
+		anchor.dirty = true
+		anchor.cachedGen = 0
+		s.file.invalidateDependents(s.name, anchorCol, anchorRow)
+	}
+}
+
+func (s *Sheet) clearSpillFollowers(anchorCol, anchorRow int) {
+	if anchorCol <= 0 || anchorRow <= 0 {
+		return
+	}
+
+	rowNums := make([]int, 0, len(s.rows))
+	for rowNum := range s.rows {
+		rowNums = append(rowNums, rowNum)
+	}
+	sort.Ints(rowNums)
+
+	for _, rowNum := range rowNums {
+		r := s.rows[rowNum]
+		if r == nil {
+			continue
+		}
+
+		colNums := make([]int, 0, len(r.cells))
+		for col := range r.cells {
+			colNums = append(colNums, col)
+		}
+		sort.Ints(colNums)
+
+		for _, col := range colNums {
+			c := r.cells[col]
+			if c == nil || c.spillParentCol != anchorCol || c.spillParentRow != anchorRow {
+				continue
+			}
+			c.spillParentCol = 0
+			c.spillParentRow = 0
+			c.value = Value{}
+			c.cachedGen = 0
+			c.dirty = false
+			if c.formula == "" && c.style == nil && c.value.Type == TypeEmpty {
+				delete(r.cells, col)
+			}
+			s.file.invalidateDependents(s.name, col, rowNum)
+		}
+
+		if len(r.cells) == 0 && r.height == 0 && !r.hidden {
+			delete(s.rows, rowNum)
+		}
+	}
+
+	if anchor := s.cellAt(anchorCol, anchorRow); anchor != nil {
+		anchor.formulaRef = spillRangeRef(anchorCol, anchorRow, 1, 1)
+	}
+}
+
+func (s *Sheet) canSpillInto(anchorCol, anchorRow, rows, cols int) bool {
+	if rows <= 0 || cols <= 0 {
+		return true
+	}
+	if anchorRow+rows-1 > MaxRows || anchorCol+cols-1 > MaxColumns {
+		return false
+	}
+
+	for rowOff := 0; rowOff < rows; rowOff++ {
+		for colOff := 0; colOff < cols; colOff++ {
+			if rowOff == 0 && colOff == 0 {
+				continue
+			}
+			target := s.cellAt(anchorCol+colOff, anchorRow+rowOff)
+			if target == nil {
+				continue
+			}
+			if target.spillParentCol == anchorCol && target.spillParentRow == anchorRow {
+				continue
+			}
+			if target.formula != "" || target.isSpillFollower() {
+				return false
+			}
+			if target.value.Type != TypeEmpty {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (s *Sheet) materializeDynamicArray(c *Cell, col, row int, result formula.Value) Value {
+	c.formulaRef = spillRangeRef(col, row, 1, 1)
+	s.clearSpillFollowers(col, row)
+
+	if result.Type != formula.ValueArray || result.NoSpill {
+		return formulaValueToValue(result, c.isArrayFormula)
+	}
+
+	nRows, nCols := formulaArraySize(result.Array)
+	if nRows <= 0 || nCols <= 0 {
+		return formulaValueToValue(result, c.isArrayFormula)
+	}
+	if nRows == 1 && nCols == 1 {
+		return formulaValueToValue(result.Array[0][0], c.isArrayFormula)
+	}
+	if !s.canSpillInto(col, row, nRows, nCols) {
+		return Value{Type: TypeError, String: "#SPILL!"}
+	}
+
+	c.formulaRef = spillRangeRef(col, row, nRows, nCols)
+	for rowOff := 0; rowOff < nRows; rowOff++ {
+		for colOff := 0; colOff < nCols; colOff++ {
+			if rowOff == 0 && colOff == 0 {
+				continue
+			}
+			targetRow := row + rowOff
+			targetCol := col + colOff
+			targetRowData := s.ensureRow(targetRow)
+			target := targetRowData.ensureCell(targetCol)
+			target.value = formulaValueToValue(formulaArrayValueAt(result.Array, rowOff, colOff), false)
+			target.formula = ""
+			target.isArrayFormula = false
+			target.isDynamicArray = false
+			target.formulaRef = ""
+			target.spillParentCol = col
+			target.spillParentRow = row
+			target.compiled = nil
+			target.cachedGen = 0
+			target.dirty = false
+			s.file.invalidateDependents(s.name, targetCol, targetRow)
+		}
+	}
+	return formulaValueToValue(result.Array[0][0], c.isArrayFormula)
+}
+
+func (s *Sheet) restoreDynamicSpillFollowers() {
+	rowNums := make([]int, 0, len(s.rows))
+	for rowNum := range s.rows {
+		rowNums = append(rowNums, rowNum)
+	}
+	sort.Ints(rowNums)
+
+	for _, rowNum := range rowNums {
+		r := s.rows[rowNum]
+		if r == nil {
+			continue
+		}
+
+		colNums := make([]int, 0, len(r.cells))
+		for col := range r.cells {
+			colNums = append(colNums, col)
+		}
+		sort.Ints(colNums)
+
+		for _, col := range colNums {
+			c := r.cells[col]
+			if c == nil || !c.isDynamicArray || c.formulaRef == "" {
+				continue
+			}
+			fromCol, fromRow, toCol, toRow, err := RangeToCoordinates(c.formulaRef)
+			if err != nil {
+				continue
+			}
+			for spillRow := fromRow; spillRow <= toRow; spillRow++ {
+				spillCells := s.rows[spillRow]
+				if spillCells == nil {
+					continue
+				}
+				for spillCol := fromCol; spillCol <= toCol; spillCol++ {
+					if spillCol == col && spillRow == rowNum {
+						continue
+					}
+					spillCell := spillCells.cells[spillCol]
+					if spillCell == nil {
+						continue
+					}
+					spillCell.spillParentCol = col
+					spillCell.spillParentRow = rowNum
+				}
+			}
+		}
+	}
+}
+
+func (s *Sheet) spillDependents(anchorCol, anchorRow int, g *formula.DepGraph) []formula.QualifiedCell {
+	if anchorCol <= 0 || anchorRow <= 0 {
+		return nil
+	}
+
+	seen := make(map[formula.QualifiedCell]bool)
+	var deps []formula.QualifiedCell
+	for rowNum, r := range s.rows {
+		for col, c := range r.cells {
+			if c == nil || c.spillParentCol != anchorCol || c.spillParentRow != anchorRow {
+				continue
+			}
+			for _, dep := range g.DirectDependents(formula.QualifiedCell{Sheet: s.name, Col: col, Row: rowNum}) {
+				if seen[dep] {
+					continue
+				}
+				seen[dep] = true
+				deps = append(deps, dep)
+			}
+		}
+	}
+	return deps
+}
+
+func (s *Sheet) markDynamicArrayAnchorsDirty(excludeCol, excludeRow int) {
+	for rowNum, r := range s.rows {
+		for col, c := range r.cells {
+			if c == nil || !c.isDynamicArray || c.formula == "" {
+				continue
+			}
+			if col == excludeCol && rowNum == excludeRow {
+				continue
+			}
+			c.dirty = true
+			c.cachedGen = 0
+		}
+	}
 }
 
 func (s *Sheet) ensureRow(num int) *Row {
@@ -436,6 +744,29 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		}
 	}
 
+	// Resolve formula cells up front so dynamic-array spill followers are
+	// materialized before we snapshot the sparse row/cell structure.
+	var formulaCells []sheetCoord
+	for rowNum, r := range s.rows {
+		for col, c := range r.cells {
+			if c.formula == "" {
+				continue
+			}
+			formulaCells = append(formulaCells, sheetCoord{col: col, row: rowNum})
+		}
+	}
+	for _, coord := range formulaCells {
+		r := s.rows[coord.row]
+		if r == nil {
+			continue
+		}
+		c := r.cells[coord.col]
+		if c == nil {
+			continue
+		}
+		s.resolveCell(c, coord.col, coord.row)
+	}
+
 	// Sort rows by number.
 	rowNums := make([]int, 0, len(s.rows))
 	for n := range s.rows {
@@ -465,7 +796,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
-			cd := cellToData(ref, c.value, c.formula, c.isArrayFormula, c.formulaRef)
+			cd := cellToData(ref, c.value, c.formula, c.isArrayFormula, c.isDynamicArray, c.formulaRef)
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
@@ -609,7 +940,9 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	if err != nil {
 		return Value{Type: TypeError, String: err.Error()}
 	}
-
+	if c.isDynamicArray {
+		return s.materializeDynamicArray(c, col, row, result)
+	}
 	return formulaValueToValue(result, c.isArrayFormula)
 }
 
@@ -684,10 +1017,8 @@ func formulaValueToValue(fv formula.Value, isArrayFormula bool) Value {
 		if fv.NoSpill && !isArrayFormula {
 			return Value{Type: TypeError, String: "#VALUE!"}
 		}
-		// Dynamic array spill: return the top-left element of the array
-		// for the anchor cell. Full spill support is not yet implemented,
-		// but returning the first element matches expected behavior for
-		// the formula cell itself.
+		// When an array result is reduced to a single cell, expose its
+		// top-left element.
 		if len(fv.Array) > 0 && len(fv.Array[0]) > 0 {
 			return formulaValueToValue(fv.Array[0][0], isArrayFormula)
 		}
@@ -733,6 +1064,19 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 		c, ok := r.cells[addr.Col]
 		if !ok {
 			return formula.EmptyVal()
+		}
+		if c.isSpillFollower() {
+			if anchor := s.cellAt(c.spillParentCol, c.spillParentRow); anchor != nil {
+				s.resolveCell(anchor, c.spillParentCol, c.spillParentRow)
+				r = s.rows[addr.Row]
+				if r == nil {
+					return formula.EmptyVal()
+				}
+				c = r.cells[addr.Col]
+				if c == nil {
+					return formula.EmptyVal()
+				}
+			}
 		}
 
 		s.resolveCell(c, addr.Col, addr.Row)
@@ -988,10 +1332,9 @@ func valueToFormulaValue(v Value) formula.Value {
 	}
 }
 
-func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef string) ooxml.CellData {
-	dynamicArray := f != "" && formula.IsDynamicArrayFormula(f)
+func cellToData(ref string, v Value, f string, isArrayFormula bool, isDynamicArray bool, formulaRef string) ooxml.CellData {
 	cd := ooxml.CellData{Ref: ref}
-	if dynamicArray {
+	if isDynamicArray {
 		cd.FormulaType = "array"
 		if formulaRef != "" {
 			cd.FormulaRef = formulaRef
@@ -1028,7 +1371,7 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 		cd.Type = "b"
 		cd.Value = val
 	case TypeError:
-		if f != "" && (dynamicArray || isArrayFormula || !isLegacyFormulaError(v.String)) {
+		if f != "" && (isDynamicArray || isArrayFormula || !isLegacyFormulaError(v.String)) {
 			cd.Type = "str"
 		} else {
 			cd.Type = "e"

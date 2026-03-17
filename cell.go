@@ -8,7 +8,10 @@ type Cell struct {
 	value          Value
 	formula        string
 	isArrayFormula bool // CSE (Ctrl+Shift+Enter) array formula
+	isDynamicArray bool
 	formulaRef     string
+	spillParentCol int
+	spillParentRow int
 	compiled       *formula.CompiledFormula
 	cachedGen      uint64 // file.calcGen when value was last computed from formula
 	dirty          bool   // needs recalculation via dependency graph
@@ -33,4 +36,8 @@ func (c *Cell) Formula() string {
 // Style returns the cell's style, or nil for default styling.
 func (c *Cell) Style() *Style {
 	return c.style
+}
+
+func (c *Cell) isSpillFollower() bool {
+	return c.spillParentCol != 0 || c.spillParentRow != 0
 }

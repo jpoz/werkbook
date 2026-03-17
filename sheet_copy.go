@@ -59,7 +59,10 @@ func cloneCell(src *Cell) *Cell {
 		value:          src.value,
 		formula:        src.formula,
 		isArrayFormula: src.isArrayFormula,
+		isDynamicArray: src.isDynamicArray,
 		formulaRef:     src.formulaRef,
+		spillParentCol: src.spillParentCol,
+		spillParentRow: src.spillParentRow,
 		style:          cloneStyle(src.style),
 	}
 	if clone.formula != "" {

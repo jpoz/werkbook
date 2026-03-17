@@ -195,6 +195,103 @@ func TestCopySheetPreservesCellsAndMetadata(t *testing.T) {
 	}
 }
 
+func TestCopySheetPreservesDynamicArraySpillState(t *testing.T) {
+	f := New(FirstSheet("Source"))
+	src := f.Sheet("Source")
+
+	if err := src.SetValue("A1", 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetValue("A2", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetValue("A3", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetFormula("E1", "SORT(A1:A3)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetFormula("H1", "E2*10"); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := src.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("source E2 = %#v, want 2", v)
+	}
+	v, err = src.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 20 {
+		t.Fatalf("source H1 = %#v, want 20", v)
+	}
+	assertDynamicArrayConsistency(t, src)
+
+	copied, err := f.CopySheet("Source", "Copied")
+	if err != nil {
+		t.Fatalf("CopySheet: %v", err)
+	}
+
+	assertDynamicArrayConsistency(t, src)
+	assertDynamicArrayConsistency(t, copied)
+
+	v, err = copied.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("copied E2 = %#v, want 2", v)
+	}
+	v, err = copied.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 20 {
+		t.Fatalf("copied H1 = %#v, want 20", v)
+	}
+
+	if err := copied.SetValue("A2", 5); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err = copied.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 3 {
+		t.Fatalf("copied E2 after edit = %#v, want 3", v)
+	}
+	v, err = copied.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 30 {
+		t.Fatalf("copied H1 after edit = %#v, want 30", v)
+	}
+
+	v, err = src.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("source E2 after copied-sheet edit = %#v, want 2", v)
+	}
+	v, err = src.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 20 {
+		t.Fatalf("source H1 after copied-sheet edit = %#v, want 20", v)
+	}
+
+	assertDynamicArrayConsistency(t, src)
+	assertDynamicArrayConsistency(t, copied)
+}
+
 func TestCloneSheetFromAnotherWorkbook(t *testing.T) {
 	srcFile := New(FirstSheet("Source"))
 	src := srcFile.Sheet("Source")
@@ -289,6 +386,97 @@ func TestCloneSheetFromAnotherWorkbook(t *testing.T) {
 	if v.Type != TypeNumber || v.Number != 4 {
 		t.Fatalf("source B1 after destination edit = %#v, want 4", v)
 	}
+}
+
+func TestCloneSheetFromPreservesDynamicArraySpillState(t *testing.T) {
+	srcFile := New(FirstSheet("Source"))
+	src := srcFile.Sheet("Source")
+
+	if err := src.SetValue("A1", 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetValue("A2", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetValue("A3", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetFormula("E1", "SORT(A1:A3)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetFormula("H1", "E2*10"); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := src.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("source E2 = %#v, want 2", v)
+	}
+	assertDynamicArrayConsistency(t, src)
+
+	dstFile := New(FirstSheet("Existing"))
+	cloned, err := dstFile.CloneSheetFrom(src, "Imported")
+	if err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	assertDynamicArrayConsistency(t, src)
+	assertDynamicArrayConsistency(t, cloned)
+
+	v, err = cloned.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("cloned E2 = %#v, want 2", v)
+	}
+	v, err = cloned.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 20 {
+		t.Fatalf("cloned H1 = %#v, want 20", v)
+	}
+
+	if err := cloned.SetValue("A2", 5); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err = cloned.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 3 {
+		t.Fatalf("cloned E2 after edit = %#v, want 3", v)
+	}
+	v, err = cloned.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 30 {
+		t.Fatalf("cloned H1 after edit = %#v, want 30", v)
+	}
+
+	v, err = src.GetValue("E2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 2 {
+		t.Fatalf("source E2 after clone edit = %#v, want 2", v)
+	}
+	v, err = src.GetValue("H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != TypeNumber || v.Number != 20 {
+		t.Fatalf("source H1 after clone edit = %#v, want 20", v)
+	}
+
+	assertDynamicArrayConsistency(t, src)
+	assertDynamicArrayConsistency(t, cloned)
 }
 
 func TestCopySheetErrors(t *testing.T) {

@@ -390,6 +390,77 @@ func TestFILTER_NumericArrayResult(t *testing.T) {
 	}
 }
 
+func TestRANDARRAYSpillCellsMaterialized(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	if err := s.SetFormula("B3", "RANDARRAY(1,3)"); err != nil {
+		t.Fatalf("SetFormula(B3): %v", err)
+	}
+
+	for _, cell := range []string{"B3", "C3", "D3"} {
+		val, err := s.GetValue(cell)
+		if err != nil {
+			t.Fatalf("GetValue(%s): %v", cell, err)
+		}
+		if val.Type != werkbook.TypeNumber {
+			t.Fatalf("%s type = %v, want TypeNumber", cell, val.Type)
+		}
+		if val.Number < 0 || val.Number >= 1 {
+			t.Fatalf("%s = %g, want [0,1)", cell, val.Number)
+		}
+	}
+}
+
+func TestDynamicArraySpillDependentsUpdate(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 3)
+	s.SetValue("A2", 1)
+	s.SetValue("A3", 2)
+	if err := s.SetFormula("E1", "SORT(A1:A3)"); err != nil {
+		t.Fatalf("SetFormula(E1): %v", err)
+	}
+	if err := s.SetFormula("H1", "E2*10"); err != nil {
+		t.Fatalf("SetFormula(H1): %v", err)
+	}
+
+	val, err := s.GetValue("E2")
+	if err != nil {
+		t.Fatalf("GetValue(E2): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 2 {
+		t.Fatalf("E2 = %#v, want 2", val)
+	}
+
+	val, err = s.GetValue("H1")
+	if err != nil {
+		t.Fatalf("GetValue(H1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 20 {
+		t.Fatalf("H1 = %#v, want 20", val)
+	}
+
+	s.SetValue("A2", 5)
+
+	val, err = s.GetValue("E2")
+	if err != nil {
+		t.Fatalf("GetValue(E2) after update: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 3 {
+		t.Fatalf("E2 after update = %#v, want 3", val)
+	}
+
+	val, err = s.GetValue("H1")
+	if err != nil {
+		t.Fatalf("GetValue(H1) after update: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 30 {
+		t.Fatalf("H1 after update = %#v, want 30", val)
+	}
+}
+
 // TestINDEX_RowZero_ReturnsValueError verifies that INDEX(range,0) returns
 // #VALUE! in a non-array cell, matching expected behaviour.
 func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
