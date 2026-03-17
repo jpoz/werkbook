@@ -294,6 +294,12 @@ func fnSUBSTITUTE(args []Value) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	// Propagate errors from text, old_text, and new_text arguments.
+	for _, a := range args[:3] {
+		if a.Type == ValueError {
+			return a, nil
+		}
+	}
 	text := ValueToString(args[0])
 	oldText := ValueToString(args[1])
 	newText := ValueToString(args[2])
@@ -759,6 +765,13 @@ func fnPROPER(args []Value) (Value, error) {
 func fnREPLACE(args []Value) (Value, error) {
 	if len(args) != 4 {
 		return ErrorVal(ErrValVALUE), nil
+	}
+	// Propagate errors from old_text and new_text arguments.
+	if args[0].Type == ValueError {
+		return args[0], nil
+	}
+	if args[3].Type == ValueError {
+		return args[3], nil
 	}
 	oldText := ValueToString(args[0])
 	startNum, e := CoerceNum(args[1])

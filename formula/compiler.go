@@ -21,19 +21,21 @@ func Compile(source string, node Node) (*CompiledFormula, error) {
 		return nil, err
 	}
 	return &CompiledFormula{
-		Source: source,
-		Code:   c.code,
-		Consts: c.consts,
-		Refs:   c.refs,
-		Ranges: c.ranges,
+		Source:      source,
+		Code:        c.code,
+		Consts:      c.consts,
+		Refs:        c.refs,
+		Ranges:      c.ranges,
+		SubFormulas: c.subFormulas,
 	}, nil
 }
 
 type compiler struct {
-	code   []Instruction
-	consts []Value
-	refs   []CellAddr
-	ranges []RangeAddr
+	code        []Instruction
+	consts      []Value
+	refs        []CellAddr
+	ranges      []RangeAddr
+	subFormulas []*CompiledFormula
 
 	numIdx map[float64]uint32
 	strIdx map[string]uint32
@@ -336,6 +338,190 @@ func (c *compiler) compileNode(node Node) error {
 		}
 		operand := uint32(rows)<<16 | uint32(cols)
 		c.emit(OpMakeArray, operand)
+
+	case *MapExpr:
+		// Compile array expressions — they push values onto the stack
+		for _, arr := range n.Arrays {
+			// Evaluate arrays in array context to prevent implicit intersection
+			c.emit(OpEnterArrayCtx, 0)
+			if err := c.compileNode(arr); err != nil {
+				return err
+			}
+			c.emit(OpLeaveArrayCtx, 0)
+		}
+		// Compile the lambda body as a sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		// OpMap: subFormulaIdx << 8 | numArrays
+		c.emit(OpMap, uint32(subIdx)<<8|uint32(len(n.Arrays)))
+
+	case *ReduceExpr:
+		// Push initial value
+		if err := c.compileNode(n.InitialValue); err != nil {
+			return err
+		}
+		// Push array in array context
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileNode(n.Array); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		// Compile the lambda body as a sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		c.emit(OpReduce, uint32(subIdx))
+
+	case *ScanExpr:
+		// Push initial value
+		if err := c.compileNode(n.InitialValue); err != nil {
+			return err
+		}
+		// Push array in array context
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileNode(n.Array); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		// Compile the lambda body as a sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		c.emit(OpScan, uint32(subIdx))
+
+	case *ByRowExpr:
+		// Push array in array context
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileNode(n.Array); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		// Compile lambda body as sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		c.emit(OpByRow, uint32(subIdx))
+
+	case *ByColExpr:
+		// Push array in array context
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileNode(n.Array); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		// Compile lambda body as sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		c.emit(OpByCol, uint32(subIdx))
+
+	case *MakeArrayExpr:
+		// Compile rows and cols expressions
+		if err := c.compileNode(n.Rows); err != nil {
+			return err
+		}
+		if err := c.compileNode(n.Cols); err != nil {
+			return err
+		}
+		// Compile lambda body as sub-formula
+		subCompiler := &compiler{
+			numIdx: make(map[float64]uint32),
+			strIdx: make(map[string]uint32),
+			refIdx: make(map[CellAddr]uint32),
+			rngIdx: make(map[RangeAddr]uint32),
+		}
+		if err := subCompiler.compileNode(n.Body); err != nil {
+			return err
+		}
+		subFormula := &CompiledFormula{
+			Code:        subCompiler.code,
+			Consts:      subCompiler.consts,
+			Refs:        subCompiler.refs,
+			Ranges:      subCompiler.ranges,
+			SubFormulas: subCompiler.subFormulas,
+		}
+		subIdx := len(c.subFormulas)
+		c.subFormulas = append(c.subFormulas, subFormula)
+		c.emit(OpMakeArrayLambda, uint32(subIdx))
+
+	case *ParamRef:
+		c.emit(OpLoadParam, uint32(n.Slot))
 
 	default:
 		return fmt.Errorf("unsupported AST node type %T", node)

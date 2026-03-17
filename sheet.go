@@ -72,7 +72,9 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	c.isArrayFormula = false
 	c.formulaRef = ""
 	c.compiled = nil
+	c.rawValue = formula.Value{}
 	c.cachedGen = 0
+	c.rawCachedGen = 0
 	s.file.calcGen++
 	s.file.invalidateDependents(s.name, col, row)
 	return nil
@@ -101,7 +103,9 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.formulaRef = ""
 	c.compiled = nil
 	c.value = Value{}
+	c.rawValue = formula.Value{}
 	c.cachedGen = 0
+	c.rawCachedGen = 0
 	c.dirty = true
 	s.file.calcGen++
 	// Compile and register in dep graph.
@@ -283,17 +287,64 @@ func (s *Sheet) GetValue(cell string) (Value, error) {
 		return Value{}, fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
 
-	r, ok := s.rows[row]
-	if !ok {
-		return Value{Type: TypeEmpty}, nil
+	if v, ok := s.valueAt(col, row); ok {
+		return v, nil
 	}
-	c, ok := r.cells[col]
-	if !ok {
-		return Value{Type: TypeEmpty}, nil
-	}
+	return Value{Type: TypeEmpty}, nil
+}
 
-	s.resolveCell(c, col, row)
-	return c.value, nil
+func (s *Sheet) valueAt(col, row int) (Value, bool) {
+	if r, ok := s.rows[row]; ok {
+		if c, ok := r.cells[col]; ok {
+			s.resolveCell(c, col, row)
+			return c.value, true
+		}
+	}
+	if v, ok := s.spillValueAt(col, row); ok {
+		return v, true
+	}
+	return Value{}, false
+}
+
+func (s *Sheet) spillValueAt(col, row int) (Value, bool) {
+	fv, ok := s.spillFormulaValueAt(col, row)
+	if !ok {
+		return Value{}, false
+	}
+	return formulaValueToValue(fv, false), true
+}
+
+func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
+	for anchorRow, sheetRow := range s.rows {
+		if anchorRow > row {
+			continue
+		}
+		for anchorCol, cell := range sheetRow.cells {
+			if anchorCol > col || cell.formula == "" || cell.isArrayFormula || !formula.IsDynamicArrayFormula(cell.formula) {
+				continue
+			}
+			raw := cell.rawValue
+			if cell.dirty || cell.rawCachedGen != s.file.calcGen {
+				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
+			}
+			if raw.Type != formula.ValueArray || raw.NoSpill {
+				continue
+			}
+			rowOffset := row - anchorRow
+			colOffset := col - anchorCol
+			if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
+				continue
+			}
+			if colOffset >= len(raw.Array[rowOffset]) {
+				continue
+			}
+			if rowOffset == 0 && colOffset == 0 {
+				continue
+			}
+			return raw.Array[rowOffset][colOffset], true
+		}
+	}
+	return formula.Value{}, false
 }
 
 func (s *Sheet) ensureRow(num int) *Row {
@@ -609,6 +660,8 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	if err != nil {
 		return Value{Type: TypeError, String: err.Error()}
 	}
+	c.rawValue = result
+	c.rawCachedGen = f.calcGen
 
 	return formulaValueToValue(result, c.isArrayFormula)
 }
@@ -618,6 +671,9 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 // the full dynamic array result from a cell's formula.
 func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	f := s.file
+	if !c.dirty && c.rawCachedGen == f.calcGen {
+		return c.rawValue
+	}
 	if f.evaluating == nil {
 		f.evaluating = make(map[cellKey]bool)
 	}
@@ -661,6 +717,11 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	if err != nil {
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}
+	c.rawValue = result
+	c.rawCachedGen = f.calcGen
+	c.value = formulaValueToValue(result, c.isArrayFormula)
+	c.cachedGen = f.calcGen
+	c.dirty = false
 	return result
 }
 
@@ -720,10 +781,16 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 
 	r, ok := s.rows[addr.Row]
 	if !ok {
+		if v, ok := s.spillFormulaValueAt(addr.Col, addr.Row); ok {
+			return v
+		}
 		return formula.EmptyVal()
 	}
 	c, ok := r.cells[addr.Col]
 	if !ok {
+		if v, ok := s.spillFormulaValueAt(addr.Col, addr.Row); ok {
+			return v
+		}
 		return formula.EmptyVal()
 	}
 
@@ -805,6 +872,10 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	}
 
 	rows := newFormulaValueMatrix(nRows, nCols)
+	occupied := make([][]bool, nRows)
+	for i := range occupied {
+		occupied[i] = make([]bool, nCols)
+	}
 	for rowNum, sheetRow := range s.rows {
 		if rowNum < addr.FromRow || rowNum > toRow {
 			continue
@@ -815,7 +886,44 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 				continue
 			}
 			s.resolveCell(cell, colNum, rowNum)
-			row[colNum-addr.FromCol] = valueToFormulaValue(cell.value)
+			idx := colNum - addr.FromCol
+			row[idx] = valueToFormulaValue(cell.value)
+			occupied[rowNum-addr.FromRow][idx] = true
+		}
+	}
+	for anchorRow, sheetRow := range s.rows {
+		if anchorRow > toRow {
+			continue
+		}
+		for anchorCol, cell := range sheetRow.cells {
+			if cell.formula == "" || cell.isArrayFormula || !formula.IsDynamicArrayFormula(cell.formula) {
+				continue
+			}
+			raw := cell.rawValue
+			if cell.dirty || cell.rawCachedGen != fr.file.calcGen {
+				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
+			}
+			if raw.Type != formula.ValueArray || raw.NoSpill {
+				continue
+			}
+			for rowOffset, spillRow := range raw.Array {
+				rowNum := anchorRow + rowOffset
+				if rowNum < addr.FromRow || rowNum > toRow {
+					continue
+				}
+				row := rows[rowNum-addr.FromRow]
+				for colOffset, spillVal := range spillRow {
+					colNum := anchorCol + colOffset
+					if colNum < addr.FromCol || colNum > toCol {
+						continue
+					}
+					idx := colNum - addr.FromCol
+					if occupied[rowNum-addr.FromRow][idx] {
+						continue
+					}
+					row[idx] = spillVal
+				}
+			}
 		}
 	}
 	return rows

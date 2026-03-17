@@ -34,6 +34,13 @@ const (
 	OpLeaveArrayCtx                 // operand: unused; pops array context
 	OpLoad3DRange                   // operand: index into Ranges; loads values across multiple sheets
 	OpRefResultToBool               // operand: unused; pops value, pushes TRUE if non-error (for ISREF wrapping ref-returning funcs)
+	OpLoadParam                     // operand: param slot index; push the bound parameter value
+	OpMap                           // operand: subFormulaIdx<<8 | numArrays; execute lambda body per element
+	OpReduce                        // operand: subFormulaIdx; pop array and initial value, fold with lambda body
+	OpScan                          // operand: subFormulaIdx; pop array and initial value, scan with lambda body returning array
+	OpByRow                         // operand: subFormulaIdx; pop array, apply lambda to each row, return column vector
+	OpByCol                         // operand: subFormulaIdx; pop array, apply lambda to each column, return row vector
+	OpMakeArrayLambda               // operand: subFormulaIdx; pop rows and cols, build array by calling lambda(row, col)
 )
 
 var opNames = [...]string{
@@ -65,6 +72,13 @@ var opNames = [...]string{
 	OpLeaveArrayCtx:   "LeaveArrayCtx",
 	OpLoad3DRange:     "Load3DRange",
 	OpRefResultToBool: "RefResultToBool",
+	OpLoadParam:       "LoadParam",
+	OpMap:             "Map",
+	OpReduce:          "Reduce",
+	OpScan:            "Scan",
+	OpByRow:           "ByRow",
+	OpByCol:           "ByCol",
+	OpMakeArrayLambda: "MakeArrayLambda",
 }
 
 func (op OpCode) String() string {
@@ -86,9 +100,10 @@ func (inst Instruction) String() string {
 
 // CompiledFormula is the output of the compiler: bytecode ready for the VM.
 type CompiledFormula struct {
-	Source string        // original formula text
-	Code   []Instruction // bytecode instructions
-	Consts []Value       // constant pool (numbers and strings)
-	Refs   []CellAddr    // cell reference table
-	Ranges []RangeAddr   // range reference table
+	Source      string             // original formula text
+	Code        []Instruction      // bytecode instructions
+	Consts      []Value            // constant pool (numbers and strings)
+	Refs        []CellAddr         // cell reference table
+	Ranges      []RangeAddr        // range reference table
+	SubFormulas []*CompiledFormula // lambda bodies for MAP/REDUCE/SCAN/BYROW/BYCOL
 }

@@ -220,6 +220,92 @@ func (n *ArrayLit) String() string {
 	return b.String()
 }
 
+// ParamRef represents a reference to a lambda parameter inside a MAP/REDUCE/SCAN body.
+type ParamRef struct {
+	Slot int    // parameter index (0-based)
+	Name string // parameter name for debugging
+}
+
+func (n *ParamRef) nodeMarker() {}
+func (n *ParamRef) String() string {
+	return fmt.Sprintf("$param(%d:%s)", n.Slot, n.Name)
+}
+
+// MapExpr represents a MAP(arrays..., LAMBDA(params..., body)) expression.
+type MapExpr struct {
+	Arrays     []Node   // array expressions
+	ParamNames []string // lambda parameter names (uppercase)
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *MapExpr) nodeMarker() {}
+func (n *MapExpr) String() string {
+	return fmt.Sprintf("(MAP arrays=%d params=%v)", len(n.Arrays), n.ParamNames)
+}
+
+// ReduceExpr represents a REDUCE(initial, array, LAMBDA(acc, val, body)) expression.
+type ReduceExpr struct {
+	InitialValue Node     // initial accumulator value (may be *EmptyArg if omitted)
+	Array        Node     // array expression
+	ParamNames   []string // [accumulator_name, value_name]
+	Body         Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ReduceExpr) nodeMarker() {}
+func (n *ReduceExpr) String() string {
+	return fmt.Sprintf("(REDUCE params=%v)", n.ParamNames)
+}
+
+// ScanExpr represents a SCAN(initial, array, LAMBDA(acc, val, body)) expression.
+type ScanExpr struct {
+	InitialValue Node     // initial accumulator value (may be *EmptyArg if omitted)
+	Array        Node     // array expression
+	ParamNames   []string // [accumulator_name, value_name]
+	Body         Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ScanExpr) nodeMarker() {}
+func (n *ScanExpr) String() string {
+	return fmt.Sprintf("(SCAN params=%v)", n.ParamNames)
+}
+
+// ByRowExpr represents a BYROW(array, LAMBDA(row, body)) expression.
+type ByRowExpr struct {
+	Array      Node     // array expression
+	ParamNames []string // single param name for the row
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ByRowExpr) nodeMarker() {}
+func (n *ByRowExpr) String() string {
+	return fmt.Sprintf("(BYROW params=%v)", n.ParamNames)
+}
+
+// ByColExpr represents a BYCOL(array, LAMBDA(col, body)) expression.
+type ByColExpr struct {
+	Array      Node     // array expression
+	ParamNames []string // single param name for the column
+	Body       Node     // lambda body with param refs replaced by ParamRef nodes
+}
+
+func (n *ByColExpr) nodeMarker() {}
+func (n *ByColExpr) String() string {
+	return fmt.Sprintf("(BYCOL params=%v)", n.ParamNames)
+}
+
+// MakeArrayExpr represents a MAKEARRAY(rows, cols, LAMBDA(r, c, body)) expression.
+type MakeArrayExpr struct {
+	Rows       Node     // rows expression
+	Cols       Node     // cols expression
+	ParamNames []string // [row_name, col_name]
+	Body       Node     // lambda body
+}
+
+func (n *MakeArrayExpr) nodeMarker() {}
+func (n *MakeArrayExpr) String() string {
+	return fmt.Sprintf("(MAKEARRAY params=%v)", n.ParamNames)
+}
+
 // needsQuoting returns true if a sheet name contains characters that require quoting.
 func needsQuoting(name string) bool {
 	for _, c := range name {

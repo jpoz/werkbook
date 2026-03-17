@@ -77,6 +77,10 @@ type FormulaArrayEvaluator interface {
 
 // Eval executes a compiled formula and returns the result.
 func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, error) {
+	return evalWithParams(cf, resolver, ctx, nil)
+}
+
+func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext, params []Value) (Value, error) {
 	stack := make([]Value, 0, 16)
 	arrayCtxDepth := 0 // >0 means we're inside an array-forcing function's arguments
 
@@ -416,6 +420,374 @@ func Eval(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext) (Value, 
 				return Value{}, err
 			}
 			push(BoolVal(v.Type != ValueError))
+
+		case OpLoadParam:
+			if params == nil || int(inst.Operand) >= len(params) {
+				return Value{}, fmt.Errorf("parameter index %d out of range", inst.Operand)
+			}
+			push(params[inst.Operand])
+
+		case OpReduce:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array, then initial value
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			initialVal, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Flatten array to a 1D list (row by row, left to right)
+			var elements []Value
+			if arr.Type == ValueArray {
+				for _, row := range arr.Array {
+					elements = append(elements, row...)
+				}
+			} else {
+				elements = []Value{arr}
+			}
+
+			// Determine starting accumulator
+			acc := initialVal
+			startIdx := 0
+			if acc.Type == ValueEmpty {
+				if len(elements) == 0 {
+					push(ErrorVal(ErrValCALC))
+					continue
+				}
+				acc = elements[0]
+				startIdx = 1
+			}
+
+			// If array is empty and we have initial value, return it
+			if len(elements) == 0 {
+				push(acc)
+				continue
+			}
+
+			// Fold: for each element, call lambda(accumulator, element)
+			paramVals := make([]Value, 2)
+			for i := startIdx; i < len(elements); i++ {
+				paramVals[0] = acc
+				paramVals[1] = elements[i]
+				result, err := evalWithParams(subFormula, resolver, ctx, paramVals)
+				if err != nil {
+					return Value{}, err
+				}
+				// If lambda returns an error, propagate immediately
+				if result.Type == ValueError {
+					acc = result
+					break
+				}
+				acc = result
+			}
+			push(acc)
+
+		case OpScan:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array, then initial value
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			initialVal, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Get array dimensions for output shape
+			var scanRows, scanCols int
+			if arr.Type == ValueArray {
+				scanRows = len(arr.Array)
+				if scanRows > 0 {
+					scanCols = len(arr.Array[0])
+				}
+			} else {
+				scanRows, scanCols = 1, 1
+			}
+
+			// Handle empty array
+			if scanRows == 0 || scanCols == 0 {
+				if initialVal.Type == ValueEmpty {
+					push(ErrorVal(ErrValCALC))
+				} else {
+					push(Value{Type: ValueArray, Array: nil})
+				}
+				continue
+			}
+
+			// Build output array with same shape as input
+			scanResult := newValueMatrix(scanRows, scanCols)
+			acc := initialVal
+			paramVals := make([]Value, 2)
+			first := true
+
+			for i := 0; i < scanRows; i++ {
+				for j := 0; j < scanCols; j++ {
+					var elem Value
+					if arr.Type == ValueArray {
+						elem = arr.Array[i][j]
+					} else {
+						elem = arr
+					}
+
+					if acc.Type == ValueEmpty && first {
+						// No initial value: first element becomes accumulator
+						acc = elem
+						scanResult[i][j] = acc
+						first = false
+						continue
+					}
+					first = false
+
+					// If accumulator is an error, propagate to remaining cells
+					if acc.Type == ValueError {
+						scanResult[i][j] = acc
+						continue
+					}
+
+					paramVals[0] = acc
+					paramVals[1] = elem
+					res, err := evalWithParams(subFormula, resolver, ctx, paramVals)
+					if err != nil {
+						return Value{}, err
+					}
+					acc = res
+					scanResult[i][j] = acc
+				}
+			}
+
+			push(Value{Type: ValueArray, Array: scanResult})
+
+		case OpMap:
+			subIdx := int(inst.Operand >> 8)
+			numArrays := int(inst.Operand & 0xFF)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop arrays from stack (in reverse order since last pushed is on top)
+			arrays := make([]Value, numArrays)
+			for i := numArrays - 1; i >= 0; i-- {
+				v, err := pop()
+				if err != nil {
+					return Value{}, err
+				}
+				arrays[i] = v
+			}
+
+			// Determine output dimensions (max rows x max cols across all arrays)
+			rows, cols := 1, 1
+			for _, arr := range arrays {
+				if arr.Type == ValueArray {
+					r, c := arrayOpBounds(arr)
+					if r > rows {
+						rows = r
+					}
+					if c > cols {
+						cols = c
+					}
+				}
+			}
+
+			// For each element position, bind params and eval the sub-formula
+			result := newValueMatrix(rows, cols)
+			paramVals := make([]Value, numArrays)
+			for i := 0; i < rows; i++ {
+				for j := 0; j < cols; j++ {
+					for k, arr := range arrays {
+						paramVals[k] = ArrayElement(arr, i, j)
+					}
+					cellResult, err := evalWithParams(subFormula, resolver, ctx, paramVals)
+					if err != nil {
+						return Value{}, err
+					}
+					result[i][j] = cellResult
+				}
+			}
+			push(Value{Type: ValueArray, Array: result})
+
+		case OpByRow:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Determine dimensions
+			var byrowRows, byrowCols int
+			if arr.Type == ValueArray {
+				byrowRows = len(arr.Array)
+				if byrowRows > 0 {
+					byrowCols = len(arr.Array[0])
+				}
+			} else {
+				// Scalar treated as 1x1
+				byrowRows, byrowCols = 1, 1
+				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+			}
+			_ = byrowCols // cols used only to construct row arrays
+
+			// For each row, create a 1-row array and call lambda
+			byrowResult := make([][]Value, byrowRows)
+			byrowParamVals := make([]Value, 1)
+			for i := 0; i < byrowRows; i++ {
+				// Create a 1-row array from this row
+				var rowValues []Value
+				if i < len(arr.Array) {
+					rowValues = make([]Value, len(arr.Array[i]))
+					copy(rowValues, arr.Array[i])
+				} else {
+					rowValues = make([]Value, byrowCols)
+					for j := range rowValues {
+						rowValues[j] = EmptyVal()
+					}
+				}
+				rowArray := Value{Type: ValueArray, Array: [][]Value{rowValues}}
+
+				byrowParamVals[0] = rowArray
+				res, err := evalWithParams(subFormula, resolver, ctx, byrowParamVals)
+				if err != nil {
+					return Value{}, err
+				}
+
+				// BYROW lambda must return a scalar. If it returns an array, #CALC!
+				if res.Type == ValueArray {
+					res = ErrorVal(ErrValCALC)
+				}
+
+				byrowResult[i] = []Value{res}
+			}
+
+			push(Value{Type: ValueArray, Array: byrowResult})
+
+		case OpMakeArrayLambda:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop cols, then rows
+			colsVal, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			rowsVal, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Coerce to numbers
+			rowsNum, re := CoerceNum(rowsVal)
+			if re != nil {
+				push(*re)
+				continue
+			}
+			colsNum, ce := CoerceNum(colsVal)
+			if ce != nil {
+				push(*ce)
+				continue
+			}
+
+			// Must be positive integers
+			maRows := int(rowsNum)
+			maCols := int(colsNum)
+			if maRows < 1 || maCols < 1 {
+				push(ErrorVal(ErrValVALUE))
+				continue
+			}
+
+			// Build array by calling lambda(row, col) with 1-based indices
+			maResult := newValueMatrix(maRows, maCols)
+			maParamVals := make([]Value, 2)
+			for i := 0; i < maRows; i++ {
+				for j := 0; j < maCols; j++ {
+					maParamVals[0] = NumberVal(float64(i + 1)) // 1-based row
+					maParamVals[1] = NumberVal(float64(j + 1)) // 1-based col
+					res, evalErr := evalWithParams(subFormula, resolver, ctx, maParamVals)
+					if evalErr != nil {
+						return Value{}, evalErr
+					}
+					maResult[i][j] = res
+				}
+			}
+
+			push(Value{Type: ValueArray, Array: maResult})
+
+		case OpByCol:
+			subIdx := int(inst.Operand)
+			if subIdx >= len(cf.SubFormulas) {
+				return Value{}, fmt.Errorf("sub-formula index %d out of range", subIdx)
+			}
+			subFormula := cf.SubFormulas[subIdx]
+
+			// Pop array
+			arr, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+
+			// Determine dimensions
+			var bycolRows, bycolCols int
+			if arr.Type == ValueArray {
+				bycolRows = len(arr.Array)
+				if bycolRows > 0 {
+					bycolCols = len(arr.Array[0])
+				}
+			} else {
+				// Scalar treated as 1x1
+				bycolRows, bycolCols = 1, 1
+				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+			}
+
+			// For each column, create a column vector (rows x 1) and call lambda
+			bycolResult := make([][]Value, 1) // single row
+			bycolResult[0] = make([]Value, bycolCols)
+			bycolParamVals := make([]Value, 1)
+
+			for j := 0; j < bycolCols; j++ {
+				// Build column vector (rows x 1)
+				colValues := make([][]Value, bycolRows)
+				for i := 0; i < bycolRows; i++ {
+					colValues[i] = []Value{ArrayElement(arr, i, j)}
+				}
+				colArray := Value{Type: ValueArray, Array: colValues}
+
+				bycolParamVals[0] = colArray
+				res, err := evalWithParams(subFormula, resolver, ctx, bycolParamVals)
+				if err != nil {
+					return Value{}, err
+				}
+
+				// BYCOL lambda must return a scalar. If it returns an array, #CALC!
+				if res.Type == ValueArray {
+					res = ErrorVal(ErrValCALC)
+				}
+
+				bycolResult[0][j] = res
+			}
+
+			push(Value{Type: ValueArray, Array: bycolResult})
 
 		default:
 			return Value{}, fmt.Errorf("unknown opcode %d", inst.Op)

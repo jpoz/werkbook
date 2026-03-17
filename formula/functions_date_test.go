@@ -327,11 +327,11 @@ func TestMONTH_Comprehensive(t *testing.T) {
 	resolver := &mockResolver{}
 
 	tests := []struct {
-		name   string
+		name    string
 		formula string
-		want   float64
-		isErr  bool
-		errVal ErrorValue
+		want    float64
+		isErr   bool
+		errVal  ErrorValue
 	}{
 		// --- Basic happy path: each month Jan through Dec ---
 		{"jan_date_func", "MONTH(DATE(2024,1,15))", 1, false, 0},
@@ -348,12 +348,12 @@ func TestMONTH_Comprehensive(t *testing.T) {
 		{"dec_date_func", "MONTH(DATE(2025,12,25))", 12, false, 0},
 
 		// --- Serial number inputs ---
-		{"serial_1_jan_1900", "MONTH(1)", 1, false, 0},           // Jan 1, 1900
-		{"serial_45306_jan_2024", "MONTH(45306)", 1, false, 0},   // Jan 15, 2024
-		{"serial_44927_jan_2023", "MONTH(44927)", 1, false, 0},   // Jan 1, 2023
-		{"serial_32_feb_1_1900", "MONTH(32)", 2, false, 0},       // Feb 1, 1900
-		{"serial_59_feb_28_1900", "MONTH(59)", 2, false, 0},      // Feb 28, 1900
-		{"serial_61_mar_1_1900", "MONTH(61)", 3, false, 0},       // Mar 1, 1900
+		{"serial_1_jan_1900", "MONTH(1)", 1, false, 0},         // Jan 1, 1900
+		{"serial_45306_jan_2024", "MONTH(45306)", 1, false, 0}, // Jan 15, 2024
+		{"serial_44927_jan_2023", "MONTH(44927)", 1, false, 0}, // Jan 1, 2023
+		{"serial_32_feb_1_1900", "MONTH(32)", 2, false, 0},     // Feb 1, 1900
+		{"serial_59_feb_28_1900", "MONTH(59)", 2, false, 0},    // Feb 28, 1900
+		{"serial_61_mar_1_1900", "MONTH(61)", 3, false, 0},     // Mar 1, 1900
 
 		// --- Boundary: serial 0 (Jan 0, 1900 sentinel) ---
 		{"serial_0_jan", "MONTH(0)", 1, false, 0},
@@ -371,7 +371,7 @@ func TestMONTH_Comprehensive(t *testing.T) {
 		{"max_serial_dec_9999", "MONTH(2958465)", 12, false, 0}, // Dec 31, 9999
 
 		// --- Boolean inputs ---
-		{"bool_true_serial_1", "MONTH(TRUE)", 1, false, 0},  // TRUE coerces to 1 = Jan 1, 1900
+		{"bool_true_serial_1", "MONTH(TRUE)", 1, false, 0},   // TRUE coerces to 1 = Jan 1, 1900
 		{"bool_false_serial_0", "MONTH(FALSE)", 1, false, 0}, // FALSE coerces to 0 = Jan 0, 1900
 
 		// --- Numeric string coercion ---
@@ -436,6 +436,58 @@ func TestDAY(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 15 {
 		t.Errorf("DAY: got %g, want 15", got.Num)
+	}
+}
+
+func TestDAY_Comprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		name         string
+		formula      string
+		want         float64
+		wantErr      bool
+		wantErrValue ErrorValue
+	}{
+		{name: "serial_example", formula: "DAY(45306)", want: 15},
+		{name: "serial_zero", formula: "DAY(0)", want: 0},
+		{name: "serial_59", formula: "DAY(59)", want: 28},
+		{name: "serial_60", formula: "DAY(60)", want: 29},
+		{name: "serial_61", formula: "DAY(61)", want: 1},
+		{name: "fractional_serial", formula: "DAY(45306.75)", want: 15},
+		{name: "max_serial", formula: "DAY(2958465)", want: 31},
+		{name: "bool_true", formula: "DAY(TRUE)", want: 1},
+		{name: "bool_false", formula: "DAY(FALSE)", want: 0},
+		{name: "numeric_string", formula: `DAY("45306")`, want: 15},
+		{name: "slash_date_string", formula: `DAY("1/15/2024")`, want: 15},
+		{name: "dash_date_string", formula: `DAY("15-Jan-2024")`, want: 15},
+		{name: "iso_date_string", formula: `DAY("2024-01-31")`, want: 31},
+		{name: "long_date_string", formula: `DAY("January 2, 2024")`, want: 2},
+		{name: "error_div0", formula: "DAY(1/0)", wantErr: true, wantErrValue: ErrValDIV0},
+		{name: "negative_serial", formula: "DAY(-1)", wantErr: true, wantErrValue: ErrValNUM},
+		{name: "beyond_max_serial", formula: "DAY(2958466)", wantErr: true, wantErrValue: ErrValNUM},
+		{name: "text_error", formula: `DAY("not a date")`, wantErr: true, wantErrValue: ErrValVALUE},
+		{name: "wrong_arg_count_zero", formula: "DAY()", wantErr: true, wantErrValue: ErrValVALUE},
+		{name: "wrong_arg_count_two", formula: "DAY(1,2)", wantErr: true, wantErrValue: ErrValVALUE},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if tt.wantErr {
+				if got.Type != ValueError || got.Err != tt.wantErrValue {
+					t.Fatalf("%s = %v, want error %v", tt.formula, got, tt.wantErrValue)
+				}
+				return
+			}
+			if got.Type != ValueNumber || got.Num != tt.want {
+				t.Fatalf("%s = %v, want %g", tt.formula, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -1154,6 +1206,76 @@ func TestDAYS360(t *testing.T) {
 		{"error_prop_start", "DAYS360(1/0,1)", 0, true, ErrValDIV0},
 		{"error_prop_end", "DAYS360(1,1/0)", 0, true, ErrValDIV0},
 		{"error_prop_method", "DAYS360(1,2,1/0)", 0, true, ErrValDIV0},
+
+		// ── Additional comprehensive tests ───────────────────────────
+
+		// US: D2=31, D1<30 → D2 stays 31
+		// Jan 15 to May 31: (5-1)*30+(31-15) = 136
+		{"us_d2_31_d1_lt_30", "DAYS360(DATE(2025,1,15),DATE(2025,5,31),FALSE)", 136, false, 0},
+		// EU: Jan 15 to May 31: D2=31→30. (5-1)*30+(30-15) = 135
+		{"eu_d2_31_d1_lt_30", "DAYS360(DATE(2025,1,15),DATE(2025,5,31),TRUE)", 135, false, 0},
+
+		// US: D1=31, D2=non-31
+		// Mar 31 to Apr 15: D1=31→30. (4-3)*30+(15-30) = 15
+		{"us_d1_31_d2_mid", "DAYS360(DATE(2025,3,31),DATE(2025,4,15),FALSE)", 15, false, 0},
+		// EU: same. D1=31→30. (4-3)*30+(15-30) = 15
+		{"eu_d1_31_d2_mid", "DAYS360(DATE(2025,3,31),DATE(2025,4,15),TRUE)", 15, false, 0},
+
+		// Both Feb 28 in non-leap year (US: both last-of-Feb → D1=30,D2=30 → 0)
+		{"us_both_feb28_nonleap", "DAYS360(DATE(2025,2,28),DATE(2025,2,28),FALSE)", 0, false, 0},
+
+		// Feb 27 to Feb 28 non-leap year
+		// US: Feb 27 not last-of-Feb, Feb 28 is last-of-Feb (but only D2 adj applies if both are last-of-Feb)
+		// isLastDayOfFeb(2025,2,27)=false, so no US Feb rules. D1=27, D2=28. 28-27=1
+		{"us_feb27_to_feb28_nonleap", "DAYS360(DATE(2025,2,27),DATE(2025,2,28),FALSE)", 1, false, 0},
+		{"eu_feb27_to_feb28_nonleap", "DAYS360(DATE(2025,2,27),DATE(2025,2,28),TRUE)", 1, false, 0},
+
+		// Feb 28 non-leap to Mar 1
+		// US: Feb 28 is last-of-Feb → D1=30. Mar 1 → D2=1. (3-2)*30+(1-30)=1
+		{"us_feb28_to_mar1_nonleap", "DAYS360(DATE(2025,2,28),DATE(2025,3,1),FALSE)", 1, false, 0},
+		// EU: D1=28, D2=1. (3-2)*30+(1-28)=3
+		{"eu_feb28_to_mar1_nonleap", "DAYS360(DATE(2025,2,28),DATE(2025,3,1),TRUE)", 3, false, 0},
+
+		// Leap year: Feb 28 to Feb 29
+		// US: Feb 28 not last-of-Feb in leap year. D1=28, D2=29. 29-28=1
+		{"us_feb28_to_feb29_leap", "DAYS360(DATE(2024,2,28),DATE(2024,2,29),FALSE)", 1, false, 0},
+		{"eu_feb28_to_feb29_leap", "DAYS360(DATE(2024,2,28),DATE(2024,2,29),TRUE)", 1, false, 0},
+
+		// 30-day month vs 31-day month
+		// Apr 30 to May 31: US: D1=30, D2=31→30 (D1>=30). (5-4)*30+(30-30)=30
+		{"us_apr30_may31", "DAYS360(DATE(2025,4,30),DATE(2025,5,31),FALSE)", 30, false, 0},
+		// EU: D1=30, D2=31→30. Same = 30
+		{"eu_apr30_may31", "DAYS360(DATE(2025,4,30),DATE(2025,5,31),TRUE)", 30, false, 0},
+
+		// Negative span with 31-day adjustments
+		// US: Mar 31 to Jan 15 (reversed): D1=31→30, D2=15. (1-3)*30+(15-30)=-75
+		{"us_negative_31_adj", "DAYS360(DATE(2025,3,31),DATE(2025,1,15),FALSE)", -75, false, 0},
+
+		// Cross multiple years
+		// Jan 1, 2020 to Jan 1, 2030 = 10*360 = 3600
+		{"us_ten_years_jan_jan", "DAYS360(DATE(2020,1,1),DATE(2030,1,1),FALSE)", 3600, false, 0},
+		{"eu_ten_years_jan_jan", "DAYS360(DATE(2020,1,1),DATE(2030,1,1),TRUE)", 3600, false, 0},
+
+		// One day apart, mid-month
+		{"one_day_mid_month", "DAYS360(DATE(2025,6,14),DATE(2025,6,15))", 1, false, 0},
+
+		// US: end=31, start=29 (not 30 or 31) → D2 stays 31
+		// Jan 29 to Mar 31: (3-1)*30+(31-29) = 62
+		{"us_start_29_end_31", "DAYS360(DATE(2025,1,29),DATE(2025,3,31),FALSE)", 62, false, 0},
+		// EU: D2=31→30. (3-1)*30+(30-29) = 61
+		{"eu_start_29_end_31", "DAYS360(DATE(2025,1,29),DATE(2025,3,31),TRUE)", 61, false, 0},
+
+		// Full year from mid-month (Jun 15 to Jun 15)
+		{"us_full_year_mid", "DAYS360(DATE(2024,6,15),DATE(2025,6,15),FALSE)", 360, false, 0},
+		{"eu_full_year_mid", "DAYS360(DATE(2024,6,15),DATE(2025,6,15),TRUE)", 360, false, 0},
+
+		// Feb 29 leap to Feb 28 next year (non-leap)
+		// US: Feb 29 is last-of-Feb (D1=30), Feb 28 next year is last-of-Feb (D2=30).
+		// Both last-of-Feb rule: D2=30. Then D1 last-of-Feb: D1=30.
+		// (2025-2024)*360+(2-2)*30+(30-30)=360
+		{"us_feb29_to_feb28_next", "DAYS360(DATE(2024,2,29),DATE(2025,2,28),FALSE)", 360, false, 0},
+		// EU: D1=29, D2=28. (2025-2024)*360+(2-2)*30+(28-29)=359
+		{"eu_feb29_to_feb28_next", "DAYS360(DATE(2024,2,29),DATE(2025,2,28),TRUE)", 359, false, 0},
 	}
 
 	for _, tc := range tests {
@@ -1259,6 +1381,49 @@ func TestEDATE(t *testing.T) {
 		{"invalid_start", `EDATE("abc",1)`, 0, true, ErrValVALUE},
 		{"invalid_months", `EDATE(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
 		{"error_propagation", "EDATE(1/0,1)", 0, true, ErrValDIV0},
+
+		// --- Additional comprehensive EDATE tests ---
+
+		// Basic: EDATE(Jan 15, 1) = Feb 15
+		{"basic_jan_to_feb", "EDATE(DATE(2023,1,15),1)", dateSerial(2023, time.February, 15), false, 0},
+		// Negative months: EDATE(Mar 15, -1) = Feb 15
+		{"negative_mar_to_feb", "EDATE(DATE(2023,3,15),-1)", dateSerial(2023, time.February, 15), false, 0},
+		// End of month: EDATE(Jan 31, 1) = Feb 28 (non-leap year)
+		{"eom_jan31_to_feb28", "EDATE(DATE(2023,1,31),1)", dateSerial(2023, time.February, 28), false, 0},
+		// End of month: EDATE(Jan 31, 1) = Feb 29 (leap year)
+		{"eom_jan31_to_feb29_leap", "EDATE(DATE(2024,1,31),1)", dateSerial(2024, time.February, 29), false, 0},
+		// EDATE(Mar 31, -1) = Feb 28 non-leap
+		{"eom_mar31_back_to_feb28", "EDATE(DATE(2023,3,31),-1)", dateSerial(2023, time.February, 28), false, 0},
+		// EDATE(Mar 31, -1) = Feb 29 leap
+		{"eom_mar31_back_to_feb29_leap", "EDATE(DATE(2024,3,31),-1)", dateSerial(2024, time.February, 29), false, 0},
+		// Leap year: EDATE(Feb 29 2020, 12) = Feb 28 2021
+		{"leap_feb29_plus_12", "EDATE(DATE(2020,2,29),12)", dateSerial(2021, time.February, 28), false, 0},
+		// Leap year: EDATE(Feb 29 2020, 48) = Feb 29 2024
+		{"leap_feb29_plus_48", "EDATE(DATE(2020,2,29),48)", dateSerial(2024, time.February, 29), false, 0},
+		// Zero months: EDATE(date, 0) = date
+		{"zero_months_mid", "EDATE(DATE(2023,6,15),0)", dateSerial(2023, time.June, 15), false, 0},
+		// Large month offsets (24 months = 2 years)
+		{"large_offset_24", "EDATE(DATE(2020,3,15),24)", dateSerial(2022, time.March, 15), false, 0},
+		// Large month offsets (60 months = 5 years)
+		{"large_offset_60", "EDATE(DATE(2020,3,15),60)", dateSerial(2025, time.March, 15), false, 0},
+		// Negative large offsets
+		{"negative_large_24", "EDATE(DATE(2025,3,15),-24)", dateSerial(2023, time.March, 15), false, 0},
+		{"negative_large_60", "EDATE(DATE(2025,3,15),-60)", dateSerial(2020, time.March, 15), false, 0},
+		// Cross year boundary forward (Nov -> Feb)
+		{"cross_year_nov_to_feb", "EDATE(DATE(2023,11,15),3)", dateSerial(2024, time.February, 15), false, 0},
+		// December to January
+		{"dec_to_jan", "EDATE(DATE(2023,12,15),1)", dateSerial(2024, time.January, 15), false, 0},
+		// January to December (negative)
+		{"jan_to_dec_neg", "EDATE(DATE(2024,1,15),-1)", dateSerial(2023, time.December, 15), false, 0},
+		// EOM: Apr 30 + 1 = May 30 (not clamped since May has 31 days)
+		{"apr30_plus1", "EDATE(DATE(2023,4,30),1)", dateSerial(2023, time.May, 30), false, 0},
+		// EOM: May 31 + 1 = Jun 30
+		{"may31_plus1", "EDATE(DATE(2023,5,31),1)", dateSerial(2023, time.June, 30), false, 0},
+		// EOM chain: Jan 31 -> Feb 28 -> Mar 28 (not 31!)
+		{"eom_chain_step1", "EDATE(DATE(2023,1,31),1)", dateSerial(2023, time.February, 28), false, 0},
+		{"eom_chain_step2", "EDATE(EDATE(DATE(2023,1,31),1),1)", dateSerial(2023, time.March, 28), false, 0},
+		// Error propagation for months arg
+		{"error_propagation_months", "EDATE(DATE(2023,1,15),1/0)", 0, true, ErrValDIV0},
 	}
 
 	for _, tc := range tests {
@@ -1311,6 +1476,89 @@ func TestEOMONTH(t *testing.T) {
 		{"too_many_args", "EOMONTH(DATE(2025,1,15),1,2)", 0, true, ErrValVALUE},
 		{"invalid_months", `EOMONTH(DATE(2025,1,15),"abc")`, 0, true, ErrValVALUE},
 		{"error_propagation", "EOMONTH(DATE(2025,1,15),1/0)", 0, true, ErrValDIV0},
+
+		// --- Comprehensive additional EOMONTH tests ---
+
+		// Basic: same month returns last day
+		{"basic_jan15_zero", "EOMONTH(DATE(2025,1,15),0)", dateSerial(2025, time.January, 31), false, 0},
+
+		// Forward by 1 month: Jan → Feb (non-leap year 2025)
+		{"forward_1_jan_to_feb_nonleap", "EOMONTH(DATE(2025,1,15),1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Forward by 1 month: Jan → Feb (leap year 2020)
+		{"forward_1_jan_to_feb_leap_2020", "EOMONTH(DATE(2020,1,15),1)", dateSerial(2020, time.February, 29), false, 0},
+
+		// Forward by 1 month: Jan → Feb (non-leap year 2021)
+		{"forward_1_jan_to_feb_nonleap_2021", "EOMONTH(DATE(2021,1,15),1)", dateSerial(2021, time.February, 28), false, 0},
+
+		// Backward: Mar 15 → Feb end (non-leap)
+		{"backward_mar_to_feb_nonleap", "EOMONTH(DATE(2025,3,15),-1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Backward: Mar 15 → Feb end (leap year 2020)
+		{"backward_mar_to_feb_leap", "EOMONTH(DATE(2020,3,15),-1)", dateSerial(2020, time.February, 29), false, 0},
+
+		// Start on last day: Jan 31 + 1 → Feb 28 (non-leap)
+		{"start_last_day_jan31_plus1", "EOMONTH(DATE(2025,1,31),1)", dateSerial(2025, time.February, 28), false, 0},
+
+		// Start on last day: Jan 31 + 1 → Feb 29 (leap year 2024)
+		{"start_last_day_jan31_plus1_leap", "EOMONTH(DATE(2024,1,31),1)", dateSerial(2024, time.February, 29), false, 0},
+
+		// Large offset: +12 months = same month next year last day
+		{"large_offset_plus12", "EOMONTH(DATE(2025,3,15),12)", dateSerial(2026, time.March, 31), false, 0},
+
+		// Negative large offset: -24 months = two years back
+		{"large_offset_minus24", "EOMONTH(DATE(2025,6,10),-24)", dateSerial(2023, time.June, 30), false, 0},
+
+		// December → January crossing (forward)
+		{"dec_to_jan_forward", "EOMONTH(DATE(2025,12,15),1)", dateSerial(2026, time.January, 31), false, 0},
+
+		// January → December crossing (backward)
+		{"jan_to_dec_backward", "EOMONTH(DATE(2025,1,15),-1)", dateSerial(2024, time.December, 31), false, 0},
+
+		// February start in leap year: Feb 1 2024, 0 months → Feb 29
+		{"feb_start_leap_zero", "EOMONTH(DATE(2024,2,1),0)", dateSerial(2024, time.February, 29), false, 0},
+
+		// February start in non-leap year: Feb 1 2025, 0 months → Feb 28
+		{"feb_start_nonleap_zero", "EOMONTH(DATE(2025,2,1),0)", dateSerial(2025, time.February, 28), false, 0},
+
+		// 30-day months: April
+		{"thirty_day_april", "EOMONTH(DATE(2025,4,10),0)", dateSerial(2025, time.April, 30), false, 0},
+
+		// 30-day months: June
+		{"thirty_day_june", "EOMONTH(DATE(2025,6,1),0)", dateSerial(2025, time.June, 30), false, 0},
+
+		// 30-day months: September
+		{"thirty_day_september", "EOMONTH(DATE(2025,9,20),0)", dateSerial(2025, time.September, 30), false, 0},
+
+		// 30-day months: November
+		{"thirty_day_november", "EOMONTH(DATE(2025,11,5),0)", dateSerial(2025, time.November, 30), false, 0},
+
+		// 31-day months: March
+		{"thirtyone_day_march", "EOMONTH(DATE(2025,3,1),0)", dateSerial(2025, time.March, 31), false, 0},
+
+		// 31-day months: May
+		{"thirtyone_day_may", "EOMONTH(DATE(2025,5,15),0)", dateSerial(2025, time.May, 31), false, 0},
+
+		// 31-day months: July
+		{"thirtyone_day_july", "EOMONTH(DATE(2025,7,4),0)", dateSerial(2025, time.July, 31), false, 0},
+
+		// 31-day months: August
+		{"thirtyone_day_august", "EOMONTH(DATE(2025,8,20),0)", dateSerial(2025, time.August, 31), false, 0},
+
+		// 31-day months: October
+		{"thirtyone_day_october", "EOMONTH(DATE(2025,10,1),0)", dateSerial(2025, time.October, 31), false, 0},
+
+		// 31-day months: December
+		{"thirtyone_day_december", "EOMONTH(DATE(2025,12,25),0)", dateSerial(2025, time.December, 31), false, 0},
+
+		// Multi-year forward: +36 months = 3 years
+		{"multi_year_plus36", "EOMONTH(DATE(2020,2,15),36)", dateSerial(2023, time.February, 28), false, 0},
+
+		// Leap year to leap year: Feb 2020 + 48 → Feb 2024
+		{"leap_to_leap_plus48", "EOMONTH(DATE(2020,2,15),48)", dateSerial(2024, time.February, 29), false, 0},
+
+		// String date coercion via DATEVALUE
+		{"string_coercion_datevalue", `EOMONTH(DATEVALUE("1/15/2025"),1)`, dateSerial(2025, time.February, 28), false, 0},
 	}
 
 	for _, tc := range tests {
@@ -1534,6 +1782,141 @@ func TestDATEDIF(t *testing.T) {
 			}
 			if got.Num != tc.want {
 				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+}
+
+func TestDATEDIFComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	// Tests that expect a numeric result.
+	numTests := []struct {
+		name    string
+		formula string
+		want    float64
+	}{
+		// --- Each unit type with basic dates ---
+		{"Y_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"Y")`, 5},
+		{"M_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"M")`, 62},
+		{"D_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"D")`, 1891},
+		{"MD_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"MD")`, 5},
+		{"YM_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"YM")`, 2},
+		{"YD_basic", `DATEDIF(DATE(2020,1,15),DATE(2025,3,20),"YD")`, 65},
+
+		// --- Exactly 1 year apart ---
+		{"Y_exact_1yr", `DATEDIF(DATE(2020,6,15),DATE(2021,6,15),"Y")`, 1},
+		{"M_exact_1yr", `DATEDIF(DATE(2020,6,15),DATE(2021,6,15),"M")`, 12},
+		{"D_exact_1yr_non_leap", `DATEDIF(DATE(2021,6,15),DATE(2022,6,15),"D")`, 365},
+		{"D_exact_1yr_leap", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"D")`, 366},
+
+		// --- Same date: all units = 0 ---
+		{"Y_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"Y")`, 0},
+		{"M_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"M")`, 0},
+		{"D_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"D")`, 0},
+		{"MD_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"MD")`, 0},
+		{"YM_same_date", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"YM")`, 0},
+		{"YD_same_date2", `DATEDIF(DATE(2023,7,4),DATE(2023,7,4),"YD")`, 0},
+
+		// --- Leap year crossing: Feb 29 handling ---
+		{"Y_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"Y")`, 4},
+		{"M_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"M")`, 48},
+		{"D_leap_crossing", `DATEDIF(DATE(2020,2,29),DATE(2024,2,29),"D")`, 1461},
+		{"Y_leap_to_nonleap", `DATEDIF(DATE(2020,2,29),DATE(2021,2,28),"Y")`, 0},
+		{"M_leap_to_nonleap", `DATEDIF(DATE(2020,2,29),DATE(2021,2,28),"M")`, 11},
+
+		// --- End of month alignment (Jan 31 -> Feb 28) ---
+		{"M_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"M")`, 0},
+		{"D_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"D")`, 28},
+		{"MD_jan31_to_feb28", `DATEDIF(DATE(2023,1,31),DATE(2023,2,28),"MD")`, 28},
+
+		// --- Multi-year spans ---
+		{"Y_5_years", `DATEDIF(DATE(2015,3,10),DATE(2020,3,10),"Y")`, 5},
+		{"Y_10_years", `DATEDIF(DATE(2010,6,1),DATE(2020,6,1),"Y")`, 10},
+		{"M_10_years", `DATEDIF(DATE(2010,6,1),DATE(2020,6,1),"M")`, 120},
+
+		// --- Short spans ---
+		{"D_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"D")`, 1},
+		{"D_1_week", `DATEDIF(DATE(2023,5,15),DATE(2023,5,22),"D")`, 7},
+		{"Y_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"Y")`, 0},
+		{"M_1_day", `DATEDIF(DATE(2023,5,15),DATE(2023,5,16),"M")`, 0},
+
+		// --- "MD" tricky cases ---
+		{"MD_jan31_to_mar1", `DATEDIF(DATE(2023,1,31),DATE(2023,3,1),"MD")`, 1},
+		{"MD_jan31_to_mar31", `DATEDIF(DATE(2023,1,31),DATE(2023,3,31),"MD")`, 0},
+		{"MD_feb15_to_mar10", `DATEDIF(DATE(2023,2,15),DATE(2023,3,10),"MD")`, 23},
+		{"MD_across_months", `DATEDIF(DATE(2023,3,25),DATE(2023,4,5),"MD")`, 11},
+
+		// --- "YM" for 13 months = 1 ---
+		{"YM_13_months", `DATEDIF(DATE(2022,1,15),DATE(2023,2,20),"YM")`, 1},
+		{"YM_25_months", `DATEDIF(DATE(2020,6,10),DATE(2022,7,15),"YM")`, 1},
+		{"YM_11_months", `DATEDIF(DATE(2023,1,15),DATE(2023,12,20),"YM")`, 11},
+
+		// --- "YD" crossing year boundary ---
+		{"YD_dec_to_jan", `DATEDIF(DATE(2022,12,15),DATE(2023,1,15),"YD")`, 31},
+		{"YD_oct_to_feb", `DATEDIF(DATE(2022,10,1),DATE(2024,2,1),"YD")`, 123},
+
+		// --- Case insensitive unit ---
+		{"case_lower_y", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"y")`, 1},
+		{"case_lower_m", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"m")`, 12},
+		{"case_lower_d", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"d")`, 366},
+		{"case_lower_md", `DATEDIF(DATE(2020,1,1),DATE(2020,2,15),"md")`, 14},
+		{"case_lower_ym", `DATEDIF(DATE(2020,1,1),DATE(2021,3,1),"ym")`, 2},
+		{"case_lower_yd", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"yd")`, 0},
+
+		// --- Cross-check: DATEDIF("Y")*12 + DATEDIF("YM") = DATEDIF("M") ---
+		// We verify both sides evaluate to the same number.
+		{"crosscheck_M_via_Y_and_YM",
+			`DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"Y")*12+DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"YM")`,
+			88}, // 7*12+4 = 88, same as DATEDIF "M"
+		{"crosscheck_M_direct",
+			`DATEDIF(DATE(2018,3,15),DATE(2025,7,22),"M")`,
+			88},
+
+		// --- Known age calculation pattern ---
+		{"age_calc", `DATEDIF(DATE(1990,5,20),DATE(2025,3,14),"Y")`, 34},
+	}
+
+	for _, tc := range numTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tc.formula, err)
+			}
+			if got.Type != ValueNumber {
+				t.Fatalf("%s: got type %v (%v), want number", tc.formula, got.Type, got)
+			}
+			if got.Num != tc.want {
+				t.Errorf("%s = %g, want %g", tc.formula, got.Num, tc.want)
+			}
+		})
+	}
+
+	// Tests that expect an error.
+	errTests := []struct {
+		name    string
+		formula string
+		errVal  ErrorValue
+	}{
+		{"start_after_end", `DATEDIF(DATE(2025,1,1),DATE(2020,1,1),"Y")`, ErrValNUM},
+		{"invalid_unit_X", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"X")`, ErrValNUM},
+		{"invalid_unit_empty", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"")`, ErrValNUM},
+		{"error_propagation_start", `DATEDIF(1/0,DATE(2021,1,1),"Y")`, ErrValDIV0},
+		{"error_propagation_end", `DATEDIF(DATE(2020,1,1),1/0,"Y")`, ErrValDIV0},
+		{"too_few_args", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1))`, ErrValVALUE},
+		{"too_many_args", `DATEDIF(DATE(2020,1,1),DATE(2021,1,1),"Y",1)`, ErrValVALUE},
+	}
+
+	for _, tc := range errTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := evalCompile(t, tc.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%s): unexpected Go error: %v", tc.formula, err)
+			}
+			if got.Type != ValueError || got.Err != tc.errVal {
+				t.Errorf("%s: got %v, want error %v", tc.formula, got, tc.errVal)
 			}
 		})
 	}
@@ -2075,6 +2458,77 @@ func TestWORKDAY(t *testing.T) {
 		{"doc_no_holidays", "WORKDAY(39722,151)", 39933, false, 0},
 		// WORKDAY(10/1/2008, 151, {11/26/2008,12/4/2008,1/21/2009}) = 5/5/2009 = 39938
 		{"doc_with_holidays", "WORKDAY(39722,151,{39778,39786,39834})", 39938, false, 0},
+
+		// --- Comprehensive additional WORKDAY tests ---
+
+		// Friday + 1 = next Monday (skips weekend)
+		// DATE(2025,1,3) = 45660 (Fri), next Mon = 45663
+		{"friday_plus1_skip_weekend", "WORKDAY(DATE(2025,1,3),1)", 45663, false, 0},
+
+		// Monday - 1 = previous Friday
+		// DATE(2025,1,6) = 45663 (Mon), prev Fri = 45660
+		{"monday_minus1_prev_friday", "WORKDAY(DATE(2025,1,6),-1)", 45660, false, 0},
+
+		// Saturday + 1 = Tuesday (skips to next working day after weekend)
+		// DATE(2025,1,4) = 45661 (Sat), next workday = Mon 45663
+		{"saturday_plus1_to_monday", "WORKDAY(DATE(2025,1,4),1)", 45663, false, 0},
+
+		// Sunday + 1 = Monday
+		// DATE(2025,1,5) = 45662 (Sun), next workday = Mon 45663
+		{"sunday_plus1_to_monday", "WORKDAY(DATE(2025,1,5),1)", 45663, false, 0},
+
+		// Zero days on weekday returns same date
+		{"zero_days_on_monday", "WORKDAY(DATE(2025,1,6),0)", 45663, false, 0},
+		{"zero_days_on_friday", "WORKDAY(DATE(2025,1,3),0)", 45660, false, 0},
+
+		// Zero days on weekend returns weekend serial (per implementation)
+		{"zero_days_on_sunday", "WORKDAY(DATE(2025,1,5),0)", 45662, false, 0},
+
+		// 20 working days = 4 weeks (28 calendar days, crossing 4 weekends)
+		// Wed Jan 1 + 20 workdays: 4 full weeks of workdays = Wed Jan 29
+		{"twenty_days_four_weeks", "WORKDAY(DATE(2025,1,1),20)", dateSerial(2025, time.January, 29), false, 0},
+
+		// Negative with holidays: Mon Jan 13 -5, holiday on Fri Jan 10
+		// Without holiday: Fri(1), Thu(2), Wed(3), Tue(4), Mon Jan 6(5) = 45663
+		// With holiday on Fri Jan 10 (45667): Thu(1), Wed(2), Tue(3), Mon(4), Fri Jan 3(5) = 45660
+		{"negative_with_holiday", "WORKDAY(DATE(2025,1,13),-5,DATE(2025,1,10))", 45660, false, 0},
+
+		// Holiday that falls on a weekend should not double-count
+		// Wed Jan 1 + 5, holiday on Sat Jan 4 = same result as no holidays
+		{"holiday_on_saturday_no_effect", "WORKDAY(DATE(2025,1,1),5,DATE(2025,1,4))", 45665, false, 0},
+		{"holiday_on_sunday_no_effect", "WORKDAY(DATE(2025,1,1),5,DATE(2025,1,5))", 45665, false, 0},
+
+		// Multiple consecutive holidays (Mon+Tue)
+		// Wed Jan 1 + 3, holidays on Mon Jan 6 and Tue Jan 7:
+		// Thu(1), Fri(2), skip Mon+Tue, Wed Jan 8(3) = 45665
+		{"consecutive_holidays", "WORKDAY(DATE(2025,1,1),3,{45663,45664})", 45665, false, 0},
+
+		// 5 work days per week cross-check: Mon Jan 6 + 5 workdays
+		// Tue(1), Wed(2), Thu(3), Fri(4), Mon Jan 13(5) = 45670
+		{"five_days_from_monday", "WORKDAY(DATE(2025,1,6),5)", dateSerial(2025, time.January, 13), false, 0},
+
+		// Large negative offset
+		// Wed Jan 15 - 10 workdays = Wed Jan 1
+		{"large_negative_10", "WORKDAY(DATE(2025,1,15),-10)", dateSerial(2025, time.January, 1), false, 0},
+
+		// Start Sunday - 1 = previous Friday
+		// Sun Jan 5 - 1 workday → Fri Jan 3
+		{"start_sunday_minus1", "WORKDAY(DATE(2025,1,5),-1)", 45660, false, 0},
+
+		// String coercion for days argument
+		{"string_days_coercion", `WORKDAY(DATE(2025,1,1),"5")`, 45665, false, 0},
+
+		// Cross-month boundary
+		// Fri Jan 31 2025 + 1 = Mon Feb 3 2025
+		{"cross_month_jan_to_feb", "WORKDAY(DATE(2025,1,31),1)", dateSerial(2025, time.February, 3), false, 0},
+
+		// Cross-year boundary
+		// Wed Dec 31 2025 + 1 = Thu Jan 1 2026 (assuming Jan 1 is a workday)
+		{"cross_year_dec_to_jan", "WORKDAY(DATE(2025,12,31),1)", dateSerial(2026, time.January, 1), false, 0},
+
+		// Negative crossing year boundary
+		// Thu Jan 1 2026 - 1 = Wed Dec 31 2025
+		{"negative_cross_year", "WORKDAY(DATE(2026,1,1),-1)", dateSerial(2025, time.December, 31), false, 0},
 	}
 
 	for _, tc := range tests {
@@ -2343,6 +2797,89 @@ func TestNETWORKDAYS(t *testing.T) {
 
 		// Too many args → error
 		{"too_many_args", "NETWORKDAYS(45663,45667,45665,1)", 0, true, ErrValVALUE},
+
+		// ── DATE()-based readability tests ────────────────────────────
+		// Mon 2024-01-01 to Fri 2024-01-05 = 5 working days
+		{"date_mon_to_fri", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,5))", 5, false, 0},
+		// Fri 2024-01-05 to Mon 2024-01-08 = 2 (Fri + Mon, skip Sat/Sun)
+		{"date_fri_to_mon", "NETWORKDAYS(DATE(2024,1,5),DATE(2024,1,8))", 2, false, 0},
+		// Same day weekday (Mon)
+		{"date_same_day_weekday", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,1))", 1, false, 0},
+		// Same day weekend (Sat 2024-01-06)
+		{"date_same_day_saturday", "NETWORKDAYS(DATE(2024,1,6),DATE(2024,1,6))", 0, false, 0},
+		// Same day weekend (Sun 2024-01-07)
+		{"date_same_day_sunday", "NETWORKDAYS(DATE(2024,1,7),DATE(2024,1,7))", 0, false, 0},
+
+		// ── Start on weekend ──────────────────────────────────────────
+		// Sat to following Fri = 5 weekdays
+		{"start_saturday_to_fri", "NETWORKDAYS(DATE(2024,1,6),DATE(2024,1,12))", 5, false, 0},
+		// Sun to following Fri = 5 weekdays
+		{"start_sunday_to_fri", "NETWORKDAYS(DATE(2024,1,7),DATE(2024,1,12))", 5, false, 0},
+
+		// ── End on weekend ────────────────────────────────────────────
+		// Mon to Sat = 5 weekdays (Mon-Fri)
+		{"end_on_saturday", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,6))", 5, false, 0},
+		// Mon to Sun = 5 weekdays
+		{"end_on_sunday", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,7))", 5, false, 0},
+
+		// ── Cross-month boundary ──────────────────────────────────────
+		// Wed Jan 31 to Fri Feb 2, 2024 = 3 (Wed, Thu, Fri)
+		{"cross_month_jan_feb", "NETWORKDAYS(DATE(2024,1,31),DATE(2024,2,2))", 3, false, 0},
+		// Fri Feb 28 to Mon Mar 4 2025 = 3 (Fri, Mon Mar 3, Tue Mar 4)... wait
+		// Feb 28 = Fri, Mar 3 = Mon, Mar 4 = Tue. Count: Feb28(Fri)=1, Mar3(Mon)=2, Mar4(Tue)=3
+		{"cross_month_feb_mar", "NETWORKDAYS(DATE(2025,2,28),DATE(2025,3,4))", 3, false, 0},
+
+		// ── Cross-year boundary ───────────────────────────────────────
+		// Tue Dec 31, 2024 to Thu Jan 2, 2025 = 3 (Tue, Wed=Jan1, Thu=Jan2)
+		{"cross_year_2024_2025", "NETWORKDAYS(DATE(2024,12,31),DATE(2025,1,2))", 3, false, 0},
+		// Fri Dec 29, 2023 to Tue Jan 2, 2024
+		// Dec29(Fri)=1, Dec30(Sat)=skip, Dec31(Sun)=skip, Jan1(Mon)=2, Jan2(Tue)=3
+		{"cross_year_2023_2024", "NETWORKDAYS(DATE(2023,12,29),DATE(2024,1,2))", 3, false, 0},
+
+		// ── Full year ≈ 261 working days ──────────────────────────────
+		// 2024 is a leap year: Jan 1 (Mon) to Dec 31 (Tue)
+		// 366 calendar days, 52 full weeks = 260 weekdays + 2 extra days (Mon, Tue) = 262
+		{"full_year_2024", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,12,31))", 262, false, 0},
+		// 2025: Jan 1 (Wed) to Dec 31 (Wed)
+		// 365 calendar days, 52 weeks + 1 day. 52*5=260 + 1 (Wed) = 261
+		{"full_year_2025", "NETWORKDAYS(DATE(2025,1,1),DATE(2025,12,31))", 261, false, 0},
+
+		// ── Large span with holidays ──────────────────────────────────
+		// Full January 2024 with 1 holiday (Jan 15 Mon = MLK day)
+		// Jan 1 (Mon) to Jan 31 (Wed): 23 weekdays - 1 holiday = 22
+		{"jan_2024_with_mlk", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,31),DATE(2024,1,15))", 22, false, 0},
+
+		// ── Multiple holidays as array ────────────────────────────────
+		// Mon-Fri with 3 holidays (Tue, Wed, Thu) = 2 remaining
+		{"three_weekday_holidays", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,5),{DATE(2024,1,2),DATE(2024,1,3),DATE(2024,1,4)})", 2, false, 0},
+
+		// ── Holiday on weekend (no double-count) ──────────────────────
+		// Mon to Fri with holiday on Sat = still 5
+		{"holiday_on_sat_no_effect", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,5),DATE(2024,1,6))", 5, false, 0},
+
+		// ── All weekdays are holidays → 0 ─────────────────────────────
+		// Mon-Fri, all 5 weekdays are holidays
+		{"all_holidays_zero", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,5),{DATE(2024,1,1),DATE(2024,1,2),DATE(2024,1,3),DATE(2024,1,4),DATE(2024,1,5)})", 0, false, 0},
+
+		// ── Negative span (end before start) ──────────────────────────
+		{"date_negative_span", "NETWORKDAYS(DATE(2024,1,5),DATE(2024,1,1))", -5, false, 0},
+		{"date_negative_cross_year", "NETWORKDAYS(DATE(2025,1,2),DATE(2024,12,31))", -3, false, 0},
+
+		// ── Error propagation ──────────────────────────────────────────
+		{"error_prop_start", "NETWORKDAYS(1/0,45667)", 0, true, ErrValDIV0},
+		{"error_prop_end", "NETWORKDAYS(45663,1/0)", 0, true, ErrValDIV0},
+		{"error_prop_holiday", "NETWORKDAYS(45663,45667,1/0)", 0, true, ErrValDIV0},
+
+		// ── Two-week span ─────────────────────────────────────────────
+		// Mon Jan 1 to Fri Jan 12 = 10 weekdays
+		{"two_weeks", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,12))", 10, false, 0},
+
+		// ── February in leap year ─────────────────────────────────────
+		// Feb 1 (Thu) to Feb 29 (Thu) 2024 = 21 weekdays
+		{"feb_leap_year", "NETWORKDAYS(DATE(2024,2,1),DATE(2024,2,29))", 21, false, 0},
+
+		// ── Duplicate holidays (should not double-subtract) ───────────
+		{"duplicate_holiday", "NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,5),{DATE(2024,1,3),DATE(2024,1,3)})", 4, false, 0},
 	}
 
 	for _, tc := range tests {

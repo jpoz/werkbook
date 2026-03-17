@@ -96,6 +96,43 @@ func TestFormulaWithValue(t *testing.T) {
 	}
 }
 
+func TestDynamicArraySpillCellsRoundTrip(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("B2", "SEQUENCE(2,3,10,5)")
+	f.Recalculate()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dynamic-spill.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	f2, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	s2 := f2.Sheet("Sheet1")
+
+	tests := map[string]float64{
+		"B2": 10,
+		"C2": 15,
+		"D2": 20,
+		"B3": 25,
+		"C3": 30,
+		"D3": 35,
+	}
+	for cell, want := range tests {
+		val, err := s2.GetValue(cell)
+		if err != nil {
+			t.Fatalf("GetValue(%s): %v", cell, err)
+		}
+		if val.Type != werkbook.TypeNumber || val.Number != want {
+			t.Fatalf("%s = %#v, want %g", cell, val, want)
+		}
+	}
+}
+
 func TestFormulaCellInXML(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

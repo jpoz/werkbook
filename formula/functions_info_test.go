@@ -5249,3 +5249,495 @@ func TestAREAS(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SHEET
+// ---------------------------------------------------------------------------
+
+func TestSHEET(t *testing.T) {
+	sheets := []string{"Sheet1", "Sheet2", "Sheet3", "Data", "Summary"}
+
+	newResolver := func() *mock3DResolver {
+		return &mock3DResolver{
+			sheets: sheets,
+			cells:  map[CellAddr]Value{},
+		}
+	}
+
+	t.Run("no_args_current_sheet_first", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("SHEET() on Sheet1 = %v, want 1", got)
+		}
+	})
+
+	t.Run("no_args_current_sheet_second", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet2", Resolver: resolver}
+		cf := evalCompile(t, `SHEET()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("SHEET() on Sheet2 = %v, want 2", got)
+		}
+	})
+
+	t.Run("string_arg_existing_sheet", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("Sheet3")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf(`SHEET("Sheet3") = %v, want 3`, got)
+		}
+	})
+
+	t.Run("string_arg_case_insensitive", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("sheet3")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf(`SHEET("sheet3") = %v, want 3`, got)
+		}
+	})
+
+	t.Run("string_arg_nonexistent", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("NoSuchSheet")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf(`SHEET("NoSuchSheet") = %v, want #N/A`, got)
+		}
+	})
+
+	t.Run("string_arg_third_of_five", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("Sheet3")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf(`SHEET("Sheet3") = %v, want 3`, got)
+		}
+	})
+
+	t.Run("string_arg_data_sheet", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("Data")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf(`SHEET("Data") = %v, want 4`, got)
+		}
+	})
+
+	t.Run("string_arg_empty_string", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET("")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf(`SHEET("") = %v, want #N/A`, got)
+		}
+	})
+
+	t.Run("error_arg_propagates", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET(1/0)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("SHEET(1/0) = %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("number_arg_value_error", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET(42)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SHEET(42) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("bool_arg_value_error", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET(TRUE)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SHEET(TRUE) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("no_args_no_sheet_list_provider", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEET()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("SHEET() without SheetListProvider = %v, want #N/A", got)
+		}
+	})
+
+	t.Run("no_args_nil_ctx", func(t *testing.T) {
+		resolver := newResolver()
+		cf := evalCompile(t, `SHEET()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("SHEET() nil ctx = %v, want #N/A", got)
+		}
+	})
+
+	t.Run("ref_arg_known_sheet", func(t *testing.T) {
+		// SHEET(Sheet2!A1) -- the ref carries the sheet name "Sheet2".
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEET([]Value{
+			{Type: ValueRef, Num: float64(1 + 1*100_000), Str: "Sheet2"},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 2 {
+			t.Errorf("SHEET(Sheet2!A1) = %v, want 2", result)
+		}
+	})
+
+	t.Run("ref_arg_empty_sheet_uses_current", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet3", Resolver: resolver}
+		result, err := fnSHEET([]Value{
+			{Type: ValueRef, Num: float64(1 + 1*100_000), Str: ""},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 3 {
+			t.Errorf("SHEET(ref with empty sheet) on Sheet3 = %v, want 3", result)
+		}
+	})
+
+	t.Run("ref_arg_unknown_sheet", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEET([]Value{
+			{Type: ValueRef, Num: float64(1 + 1*100_000), Str: "Missing"},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueError || result.Err != ErrValREF {
+			t.Errorf("SHEET(Missing!A1) = %v, want #REF!", result)
+		}
+	})
+
+	t.Run("array_arg_with_range_origin", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Data", FromCol: 1, FromRow: 1, ToCol: 3, ToRow: 3}
+		result, err := fnSHEET([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 4 {
+			t.Errorf("SHEET(Data!A1:C3) = %v, want 4", result)
+		}
+	})
+
+	t.Run("no_args_current_sheet_last", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Summary", Resolver: resolver}
+		cf := evalCompile(t, `SHEET()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("SHEET() on Summary = %v, want 5", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// SHEETS
+// ---------------------------------------------------------------------------
+
+func TestSHEETS(t *testing.T) {
+	sheets5 := []string{"Sheet1", "Sheet2", "Sheet3", "Data", "Summary"}
+
+	newResolver := func(sheets []string) *mock3DResolver {
+		return &mock3DResolver{
+			sheets: sheets,
+			cells:  map[CellAddr]Value{},
+		}
+	}
+
+	t.Run("no_args_five_sheets", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("SHEETS() with 5 sheets = %v, want 5", got)
+		}
+	})
+
+	t.Run("no_args_one_sheet", func(t *testing.T) {
+		resolver := newResolver([]string{"Only"})
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Only", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("SHEETS() with 1 sheet = %v, want 1", got)
+		}
+	})
+
+	t.Run("no_args_no_sheet_list_provider", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS()`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("SHEETS() without SheetListProvider = %v, want #N/A", got)
+		}
+	})
+
+	t.Run("single_ref_returns_1", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueRef, Num: float64(1 + 1*100_000), Str: "Sheet1"},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 1 {
+			t.Errorf("SHEETS(Sheet1!A1) = %v, want 1", result)
+		}
+	})
+
+	t.Run("array_range_returns_1", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet1", FromCol: 1, FromRow: 1, ToCol: 3, ToRow: 3}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 1 {
+			t.Errorf("SHEETS(Sheet1!A1:C3) = %v, want 1", result)
+		}
+	})
+
+	t.Run("3d_range_three_sheets", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 3 {
+			t.Errorf("SHEETS(Sheet1:Sheet3!A1) = %v, want 3", result)
+		}
+	})
+
+	t.Run("3d_range_reversed", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet3", SheetEnd: "Sheet1", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 3 {
+			t.Errorf("SHEETS(Sheet3:Sheet1!A1) reversed = %v, want 3", result)
+		}
+	})
+
+	t.Run("3d_range_unknown_sheet", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet1", SheetEnd: "Missing", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueError || result.Err != ErrValREF {
+			t.Errorf("SHEETS(Sheet1:Missing!A1) = %v, want #REF!", result)
+		}
+	})
+
+	t.Run("3d_range_single_sheet", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet2", SheetEnd: "Sheet2", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 1 {
+			t.Errorf("SHEETS(Sheet2:Sheet2!A1) = %v, want 1", result)
+		}
+	})
+
+	t.Run("3d_range_all_sheets", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet1", SheetEnd: "Summary", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 5 {
+			t.Errorf("SHEETS(Sheet1:Summary!A1) = %v, want 5", result)
+		}
+	})
+
+	t.Run("error_arg_propagates", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS(1/0)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("SHEETS(1/0) = %v, want #DIV/0!", got)
+		}
+	})
+
+	t.Run("number_arg_value_error", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS(42)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SHEETS(42) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("bool_arg_value_error", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS(TRUE)`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SHEETS(TRUE) = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("nil_ctx_no_args", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		cf := evalCompile(t, `SHEETS()`)
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("SHEETS() nil ctx = %v, want #N/A", got)
+		}
+	})
+
+	t.Run("3d_range_no_sheet_list_provider", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		origin := RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1}
+		result, err := fnSHEETS([]Value{
+			{Type: ValueArray, Array: [][]Value{{NumberVal(1)}}, RangeOrigin: &origin},
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueError || result.Err != ErrValREF {
+			t.Errorf("SHEETS(3D ref) without SheetListProvider = %v, want #REF!", result)
+		}
+	})
+
+	t.Run("string_arg_value_error", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		cf := evalCompile(t, `SHEETS("Sheet1")`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		// SHEETS with a string arg returns #VALUE! since strings are not references.
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf(`SHEETS("Sheet1") = %v, want #VALUE!`, got)
+		}
+	})
+}

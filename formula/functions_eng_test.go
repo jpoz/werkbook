@@ -1791,6 +1791,166 @@ func TestCONVERT(t *testing.T) {
 			// Area
 			{`CONVERT(1,"ha","m2")`, 10000, 1e-9},
 			{`CONVERT(1,"us_acre","m2")`, 4046.8564224, 1e-6},
+
+			// --- Additional temperature conversions ---
+			// F to C: standard boiling point
+			{`CONVERT(68,"F","C")`, 20, 1e-9},
+			// F to K
+			{`CONVERT(32,"F","K")`, 273.15, 1e-9},
+			// K to F
+			{`CONVERT(373.15,"K","F")`, 212, 1e-9},
+			// Zero Celsius to Fahrenheit
+			{`CONVERT(0,"C","F")`, 32, 1e-9},
+			// Negative temperature: the famous -40 crossover
+			{`CONVERT(-40,"C","F")`, -40, 1e-9},
+			{`CONVERT(-40,"F","C")`, -40, 1e-9},
+			// Rank to K
+			{`CONVERT(491.67,"Rank","K")`, 273.15, 1e-6},
+			// Reau to F
+			{`CONVERT(80,"Reau","F")`, 212, 1e-6},
+
+			// --- Additional distance conversions ---
+			{`CONVERT(1,"in","cm")`, 2.54, 1e-9},
+			{`CONVERT(1,"yd","m")`, 0.9144, 1e-9},
+			{`CONVERT(5280,"ft","mi")`, 1, 1e-9},
+			{`CONVERT(1,"ang","m")`, 1e-10, 1e-20},
+			{`CONVERT(1,"ly","m")`, 9.46073047258e15, 1e6},
+			{`CONVERT(1,"ell","m")`, 1.143, 1e-9},
+			{`CONVERT(1,"survey_mi","m")`, 1609.3472186944373, 1e-6},
+			// Nautical mile to km
+			{`CONVERT(1,"Nmi","km")`, 1.852, 1e-9},
+
+			// --- Additional mass conversions ---
+			{`CONVERT(1,"g","ozm")`, 0.0352739619495804, 1e-6},
+			{`CONVERT(1,"sg","kg")`, 14.5939029372064, 1e-6},
+			{`CONVERT(1,"ton","lbm")`, 2000, 1e-3},
+			{`CONVERT(1,"ton","kg")`, 907.18474, 1e-3},
+
+			// --- Additional volume conversions ---
+			{`CONVERT(1,"l","oz")`, 33.8140227018429, 1e-4},
+			{`CONVERT(1,"tsp","l")`, 0.00492892159375, 1e-12},
+			{`CONVERT(1,"tbs","tsp")`, 3, 1e-4},
+			{`CONVERT(1,"pt","cup")`, 2, 1e-6},
+			{`CONVERT(1,"qt","pt")`, 2, 1e-9},
+			{`CONVERT(1,"qt","l")`, 0.946352946, 1e-9},
+			{`CONVERT(1,"m3","l")`, 1000, 1e-9},
+			{`CONVERT(1,"ft3","l")`, 28.316846592, 1e-6},
+			{`CONVERT(1,"in3","l")`, 0.016387064, 1e-9},
+			{`CONVERT(1,"barrel","gal")`, 42, 1e-4},
+
+			// --- Additional area conversions ---
+			{`CONVERT(1,"m2","ft2")`, 10.7639104167097, 1e-4},
+			{`CONVERT(1,"mi2","m2")`, 2589988.110336, 1e-3},
+			{`CONVERT(1,"yd2","ft2")`, 9, 1e-6},
+			{`CONVERT(1,"ar","m2")`, 100, 1e-9},
+			{`CONVERT(1,"Morgen","m2")`, 2500, 1e-9},
+			{`CONVERT(1,"in2","m2")`, 6.4516e-4, 1e-10},
+
+			// --- Additional speed conversions ---
+			{`CONVERT(1,"m/s","mph")`, 2.23693629205440, 1e-4},
+			{`CONVERT(60,"mph","kn")`, 52.1380846237996, 1e-3},
+			{`CONVERT(1,"admkn","m/s")`, 0.514773333333333, 1e-6},
+			{`CONVERT(100,"m/h","m/s")`, 100.0 / 3600.0, 1e-9},
+
+			// --- Additional time conversions ---
+			{`CONVERT(1,"mn","sec")`, 60, 1e-9},
+			{`CONVERT(1,"yr","hr")`, 365.25 * 24, 1e-6},
+			{`CONVERT(1,"yr","sec")`, 365.25 * 86400, 1e-3},
+			{`CONVERT(3600,"sec","hr")`, 1, 1e-9},
+			{`CONVERT(7,"day","hr")`, 168, 1e-9},
+
+			// --- Additional energy conversions ---
+			{`CONVERT(1,"J","cal")`, 0.238845896627496, 1e-6},
+			{`CONVERT(1,"kWh","J")`, 3600000, 1e-3},
+			{`CONVERT(1,"eV","J")`, 1.602176634e-19, 1e-28},
+			{`CONVERT(1,"flb","J")`, 1.3558179483314, 1e-6},
+			{`CONVERT(1,"BTU","cal")`, 251.99576111244, 1e-3},
+			{`CONVERT(1,"HPh","J")`, 2684519.537696173, 1e-3},
+			{`CONVERT(1,"Wh","J")`, 3600, 1e-9},
+
+			// --- Additional power conversions ---
+			{`CONVERT(1,"W","HP")`, 1.0 / 745.69987158227022, 1e-9},
+			{`CONVERT(1,"PS","W")`, 735.49875, 1e-6},
+			{`CONVERT(1,"HP","PS")`, 745.69987158227022 / 735.49875, 1e-6},
+
+			// --- Additional pressure conversions ---
+			{`CONVERT(1,"Pa","atm")`, 1.0 / 101325.0, 1e-12},
+			{`CONVERT(1,"psi","Pa")`, 6894.76, 1e-2},
+			{`CONVERT(1,"mmHg","Pa")`, 133.322, 1e-3},
+			{`CONVERT(1,"Torr","Pa")`, 133.3223684211, 1e-6},
+			{`CONVERT(1,"atm","mmHg")`, 101325.0 / 133.322, 1e-2},
+			{`CONVERT(1,"atm","psi")`, 101325.0 / 6894.76, 1e-4},
+
+			// --- Additional force conversions ---
+			{`CONVERT(1,"N","dyn")`, 100000, 1e-3},
+			{`CONVERT(1,"dyn","N")`, 1e-5, 1e-12},
+			{`CONVERT(1,"N","lbf")`, 1.0 / 4.4482216152605, 1e-6},
+			{`CONVERT(1,"pond","N")`, 9.80665e-3, 1e-9},
+			{`CONVERT(1,"lbf","dyn")`, 4.4482216152605e5, 1e-1},
+
+			// --- Additional magnetism conversions ---
+			{`CONVERT(1,"ga","T")`, 1e-4, 1e-12},
+			{`CONVERT(5000,"ga","T")`, 0.5, 1e-9},
+
+			// --- Additional information conversions ---
+			{`CONVERT(1024,"byte","bit")`, 8192, 0},
+			{`CONVERT(1,"kbit","bit")`, 1000, 1e-9},
+			{`CONVERT(1,"Mbit","bit")`, 1e6, 1e-3},
+			{`CONVERT(1,"kbyte","byte")`, 1000, 1e-9},
+			{`CONVERT(1,"Mbyte","byte")`, 1e6, 1e-3},
+
+			// --- SI/metric prefix conversions ---
+			{`CONVERT(1,"mm","m")`, 0.001, 1e-12},
+			{`CONVERT(1,"um","m")`, 1e-6, 1e-15},
+			{`CONVERT(1,"nm","m")`, 1e-9, 1e-18},
+			{`CONVERT(1,"cm","m")`, 0.01, 1e-12},
+			{`CONVERT(1,"dam","m")`, 10, 1e-9},
+			{`CONVERT(1,"hm","m")`, 100, 1e-9},
+			{`CONVERT(1,"Gm","m")`, 1e9, 1e-3},
+			{`CONVERT(1,"Mm","m")`, 1e6, 1e-3},
+			{`CONVERT(1,"GW","W")`, 1e9, 1e-3},
+			{`CONVERT(1,"mW","W")`, 1e-3, 1e-12},
+			{`CONVERT(1,"uW","W")`, 1e-6, 1e-15},
+			{`CONVERT(1,"kPa","Pa")`, 1000, 1e-9},
+			{`CONVERT(1,"MPa","Pa")`, 1e6, 1e-3},
+			{`CONVERT(1,"GPa","Pa")`, 1e9, 1e-3},
+			{`CONVERT(1,"kJ","J")`, 1000, 1e-9},
+			{`CONVERT(1,"MJ","J")`, 1e6, 1e-3},
+			{`CONVERT(1,"mN","N")`, 1e-3, 1e-12},
+			{`CONVERT(1,"kN","N")`, 1000, 1e-9},
+			// Prefix on grams (base is "g" not "kg")
+			{`CONVERT(1,"ug","g")`, 1e-6, 1e-15},
+			{`CONVERT(1,"ng","g")`, 1e-9, 1e-18},
+			{`CONVERT(1,"Mg","g")`, 1e6, 1e-3},
+			// Cross-prefix conversions
+			{`CONVERT(1,"km","cm")`, 100000, 1e-3},
+			{`CONVERT(1,"km","mm")`, 1e6, 1e-3},
+			{`CONVERT(1,"mg","ug")`, 1000, 1e-6},
+			{`CONVERT(1,"ml","l")`, 0.001, 1e-12},
+			{`CONVERT(1,"kl","ml")`, 1e6, 1e-3},
+			{`CONVERT(1,"kcal","cal")`, 1000, 1e-6},
+			{`CONVERT(1,"nsec","sec")`, 1e-9, 1e-18},
+
+			// --- Same unit identity ---
+			{`CONVERT(1,"m","m")`, 1, 0},
+			{`CONVERT(1,"F","F")`, 1, 0},
+			{`CONVERT(1,"K","K")`, 1, 0},
+			{`CONVERT(1,"bit","bit")`, 1, 0},
+			{`CONVERT(1,"Pa","Pa")`, 1, 0},
+			{`CONVERT(1,"N","N")`, 1, 0},
+			{`CONVERT(99.99,"gal","gal")`, 99.99, 0},
+
+			// --- Large values ---
+			{`CONVERT(1e12,"m","km")`, 1e9, 1e3},
+			{`CONVERT(1e15,"g","kg")`, 1e12, 1e3},
+			{`CONVERT(1e9,"sec","yr")`, 1e9 / (365.25 * 86400), 1e-3},
+
+			// --- Nested CONVERT (Excel doc example: 100 sq ft to sq m) ---
+			{`CONVERT(CONVERT(100,"ft","m"),"ft","m")`, 9.290304, 1e-6},
+
+			// --- Boolean coercion of first argument ---
+			{`CONVERT(TRUE,"kg","g")`, 1000, 1e-9},
+			{`CONVERT(FALSE,"C","F")`, 32, 1e-9},
 		}
 		for _, tt := range tests {
 			t.Run(tt.formula, func(t *testing.T) {
@@ -1839,6 +1999,23 @@ func TestCONVERT(t *testing.T) {
 			{`CONVERT(1,"kg","g","extra")`, ErrValVALUE},
 			// Non-numeric first arg
 			{`CONVERT("abc","kg","g")`, ErrValVALUE},
+
+			// Additional incompatible unit pairs
+			{`CONVERT(1,"sec","m")`, ErrValNA},   // time vs distance
+			{`CONVERT(1,"Pa","N")`, ErrValNA},     // pressure vs force
+			{`CONVERT(1,"W","J")`, ErrValNA},      // power vs energy
+			{`CONVERT(1,"bit","g")`, ErrValNA},    // information vs mass
+			{`CONVERT(1,"mph","kg")`, ErrValNA},   // speed vs mass
+			{`CONVERT(1,"m2","m")`, ErrValNA},     // area vs distance
+			{`CONVERT(1,"l","m")`, ErrValNA},      // volume vs distance
+			{`CONVERT(1,"T","W")`, ErrValNA},      // magnetism vs power
+			{`CONVERT(1,"F","m")`, ErrValNA},      // temperature vs distance
+			{`CONVERT(1,"K","Pa")`, ErrValNA},     // temperature vs pressure
+			// Invalid unit strings
+			{`CONVERT(1,"xyz","m")`, ErrValNA},
+			{`CONVERT(1,"m","xyz")`, ErrValNA},
+			{`CONVERT(1,"","m")`, ErrValNA},
+			{`CONVERT(1,"m","")`, ErrValNA},
 		}
 		for _, tt := range errTests {
 			t.Run(tt.formula, func(t *testing.T) {

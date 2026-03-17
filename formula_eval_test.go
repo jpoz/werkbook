@@ -1,6 +1,7 @@
 package werkbook_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/jpoz/werkbook"
@@ -387,6 +388,45 @@ func TestFILTER_NumericArrayResult(t *testing.T) {
 	}
 	if val.Number != 100 {
 		t.Errorf("C1 = %g, want 100", val.Number)
+	}
+}
+
+func TestRANDARRAYSpillCellsRemainConsistentWithinCalculation(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetFormula("B3", "RANDARRAY(1,3)")
+	s.SetFormula("E3", "SUM(B3:D3)")
+
+	f.Recalculate()
+
+	wantCells := []string{"B3", "C3", "D3"}
+	values := make([]float64, 0, len(wantCells))
+	for _, cell := range wantCells {
+		val, err := s.GetValue(cell)
+		if err != nil {
+			t.Fatalf("GetValue(%s): %v", cell, err)
+		}
+		if val.Type != werkbook.TypeNumber {
+			t.Fatalf("%s type = %v, want TypeNumber", cell, val.Type)
+		}
+		if val.Number < 0 || val.Number >= 1 {
+			t.Fatalf("%s = %g, want [0,1)", cell, val.Number)
+		}
+		values = append(values, val.Number)
+	}
+
+	total, err := s.GetValue("E3")
+	if err != nil {
+		t.Fatalf("GetValue(E3): %v", err)
+	}
+	if total.Type != werkbook.TypeNumber {
+		t.Fatalf("E3 type = %v, want TypeNumber", total.Type)
+	}
+
+	want := values[0] + values[1] + values[2]
+	if math.Abs(total.Number-want) > 1e-12 {
+		t.Fatalf("SUM(B3:D3) = %g, want %g", total.Number, want)
 	}
 }
 

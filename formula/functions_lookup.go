@@ -543,10 +543,29 @@ func fnMATCH(args []Value) (Value, error) {
 		values = []Value{arr}
 	}
 
+	// For exact match, support wildcard matching on string lookups.
+	useWildcard := false
+	if matchType == 0 && lookup.Type == ValueString {
+		wm := classifyWildcard(lookup.Str)
+		if wm == wildcardFull {
+			useWildcard = true
+		} else if wm == wildcardEscape {
+			lookup = StringVal(unescapePattern(lookup.Str))
+		}
+	}
+
 	switch matchType {
 	case 0:
 		for i, v := range values {
-			if CompareValuesExact(v, lookup) == 0 {
+			matched := false
+			if useWildcard {
+				if v.Type == ValueString {
+					matched = WildcardMatch(v.Str, lookup.Str)
+				}
+			} else {
+				matched = CompareValuesExact(v, lookup) == 0
+			}
+			if matched {
 				return NumberVal(float64(i + 1)), nil
 			}
 		}

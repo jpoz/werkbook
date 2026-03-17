@@ -1,6 +1,7 @@
 package formula
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -990,6 +991,7 @@ func TestMOD(t *testing.T) {
 		formula string
 		wantNum float64
 	}{
+		// Original tests
 		{"positive_mod", "MOD(10,3)", 1},
 		{"exact_divisor", "MOD(10,5)", 0},
 		{"negative_dividend", "MOD(-10,3)", 2},
@@ -997,6 +999,58 @@ func TestMOD(t *testing.T) {
 		{"both_negative", "MOD(-10,-3)", -1},
 		{"fractional", "MOD(7.5,2)", 1.5},
 		{"small_divisor_ok", "MOD(10,0.1)", 0},
+
+		// Basic cases
+		{"basic_10_3", "MOD(10,3)", 1},
+		{"basic_3_2", "MOD(3,2)", 1},
+		{"basic_17_5", "MOD(17,5)", 2},
+		{"basic_100_7", "MOD(100,7)", 2},
+
+		// Zero dividend
+		{"zero_dividend", "MOD(0,5)", 0},
+		{"zero_dividend_neg_divisor", "MOD(0,-3)", 0},
+
+		// Number mod itself = 0
+		{"self_mod", "MOD(5,5)", 0},
+		{"self_mod_large", "MOD(123,123)", 0},
+		{"self_mod_neg", "MOD(-7,-7)", 0},
+
+		// Mod by 1 = 0 for integers
+		{"mod_by_1", "MOD(5,1)", 0},
+		{"mod_by_1_large", "MOD(999,1)", 0},
+		{"mod_by_1_neg_num", "MOD(-5,1)", 0},
+
+		// Sign follows divisor (Excel semantics)
+		{"sign_follows_divisor_pos", "MOD(3,2)", 1},
+		{"sign_follows_divisor_neg_d", "MOD(3,-2)", -1},
+		{"sign_follows_divisor_neg_n", "MOD(-3,2)", 1},
+		{"sign_follows_divisor_both_neg", "MOD(-3,-2)", -1},
+
+		// Decimal arguments
+		{"decimal_5_5_div_2", "MOD(5.5,2)", 1.5},
+		{"decimal_2_5_div_1_5", "MOD(2.5,1.5)", 1},
+		{"decimal_small", "MOD(0.7,0.3)", 0.1},
+		{"decimal_neg_dividend", "MOD(-5.5,2)", 0.5},
+		{"decimal_neg_divisor", "MOD(5.5,-2)", -0.5},
+
+		// Small divisor (near zero but not zero)
+		{"small_divisor_0_01", "MOD(1,0.01)", 0},
+		{"small_divisor_0_001", "MOD(1,0.001)", 0},
+
+		// Larger numbers within precision threshold
+		{"large_nums_ok", "MOD(10000,3)", 1},
+		{"large_nums_ok2", "MOD(999999,7)", 999999 - 142857*7},
+
+		// String coercion
+		{"string_num", `MOD("10","3")`, 1},
+		{"string_dividend", `MOD("10",3)`, 1},
+		{"string_divisor", `MOD(10,"3")`, 1},
+
+		// Boolean coercion
+		{"bool_true_dividend", "MOD(TRUE,2)", 1},
+		{"bool_false_dividend", "MOD(FALSE,5)", 0},
+		{"bool_true_divisor", "MOD(10,TRUE)", 0},
+		{"bool_true_both", "MOD(TRUE,TRUE)", 0},
 	}
 
 	const epsilon = 1e-10
@@ -1022,10 +1076,31 @@ func TestMOD(t *testing.T) {
 	}{
 		// Division by zero -> #DIV/0!
 		{"div_by_zero", "MOD(10,0)", ErrValDIV0},
+		{"div_by_zero_neg_num", "MOD(-5,0)", ErrValDIV0},
+		{"div_zero_by_zero", "MOD(0,0)", ErrValDIV0},
+
 		// Precision overflow: |n/d| >= 1e13 -> #NUM!
-		{"precision_overflow", "MOD(100,-1e-15)", ErrValNUM},
-		{"precision_overflow_large", "MOD(1e18,1)", ErrValNUM},
-		{"precision_overflow", "MOD(10^15,7)", ErrValNUM},
+		{"precision_overflow_tiny_neg_d", "MOD(100,-1e-15)", ErrValNUM},
+		{"precision_overflow_large_n", "MOD(1e18,1)", ErrValNUM},
+		{"precision_overflow_power", "MOD(10^15,7)", ErrValNUM},
+
+		// Wrong argument count
+		{"no_args", "MOD()", ErrValVALUE},
+		{"one_arg", "MOD(5)", ErrValVALUE},
+		{"three_args", "MOD(5,3,1)", ErrValVALUE},
+
+		// Non-numeric strings -> #VALUE!
+		{"non_numeric_num", `MOD("abc",2)`, ErrValVALUE},
+		{"non_numeric_den", `MOD(2,"abc")`, ErrValVALUE},
+		{"non_numeric_both", `MOD("abc","def")`, ErrValVALUE},
+
+		// Error propagation
+		{"err_div0_num", "MOD(1/0,2)", ErrValDIV0},
+		{"err_div0_den", "MOD(2,1/0)", ErrValDIV0},
+		{"err_na_num", "MOD(NA(),2)", ErrValNA},
+
+		// Boolean FALSE as divisor (coerces to 0 -> #DIV/0!)
+		{"bool_false_divisor", "MOD(5,FALSE)", ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
@@ -3508,6 +3583,400 @@ func TestMMULT_LargeValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Additional MMULT tests
+// ---------------------------------------------------------------------------
+
+func TestMMULT_3x3_times_3x3(t *testing.T) {
+	// {1,2,3;4,5,6;7,8,9} * {9,8,7;6,5,4;3,2,1}
+	// Row0: 1*9+2*6+3*3=30, 1*8+2*5+3*2=24, 1*7+2*4+3*1=18
+	// Row1: 4*9+5*6+6*3=84, 4*8+5*5+6*2=69, 4*7+5*4+6*1=54
+	// Row2: 7*9+8*6+9*3=138, 7*8+8*5+9*2=114, 7*7+8*4+9*1=90
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3;4,5,6;7,8,9},{9,8,7;6,5,4;3,2,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{30, 24, 18}, {84, 69, 54}, {138, 114, 90}}
+	if len(got.Array) != 3 || len(got.Array[0]) != 3 {
+		t.Fatalf("expected 3x3, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_IdentityLeft(t *testing.T) {
+	// I * M = M
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,0;0,1},{7,8;9,10})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{7, 8}, {9, 10}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_IdentityRight3x3(t *testing.T) {
+	// M * I = M for 3x3
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3;4,5,6;7,8,9},{1,0,0;0,1,0;0,0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_IncompatibleDimensions_3x2_times_3x2(t *testing.T) {
+	// 3x2 * 3x2 => cols(2) != rows(3) => #VALUE!
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+			{NumberVal(5), NumberVal(6)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+			{NumberVal(5), NumberVal(6)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMMULT_ZeroMatrixRight(t *testing.T) {
+	// M * 0 = 0
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2;3,4},{0,0;0,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if got.Array[r][c].Num != 0 {
+				t.Errorf("[%d][%d]: got %g, want 0", r, c, got.Array[r][c].Num)
+			}
+		}
+	}
+}
+
+func TestMMULT_NegativeTimesNegative(t *testing.T) {
+	// {-1,-2;-3,-4} * {-5,-6;-7,-8}
+	// [0][0]: (-1)(-5)+(-2)(-7)=5+14=19
+	// [0][1]: (-1)(-6)+(-2)(-8)=6+16=22
+	// [1][0]: (-3)(-5)+(-4)(-7)=15+28=43
+	// [1][1]: (-3)(-6)+(-4)(-8)=18+32=50
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({-1,-2;-3,-4},{-5,-6;-7,-8})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{19, 22}, {43, 50}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if got.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_1x4_times_4x1(t *testing.T) {
+	// Dot product: {1,2,3,4} * {5;6;7;8} = {1*5+2*6+3*7+4*8} = {70}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3,4},{5;6;7;8})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 70 {
+		t.Errorf("got %g, want 70", got.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_4x1_times_1x4(t *testing.T) {
+	// Outer product: {1;2;3;4} * {5,6,7,8}
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+			{NumberVal(3)},
+			{NumberVal(4)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(5), NumberVal(6), NumberVal(7), NumberVal(8)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	want := [][]float64{
+		{5, 6, 7, 8},
+		{10, 12, 14, 16},
+		{15, 18, 21, 24},
+		{20, 24, 28, 32},
+	}
+	if len(result.Array) != 4 || len(result.Array[0]) != 4 {
+		t.Fatalf("expected 4x4, got %dx%d", len(result.Array), len(result.Array[0]))
+	}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if result.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_ErrorInArray1_Propagate(t *testing.T) {
+	// Error in arg1 (as a scalar error) propagates directly
+	result, err := fnMMULT([]Value{
+		ErrorVal(ErrValNA),
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNA {
+		t.Errorf("expected #N/A, got %v", result)
+	}
+}
+
+func TestMMULT_ErrorInArray2_Propagate(t *testing.T) {
+	// Error in arg2 (as a scalar error) propagates directly
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)},
+		}},
+		ErrorVal(ErrValREF),
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValREF {
+		t.Errorf("expected #REF!, got %v", result)
+	}
+}
+
+func TestMMULT_ErrorInArray2_Cell(t *testing.T) {
+	// Error cell in array2 should propagate
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3)},
+			{ErrorVal(ErrValNUM)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNUM {
+		t.Errorf("expected #NUM!, got %v", result)
+	}
+}
+
+func TestMMULT_VeryLargeValues(t *testing.T) {
+	// 1e10 * 1e10 matrix product
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1e10), NumberVal(2e10)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(3e10)},
+			{NumberVal(4e10)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	// 1e10*3e10 + 2e10*4e10 = 3e20 + 8e20 = 1.1e21
+	if math.Abs(result.Array[0][0].Num-1.1e21) > 1e10 {
+		t.Errorf("got %g, want 1.1e21", result.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_NonSquareResult_2x3_times_3x4(t *testing.T) {
+	// Result should be 2x4
+	result, err := fnMMULT([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(0), NumberVal(0), NumberVal(1)},
+			{NumberVal(0), NumberVal(1), NumberVal(0), NumberVal(1)},
+			{NumberVal(0), NumberVal(0), NumberVal(1), NumberVal(1)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	if len(result.Array) != 2 || len(result.Array[0]) != 4 {
+		t.Fatalf("expected 2x4, got %dx%d", len(result.Array), len(result.Array[0]))
+	}
+	// Row0: 1*1+2*0+3*0=1, 1*0+2*1+3*0=2, 1*0+2*0+3*1=3, 1*1+2*1+3*1=6
+	// Row1: 4*1+5*0+6*0=4, 4*0+5*1+6*0=5, 4*0+5*0+6*1=6, 4*1+5*1+6*1=15
+	want := [][]float64{{1, 2, 3, 6}, {4, 5, 6, 15}}
+	for r, wantRow := range want {
+		for c, w := range wantRow {
+			if result.Array[r][c].Num != w {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, result.Array[r][c].Num, w)
+			}
+		}
+	}
+}
+
+func TestMMULT_CrossCheck_MINVERSE(t *testing.T) {
+	// MMULT(M, MINVERSE(M)) should be identity
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({2,1;5,3},MINVERSE({2,1;5,3}))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMMULT_CrossCheck_MINVERSE_3x3(t *testing.T) {
+	// MMULT(M, MINVERSE(M)) should be identity for 3x3
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,2,3;0,1,4;5,6,0},MINVERSE({1,2,3;0,1,4;5,6,0}))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMMULT_ScalarTimesArray_1x1(t *testing.T) {
+	// scalar 3 coerced to {3} (1x1), times {2} (1x1) => {6}
+	result, err := fnMMULT([]Value{
+		NumberVal(3),
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(2)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMMULT: %v", err)
+	}
+	if result.Type != ValueArray {
+		t.Fatalf("expected array, got %v", result.Type)
+	}
+	if result.Array[0][0].Num != 6 {
+		t.Errorf("got %g, want 6", result.Array[0][0].Num)
+	}
+}
+
+func TestMMULT_EvalInlineArray(t *testing.T) {
+	// Verify inline arrays work through full eval pipeline
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({2,0;0,3},{4;5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	// {2*4+0*5; 0*4+3*5} = {8; 15}
+	if len(got.Array) != 2 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 2x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Num != 8 {
+		t.Errorf("[0][0]: got %g, want 8", got.Array[0][0].Num)
+	}
+	if got.Array[1][0].Num != 15 {
+		t.Errorf("[1][0]: got %g, want 15", got.Array[1][0].Num)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // MDETERM tests
 // ---------------------------------------------------------------------------
 
@@ -4103,6 +4572,328 @@ func TestMINVERSE_Fractional(t *testing.T) {
 				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional MINVERSE tests
+// ---------------------------------------------------------------------------
+
+func TestMINVERSE_2x2_Identity(t *testing.T) {
+	// Inverse of 2x2 identity is identity.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,0;0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_1x1_Array(t *testing.T) {
+	// {5} as array => {{0.2}}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("expected 1x1 array, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if math.Abs(got.Array[0][0].Num-0.2) > 1e-10 {
+		t.Errorf("got %g, want 0.2", got.Array[0][0].Num)
+	}
+}
+
+func TestMINVERSE_4x4_Identity(t *testing.T) {
+	// Inverse of 4x4 identity is identity.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1,0,0,0;0,1,0,0;0,0,1,0;0,0,0,1})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_3x3_NonSquare_2x3(t *testing.T) {
+	// 2x3 is not square => #VALUE!
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2), NumberVal(3)},
+			{NumberVal(4), NumberVal(5), NumberVal(6)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMINVERSE_3x3_NonSquare_3x2(t *testing.T) {
+	// 3x2 is not square => #VALUE!
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(2)},
+			{NumberVal(3), NumberVal(4)},
+			{NumberVal(5), NumberVal(6)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMINVERSE_LargeValues(t *testing.T) {
+	// {1000,0;0,500} => {0.001,0;0,0.002}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({1000,0;0,500})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{0.001, 0}, {0, 0.002}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_NearSingular(t *testing.T) {
+	// A matrix with a very small determinant should still invert if above threshold.
+	// {1, 1; 1, 1.0000000001} has det ~ 1e-10 which is above 1e-15 threshold.
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), NumberVal(1)},
+			{NumberVal(1), NumberVal(1.0000000001)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	// Should succeed (not singular) because det is ~1e-10, above the 1e-15 threshold
+	if result.Type == ValueError {
+		t.Errorf("expected successful inverse for near-singular matrix, got error %v", result.Err)
+	}
+}
+
+func TestMINVERSE_NegativeElements_2x2(t *testing.T) {
+	// {-3,-4;-1,-2} => det = (-3)(-2)-(-4)(-1) = 6-4 = 2
+	// inverse = 1/2 * {-2,4;1,-3} = {-1,2;0.5,-1.5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({-3,-4;-1,-2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-1, 2}, {0.5, -1.5}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_MTimesInverseM_3x3(t *testing.T) {
+	// Cross-check: MMULT(M, MINVERSE(M)) ≈ identity for 3x3
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({2,1,1;1,3,2;1,0,0},MINVERSE({2,1,1;1,3,2;1,0,0}))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-9 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_InverseTimesM_3x3(t *testing.T) {
+	// Cross-check from the other side: MMULT(MINVERSE(M), M) ≈ identity
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT(MINVERSE({2,1,1;1,3,2;1,0,0}),{2,1,1;1,3,2;1,0,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-9 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_ErrorInArray_NA(t *testing.T) {
+	// #N/A error inside array should propagate
+	result, err := fnMINVERSE([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1), ErrorVal(ErrValNA)},
+			{NumberVal(3), NumberVal(4)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNA {
+		t.Errorf("expected #N/A, got %v", result)
+	}
+}
+
+func TestMINVERSE_ScalarNegative(t *testing.T) {
+	// Scalar -4 => 1/(-4) = -0.25
+	result, err := fnMINVERSE([]Value{NumberVal(-4)})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueNumber {
+		t.Fatalf("expected number, got %v", result.Type)
+	}
+	if math.Abs(result.Num-(-0.25)) > 1e-10 {
+		t.Errorf("got %g, want -0.25", result.Num)
+	}
+}
+
+func TestMINVERSE_4x4_General(t *testing.T) {
+	// Verify 4x4 matrix inverse via product check
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MMULT({1,0,2,0;1,1,0,0;1,2,0,1;1,1,1,1},MINVERSE({1,0,2,0;1,1,0,0;1,2,0,1;1,1,1,1}))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			want := 0.0
+			if r == c {
+				want = 1.0
+			}
+			if math.Abs(got.Array[r][c].Num-want) > 1e-9 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want)
+			}
+		}
+	}
+}
+
+func TestMINVERSE_2x2_AllNegative(t *testing.T) {
+	// {-2,-5;-1,-3} => det = (-2)(-3)-(-5)(-1) = 6-5 = 1
+	// inverse = {-3,5;1,-2}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({-2,-5;-1,-3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-3, 5}, {1, -2}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_EvalInlineArray(t *testing.T) {
+	// Verify the full eval pipeline with inline arrays
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MINVERSE({3,1;5,2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	// det = 3*2 - 1*5 = 1, inverse = {2,-1;-5,3}
+	want := [][]float64{{2, -1}, {-5, 3}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestMINVERSE_StringArg(t *testing.T) {
+	// String scalar arg => #VALUE!
+	result, err := fnMINVERSE([]Value{StringVal("hello")})
+	if err != nil {
+		t.Fatalf("fnMINVERSE: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got %v", result)
 	}
 }
 
@@ -5667,6 +6458,717 @@ func TestSUMXMY2_AllNegative(t *testing.T) {
 	// (-3-(-1))²+(-4-(-2))² = 4+4 = 8
 	if got.Type != ValueNumber || got.Num != 8 {
 		t.Errorf("got %v (%g), want 8", got.Type, got.Num)
+	}
+}
+
+// --------------- SUMX2MY2 additional tests ---------------
+
+func TestSUMX2MY2_ZeroArgs(t *testing.T) {
+	got, err := fnSumx2my2(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMX2MY2_OneArrayAllZeros(t *testing.T) {
+	resolver := &mockResolver{}
+	// When y=0: SUMX2MY2 = SUMSQ(x) = 1+4+9 = 14
+	cf := evalCompile(t, "SUMX2MY2({1,2,3},{0,0,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 14 {
+		t.Errorf("got %v (%g), want 14", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_IdentitySumSqDiff(t *testing.T) {
+	// Mathematical identity: SUMX2MY2(x,y) = SUMSQ(x) - SUMSQ(y)
+	// x={3,4,5}, y={1,2,3}: SUMSQ(x)=9+16+25=50, SUMSQ(y)=1+4+9=14, diff=36
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUMX2MY2({3,4,5},{1,2,3})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 36 {
+		t.Errorf("got %v (%g), want 36", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_MixedPositiveNegativeLarger(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-5,10,-15,20} vs {3,-7,11,-13}
+	// (25-9)+(100-49)+(225-121)+(400-169) = 16+51+104+231 = 402
+	cf := evalCompile(t, "SUMX2MY2({-5,10,-15,20},{3,-7,11,-13})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 402 {
+		t.Errorf("got %v (%g), want 402", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_VeryLargeValues(t *testing.T) {
+	resolver := &mockResolver{}
+	// {10000,20000} vs {30000,40000}
+	// (1e8-9e8)+(4e8-16e8) = -8e8 + -12e8 = -2e9
+	cf := evalCompile(t, "SUMX2MY2({10000,20000},{30000,40000})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -2e9 {
+		t.Errorf("got %v (%g), want -2e9", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_FractionalDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {0.1,0.2,0.3} vs {0.4,0.5,0.6}
+	// (0.01-0.16)+(0.04-0.25)+(0.09-0.36) = -0.15-0.21-0.27 = -0.63
+	cf := evalCompile(t, "SUMX2MY2({0.1,0.2,0.3},{0.4,0.5,0.6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if math.Abs(got.Num-(-0.63)) > 1e-10 {
+		t.Errorf("got %v (%g), want -0.63", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_TextInSecondArray(t *testing.T) {
+	got, err := fnSumx2my2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), StringVal("hello")}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMX2MY2_MultiRow2DArray(t *testing.T) {
+	// 2D array: {{1,2},{3,4}} vs {{5,6},{7,8}} flattened: {1,2,3,4} vs {5,6,7,8}
+	// (1-25)+(4-36)+(9-49)+(16-64) = -24-32-40-48 = -144
+	got, err := fnSumx2my2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}, {NumberVal(7), NumberVal(8)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -144 {
+		t.Errorf("got %v (%g), want -144", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_BothBoolArrays(t *testing.T) {
+	// {TRUE,FALSE} vs {FALSE,TRUE} => {1,0} vs {0,1}
+	// (1-0)+(0-1) = 1-1 = 0
+	got, err := fnSumx2my2([]Value{
+		{Type: ValueArray, Array: [][]Value{{BoolVal(true), BoolVal(false)}}},
+		{Type: ValueArray, Array: [][]Value{{BoolVal(false), BoolVal(true)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Errorf("got %v (%g), want 0", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_NegativeDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-1.5,-2.5} vs {-0.5,-1.5}
+	// (2.25-0.25)+(6.25-2.25) = 2+4 = 6
+	cf := evalCompile(t, "SUMX2MY2({-1.5,-2.5},{-0.5,-1.5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 6 {
+		t.Errorf("got %v (%g), want 6", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2MY2_AntiSymmetry(t *testing.T) {
+	// SUMX2MY2(x,y) = -SUMX2MY2(y,x)
+	resolver := &mockResolver{}
+	cf1 := evalCompile(t, "SUMX2MY2({2,5,8},{3,4,6})")
+	got1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cf2 := evalCompile(t, "SUMX2MY2({3,4,6},{2,5,8})")
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got1.Num != -got2.Num {
+		t.Errorf("anti-symmetry failed: SUMX2MY2(x,y)=%g, SUMX2MY2(y,x)=%g", got1.Num, got2.Num)
+	}
+}
+
+func TestSUMX2MY2_CellRangeWithEmptyCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+			// A3 is empty (treated as 0)
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+	cf := evalCompile(t, "SUMX2MY2(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// (9-1)+(16-4)+(0-25) = 8+12-25 = -5
+	if got.Type != ValueNumber || got.Num != -5 {
+		t.Errorf("got %v (%g), want -5", got.Type, got.Num)
+	}
+}
+
+// --------------- SUMX2PY2 additional tests ---------------
+
+func TestSUMX2PY2_ZeroArgs(t *testing.T) {
+	got, err := fnSumx2py2(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMX2PY2_OneArrayAllZeros(t *testing.T) {
+	resolver := &mockResolver{}
+	// When y=0: SUMX2PY2 = SUMSQ(x) = 1+4+9 = 14
+	cf := evalCompile(t, "SUMX2PY2({1,2,3},{0,0,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 14 {
+		t.Errorf("got %v (%g), want 14", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_IdentityWithSUMX2MY2(t *testing.T) {
+	// SUMX2PY2(x,y) = SUMX2MY2(x,y) + 2*SUMSQ(y)
+	// x={2,3}, y={4,5}: SUMX2PY2=(4+16)+(9+25)=54
+	// SUMX2MY2=(4-16)+(9-25)=-28, SUMSQ(y)=16+25=41, -28+82=54 ✓
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUMX2PY2({2,3},{4,5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 54 {
+		t.Errorf("got %v (%g), want 54", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_MixedPositiveNegativeLarger(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-5,10,-15,20} vs {3,-7,11,-13}
+	// (25+9)+(100+49)+(225+121)+(400+169) = 34+149+346+569 = 1098
+	cf := evalCompile(t, "SUMX2PY2({-5,10,-15,20},{3,-7,11,-13})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1098 {
+		t.Errorf("got %v (%g), want 1098", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_VeryLargeValues(t *testing.T) {
+	resolver := &mockResolver{}
+	// {10000,20000} vs {30000,40000}
+	// (1e8+9e8)+(4e8+16e8) = 10e8+20e8 = 3e9
+	cf := evalCompile(t, "SUMX2PY2({10000,20000},{30000,40000})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3e9 {
+		t.Errorf("got %v (%g), want 3e9", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_FractionalDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {0.1,0.2,0.3} vs {0.4,0.5,0.6}
+	// (0.01+0.16)+(0.04+0.25)+(0.09+0.36) = 0.17+0.29+0.45 = 0.91
+	cf := evalCompile(t, "SUMX2PY2({0.1,0.2,0.3},{0.4,0.5,0.6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if math.Abs(got.Num-0.91) > 1e-10 {
+		t.Errorf("got %v (%g), want 0.91", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_TextInSecondArray(t *testing.T) {
+	got, err := fnSumx2py2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), StringVal("xyz")}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMX2PY2_MultiRow2DArray(t *testing.T) {
+	// 2D array: {{1,2},{3,4}} vs {{5,6},{7,8}} flattened: {1,2,3,4} vs {5,6,7,8}
+	// (1+25)+(4+36)+(9+49)+(16+64) = 26+40+58+80 = 204
+	got, err := fnSumx2py2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}, {NumberVal(7), NumberVal(8)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 204 {
+		t.Errorf("got %v (%g), want 204", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_BothBoolArrays(t *testing.T) {
+	// {TRUE,FALSE} vs {FALSE,TRUE} => {1,0} vs {0,1}
+	// (1+0)+(0+1) = 1+1 = 2
+	got, err := fnSumx2py2([]Value{
+		{Type: ValueArray, Array: [][]Value{{BoolVal(true), BoolVal(false)}}},
+		{Type: ValueArray, Array: [][]Value{{BoolVal(false), BoolVal(true)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_NegativeDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-1.5,-2.5} vs {-0.5,-1.5}
+	// (2.25+0.25)+(6.25+2.25) = 2.5+8.5 = 11
+	cf := evalCompile(t, "SUMX2PY2({-1.5,-2.5},{-0.5,-1.5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 11 {
+		t.Errorf("got %v (%g), want 11", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_Symmetric(t *testing.T) {
+	// SUMX2PY2(x,y) = SUMX2PY2(y,x) — it's commutative
+	resolver := &mockResolver{}
+	cf1 := evalCompile(t, "SUMX2PY2({2,5,8},{3,4,6})")
+	got1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cf2 := evalCompile(t, "SUMX2PY2({3,4,6},{2,5,8})")
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got1.Num != got2.Num {
+		t.Errorf("symmetry failed: SUMX2PY2(x,y)=%g, SUMX2PY2(y,x)=%g", got1.Num, got2.Num)
+	}
+}
+
+func TestSUMX2PY2_CellRangeWithEmptyCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+			// A3 is empty (treated as 0)
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+	cf := evalCompile(t, "SUMX2PY2(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// (9+1)+(16+4)+(0+25) = 10+20+25 = 55
+	if got.Type != ValueNumber || got.Num != 55 {
+		t.Errorf("got %v (%g), want 55", got.Type, got.Num)
+	}
+}
+
+func TestSUMX2PY2_AlwaysNonNegative(t *testing.T) {
+	// SUMX2PY2 result is always >= 0 for any real inputs
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUMX2PY2({-99,-50,0,50,99},{-88,-44,0,44,88})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num < 0 {
+		t.Errorf("expected non-negative, got %v (%g)", got.Type, got.Num)
+	}
+	// Exact: (9801+7744)+(2500+1936)+(0+0)+(2500+1936)+(9801+7744) = 43962
+	if got.Num != 43962 {
+		t.Errorf("got %g, want 43962", got.Num)
+	}
+}
+
+// --------------- SUMXMY2 additional tests ---------------
+
+func TestSUMXMY2_ZeroArgs(t *testing.T) {
+	got, err := fnSumxmy2(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMXMY2_OneArrayAllZeros(t *testing.T) {
+	resolver := &mockResolver{}
+	// When y=0: SUMXMY2 = SUMSQ(x) = 1+4+9 = 14
+	cf := evalCompile(t, "SUMXMY2({1,2,3},{0,0,0})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 14 {
+		t.Errorf("got %v (%g), want 14", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_IdentityCrossCheck(t *testing.T) {
+	// SUMXMY2(x,y) = SUMX2PY2(x,y) - 2*SUMPRODUCT(x,y)
+	// x={2,3,4}, y={1,5,2}
+	// SUMX2PY2 = (4+1)+(9+25)+(16+4) = 5+34+20 = 59
+	// SUMPRODUCT = 2*1 + 3*5 + 4*2 = 2+15+8 = 25
+	// SUMXMY2 = 59 - 50 = 9
+	// Direct: (2-1)²+(3-5)²+(4-2)² = 1+4+4 = 9 ✓
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUMXMY2({2,3,4},{1,5,2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 9 {
+		t.Errorf("got %v (%g), want 9", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_MixedPositiveNegativeLarger(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-5,10,-15,20} vs {3,-7,11,-13}
+	// (-5-3)²+(10-(-7))²+(-15-11)²+(20-(-13))²
+	// = (-8)²+(17)²+(-26)²+(33)² = 64+289+676+1089 = 2118
+	cf := evalCompile(t, "SUMXMY2({-5,10,-15,20},{3,-7,11,-13})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2118 {
+		t.Errorf("got %v (%g), want 2118", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_VeryLargeValues(t *testing.T) {
+	resolver := &mockResolver{}
+	// {10000,20000} vs {30000,40000}
+	// (-20000)²+(-20000)² = 4e8+4e8 = 8e8
+	cf := evalCompile(t, "SUMXMY2({10000,20000},{30000,40000})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 8e8 {
+		t.Errorf("got %v (%g), want 8e8", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_FractionalDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {0.1,0.2,0.3} vs {0.4,0.5,0.6}
+	// (-0.3)²+(-0.3)²+(-0.3)² = 0.09+0.09+0.09 = 0.27
+	cf := evalCompile(t, "SUMXMY2({0.1,0.2,0.3},{0.4,0.5,0.6})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if math.Abs(got.Num-0.27) > 1e-10 {
+		t.Errorf("got %v (%g), want 0.27", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_TextInSecondArray(t *testing.T) {
+	got, err := fnSumxmy2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(3), StringVal("nope")}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("expected #VALUE!, got type=%v err=%v", got.Type, got.Err)
+	}
+}
+
+func TestSUMXMY2_MultiRow2DArray(t *testing.T) {
+	// 2D array: {{1,2},{3,4}} vs {{5,6},{7,8}} flattened: {1,2,3,4} vs {5,6,7,8}
+	// (-4)²+(-4)²+(-4)²+(-4)² = 16+16+16+16 = 64
+	got, err := fnSumxmy2([]Value{
+		{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}, {NumberVal(3), NumberVal(4)}}},
+		{Type: ValueArray, Array: [][]Value{{NumberVal(5), NumberVal(6)}, {NumberVal(7), NumberVal(8)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 64 {
+		t.Errorf("got %v (%g), want 64", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_BothBoolArrays(t *testing.T) {
+	// {TRUE,FALSE} vs {FALSE,TRUE} => {1,0} vs {0,1}
+	// (1-0)²+(0-1)² = 1+1 = 2
+	got, err := fnSumxmy2([]Value{
+		{Type: ValueArray, Array: [][]Value{{BoolVal(true), BoolVal(false)}}},
+		{Type: ValueArray, Array: [][]Value{{BoolVal(false), BoolVal(true)}}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_NegativeDecimals(t *testing.T) {
+	resolver := &mockResolver{}
+	// {-1.5,-2.5} vs {-0.5,-1.5}
+	// (-1.5-(-0.5))²+(-2.5-(-1.5))² = (-1)²+(-1)² = 1+1 = 2
+	cf := evalCompile(t, "SUMXMY2({-1.5,-2.5},{-0.5,-1.5})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_Symmetric(t *testing.T) {
+	// SUMXMY2(x,y) = SUMXMY2(y,x) because (x-y)² = (y-x)²
+	resolver := &mockResolver{}
+	cf1 := evalCompile(t, "SUMXMY2({2,5,8},{3,4,6})")
+	got1, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cf2 := evalCompile(t, "SUMXMY2({3,4,6},{2,5,8})")
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got1.Num != got2.Num {
+		t.Errorf("symmetry failed: SUMXMY2(x,y)=%g, SUMXMY2(y,x)=%g", got1.Num, got2.Num)
+	}
+}
+
+func TestSUMXMY2_CellRangeWithEmptyCell(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+			// A3 is empty (treated as 0)
+			{Col: 2, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 2}: NumberVal(2),
+			{Col: 2, Row: 3}: NumberVal(5),
+		},
+	}
+	cf := evalCompile(t, "SUMXMY2(A1:A3,B1:B3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// (3-1)²+(4-2)²+(0-5)² = 4+4+25 = 33
+	if got.Type != ValueNumber || got.Num != 33 {
+		t.Errorf("got %v (%g), want 33", got.Type, got.Num)
+	}
+}
+
+func TestSUMXMY2_AlwaysNonNegative(t *testing.T) {
+	// SUMXMY2 result is always >= 0
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUMXMY2({-99,-50,0,50,99},{-88,-44,0,44,88})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num < 0 {
+		t.Errorf("expected non-negative, got %v (%g)", got.Type, got.Num)
+	}
+	// Exact: (-11)²+(-6)²+0+(6)²+(11)² = 121+36+0+36+121 = 314
+	if got.Num != 314 {
+		t.Errorf("got %g, want 314", got.Num)
+	}
+}
+
+// --------------- Cross-function identity tests ---------------
+
+func TestSUMX_TripleIdentity(t *testing.T) {
+	// For x={1,2,3,4}, y={5,6,7,8}:
+	// SUMX2PY2 = SUMX2MY2 + 2*SUMSQ(y)
+	// SUMXMY2 = SUMX2PY2 - 2*SUMPRODUCT(x,y)
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "SUMX2MY2({1,2,3,4},{5,6,7,8})")
+	x2my2, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2MY2 error: %v", err)
+	}
+
+	cf2 := evalCompile(t, "SUMX2PY2({1,2,3,4},{5,6,7,8})")
+	x2py2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2PY2 error: %v", err)
+	}
+
+	cf3 := evalCompile(t, "SUMXMY2({1,2,3,4},{5,6,7,8})")
+	xmy2, err := Eval(cf3, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMXMY2 error: %v", err)
+	}
+
+	// Manual: SUMSQ(y) = 25+36+49+64 = 174
+	sumsqY := 174.0
+	// Manual: SUMPRODUCT(x,y) = 5+12+21+32 = 70
+	sumprod := 70.0
+
+	// Identity 1: SUMX2PY2 = SUMX2MY2 + 2*SUMSQ(y)
+	lhs1 := x2py2.Num
+	rhs1 := x2my2.Num + 2*sumsqY
+	if math.Abs(lhs1-rhs1) > 1e-10 {
+		t.Errorf("identity SUMX2PY2 = SUMX2MY2 + 2*SUMSQ(y) failed: %g != %g", lhs1, rhs1)
+	}
+
+	// Identity 2: SUMXMY2 = SUMX2PY2 - 2*SUMPRODUCT(x,y)
+	lhs2 := xmy2.Num
+	rhs2 := x2py2.Num - 2*sumprod
+	if math.Abs(lhs2-rhs2) > 1e-10 {
+		t.Errorf("identity SUMXMY2 = SUMX2PY2 - 2*SUMPRODUCT failed: %g != %g", lhs2, rhs2)
+	}
+
+	// Identity 3: SUMX2MY2 = SUMSQ(x) - SUMSQ(y)
+	// SUMSQ(x) = 1+4+9+16 = 30
+	sumsqX := 30.0
+	lhs3 := x2my2.Num
+	rhs3 := sumsqX - sumsqY
+	if math.Abs(lhs3-rhs3) > 1e-10 {
+		t.Errorf("identity SUMX2MY2 = SUMSQ(x) - SUMSQ(y) failed: %g != %g", lhs3, rhs3)
+	}
+}
+
+func TestSUMX_IdentityWithNegatives(t *testing.T) {
+	// Same identities with negative and mixed values
+	// x={-3,7,-2,10}, y={4,-5,8,-1}
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "SUMX2MY2({-3,7,-2,10},{4,-5,8,-1})")
+	x2my2, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2MY2 error: %v", err)
+	}
+
+	cf2 := evalCompile(t, "SUMX2PY2({-3,7,-2,10},{4,-5,8,-1})")
+	x2py2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2PY2 error: %v", err)
+	}
+
+	cf3 := evalCompile(t, "SUMXMY2({-3,7,-2,10},{4,-5,8,-1})")
+	xmy2, err := Eval(cf3, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMXMY2 error: %v", err)
+	}
+
+	// SUMSQ(x) = 9+49+4+100 = 162
+	sumsqX := 162.0
+	// SUMSQ(y) = 16+25+64+1 = 106
+	sumsqY := 106.0
+	// SUMPRODUCT = -12 + -35 + -16 + -10 = -73
+	sumprod := -73.0
+
+	// Identity 1: SUMX2MY2 = SUMSQ(x) - SUMSQ(y)
+	if math.Abs(x2my2.Num-(sumsqX-sumsqY)) > 1e-10 {
+		t.Errorf("identity SUMX2MY2 = SUMSQ(x) - SUMSQ(y) failed: %g != %g", x2my2.Num, sumsqX-sumsqY)
+	}
+
+	// Identity 2: SUMX2PY2 = SUMX2MY2 + 2*SUMSQ(y)
+	if math.Abs(x2py2.Num-(x2my2.Num+2*sumsqY)) > 1e-10 {
+		t.Errorf("identity SUMX2PY2 = SUMX2MY2 + 2*SUMSQ(y) failed: %g != %g", x2py2.Num, x2my2.Num+2*sumsqY)
+	}
+
+	// Identity 3: SUMXMY2 = SUMX2PY2 - 2*SUMPRODUCT
+	if math.Abs(xmy2.Num-(x2py2.Num-2*sumprod)) > 1e-10 {
+		t.Errorf("identity SUMXMY2 = SUMX2PY2 - 2*SUMPRODUCT failed: %g != %g", xmy2.Num, x2py2.Num-2*sumprod)
+	}
+}
+
+func TestSUMX_EqualArraysProperties(t *testing.T) {
+	// When x = y:
+	// SUMX2MY2 = 0 (x²-y² = 0 for each pair)
+	// SUMXMY2 = 0 ((x-y)² = 0 for each pair)
+	// SUMX2PY2 = 2*SUMSQ(x)
+	resolver := &mockResolver{}
+
+	cf1 := evalCompile(t, "SUMX2MY2({3,7,11},{3,7,11})")
+	x2my2, err := Eval(cf1, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2MY2 error: %v", err)
+	}
+	if x2my2.Num != 0 {
+		t.Errorf("SUMX2MY2 with equal arrays: got %g, want 0", x2my2.Num)
+	}
+
+	cf2 := evalCompile(t, "SUMXMY2({3,7,11},{3,7,11})")
+	xmy2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMXMY2 error: %v", err)
+	}
+	if xmy2.Num != 0 {
+		t.Errorf("SUMXMY2 with equal arrays: got %g, want 0", xmy2.Num)
+	}
+
+	cf3 := evalCompile(t, "SUMX2PY2({3,7,11},{3,7,11})")
+	x2py2, err := Eval(cf3, resolver, nil)
+	if err != nil {
+		t.Fatalf("SUMX2PY2 error: %v", err)
+	}
+	// 2*SUMSQ(3,7,11) = 2*(9+49+121) = 2*179 = 358
+	if x2py2.Num != 358 {
+		t.Errorf("SUMX2PY2 with equal arrays: got %g, want 358", x2py2.Num)
 	}
 }
 
@@ -9410,39 +10912,68 @@ func TestQUOTIENT(t *testing.T) {
 		{"7_div_2", "QUOTIENT(7,2)", 3},
 		{"100_div_10", "QUOTIENT(100,10)", 10},
 		{"1_div_1", "QUOTIENT(1,1)", 1},
+		{"17_div_5", "QUOTIENT(17,5)", 3},
+		{"99_div_10", "QUOTIENT(99,10)", 9},
 
 		// QUOTIENT(x,1) equals INT(x) for positive x
 		{"x_div_1_integer", "QUOTIENT(7,1)", 7},
 		{"x_div_1_decimal", "QUOTIENT(5.9,1)", 5},
 		{"x_div_1_large", "QUOTIENT(123,1)", 123},
 
-		// Negative numerator
+		// Negative numerator (truncates toward zero)
 		{"neg_num_pos_den", "QUOTIENT(-7,2)", -3},
 		{"neg_num_pos_den2", "QUOTIENT(-1,2)", 0},
 		{"neg_num_pos_den3", "QUOTIENT(-13,4)", -3},
+		{"neg_num_pos_den4", "QUOTIENT(-17,5)", -3},
+		{"neg_num_pos_den5", "QUOTIENT(-99,10)", -9},
 
 		// Negative denominator
 		{"pos_num_neg_den", "QUOTIENT(7,-2)", -3},
 		{"pos_num_neg_den2", "QUOTIENT(10,-3)", -3},
+		{"pos_num_neg_den3", "QUOTIENT(17,-5)", -3},
+		{"pos_num_neg_den4", "QUOTIENT(1,-3)", 0},
 
-		// Both negative (result positive)
+		// Both negative (result positive, truncated toward zero)
 		{"both_neg", "QUOTIENT(-10,-3)", 3},
 		{"both_neg2", "QUOTIENT(-7,-2)", 3},
+		{"both_neg3", "QUOTIENT(-17,-5)", 3},
+		{"both_neg4", "QUOTIENT(-1,-3)", 0},
 
 		// Decimal truncation behavior (truncates toward zero)
 		{"trunc_pos", "QUOTIENT(7,3)", 2},
 		{"trunc_neg_num", "QUOTIENT(-7,3)", -2},
 		{"trunc_decimal_args", "QUOTIENT(9.9,3.1)", 3},
 		{"trunc_small_result", "QUOTIENT(1,3)", 0},
+		{"trunc_decimal_num", "QUOTIENT(5.5,2)", 2},
+		{"trunc_decimal_den", "QUOTIENT(10,2.5)", 4},
+		{"trunc_both_decimal", "QUOTIENT(7.7,2.2)", 3},
+		{"trunc_neg_decimal", "QUOTIENT(-5.5,2)", -2},
+
+		// Exact division (no truncation needed)
+		{"exact_div", "QUOTIENT(10,2)", 5},
+		{"exact_div2", "QUOTIENT(100,25)", 4},
+		{"exact_div_neg", "QUOTIENT(-10,2)", -5},
+		{"exact_div_self", "QUOTIENT(7,7)", 1},
 
 		// Zero numerator
 		{"zero_num", "QUOTIENT(0,5)", 0},
 		{"zero_num_neg_den", "QUOTIENT(0,-3)", 0},
+		{"zero_num_large_den", "QUOTIENT(0,1000000)", 0},
+
+		// Large numbers
+		{"large_nums", "QUOTIENT(1000000,3)", 333333},
+		{"large_nums2", "QUOTIENT(999999,1000)", 999},
+
+		// Numerator smaller than denominator
+		{"num_lt_den", "QUOTIENT(2,5)", 0},
+		{"num_lt_den_neg", "QUOTIENT(-2,5)", 0},
+		{"num_lt_den2", "QUOTIENT(1,100)", 0},
 
 		// String coercion
 		{"string_num", `QUOTIENT("10",3)`, 3},
 		{"string_den", `QUOTIENT(10,"3")`, 3},
 		{"string_both", `QUOTIENT("10","3")`, 3},
+		{"string_decimal", `QUOTIENT("7.5","2")`, 3},
 
 		// Boolean coercion
 		{"bool_true_num", "QUOTIENT(TRUE,1)", 1},
@@ -9491,9 +11022,13 @@ func TestQUOTIENT(t *testing.T) {
 		{"err_div0_num", "QUOTIENT(1/0,2)", ErrValDIV0},
 		{"err_div0_den", "QUOTIENT(2,1/0)", ErrValDIV0},
 		{"err_na_num", "QUOTIENT(NA(),2)", ErrValNA},
+		{"err_na_den", "QUOTIENT(2,NA())", ErrValNA},
 
 		// Boolean FALSE as denominator (coerces to 0 -> #DIV/0!)
 		{"bool_false_den", "QUOTIENT(5,FALSE)", ErrValDIV0},
+
+		// String "0" as denominator
+		{"string_zero_den", `QUOTIENT(5,"0")`, ErrValDIV0},
 	}
 
 	for _, tt := range errTests {
@@ -9505,6 +11040,115 @@ func TestQUOTIENT(t *testing.T) {
 			}
 			if got.Type != ValueError || got.Err != tt.wantErr {
 				t.Errorf("Eval(%q) = type=%v err=%v, want error %v", tt.formula, got.Type, got.Err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestMODQUOTIENTCrossCheck verifies properties of MOD and QUOTIENT.
+//
+// Note: In Excel, MOD and QUOTIENT use *different* division semantics:
+//   - MOD(a,b)     = a - b*INT(a/b)   — remainder with INT (floor) division
+//   - QUOTIENT(a,b) = TRUNC(a/b)      — truncation toward zero
+//
+// Therefore a = QUOTIENT(a,b)*b + MOD(a,b) only holds when a and b have the
+// same sign (where INT and TRUNC agree). The always-true identity for MOD is:
+//   a = INT(a/b)*b + MOD(a,b)
+//
+// We test both properties here.
+func TestMODQUOTIENTCrossCheck(t *testing.T) {
+	resolver := &mockResolver{}
+	const epsilon = 1e-10
+
+	cases := []struct {
+		name string
+		a, b float64
+	}{
+		{"10_3", 10, 3},
+		{"neg10_3", -10, 3},
+		{"10_neg3", 10, -3},
+		{"neg10_neg3", -10, -3},
+		{"7_2", 7, 2},
+		{"neg7_2", -7, 2},
+		{"7_neg2", 7, -2},
+		{"neg7_neg2", -7, -2},
+		{"0_5", 0, 5},
+		{"5_5", 5, 5},
+		{"5_1", 5, 1},
+		{"17_5", 17, 5},
+		{"100_7", 100, 7},
+		{"5_5_2", 5.5, 2},
+		{"9_9_3_1", 9.9, 3.1},
+		{"1_3", 1, 3},
+		{"neg1_3", -1, 3},
+		{"3_2", 3, 2},
+		{"neg3_2", -3, 2},
+		{"3_neg2", 3, -2},
+		{"neg3_neg2", -3, -2},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			modFormula := fmt.Sprintf("MOD(%g,%g)", tt.a, tt.b)
+			quotFormula := fmt.Sprintf("QUOTIENT(%g,%g)", tt.a, tt.b)
+			intFormula := fmt.Sprintf("INT(%g/%g)", tt.a, tt.b)
+
+			cfMod := evalCompile(t, modFormula)
+			modVal, err := Eval(cfMod, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", modFormula, err)
+			}
+			if modVal.Type != ValueNumber {
+				t.Skipf("MOD returned non-number type %v (formula might hit precision limit)", modVal.Type)
+			}
+
+			cfQuot := evalCompile(t, quotFormula)
+			quotVal, err := Eval(cfQuot, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", quotFormula, err)
+			}
+			if quotVal.Type != ValueNumber {
+				t.Skipf("QUOTIENT returned non-number type %v", quotVal.Type)
+			}
+
+			cfInt := evalCompile(t, intFormula)
+			intVal, err := Eval(cfInt, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", intFormula, err)
+			}
+			if intVal.Type != ValueNumber {
+				t.Skipf("INT returned non-number type %v", intVal.Type)
+			}
+
+			// Always-true identity: a = INT(a/b)*b + MOD(a,b)
+			reconstructedINT := intVal.Num*tt.b + modVal.Num
+			if math.Abs(reconstructedINT-tt.a) > epsilon {
+				t.Errorf("INT(%g/%g)*%g + MOD(%g,%g) = %g*%g + %g = %g, want %g",
+					tt.a, tt.b, tt.b, tt.a, tt.b, intVal.Num, tt.b, modVal.Num, reconstructedINT, tt.a)
+			}
+
+			// When signs agree, QUOTIENT and INT should match, so the QUOTIENT identity also holds
+			sameSign := (tt.a >= 0 && tt.b > 0) || (tt.a <= 0 && tt.b < 0)
+			if sameSign {
+				reconstructedQUOT := quotVal.Num*tt.b + modVal.Num
+				if math.Abs(reconstructedQUOT-tt.a) > epsilon {
+					t.Errorf("same-sign: QUOTIENT(%g,%g)*%g + MOD(%g,%g) = %g*%g + %g = %g, want %g",
+						tt.a, tt.b, tt.b, tt.a, tt.b, quotVal.Num, tt.b, modVal.Num, reconstructedQUOT, tt.a)
+				}
+			}
+
+			// MOD result sign always matches divisor sign (or is zero)
+			if modVal.Num != 0 {
+				if (modVal.Num > 0) != (tt.b > 0) {
+					t.Errorf("MOD(%g,%g) = %g, sign should follow divisor %g", tt.a, tt.b, modVal.Num, tt.b)
+				}
+			}
+
+			// QUOTIENT truncates toward zero: |QUOTIENT(a,b)| <= |a/b|
+			exactQuot := tt.a / tt.b
+			if math.Abs(quotVal.Num) > math.Abs(exactQuot)+epsilon {
+				t.Errorf("QUOTIENT(%g,%g) = %g, should truncate toward zero from %g",
+					tt.a, tt.b, quotVal.Num, exactQuot)
 			}
 		})
 	}
@@ -10529,6 +12173,1042 @@ func TestSUBTOTAL(t *testing.T) {
 	}
 }
 
+// subtotalMockResolver implements CellResolver, SubtotalChecker, and
+// HiddenRowChecker for comprehensive SUBTOTAL testing.
+type subtotalMockResolver struct {
+	cells          map[CellAddr]Value
+	subtotalCells  map[CellAddr]bool            // cells that contain SUBTOTAL formulas
+	hiddenRows     map[string]map[int]bool       // sheet -> row -> hidden
+	autoFilterRows map[string]map[int]bool       // sheet -> row -> filtered by autoFilter
+}
+
+func (m *subtotalMockResolver) GetCellValue(addr CellAddr) Value {
+	if v, ok := m.cells[addr]; ok {
+		return v
+	}
+	return EmptyVal()
+}
+
+func (m *subtotalMockResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	rows := make([][]Value, addr.ToRow-addr.FromRow+1)
+	for r := addr.FromRow; r <= addr.ToRow; r++ {
+		row := make([]Value, addr.ToCol-addr.FromCol+1)
+		for c := addr.FromCol; c <= addr.ToCol; c++ {
+			ca := CellAddr{Sheet: addr.Sheet, Col: c, Row: r}
+			if v, ok := m.cells[ca]; ok {
+				row[c-addr.FromCol] = v
+			}
+		}
+		rows[r-addr.FromRow] = row
+	}
+	return rows
+}
+
+func (m *subtotalMockResolver) IsSubtotalCell(sheet string, col, row int) bool {
+	if m.subtotalCells == nil {
+		return false
+	}
+	return m.subtotalCells[CellAddr{Sheet: sheet, Col: col, Row: row}]
+}
+
+func (m *subtotalMockResolver) IsRowHidden(sheet string, row int) bool {
+	if m.hiddenRows == nil {
+		return false
+	}
+	if sheetMap, ok := m.hiddenRows[sheet]; ok {
+		return sheetMap[row]
+	}
+	return false
+}
+
+func (m *subtotalMockResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
+	if m.autoFilterRows == nil {
+		return false
+	}
+	if sheetMap, ok := m.autoFilterRows[sheet]; ok {
+		return sheetMap[row]
+	}
+	return false
+}
+
+func TestSUBTOTALComprehensive(t *testing.T) {
+	// ---------------------------------------------------------------
+	// 1. Multiple ref arguments: SUBTOTAL(9, A1:A3, B1:B3)
+	// ---------------------------------------------------------------
+	t.Run("multiple_refs_sum", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 1, Row: 3}: NumberVal(3),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 3}: NumberVal(30),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3,B1:B3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 66 {
+			t.Errorf("got %v (%g), want 66", got.Type, got.Num)
+		}
+	})
+
+	t.Run("multiple_refs_count", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+				{Col: 1, Row: 2}: NumberVal(2),
+				{Col: 2, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 2}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v (%g), want 4", got.Type, got.Num)
+		}
+	})
+
+	t.Run("multiple_refs_average", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 1}: NumberVal(30),
+				{Col: 2, Row: 2}: NumberVal(40),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(1,A1:A2,B1:B2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 25 {
+			t.Errorf("got %v (%g), want 25", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 2. Empty range — COUNT returns 0, SUM returns 0, AVERAGE returns #DIV/0!
+	// ---------------------------------------------------------------
+	t.Run("empty_range_sum", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got type=%v num=%g, want 0", got.Type, got.Num)
+		}
+	})
+
+	t.Run("empty_range_count", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got type=%v num=%g, want 0", got.Type, got.Num)
+		}
+	})
+
+	t.Run("empty_range_average_div0", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUBTOTAL(1,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got type=%v err=%v, want #DIV/0!", got.Type, got.Err)
+		}
+	})
+
+	t.Run("empty_range_max", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUBTOTAL(4,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// MAX of empty range = 0
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got type=%v num=%g, want 0", got.Type, got.Num)
+		}
+	})
+
+	t.Run("empty_range_min", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{}}
+		cf := evalCompile(t, "SUBTOTAL(5,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// MIN of empty range = 0
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got type=%v num=%g, want 0", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 3. Range with mixed types (text ignored for numeric modes)
+	// ---------------------------------------------------------------
+	t.Run("mixed_types_sum_ignores_text", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: BoolVal(true),
+				{Col: 1, Row: 5}: NumberVal(30),
+			},
+		}
+		// SUM ignores text and booleans in ranges
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A5)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 60 {
+			t.Errorf("got %v (%g), want 60", got.Type, got.Num)
+		}
+	})
+
+	t.Run("mixed_types_count_numbers_only", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: BoolVal(true),
+			},
+		}
+		// COUNT counts only numeric values (not strings, not bools in ranges)
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+		}
+	})
+
+	t.Run("mixed_types_counta", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("hello"),
+				{Col: 1, Row: 3}: NumberVal(20),
+				{Col: 1, Row: 4}: BoolVal(true),
+			},
+		}
+		// COUNTA counts all non-empty values
+		cf := evalCompile(t, "SUBTOTAL(3,A1:A4)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Errorf("got %v (%g), want 4", got.Type, got.Num)
+		}
+	})
+
+	t.Run("mixed_types_max_ignores_text", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("zzz"),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(4,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v (%g), want 10", got.Type, got.Num)
+		}
+	})
+
+	t.Run("mixed_types_min_ignores_text", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("aaa"),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(5,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("got %v (%g), want 5", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 4. Range with errors → propagate
+	// ---------------------------------------------------------------
+	t.Run("error_in_range_propagates_sum", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: ErrorVal(ErrValNA),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Errorf("got type=%v err=%v, want #N/A", got.Type, got.Err)
+		}
+	})
+
+	t.Run("error_in_range_propagates_average", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: ErrorVal(ErrValDIV0),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(1,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got type=%v err=%v, want #DIV/0!", got.Type, got.Err)
+		}
+	})
+
+	t.Run("count_skips_errors_in_range", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: ErrorVal(ErrValREF),
+				{Col: 1, Row: 3}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// COUNT only counts numeric values; errors are not numeric so they are skipped
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got type=%v num=%g, want 2", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 5. SUBTOTAL nested in another SUBTOTAL (inner should be ignored)
+	// ---------------------------------------------------------------
+	t.Run("nested_subtotal_ignored", func(t *testing.T) {
+		// A1=10, A2=20, A3=SUBTOTAL(9,...) which evaluates to 100.
+		// SUBTOTAL(9, A1:A3) should skip A3 and return 10+20=30.
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(100), // contains a SUBTOTAL formula
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 3}: true,
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v (%g), want 30", got.Type, got.Num)
+		}
+	})
+
+	t.Run("nested_subtotal_ignored_average", func(t *testing.T) {
+		// A1=10, A2=20, A3=SUBTOTAL (value 100, should be ignored)
+		// AVERAGE of {10, 20} = 15
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(100),
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 3}: true,
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(1,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 15 {
+			t.Errorf("got %v (%g), want 15", got.Type, got.Num)
+		}
+	})
+
+	t.Run("nested_subtotal_ignored_count", func(t *testing.T) {
+		// A1=10, A2=20, A3=SUBTOTAL (value 100, should be ignored)
+		// COUNT should be 2, not 3
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(100),
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 3}: true,
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 6. Hidden rows with 101-111 modes
+	// ---------------------------------------------------------------
+	t.Run("hidden_rows_sum_109", func(t *testing.T) {
+		// A1=10, A2=20 (hidden), A3=30
+		// SUBTOTAL(109, A1:A3) should skip row 2 → 10+30=40
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(109,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 40 {
+			t.Errorf("got %v (%g), want 40", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_not_skipped_mode_9", func(t *testing.T) {
+		// A1=10, A2=20 (hidden but NOT auto-filtered), A3=30
+		// SUBTOTAL(9, A1:A3) should include hidden rows → 10+20+30=60
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 60 {
+			t.Errorf("got %v (%g), want 60", got.Type, got.Num)
+		}
+	})
+
+	t.Run("autofilter_hidden_skipped_mode_9", func(t *testing.T) {
+		// A1=10, A2=20 (auto-filter hidden), A3=30
+		// SUBTOTAL(9, A1:A3) should skip auto-filtered rows → 10+30=40
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			autoFilterRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 40 {
+			t.Errorf("got %v (%g), want 40", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_average_101", func(t *testing.T) {
+		// A1=10, A2=20 (hidden), A3=30
+		// SUBTOTAL(101, A1:A3) should skip row 2 → AVERAGE(10,30)=20
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(101,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Errorf("got %v (%g), want 20", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_max_104", func(t *testing.T) {
+		// A1=10, A2=50 (hidden), A3=30
+		// SUBTOTAL(104, A1:A3) should skip row 2 → MAX(10,30)=30
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(50),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(104,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v (%g), want 30", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_min_105", func(t *testing.T) {
+		// A1=10, A2=1 (hidden), A3=30
+		// SUBTOTAL(105, A1:A3) should skip row 2 → MIN(10,30)=10
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(1),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(105,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Errorf("got %v (%g), want 10", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_product_106", func(t *testing.T) {
+		// A1=2, A2=100 (hidden), A3=3
+		// SUBTOTAL(106, A1:A3) should skip row 2 → PRODUCT(2,3)=6
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(100),
+				{Col: 1, Row: 3}: NumberVal(3),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(106,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 6 {
+			t.Errorf("got %v (%g), want 6", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_count_102", func(t *testing.T) {
+		// A1=10, A2=20 (hidden), A3=30
+		// SUBTOTAL(102, A1:A3) should skip row 2 → COUNT=2
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(102,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+		}
+	})
+
+	t.Run("hidden_rows_counta_103", func(t *testing.T) {
+		// A1=10, A2="text" (hidden), A3=30
+		// SUBTOTAL(103, A1:A3) should skip row 2 → COUNTA=2
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: StringVal("text"),
+				{Col: 1, Row: 3}: NumberVal(30),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(103,A1:A3)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("got %v (%g), want 2", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 7. Boolean values in range
+	// ---------------------------------------------------------------
+	t.Run("bool_values_counta", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+		}
+		// COUNTA counts all non-empty values including booleans
+		cf := evalCompile(t, "SUBTOTAL(3,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 3 {
+			t.Errorf("got %v (%g), want 3", got.Type, got.Num)
+		}
+	})
+
+	t.Run("bool_values_count_skips", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: BoolVal(true),
+				{Col: 1, Row: 2}: BoolVal(false),
+				{Col: 1, Row: 3}: NumberVal(5),
+			},
+		}
+		// COUNT only counts numeric values (booleans in range are not counted)
+		cf := evalCompile(t, "SUBTOTAL(2,A1:A3)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("got %v (%g), want 1", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 8. String function_num ("9" stored in cell)
+	// ---------------------------------------------------------------
+	t.Run("string_funcnum_coerced", func(t *testing.T) {
+		// Use "9" as a string that gets coerced to number by SUBTOTAL
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 2, Row: 1}: StringVal("9"),
+			},
+		}
+		// SUBTOTAL(B1, A1:A2) where B1="9"
+		cf := evalCompile(t, "SUBTOTAL(B1,A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v (%g), want 30", got.Type, got.Num)
+		}
+	})
+
+	t.Run("string_funcnum_non_numeric_error", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 2, Row: 1}: StringVal("abc"),
+			},
+		}
+		// SUBTOTAL("abc", A1:A1) → #VALUE!
+		cf := evalCompile(t, "SUBTOTAL(B1,A1:A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got type=%v err=%v, want #VALUE!", got.Type, got.Err)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 9. Cross-check: SUBTOTAL(9, range) = SUM(range) for simple ranges
+	// ---------------------------------------------------------------
+	t.Run("crosscheck_sum", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(7),
+				{Col: 1, Row: 2}: NumberVal(13),
+				{Col: 1, Row: 3}: NumberVal(22),
+			},
+		}
+		cfSub := evalCompile(t, "SUBTOTAL(9,A1:A3)")
+		cfSum := evalCompile(t, "SUM(A1:A3)")
+		gotSub, err := Eval(cfSub, resolver, nil)
+		if err != nil {
+			t.Fatalf("SUBTOTAL error: %v", err)
+		}
+		gotSum, err := Eval(cfSum, resolver, nil)
+		if err != nil {
+			t.Fatalf("SUM error: %v", err)
+		}
+		if gotSub.Num != gotSum.Num {
+			t.Errorf("SUBTOTAL(9)=%g != SUM=%g", gotSub.Num, gotSum.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 10. Cross-check: SUBTOTAL(1, range) = AVERAGE(range) for simple ranges
+	// ---------------------------------------------------------------
+	t.Run("crosscheck_average", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(7),
+				{Col: 1, Row: 2}: NumberVal(13),
+				{Col: 1, Row: 3}: NumberVal(22),
+			},
+		}
+		cfSub := evalCompile(t, "SUBTOTAL(1,A1:A3)")
+		cfAvg := evalCompile(t, "AVERAGE(A1:A3)")
+		gotSub, err := Eval(cfSub, resolver, nil)
+		if err != nil {
+			t.Fatalf("SUBTOTAL error: %v", err)
+		}
+		gotAvg, err := Eval(cfAvg, resolver, nil)
+		if err != nil {
+			t.Fatalf("AVERAGE error: %v", err)
+		}
+		if gotSub.Num != gotAvg.Num {
+			t.Errorf("SUBTOTAL(1)=%g != AVERAGE=%g", gotSub.Num, gotAvg.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 11. Cross-check all 11 modes against their direct functions
+	// ---------------------------------------------------------------
+	t.Run("crosscheck_all_modes", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(4),
+				{Col: 1, Row: 2}: NumberVal(8),
+				{Col: 1, Row: 3}: NumberVal(15),
+				{Col: 1, Row: 4}: NumberVal(16),
+				{Col: 1, Row: 5}: NumberVal(23),
+			},
+		}
+		crossChecks := []struct {
+			mode    int
+			directF string
+		}{
+			{1, "AVERAGE(A1:A5)"},
+			{2, "COUNT(A1:A5)"},
+			{3, "COUNTA(A1:A5)"},
+			{4, "MAX(A1:A5)"},
+			{5, "MIN(A1:A5)"},
+			{6, "PRODUCT(A1:A5)"},
+			{7, "STDEV(A1:A5)"},
+			{8, "STDEVP(A1:A5)"},
+			{9, "SUM(A1:A5)"},
+			{10, "VAR(A1:A5)"},
+			{11, "VARP(A1:A5)"},
+		}
+		for _, cc := range crossChecks {
+			subtotalFormula := fmt.Sprintf("SUBTOTAL(%d,A1:A5)", cc.mode)
+			cfSub := evalCompile(t, subtotalFormula)
+			cfDirect := evalCompile(t, cc.directF)
+			gotSub, err := Eval(cfSub, resolver, nil)
+			if err != nil {
+				t.Fatalf("SUBTOTAL(%d) error: %v", cc.mode, err)
+			}
+			gotDirect, err := Eval(cfDirect, resolver, nil)
+			if err != nil {
+				t.Fatalf("%s error: %v", cc.directF, err)
+			}
+			if gotSub.Type != gotDirect.Type {
+				t.Errorf("SUBTOTAL(%d) type=%v != %s type=%v",
+					cc.mode, gotSub.Type, cc.directF, gotDirect.Type)
+				continue
+			}
+			if gotSub.Type == ValueNumber && math.Abs(gotSub.Num-gotDirect.Num) > 1e-10 {
+				t.Errorf("SUBTOTAL(%d)=%g != %s=%g",
+					cc.mode, gotSub.Num, cc.directF, gotDirect.Num)
+			}
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 12. Additional invalid function_num boundary tests
+	// ---------------------------------------------------------------
+	t.Run("invalid_funcnum_50", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(50,A1:A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got type=%v err=%v, want #VALUE!", got.Type, got.Err)
+		}
+	})
+
+	t.Run("invalid_funcnum_float_truncated", func(t *testing.T) {
+		// 9.9 should be treated as 9 (truncated to int) → SUM
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(9.9,A1:A2)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 30 {
+			t.Errorf("got %v (%g), want 30", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 13. Combined: hidden rows + subtotal cells + 101-111 mode
+	// ---------------------------------------------------------------
+	t.Run("hidden_and_subtotal_combined", func(t *testing.T) {
+		// A1=10, A2=20 (hidden), A3=SUBTOTAL(value 100), A4=40
+		// SUBTOTAL(109, A1:A4) should skip row 2 (hidden) and A3 (subtotal) → 10+40=50
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(100),
+				{Col: 1, Row: 4}: NumberVal(40),
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 3}: true,
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(109,A1:A4)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 50 {
+			t.Errorf("got %v (%g), want 50", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 14. Product of range with single value
+	// ---------------------------------------------------------------
+	t.Run("product_single_value", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(42),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(6,A1:A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 42 {
+			t.Errorf("got %v (%g), want 42", got.Type, got.Num)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 15. Large function_num (negative)
+	// ---------------------------------------------------------------
+	t.Run("large_negative_funcnum", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(1),
+			},
+		}
+		cf := evalCompile(t, "SUBTOTAL(-100,A1:A1)")
+		got, err := Eval(cf, resolver, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("got type=%v err=%v, want #VALUE!", got.Type, got.Err)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 16. All rows hidden → empty result behaviors
+	// ---------------------------------------------------------------
+	t.Run("all_rows_hidden_sum_109", func(t *testing.T) {
+		// All rows hidden, SUBTOTAL(109,...) → SUM of nothing = 0
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {1: true, 2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(109,A1:A2)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 0 {
+			t.Errorf("got %v (%g), want 0", got.Type, got.Num)
+		}
+	})
+
+	t.Run("all_rows_hidden_average_101_div0", func(t *testing.T) {
+		// All rows hidden, SUBTOTAL(101,...) → AVERAGE of nothing = #DIV/0!
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {1: true, 2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(101,A1:A2)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Errorf("got type=%v err=%v, want #DIV/0!", got.Type, got.Err)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 17. Stdev/Var with hidden rows
+	// ---------------------------------------------------------------
+	t.Run("hidden_rows_stdev_107", func(t *testing.T) {
+		// A1=2, A2=4 (hidden), A3=6, A4=8
+		// SUBTOTAL(107, A1:A4) should skip row 2 → STDEV.S(2,6,8) = sqrt(((2-16/3)^2+(6-16/3)^2+(8-16/3)^2)/2)
+		// Mean=16/3, deviations: -10/3, 2/3, 8/3; sum_sq = 100/9+4/9+64/9 = 168/9; var = 168/18 = 28/3
+		// stdev = sqrt(28/3) ≈ 3.05505
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(6),
+				{Col: 1, Row: 4}: NumberVal(8),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(107,A1:A4)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := math.Sqrt(28.0 / 3.0)
+		if got.Type != ValueNumber || math.Abs(got.Num-expected) > 1e-10 {
+			t.Errorf("got %v (%g), want %g", got.Type, got.Num, expected)
+		}
+	})
+
+	t.Run("hidden_rows_var_110", func(t *testing.T) {
+		// A1=2, A2=4 (hidden), A3=6, A4=8
+		// SUBTOTAL(110, A1:A4) should skip row 2 → VAR.S(2,6,8) = 28/3 ≈ 9.33333
+		resolver := &subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(2),
+				{Col: 1, Row: 2}: NumberVal(4),
+				{Col: 1, Row: 3}: NumberVal(6),
+				{Col: 1, Row: 4}: NumberVal(8),
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		}
+		ctx := &EvalContext{Resolver: resolver}
+		cf := evalCompile(t, "SUBTOTAL(110,A1:A4)")
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := 28.0 / 3.0
+		if got.Type != ValueNumber || math.Abs(got.Num-expected) > 1e-10 {
+			t.Errorf("got %v (%g), want %g", got.Type, got.Num, expected)
+		}
+	})
+}
+
 func TestISOCEILING(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -11099,5 +13779,526 @@ func TestRANDARRAY_OnlyRowsArg(t *testing.T) {
 		if row[0].Type != ValueNumber || row[0].Num < 0 || row[0].Num >= 1 {
 			t.Errorf("[%d][0] = %g, want [0,1)", r, row[0].Num)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SEQUENCE – additional comprehensive tests
+// ---------------------------------------------------------------------------
+
+func TestSEQUENCE_Basic5Rows(t *testing.T) {
+	// SEQUENCE(5) = {1;2;3;4;5}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(5)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("type=%v rows=%d, want 5-row array", got.Type, len(got.Array))
+	}
+	for i := 0; i < 5; i++ {
+		if len(got.Array[i]) != 1 {
+			t.Fatalf("row %d cols = %d, want 1", i, len(got.Array[i]))
+		}
+		want := float64(i + 1)
+		if got.Array[i][0].Num != want {
+			t.Errorf("[%d][0] = %g, want %g", i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestSEQUENCE_3x3Matrix(t *testing.T) {
+	// SEQUENCE(3,3) = 3x3 matrix: {1,2,3;4,5,6;7,8,9}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(3,3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("type=%v rows=%d, want 3-row array", got.Type, len(got.Array))
+	}
+	n := 1.0
+	for r := 0; r < 3; r++ {
+		if len(got.Array[r]) != 3 {
+			t.Fatalf("row %d cols = %d, want 3", r, len(got.Array[r]))
+		}
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Num != n {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, n)
+			}
+			n++
+		}
+	}
+}
+
+func TestSEQUENCE_CustomStartOnly(t *testing.T) {
+	// SEQUENCE(5,1,10) = {10;11;12;13;14}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(5,1,10)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("got type=%v rows=%d, want 5 rows", got.Type, len(got.Array))
+	}
+	want := []float64{10, 11, 12, 13, 14}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_CustomStepEven(t *testing.T) {
+	// SEQUENCE(5,1,0,2) = {0;2;4;6;8}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(5,1,0,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("got type=%v rows=%d, want 5 rows", got.Type, len(got.Array))
+	}
+	want := []float64{0, 2, 4, 6, 8}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_NegativeStepDown(t *testing.T) {
+	// SEQUENCE(5,1,10,-2) = {10;8;6;4;2}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(5,1,10,-2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("got type=%v rows=%d, want 5 rows", got.Type, len(got.Array))
+	}
+	want := []float64{10, 8, 6, 4, 2}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_WideRow10Cols(t *testing.T) {
+	// SEQUENCE(1,10) = row of 1-10
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(1,10)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 10 {
+		t.Fatalf("got type=%v, want 1x10 array", got.Type)
+	}
+	for c := 0; c < 10; c++ {
+		want := float64(c + 1)
+		if got.Array[0][c].Num != want {
+			t.Errorf("[0][%d] = %g, want %g", c, got.Array[0][c].Num, want)
+		}
+	}
+}
+
+func TestSEQUENCE_FractionalStartAndStep(t *testing.T) {
+	// SEQUENCE(4,1,0.5,0.25) = {0.5;0.75;1.0;1.25}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(4,1,0.5,0.25)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 {
+		t.Fatalf("got type=%v rows=%d, want 4 rows", got.Type, len(got.Array))
+	}
+	want := []float64{0.5, 0.75, 1.0, 1.25}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_Large100Rows(t *testing.T) {
+	// SEQUENCE(100,1) = 100 rows, 1 to 100
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(100,1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 100 {
+		t.Fatalf("got type=%v rows=%d, want 100 rows", got.Type, len(got.Array))
+	}
+	for i := 0; i < 100; i++ {
+		want := float64(i + 1)
+		if got.Array[i][0].Num != want {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestSEQUENCE_NegativeColsError(t *testing.T) {
+	// SEQUENCE(3,-1) => #CALC!
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(3,-1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValCALC {
+		t.Errorf("got type=%v err=%v, want #CALC!", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_ColsTruncated(t *testing.T) {
+	// SEQUENCE(1,3.7) should truncate cols to 3
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(1,3.7)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("got type=%v, want 1x3 array", got.Type)
+	}
+	for c := 0; c < 3; c++ {
+		want := float64(c + 1)
+		if got.Array[0][c].Num != want {
+			t.Errorf("[0][%d] = %g, want %g", c, got.Array[0][c].Num, want)
+		}
+	}
+}
+
+func TestSEQUENCE_NegativeStartLargeStep(t *testing.T) {
+	// SEQUENCE(4,1,-5,3) = {-5;-2;1;4}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(4,1,-5,3)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 {
+		t.Fatalf("got type=%v rows=%d, want 4 rows", got.Type, len(got.Array))
+	}
+	want := []float64{-5, -2, 1, 4}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_2x3Custom(t *testing.T) {
+	// SEQUENCE(2,3,10,10) = {10,20,30;40,50,60}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(2,3,10,10)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("got type=%v rows=%d, want 2 rows", got.Type, len(got.Array))
+	}
+	want := [][]float64{{10, 20, 30}, {40, 50, 60}}
+	for r := 0; r < 2; r++ {
+		if len(got.Array[r]) != 3 {
+			t.Fatalf("row %d cols = %d, want 3", r, len(got.Array[r]))
+		}
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestSEQUENCE_LargeStep1000(t *testing.T) {
+	// SEQUENCE(3,1,100,1000) = {100;1100;2100}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(3,1,100,1000)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("got type=%v rows=%d, want 3 rows", got.Type, len(got.Array))
+	}
+	want := []float64{100, 1100, 2100}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSEQUENCE_BoolCoercion(t *testing.T) {
+	// SEQUENCE(TRUE) should coerce TRUE to 1 => scalar 1
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(TRUE)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("got %v, want scalar 1", got)
+	}
+}
+
+func TestSEQUENCE_2x2Matrix(t *testing.T) {
+	// SEQUENCE(2,2) = {1,2;3,4}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(2,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("got type=%v rows=%d, want 2 rows", got.Type, len(got.Array))
+	}
+	want := [][]float64{{1, 2}, {3, 4}}
+	for r := 0; r < 2; r++ {
+		if len(got.Array[r]) != 2 {
+			t.Fatalf("row %d cols = %d, want 2", r, len(got.Array[r]))
+		}
+		for c := 0; c < 2; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestSEQUENCE_ErrorPropagationFromCell(t *testing.T) {
+	// SEQUENCE with a cell that resolves to an error
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValNA),
+		},
+	}
+	cf := evalCompile(t, "SEQUENCE(A1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("got type=%v err=%v, want #N/A", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_DirectCallFn(t *testing.T) {
+	// Test fnSEQUENCE directly with all four arguments
+	got, err := fnSEQUENCE([]Value{NumberVal(3), NumberVal(2), NumberVal(5), NumberVal(3)})
+	if err != nil {
+		t.Fatalf("fnSEQUENCE: %v", err)
+	}
+	// 3x2 starting at 5, step 3: {5,8;11,14;17,20}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("got type=%v rows=%d, want 3 rows", got.Type, len(got.Array))
+	}
+	want := [][]float64{{5, 8}, {11, 14}, {17, 20}}
+	for r := 0; r < 3; r++ {
+		if len(got.Array[r]) != 2 {
+			t.Fatalf("row %d cols = %d, want 2", r, len(got.Array[r]))
+		}
+		for c := 0; c < 2; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestSEQUENCE_2DZeroStepFill(t *testing.T) {
+	// SEQUENCE(2,3,7,0) => all cells = 7
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(2,3,7,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("got type=%v rows=%d, want 2 rows", got.Type, len(got.Array))
+	}
+	for r := 0; r < 2; r++ {
+		if len(got.Array[r]) != 3 {
+			t.Fatalf("row %d cols = %d, want 3", r, len(got.Array[r]))
+		}
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Num != 7 {
+				t.Errorf("[%d][%d] = %g, want 7", r, c, got.Array[r][c].Num)
+			}
+		}
+	}
+}
+
+func TestSEQUENCE_2DNegativeStepCountdown(t *testing.T) {
+	// SEQUENCE(2,3,100,-10) = {100,90,80;70,60,50}
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(2,3,100,-10)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 2 {
+		t.Fatalf("got type=%v rows=%d, want 2 rows", got.Type, len(got.Array))
+	}
+	want := [][]float64{{100, 90, 80}, {70, 60, 50}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 3; c++ {
+			if got.Array[r][c].Num != want[r][c] {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
+func TestSEQUENCE_SumComposition(t *testing.T) {
+	// SUM(SEQUENCE(5)) = 1+2+3+4+5 = 15
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SUM(SEQUENCE(5))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 15 {
+		t.Errorf("SUM(SEQUENCE(5)) = %v, want 15", got)
+	}
+}
+
+func TestSEQUENCE_ErrorInStepArg(t *testing.T) {
+	// Error in step argument should propagate
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValDIV0),
+		},
+	}
+	cf := evalCompile(t, "SEQUENCE(3,1,1,A1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("got type=%v err=%v, want #DIV/0!", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_ErrorInColsArg(t *testing.T) {
+	// Error in cols argument should propagate
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValREF),
+		},
+	}
+	cf := evalCompile(t, "SEQUENCE(3,A1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("got type=%v err=%v, want #REF!", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_ErrorInStartArg(t *testing.T) {
+	// Error in start argument should propagate
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: ErrorVal(ErrValNUM),
+		},
+	}
+	cf := evalCompile(t, "SEQUENCE(3,1,A1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("got type=%v err=%v, want #NUM!", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_4x4Identity(t *testing.T) {
+	// SEQUENCE(4,4) = 4x4 matrix 1-16
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(4,4)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 {
+		t.Fatalf("got type=%v rows=%d, want 4 rows", got.Type, len(got.Array))
+	}
+	n := 1.0
+	for r := 0; r < 4; r++ {
+		if len(got.Array[r]) != 4 {
+			t.Fatalf("row %d cols = %d, want 4", r, len(got.Array[r]))
+		}
+		for c := 0; c < 4; c++ {
+			if got.Array[r][c].Num != n {
+				t.Errorf("[%d][%d] = %g, want %g", r, c, got.Array[r][c].Num, n)
+			}
+			n++
+		}
+	}
+}
+
+func TestSEQUENCE_SingleRowOnlyRowsArg(t *testing.T) {
+	// SEQUENCE(1) = scalar 1 (rows=1, cols=1 default => single cell)
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SEQUENCE(1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("got %v, want scalar 1", got)
+	}
+}
+
+func TestSEQUENCE_StringCoercionNonNumericCols(t *testing.T) {
+	// SEQUENCE(3,"abc") => #VALUE! (can't coerce cols)
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `SEQUENCE(3,"abc")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("got type=%v err=%v, want #VALUE!", got.Type, got.Err)
+	}
+}
+
+func TestSEQUENCE_MaxComposition(t *testing.T) {
+	// MAX(SEQUENCE(5)) = 5
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MAX(SEQUENCE(5))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 5 {
+		t.Errorf("MAX(SEQUENCE(5)) = %v, want 5", got)
+	}
+}
+
+func TestSEQUENCE_MinComposition(t *testing.T) {
+	// MIN(SEQUENCE(5,1,10,-3)) = MIN(10,7,4,1,-2) = -2
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "MIN(SEQUENCE(5,1,10,-3))")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -2 {
+		t.Errorf("MIN(SEQUENCE(5,1,10,-3)) = %v, want -2", got)
 	}
 }

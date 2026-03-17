@@ -864,6 +864,169 @@ func TestNOT(t *testing.T) {
 	}
 }
 
+func TestNOTComprehensive(t *testing.T) {
+	resolver := &mockResolver{}
+
+	t.Run("value tests", func(t *testing.T) {
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			// Basic boolean negation
+			{"NOT(TRUE)", BoolVal(false)},
+			{"NOT(FALSE)", BoolVal(true)},
+
+			// Numeric arguments: nonzero = TRUE, zero = FALSE
+			{"NOT(1)", BoolVal(false)},
+			{"NOT(0)", BoolVal(true)},
+			{"NOT(-1)", BoolVal(false)},
+			{"NOT(0.001)", BoolVal(false)},
+			{"NOT(100)", BoolVal(false)},
+			{"NOT(-0.5)", BoolVal(false)},
+
+			// Double negation
+			{"NOT(NOT(TRUE))", BoolVal(true)},
+			{"NOT(NOT(FALSE))", BoolVal(false)},
+
+			// NOT with comparison operators
+			{"NOT(1>2)", BoolVal(true)},
+			{"NOT(2>1)", BoolVal(false)},
+			{"NOT(1=1)", BoolVal(false)},
+			{"NOT(1=2)", BoolVal(true)},
+			{"NOT(3>=3)", BoolVal(false)},
+			{"NOT(2<=1)", BoolVal(true)},
+
+			// NOT with nested logical functions
+			{"NOT(AND(TRUE,FALSE))", BoolVal(true)},
+			{"NOT(AND(TRUE,TRUE))", BoolVal(false)},
+			{"NOT(OR(FALSE,FALSE))", BoolVal(true)},
+			{"NOT(OR(TRUE,FALSE))", BoolVal(false)},
+
+			// NOT in arithmetic context: TRUE=1, FALSE=0
+			{"NOT(TRUE)+NOT(FALSE)", NumberVal(1)},
+			{"NOT(FALSE)*2", NumberVal(2)},
+			{"NOT(TRUE)+0", NumberVal(0)},
+
+			// String "1" is truthy (non-empty), so NOT("1") = FALSE
+			{`NOT("1")`, BoolVal(false)},
+			// Empty string is falsy, so NOT("") = TRUE
+			{`NOT("")`, BoolVal(true)},
+
+			// NOT with TRUE()/FALSE() function calls
+			{"NOT(TRUE())", BoolVal(false)},
+			{"NOT(FALSE())", BoolVal(true)},
+
+			// Deeply nested NOT
+			{"NOT(NOT(NOT(TRUE)))", BoolVal(false)},
+			{"NOT(NOT(NOT(FALSE)))", BoolVal(true)},
+
+			// NOT used inside IF
+			{`IF(NOT(FALSE),"yes","no")`, StringVal("yes")},
+			{`IF(NOT(TRUE),"yes","no")`, StringVal("no")},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		tests := []struct {
+			formula  string
+			wantErr  ErrorValue
+		}{
+			// #N/A propagation
+			{"NOT(NA())", ErrValNA},
+			// #DIV/0! propagation
+			{"NOT(1/0)", ErrValDIV0},
+			// Wrong arg count: 0 args
+			{"NOT()", ErrValVALUE},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				cf := evalCompile(t, tt.formula)
+				got, err := Eval(cf, resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): unexpected Go error: %v", tt.formula, err)
+				}
+				if got.Type != ValueError || got.Err != tt.wantErr {
+					t.Fatalf("Eval(%q) = %#v, want error %v", tt.formula, got, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("wrong arg count two args", func(t *testing.T) {
+		// NOT with 2 arguments should return #VALUE!
+		// Direct function call since parser may not allow 2 args easily
+		got, err := fnNOT([]Value{BoolVal(true), BoolVal(false)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnNOT(TRUE,FALSE) = %#v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("direct function call with error values", func(t *testing.T) {
+		// Passing an error value directly should propagate it
+		got, err := fnNOT([]Value{ErrorVal(ErrValNA)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNA {
+			t.Fatalf("fnNOT(#N/A) = %#v, want #N/A", got)
+		}
+
+		got, err = fnNOT([]Value{ErrorVal(ErrValDIV0)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValDIV0 {
+			t.Fatalf("fnNOT(#DIV/0!) = %#v, want #DIV/0!", got)
+		}
+
+		got, err = fnNOT([]Value{ErrorVal(ErrValREF)})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValREF {
+			t.Fatalf("fnNOT(#REF!) = %#v, want #REF!", got)
+		}
+	})
+
+	t.Run("direct function call with empty value", func(t *testing.T) {
+		// Empty value is falsy, so NOT(empty) = TRUE
+		got, err := fnNOT([]Value{EmptyVal()})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueBool || got.Bool != true {
+			t.Fatalf("fnNOT(empty) = %#v, want TRUE", got)
+		}
+	})
+
+	t.Run("direct function call with zero args", func(t *testing.T) {
+		got, err := fnNOT([]Value{})
+		if err != nil {
+			t.Fatalf("fnNOT: unexpected Go error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Fatalf("fnNOT() = %#v, want #VALUE!", got)
+		}
+	})
+}
+
 func TestIF(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -3032,4 +3195,398 @@ func TestSWITCH(t *testing.T) {
 			t.Errorf(`SWITCH(99, ..., "No match") = %v, want "No match"`, got)
 		}
 	})
+}
+
+// ── Additional SORT tests ────────────────────────────────────────────
+
+func TestSORT_ByThirdColumn(t *testing.T) {
+	// SORT({{"a",1,30};{"b",2,10};{"c",3,20}}, 3) → sort by col 3
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a"), NumberVal(1), NumberVal(30)},
+		{StringVal("b"), NumberVal(2), NumberVal(10)},
+		{StringVal("c"), NumberVal(3), NumberVal(20)},
+	}}
+	got, err := fnSORT([]Value{arr, NumberVal(3)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 ||
+		got.Array[0][0].Str != "b" || got.Array[0][2].Num != 10 ||
+		got.Array[1][0].Str != "c" || got.Array[1][2].Num != 20 ||
+		got.Array[2][0].Str != "a" || got.Array[2][2].Num != 30 {
+		t.Errorf("SORT by col 3 = %v, want b10,c20,a30", got)
+	}
+}
+
+func TestSORT_SingleColumn(t *testing.T) {
+	// Single column array sorted ascending
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(5)},
+		{NumberVal(2)},
+		{NumberVal(8)},
+		{NumberVal(1)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 ||
+		got.Array[0][0].Num != 1 || got.Array[1][0].Num != 2 ||
+		got.Array[2][0].Num != 5 || got.Array[3][0].Num != 8 {
+		t.Errorf("SORT single col = %v, want {1;2;5;8}", got)
+	}
+}
+
+func TestSORT_SingleRow(t *testing.T) {
+	// Single row array (1x4) — sorts as a single-element array (no reordering needed)
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(3), NumberVal(1), NumberVal(2)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 {
+		t.Fatalf("SORT single row = %v, want 1 row", got)
+	}
+	// Single row stays as-is since there is only one row to sort
+	if got.Array[0][0].Num != 3 || got.Array[0][1].Num != 1 || got.Array[0][2].Num != 2 {
+		t.Errorf("SORT single row = %v, want {3,1,2}", got.Array[0])
+	}
+}
+
+func TestSORT_1x1Array(t *testing.T) {
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(99)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 1 || got.Array[0][0].Num != 99 {
+		t.Errorf("SORT 1x1 = %v, want {99}", got)
+	}
+}
+
+func TestSORT_ReverseSortedAscending(t *testing.T) {
+	// Reverse sorted input + ascending order
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(5)},
+		{NumberVal(4)},
+		{NumberVal(3)},
+		{NumberVal(2)},
+		{NumberVal(1)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(got.Array))
+	}
+	for i := 0; i < 5; i++ {
+		want := float64(i + 1)
+		if got.Array[i][0].Num != want {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+		}
+	}
+}
+
+func TestSORT_SortIndexOutOfRange(t *testing.T) {
+	// sort_index beyond the number of columns — should use empty values
+	// (implementation uses zero value when index is out of range)
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(3)},
+		{NumberVal(1)},
+		{NumberVal(2)},
+	}}
+	got, err := fnSORT([]Value{arr, NumberVal(5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When sort_index is out of range, all comparison values are empty
+	// so original order is preserved (stable sort)
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][0].Num != 3 || got.Array[1][0].Num != 1 || got.Array[2][0].Num != 2 {
+		t.Errorf("SORT out-of-range index = %v, want original order {3;1;2}", got)
+	}
+}
+
+func TestSORT_LargeArray(t *testing.T) {
+	// Sort 100 elements in reverse order
+	rows := make([][]Value, 100)
+	for i := 0; i < 100; i++ {
+		rows[i] = []Value{NumberVal(float64(100 - i))}
+	}
+	arr := Value{Type: ValueArray, Array: rows}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 100 {
+		t.Fatalf("expected 100 rows, got %d", len(got.Array))
+	}
+	for i := 0; i < 100; i++ {
+		want := float64(i + 1)
+		if got.Array[i][0].Num != want {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, want)
+			break
+		}
+	}
+}
+
+func TestSORT_WithEmptyValues(t *testing.T) {
+	// Empty values should sort (empty compares as less than numbers in Excel)
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(3)},
+		{EmptyVal()},
+		{NumberVal(1)},
+		{EmptyVal()},
+		{NumberVal(2)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(got.Array))
+	}
+	// Empty values should sort before numbers
+	if got.Array[0][0].Type != ValueEmpty || got.Array[1][0].Type != ValueEmpty {
+		t.Errorf("first two should be empty, got %v %v", got.Array[0][0], got.Array[1][0])
+	}
+	if got.Array[2][0].Num != 1 || got.Array[3][0].Num != 2 || got.Array[4][0].Num != 3 {
+		t.Errorf("numbers should be sorted: got %v %v %v", got.Array[2][0], got.Array[3][0], got.Array[4][0])
+	}
+}
+
+func TestSORT_DefaultArguments(t *testing.T) {
+	// SORT with only the array argument — defaults: sort_index=1, sort_order=1 (asc)
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(30), StringVal("c")},
+		{NumberVal(10), StringVal("a")},
+		{NumberVal(20), StringVal("b")},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 ||
+		got.Array[0][0].Num != 10 || got.Array[0][1].Str != "a" ||
+		got.Array[1][0].Num != 20 || got.Array[1][1].Str != "b" ||
+		got.Array[2][0].Num != 30 || got.Array[2][1].Str != "c" {
+		t.Errorf("SORT defaults = %v, want sorted by col 1 asc", got)
+	}
+}
+
+func TestSORT_ViaEvalBasic(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SORT({5;3;1;4;2})")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("expected 5-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{1, 2, 3, 4, 5}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSORT_ViaEvalDescending(t *testing.T) {
+	resolver := &mockResolver{}
+	cf := evalCompile(t, "SORT({5;3;1;4;2}, 1, -1)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("expected 5-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	want := []float64{5, 4, 3, 2, 1}
+	for i, w := range want {
+		if got.Array[i][0].Num != w {
+			t.Errorf("[%d]: got %g, want %g", i, got.Array[i][0].Num, w)
+		}
+	}
+}
+
+func TestSORT_ViaEvalByColumn(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(30), {Col: 2, Row: 1}: StringVal("c"),
+			{Col: 1, Row: 2}: NumberVal(10), {Col: 2, Row: 2}: StringVal("a"),
+			{Col: 1, Row: 3}: NumberVal(20), {Col: 2, Row: 3}: StringVal("b"),
+		},
+	}
+	cf := evalCompile(t, "SORT(A1:B3, 2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got type=%v rows=%d", got.Type, len(got.Array))
+	}
+	if got.Array[0][1].Str != "a" || got.Array[1][1].Str != "b" || got.Array[2][1].Str != "c" {
+		t.Errorf("SORT by col 2 = %v, want sorted by string col", got)
+	}
+}
+
+func TestSORT_StableSortMultiColumn(t *testing.T) {
+	// Stable sort: ties in sort column preserve original order
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(2), StringVal("x")},
+		{NumberVal(1), StringVal("a")},
+		{NumberVal(2), StringVal("y")},
+		{NumberVal(1), StringVal("b")},
+		{NumberVal(2), StringVal("z")},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(got.Array))
+	}
+	// 1s come first (in original relative order), then 2s
+	if got.Array[0][1].Str != "a" || got.Array[1][1].Str != "b" {
+		t.Errorf("1-group: got %v %v, want a b", got.Array[0][1], got.Array[1][1])
+	}
+	if got.Array[2][1].Str != "x" || got.Array[3][1].Str != "y" || got.Array[4][1].Str != "z" {
+		t.Errorf("2-group: got %v %v %v, want x y z", got.Array[2][1], got.Array[3][1], got.Array[4][1])
+	}
+}
+
+func TestSORT_StringsSorted(t *testing.T) {
+	// Sort strings alphabetically
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("delta")},
+		{StringVal("alpha")},
+		{StringVal("charlie")},
+		{StringVal("bravo")},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 ||
+		got.Array[0][0].Str != "alpha" ||
+		got.Array[1][0].Str != "bravo" ||
+		got.Array[2][0].Str != "charlie" ||
+		got.Array[3][0].Str != "delta" {
+		t.Errorf("SORT strings = %v, want alpha,bravo,charlie,delta", got)
+	}
+}
+
+func TestSORT_MixedTypesDescending(t *testing.T) {
+	// Mixed types descending: strings first (higher), then numbers
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(2)},
+		{StringVal("b")},
+		{NumberVal(1)},
+		{StringVal("a")},
+	}}
+	got, err := fnSORT([]Value{arr, NumberVal(1), NumberVal(-1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 {
+		t.Fatalf("expected 4 rows, got %d", len(got.Array))
+	}
+	// Descending: strings first (b, a), then numbers (2, 1)
+	if got.Array[0][0].Str != "b" || got.Array[1][0].Str != "a" ||
+		got.Array[2][0].Num != 2 || got.Array[3][0].Num != 1 {
+		t.Errorf("SORT mixed desc = %v, want {b;a;2;1}", got)
+	}
+}
+
+func TestSORT_ErrorInArray(t *testing.T) {
+	// Error value as input argument propagates
+	got, err := fnSORT([]Value{ErrorVal(ErrValREF)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Non-array input is returned as-is
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Errorf("SORT(#REF!) = %v, want #REF!", got)
+	}
+}
+
+func TestSORT_BoolInput(t *testing.T) {
+	// Boolean input (non-array) is returned as-is
+	got, err := fnSORT([]Value{BoolVal(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Errorf("SORT(TRUE) = %v, want TRUE", got)
+	}
+}
+
+func TestSORT_StringInput(t *testing.T) {
+	// String input (non-array) is returned as-is
+	got, err := fnSORT([]Value{StringVal("hello")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueString || got.Str != "hello" {
+		t.Errorf("SORT(\"hello\") = %v, want hello", got)
+	}
+}
+
+func TestSORT_SortIndexZero(t *testing.T) {
+	// sort_index = 0 → all comparisons use empty values, order preserved
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(3)},
+		{NumberVal(1)},
+		{NumberVal(2)},
+	}}
+	got, err := fnSORT([]Value{arr, NumberVal(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	// With index 0, si = -1, so all values are empty and original order preserved
+	if got.Array[0][0].Num != 3 || got.Array[1][0].Num != 1 || got.Array[2][0].Num != 2 {
+		t.Errorf("SORT index=0 = %v, want original order {3;1;2}", got)
+	}
+}
+
+func TestSORT_FloatingPointValues(t *testing.T) {
+	arr := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(3.14)},
+		{NumberVal(2.71)},
+		{NumberVal(1.41)},
+		{NumberVal(1.73)},
+	}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 4 ||
+		got.Array[0][0].Num != 1.41 || got.Array[1][0].Num != 1.73 ||
+		got.Array[2][0].Num != 2.71 || got.Array[3][0].Num != 3.14 {
+		t.Errorf("SORT floats = %v, want {1.41;1.73;2.71;3.14}", got)
+	}
+}
+
+func TestSORT_EmptyArrayInput(t *testing.T) {
+	// Empty array input
+	arr := Value{Type: ValueArray, Array: [][]Value{}}
+	got, err := fnSORT([]Value{arr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Empty array: len(arr.Array) == 0, so returns arr as-is
+	if got.Type != ValueArray || len(got.Array) != 0 {
+		t.Errorf("SORT empty = %v, want empty array", got)
+	}
 }
