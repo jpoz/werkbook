@@ -222,6 +222,37 @@ func AddXlfnPrefixes(f string) string {
 	return string(buf)
 }
 
+// AddXlpmPrefixes tokenizes the formula and inserts the required OOXML
+// _xlpm. prefix on LET/LAMBDA parameter names and references. This matches
+// how Excel serializes future formulas in workbook XML, for example:
+//
+//	LET(x,5,x+1) -> _xlfn.LET(_xlpm.x,5,_xlpm.x+1)
+//	MAP(A1:A3,LAMBDA(x,x+1)) -> _xlfn.MAP(A1:A3,_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1))
+//
+// Returns the original string unchanged if tokenization fails.
+func AddXlpmPrefixes(f string) string {
+	if f == "" {
+		return f
+	}
+	tokens, err := Tokenize(f)
+	if err != nil {
+		return f
+	}
+
+	var inserts []int
+	collectXlpmInsertions(tokens, 0, len(tokens)-1, nil, &inserts)
+	if len(inserts) == 0 {
+		return f
+	}
+
+	buf := []byte(f)
+	for i := len(inserts) - 1; i >= 0; i-- {
+		pos := inserts[i]
+		buf = append(buf[:pos], append([]byte("_xlpm."), buf[pos:]...)...)
+	}
+	return string(buf)
+}
+
 // IsDynamicArrayFormula reports whether the formula uses dynamic-array
 // semantics and must be serialized with dynamic-array OOXML metadata.
 func IsDynamicArrayFormula(f string) bool {
@@ -253,9 +284,9 @@ func IsDynamicArrayFormula(f string) bool {
 	return false
 }
 
-// StripXlfnPrefixes tokenizes the formula and removes OOXML prefixes
-// (_xlfn. and _xlfn._xlws.) from function names. Only TokFunc tokens
-// are modified, so strings and cell references are never touched.
+// StripXlfnPrefixes tokenizes the formula and removes OOXML prefixes used in
+// workbook XML (_xlfn., _xlfn._xlws., and _xlpm.). Only formula/function and
+// lambda-parameter identifier tokens are modified, so strings are never touched.
 // Returns the original string unchanged if tokenization fails.
 func StripXlfnPrefixes(f string) string {
 	if f == "" {
@@ -273,15 +304,20 @@ func StripXlfnPrefixes(f string) string {
 	var removals []removal
 
 	for _, tok := range tokens {
-		if tok.Type != TokFunc {
-			continue
-		}
-		upper := strings.ToUpper(tok.Value)
-		switch {
-		case strings.HasPrefix(upper, "_XLFN._XLWS."):
-			removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn._xlws.")})
-		case strings.HasPrefix(upper, "_XLFN."):
-			removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn.")})
+		switch tok.Type {
+		case TokFunc:
+			upper := strings.ToUpper(tok.Value)
+			switch {
+			case strings.HasPrefix(upper, "_XLFN._XLWS."):
+				removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn._xlws.")})
+			case strings.HasPrefix(upper, "_XLFN."):
+				removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn.")})
+			}
+		case TokCellRef:
+			upper := strings.ToUpper(tok.Value)
+			if strings.HasPrefix(upper, "_XLPM.") {
+				removals = append(removals, removal{pos: tok.Pos, len: len("_xlpm.")})
+			}
 		}
 	}
 
@@ -303,4 +339,174 @@ func normalizeFuncName(name string) string {
 	upper = strings.TrimPrefix(upper, "_XLFN._XLWS.")
 	upper = strings.TrimPrefix(upper, "_XLFN.")
 	return upper
+}
+
+type tokenSpan struct {
+	start int
+	end   int
+}
+
+// Lambda and LET parameter names are tokenized as TokCellRef because bare
+// identifiers share the same lexical space as column-only references. This
+// walk reinterprets the tokens based on function argument position and inserts
+// _xlpm. only when the identifier is in scope as a lambda parameter.
+func collectXlpmInsertions(tokens []Token, start, end int, scope map[string]struct{}, inserts *[]int) {
+	for i := start; i < end; {
+		tok := tokens[i]
+		if tok.Type == TokFunc {
+			next := processXlpmFunction(tokens, i, scope, inserts)
+			if next > i {
+				i = next
+				continue
+			}
+		}
+		if tok.Type == TokCellRef {
+			if name, ok := xlpmIdentifierName(tok.Value); ok && scopeContains(scope, name) && !hasXlpmPrefix(tok.Value) {
+				*inserts = append(*inserts, tok.Pos)
+			}
+		}
+		i++
+	}
+}
+
+func processXlpmFunction(tokens []Token, funcIdx int, scope map[string]struct{}, inserts *[]int) int {
+	args, end, ok := splitFunctionArgs(tokens, funcIdx)
+	if !ok {
+		return funcIdx + 1
+	}
+
+	name := normalizeFuncName(strings.TrimSuffix(tokens[funcIdx].Value, "("))
+	switch name {
+	case "LET":
+		local := cloneNameSet(scope)
+		last := len(args) - 1
+		if last < 0 {
+			return end
+		}
+		for i := 0; i+1 < len(args); i += 2 {
+			paramName, ok := markXlpmParam(tokens, args[i], inserts)
+			if !ok {
+				collectXlpmInsertions(tokens, args[i].start, args[i].end, local, inserts)
+			}
+			collectXlpmInsertions(tokens, args[i+1].start, args[i+1].end, local, inserts)
+			if ok {
+				local[paramName] = struct{}{}
+			}
+		}
+		// LET's final argument is the calculation body when the arg count is odd.
+		if len(args)%2 == 1 {
+			collectXlpmInsertions(tokens, args[last].start, args[last].end, local, inserts)
+		}
+	case "LAMBDA":
+		local := cloneNameSet(scope)
+		last := len(args) - 1
+		if last < 0 {
+			return end
+		}
+		for i := 0; i < last; i++ {
+			paramName, ok := markXlpmParam(tokens, args[i], inserts)
+			if !ok {
+				collectXlpmInsertions(tokens, args[i].start, args[i].end, scope, inserts)
+				continue
+			}
+			local[paramName] = struct{}{}
+		}
+		collectXlpmInsertions(tokens, args[last].start, args[last].end, local, inserts)
+	default:
+		for _, arg := range args {
+			collectXlpmInsertions(tokens, arg.start, arg.end, scope, inserts)
+		}
+	}
+
+	return end
+}
+
+func splitFunctionArgs(tokens []Token, funcIdx int) ([]tokenSpan, int, bool) {
+	var (
+		args       []tokenSpan
+		argStart   = funcIdx + 1
+		parenDepth = 1
+		arrayDepth int
+	)
+	for i := funcIdx + 1; i < len(tokens); i++ {
+		switch tokens[i].Type {
+		case TokFunc, TokLParen:
+			parenDepth++
+		case TokRParen:
+			parenDepth--
+			if parenDepth == 0 {
+				args = append(args, tokenSpan{start: argStart, end: i})
+				return args, i + 1, true
+			}
+		case TokArrayOpen:
+			arrayDepth++
+		case TokArrayClose:
+			if arrayDepth > 0 {
+				arrayDepth--
+			}
+		case TokComma:
+			if parenDepth == 1 && arrayDepth == 0 {
+				args = append(args, tokenSpan{start: argStart, end: i})
+				argStart = i + 1
+			}
+		}
+	}
+	return nil, funcIdx + 1, false
+}
+
+func markXlpmParam(tokens []Token, span tokenSpan, inserts *[]int) (string, bool) {
+	if span.end-span.start != 1 {
+		return "", false
+	}
+	tok := tokens[span.start]
+	if tok.Type != TokCellRef {
+		return "", false
+	}
+	name, ok := xlpmIdentifierName(tok.Value)
+	if !ok {
+		return "", false
+	}
+	if !hasXlpmPrefix(tok.Value) {
+		*inserts = append(*inserts, tok.Pos)
+	}
+	return name, true
+}
+
+func xlpmIdentifierName(raw string) (string, bool) {
+	raw = stripXlpmPrefix(raw)
+	ref, err := parseCellRefToken(raw)
+	if err != nil || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+		return "", false
+	}
+	return strings.ToUpper(colNumberToLetters(ref.Col)), true
+}
+
+func stripXlpmPrefix(raw string) string {
+	if len(raw) >= len("_xlpm.") && strings.EqualFold(raw[:len("_xlpm.")], "_xlpm.") {
+		return raw[len("_xlpm."):]
+	}
+	return raw
+}
+
+func hasXlpmPrefix(raw string) bool {
+	return len(raw) >= len("_xlpm.") && strings.EqualFold(raw[:len("_xlpm.")], "_xlpm.")
+}
+
+func cloneNameSet(src map[string]struct{}) map[string]struct{} {
+	if len(src) == 0 {
+		return map[string]struct{}{}
+	}
+	dst := make(map[string]struct{}, len(src))
+	for name := range src {
+		dst[name] = struct{}{}
+	}
+	return dst
+}
+
+func scopeContains(scope map[string]struct{}, name string) bool {
+	if len(scope) == 0 {
+		return false
+	}
+	_, ok := scope[name]
+	return ok
 }

@@ -1079,17 +1079,8 @@ func valueToFormulaValue(v Value) formula.Value {
 }
 
 func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef string) ooxml.CellData {
-	dynamicArray := f != "" && formula.IsDynamicArrayFormula(f)
 	cd := ooxml.CellData{Ref: ref}
-	if dynamicArray {
-		cd.FormulaType = "array"
-		if formulaRef != "" {
-			cd.FormulaRef = formulaRef
-		} else {
-			cd.FormulaRef = ref
-		}
-		cd.IsDynamicArray = true
-	} else if isArrayFormula {
+	if isArrayFormula {
 		cd.FormulaType = "array"
 		if formulaRef != "" {
 			cd.FormulaRef = formulaRef
@@ -1118,14 +1109,17 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 		cd.Type = "b"
 		cd.Value = val
 	case TypeError:
-		if f != "" && (dynamicArray || isArrayFormula || !isLegacyFormulaError(v.String)) {
+		if f != "" && (isArrayFormula || !isLegacyFormulaError(v.String)) {
 			cd.Type = "str"
 		} else {
 			cd.Type = "e"
 		}
 		cd.Value = v.String
 	}
-	cd.Formula = formula.AddXlfnPrefixes(f)
+	// Future-function OOXML uses two layers of prefixes. We first add the
+	// function prefix (_xlfn./_xlfn._xlws.), then decorate LET/LAMBDA parameter
+	// identifiers so LET(x,5,x+1) becomes _xlfn.LET(_xlpm.x,5,_xlpm.x+1).
+	cd.Formula = formula.AddXlpmPrefixes(formula.AddXlfnPrefixes(f))
 	return cd
 }
 

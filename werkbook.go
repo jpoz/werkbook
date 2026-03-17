@@ -143,6 +143,9 @@ func (f *File) DeleteSheet(name string) error {
 	// Sheet-scoped names on the deleted sheet disappear; later sheet indexes shift down.
 	filteredNames := f.definedNames[:0]
 	for _, dn := range f.definedNames {
+		if sheetName, _, err := parseDefinedNameRef(dn.Value); err == nil && sheetName == name {
+			continue
+		}
 		switch {
 		case dn.LocalSheetID == idx:
 			continue

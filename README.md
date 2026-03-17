@@ -102,6 +102,20 @@ make interop-full ONLY=exceljs/02_lookup_model
 
 `interop` is the fast loop for community-only code changes. `interop-full` regenerates fixtures, refreshes Excel-backed specs, reruns parity, and syncs the current issue queue into [`testdata_issues/`](/Users/jpoz/Developer/werkbook/community/testdata_issues).
 
+## Excel smoke test
+
+To verify that representative modern formula families still open and save cleanly in Microsoft Excel on macOS, run:
+
+```bash
+make excel-smoke
+```
+
+This is opt-in and requires scriptable Microsoft Excel. To run only specific workbook families, set `WERKBOOK_EXCEL_SMOKE_CASES` to a comma-separated list such as:
+
+```bash
+WERKBOOK_EXCEL_SMOKE=1 WERKBOOK_EXCEL_SMOKE_CASES=spill-core,spill-lambda gotestsum -- -run TestExcelSmokeFormulaFamilies ./...
+```
+
 ## License
 
 No license has been granted yet. Until a `LICENSE` file is added, all rights are reserved.

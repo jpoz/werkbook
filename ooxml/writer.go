@@ -5,9 +5,21 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n"
+
+const (
+	// Excel 16.x writes this calcId on future-function workbooks such as
+	// <f>_xlfn.ACOT(1)</f> and <f>_xlfn.LET(_xlpm.x,5,_xlpm.x+1)</f>.
+	defaultFutureFunctionsCalcID = 181029
+
+	// futureFunctionsWorkbookExtXML is copied from an Excel-authored workbook.
+	// Omitting this bundle causes Excel to open the file with a repair prompt
+	// even when the individual sheet formulas are serialized correctly.
+	futureFunctionsWorkbookExtXML = `<ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><x15:workbookPr chartTrackingRefBase="1"/></ext><ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures"><xcalcf:calcFeatures><xcalcf:feature name="microsoft.com:RD"/><xcalcf:feature name="microsoft.com:Single"/><xcalcf:feature name="microsoft.com:FV"/><xcalcf:feature name="microsoft.com:CNMTM"/><xcalcf:feature name="microsoft.com:LET_WF"/><xcalcf:feature name="microsoft.com:LAMBDA_WF"/><xcalcf:feature name="microsoft.com:ARRAYTEXT_WF"/></xcalcf:calcFeatures></ext>`
+)
 
 type tableWriteInfo struct {
 	PartNum int
@@ -27,14 +39,10 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 
 	// Build shared string table from all string cells.
 	sst := NewSharedStringTable()
-	hasDynamicArrays := false
 	for i := range data.Sheets {
 		for j := range data.Sheets[i].Rows {
 			for k := range data.Sheets[i].Rows[j].Cells {
 				c := &data.Sheets[i].Rows[j].Cells[k]
-				if c.IsDynamicArray {
-					hasDynamicArrays = true
-				}
 				if c.Type == "s" && c.Formula == "" {
 					idx := sst.Add(c.Value)
 					c.Value = fmt.Sprintf("%d", idx)
@@ -57,7 +65,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasDynamicArrays, hasCoreProps); err != nil {
+	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasCoreProps); err != nil {
 		return err
 	}
 
@@ -84,7 +92,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/_rels/workbook.xml.rels
-	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0, hasDynamicArrays); err != nil {
+	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0); err != nil {
 		return err
 	}
 
@@ -117,16 +125,10 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		}
 	}
 
-	if hasDynamicArrays {
-		if err := writeDynamicArrayMetadata(zw); err != nil {
-			return err
-		}
-	}
-
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDynamicArrays, hasCoreProps bool) error {
+func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCoreProps bool) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -155,12 +157,6 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasDy
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
 			PartName:    "/xl/sharedStrings.xml",
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
-		})
-	}
-	if hasDynamicArrays {
-		ct.Overrides = append(ct.Overrides, xlsxOverride{
-			PartName:    "/xl/metadata.xml",
-			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml",
 		})
 	}
 	for i := range tableCount {
@@ -201,16 +197,24 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		Xmlns:  NSSpreadsheetML,
 		XmlnsR: NSOfficeDocument,
 	}
+
+	// Future-function formulas are serialized with _xlfn.* prefixes in sheet XML.
+	// Excel expects the workbook part to advertise the matching calc metadata,
+	// otherwise it offers to repair the file on open.
+	calcProps := data.CalcProps
+	if workbookNeedsFutureFunctionsMetadata(data) && calcProps.ID == 0 {
+		calcProps.ID = defaultFutureFunctionsCalcID
+	}
 	if data.Date1904 {
 		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
 	}
-	if hasCalcProps(data.CalcProps) {
+	if hasCalcProps(calcProps) {
 		wb.CalcPr = &xlsxCalcPr{
-			CalcMode:       data.CalcProps.Mode,
-			CalcID:         data.CalcProps.ID,
-			FullCalcOnLoad: boolString(data.CalcProps.FullCalcOnLoad),
-			ForceFullCalc:  boolString(data.CalcProps.ForceFullCalc),
-			CalcCompleted:  boolString(data.CalcProps.Completed),
+			CalcMode:       calcProps.Mode,
+			CalcID:         calcProps.ID,
+			FullCalcOnLoad: boolString(calcProps.FullCalcOnLoad),
+			ForceFullCalc:  boolString(calcProps.ForceFullCalc),
+			CalcCompleted:  boolString(calcProps.Completed),
 		}
 	}
 	for i, sd := range data.Sheets {
@@ -238,10 +242,13 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 			wb.DefinedNames.DefinedName = append(wb.DefinedNames.DefinedName, xdn)
 		}
 	}
+	if workbookNeedsFutureFunctionsMetadata(data) {
+		wb.ExtLst = &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML}
+	}
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
 
-func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays bool) error {
+func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
 	}
@@ -264,14 +271,6 @@ func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrays 
 			ID:     fmt.Sprintf("rId%d", nextID),
 			Type:   RelTypeSharedStr,
 			Target: "sharedStrings.xml",
-		})
-	}
-	if hasDynamicArrays {
-		nextID++
-		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", nextID),
-			Type:   RelTypeSheetMetadata,
-			Target: "metadata.xml",
 		})
 	}
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
@@ -331,14 +330,11 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 				V: cd.Value,
 			}
 			if cd.Formula != "" {
-				c.FE = &xlsxF{
-					T:    cd.FormulaType,
-					Ref:  cd.FormulaRef,
-					Text: cd.Formula,
+				c.FE = &xlsxF{Text: cd.Formula}
+				if !cd.IsDynamicArray {
+					c.FE.T = cd.FormulaType
+					c.FE.Ref = cd.FormulaRef
 				}
-			}
-			if cd.IsDynamicArray {
-				c.CM = 1
 			}
 			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
 				c.S = styleIndexMap[cd.StyleIdx]
@@ -393,6 +389,23 @@ func boolString(v bool) string {
 		return "1"
 	}
 	return ""
+}
+
+// workbookNeedsFutureFunctionsMetadata reports whether any serialized formula
+// already contains _xlfn. prefixes and therefore needs the workbook-level calc
+// feature bundle. The check runs after cell serialization, so formulas such as
+// LET(x,5,x+1) are seen here as _xlfn.LET(_xlpm.x,5,_xlpm.x+1).
+func workbookNeedsFutureFunctionsMetadata(data *WorkbookData) bool {
+	for _, sheet := range data.Sheets {
+		for _, row := range sheet.Rows {
+			for _, cell := range row.Cells {
+				if strings.Contains(strings.ToUpper(cell.Formula), "_XLFN.") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func writeSST(zw *zip.Writer, sst *SharedStringTable) error {

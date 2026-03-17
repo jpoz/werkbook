@@ -234,9 +234,9 @@ func TestOoxmlBoolUnmarshalXMLAttr(t *testing.T) {
 		{"false", 0, false},
 		{"off", 0, false},
 		{"", 0, false},
-		{"2", 1, false},   // non-zero int → true
-		{"-1", 1, false},  // non-zero int → true
-		{"abc", 0, true},  // invalid → error
+		{"2", 1, false},  // non-zero int → true
+		{"-1", 1, false}, // non-zero int → true
+		{"abc", 0, true}, // invalid → error
 	}
 	for _, tt := range tests {
 		t.Run(tt.val, func(t *testing.T) {
@@ -322,8 +322,8 @@ func TestSharedStringTableToXML(t *testing.T) {
 
 func TestSIMarshalXML_WhitespacePreserve(t *testing.T) {
 	tests := []struct {
-		name       string
-		value      string
+		name         string
+		value        string
 		wantPreserve bool
 	}{
 		{"no whitespace", "hello", false},
@@ -588,6 +588,20 @@ func TestParseCellData_DynamicArray(t *testing.T) {
 	}
 	if cd.IsArrayFormula {
 		t.Error("expected IsArrayFormula=false for dynamic array (CM!=0)")
+	}
+}
+
+func TestParseCellData_DynamicArrayPlainFormula(t *testing.T) {
+	c := xlsxC{
+		R:  "A1",
+		FE: &xlsxF{Text: "SORT(B1:B10)"},
+	}
+	cd := parseCellData(c, nil)
+	if !cd.IsDynamicArray {
+		t.Error("expected IsDynamicArray=true for plain dynamic-array formulas")
+	}
+	if cd.IsArrayFormula {
+		t.Error("expected IsArrayFormula=false for plain dynamic-array formulas")
 	}
 }
 
