@@ -102,10 +102,12 @@ func (c xlsxC) IsDynamicArrayFormula() bool {
 }
 
 type xlsxF struct {
-	T    string `xml:"t,attr,omitempty"`   // "array", "shared", etc.
-	Ref  string `xml:"ref,attr,omitempty"` // range for array/shared formulas
-	Si   int    `xml:"si,attr,omitempty"`  // shared formula index
-	Text string `xml:",chardata"`          // the formula text
+	T    string    `xml:"t,attr,omitempty"`   // "array", "shared", etc.
+	Aca  ooxmlBool `xml:"aca,attr,omitempty"` // always calculate array
+	Ref  string    `xml:"ref,attr,omitempty"` // range for array/shared formulas
+	Ca   ooxmlBool `xml:"ca,attr,omitempty"`  // calculate cell
+	Si   int       `xml:"si,attr,omitempty"`  // shared formula index
+	Text string    `xml:",chardata"`          // the formula text
 }
 
 type xlsxIS struct {

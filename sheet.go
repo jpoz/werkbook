@@ -1089,6 +1089,11 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 		}
 		cd.IsArrayFormula = true
 	}
+	if !isArrayFormula && formulaRef != "" && formula.IsDynamicArrayFormula(f) {
+		cd.FormulaType = "array"
+		cd.FormulaRef = formulaRef
+		cd.IsDynamicArray = true
+	}
 
 	switch v.Type {
 	case TypeString:
