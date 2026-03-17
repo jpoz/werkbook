@@ -5,9 +5,15 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n"
+
+const (
+	defaultFutureFunctionsCalcID  = 181029
+	futureFunctionsWorkbookExtXML = `<ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><x15:workbookPr chartTrackingRefBase="1"/></ext><ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures"><xcalcf:calcFeatures><xcalcf:feature name="microsoft.com:RD"/><xcalcf:feature name="microsoft.com:Single"/><xcalcf:feature name="microsoft.com:FV"/><xcalcf:feature name="microsoft.com:CNMTM"/><xcalcf:feature name="microsoft.com:LET_WF"/><xcalcf:feature name="microsoft.com:LAMBDA_WF"/><xcalcf:feature name="microsoft.com:ARRAYTEXT_WF"/></xcalcf:calcFeatures></ext>`
+)
 
 type tableWriteInfo struct {
 	PartNum int
@@ -185,16 +191,20 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 		Xmlns:  NSSpreadsheetML,
 		XmlnsR: NSOfficeDocument,
 	}
+	calcProps := data.CalcProps
+	if workbookNeedsFutureFunctionsMetadata(data) && calcProps.ID == 0 {
+		calcProps.ID = defaultFutureFunctionsCalcID
+	}
 	if data.Date1904 {
 		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
 	}
-	if hasCalcProps(data.CalcProps) {
+	if hasCalcProps(calcProps) {
 		wb.CalcPr = &xlsxCalcPr{
-			CalcMode:       data.CalcProps.Mode,
-			CalcID:         data.CalcProps.ID,
-			FullCalcOnLoad: boolString(data.CalcProps.FullCalcOnLoad),
-			ForceFullCalc:  boolString(data.CalcProps.ForceFullCalc),
-			CalcCompleted:  boolString(data.CalcProps.Completed),
+			CalcMode:       calcProps.Mode,
+			CalcID:         calcProps.ID,
+			FullCalcOnLoad: boolString(calcProps.FullCalcOnLoad),
+			ForceFullCalc:  boolString(calcProps.ForceFullCalc),
+			CalcCompleted:  boolString(calcProps.Completed),
 		}
 	}
 	for i, sd := range data.Sheets {
@@ -221,6 +231,9 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 			}
 			wb.DefinedNames.DefinedName = append(wb.DefinedNames.DefinedName, xdn)
 		}
+	}
+	if workbookNeedsFutureFunctionsMetadata(data) {
+		wb.ExtLst = &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML}
 	}
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
@@ -366,6 +379,19 @@ func boolString(v bool) string {
 		return "1"
 	}
 	return ""
+}
+
+func workbookNeedsFutureFunctionsMetadata(data *WorkbookData) bool {
+	for _, sheet := range data.Sheets {
+		for _, row := range sheet.Rows {
+			for _, cell := range row.Cells {
+				if strings.Contains(strings.ToUpper(cell.Formula), "_XLFN.") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func writeSST(zw *zip.Writer, sst *SharedStringTable) error {

@@ -1116,7 +1116,7 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 		}
 		cd.Value = v.String
 	}
-	cd.Formula = formula.AddXlfnPrefixes(f)
+	cd.Formula = formula.AddXlpmPrefixes(formula.AddXlfnPrefixes(f))
 	return cd
 }
 

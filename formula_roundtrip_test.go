@@ -229,6 +229,118 @@ func TestOfficeEraFormulaPrefixesInXML(t *testing.T) {
 	}
 }
 
+func TestFutureFunctionWorkbookXMLIncludesCalcFeatures(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "ACOT(1)")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "future-features.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	workbookXML := string(readSheetXML(t, path, "xl/workbook.xml"))
+	if !strings.Contains(workbookXML, `calcId="181029"`) {
+		t.Fatalf("expected future-function workbook to emit calcPr calcId, XML: %s", workbookXML)
+	}
+	if !strings.Contains(workbookXML, `xcalcf:calcFeatures`) {
+		t.Fatalf("expected future-function workbook to emit calcFeatures metadata, XML: %s", workbookXML)
+	}
+	if !strings.Contains(workbookXML, `microsoft.com:LET_WF`) {
+		t.Fatalf("expected future-function workbook to emit Excel calc feature bundle, XML: %s", workbookXML)
+	}
+}
+
+func TestFutureFunctionWorkbookXMLChildOrder(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetValue("A1", 1)
+	s.SetFormula("B1", "ACOT(A1)")
+	if err := f.SetDefinedName(werkbook.DefinedName{
+		Name:         "InputCell",
+		Value:        "Sheet1!$A$1",
+		LocalSheetID: -1,
+	}); err != nil {
+		t.Fatalf("SetDefinedName: %v", err)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "future-order.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	workbookXML := string(readSheetXML(t, path, "xl/workbook.xml"))
+	sheetsPos := strings.Index(workbookXML, "<sheets>")
+	definedNamesPos := strings.Index(workbookXML, "<definedNames>")
+	calcPrPos := strings.Index(workbookXML, "<calcPr")
+	extLstPos := strings.Index(workbookXML, "<extLst>")
+	if sheetsPos < 0 || definedNamesPos < 0 || calcPrPos < 0 || extLstPos < 0 {
+		t.Fatalf("expected workbook XML to contain sheets, definedNames, calcPr, and extLst in order, XML: %s", workbookXML)
+	}
+	if !(sheetsPos < definedNamesPos && definedNamesPos < calcPrPos && calcPrPos < extLstPos) {
+		t.Fatalf("unexpected workbook XML child order: sheets=%d definedNames=%d calcPr=%d extLst=%d XML: %s", sheetsPos, definedNamesPos, calcPrPos, extLstPos, workbookXML)
+	}
+}
+
+func TestLegacyWorkbookOmitsCalcFeaturesMetadata(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "SUM(B1:B5)")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy-features.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	workbookXML := string(readSheetXML(t, path, "xl/workbook.xml"))
+	if strings.Contains(workbookXML, `xcalcf:calcFeatures`) {
+		t.Fatalf("legacy workbook should not emit calcFeatures metadata, XML: %s", workbookXML)
+	}
+}
+
+func TestLETFormulaSerializationUsesXlpmPrefixes(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+	s.SetFormula("A1", "LET(x,5,x+1)")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "let-prefixes.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
+	want := `<f>_xlfn.LET(_xlpm.x,5,_xlpm.x+1)</f>`
+	if !strings.Contains(sheetXML, want) {
+		t.Fatalf("LET formula XML missing expected _xlpm prefixes\nwant: %s\nxml: %s", want, sheetXML)
+	}
+
+	f2, err := werkbook.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	s2 := f2.Sheet("Sheet1")
+
+	got, err := s2.GetFormula("A1")
+	if err != nil {
+		t.Fatalf("GetFormula: %v", err)
+	}
+	if got != "LET(x,5,x+1)" {
+		t.Fatalf("formula round-trip = %q, want %q", got, "LET(x,5,x+1)")
+	}
+
+	val, err := s2.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue: %v", err)
+	}
+	if val.Type != werkbook.TypeNumber || val.Number != 6 {
+		t.Fatalf("LET cached value = %#v, want 6", val)
+	}
+}
+
 func TestOfficeEraFormulaPrefixesRestoredOnResave(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

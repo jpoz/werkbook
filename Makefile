@@ -96,6 +96,11 @@ test: ## Run all unit tests
 	$(call print_stage,Running tests)
 	gotestsum -f dots ./...
 
+.PHONY: excel-smoke
+excel-smoke: ## Open representative formula-family workbooks in Microsoft Excel (macOS only)
+	$(call print_stage,Running Excel formula smoke tests)
+	WERKBOOK_EXCEL_SMOKE=1 gotestsum -- -run TestExcelSmokeFormulaFamilies ./...
+
 .PHONY: bench
 bench: ## Run benchmarks
 	$(call print_stage,Running benchmarks)

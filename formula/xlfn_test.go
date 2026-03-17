@@ -53,6 +53,32 @@ func TestAddXlfnPrefixes(t *testing.T) {
 	}
 }
 
+func TestAddXlpmPrefixes(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "legacy unchanged", in: "SUM(A1:A5)", want: "SUM(A1:A5)"},
+		{name: "LET parameters and refs", in: "_xlfn.LET(x,5,x+1)", want: "_xlfn.LET(_xlpm.x,5,_xlpm.x+1)"},
+		{name: "LET sequential scope", in: "_xlfn.LET(x,5,y,x+1,y*2)", want: "_xlfn.LET(_xlpm.x,5,_xlpm.y,_xlpm.x+1,_xlpm.y*2)"},
+		{name: "nested LET shadowing", in: "_xlfn.LET(x,1,_xlfn.LET(x,2,x+1)+x)", want: "_xlfn.LET(_xlpm.x,1,_xlfn.LET(_xlpm.x,2,_xlpm.x+1)+_xlpm.x)"},
+		{name: "LAMBDA body refs", in: "_xlfn.LAMBDA(x,x+1)", want: "_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1)"},
+		{name: "MAP lambda params", in: "_xlfn.MAP(A1:A3,_xlfn.LAMBDA(x,x+1))", want: "_xlfn.MAP(A1:A3,_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1))"},
+		{name: "BYROW lambda refs", in: "_xlfn.BYROW(A1:B2,_xlfn.LAMBDA(r,SUM(r)))", want: "_xlfn.BYROW(A1:B2,_xlfn.LAMBDA(_xlpm.r,SUM(_xlpm.r)))"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AddXlpmPrefixes(tt.in)
+			if got != tt.want {
+				t.Errorf("AddXlpmPrefixes(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStripXlfnPrefixes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -72,6 +98,8 @@ func TestStripXlfnPrefixes(t *testing.T) {
 		{name: "strip nested", in: "_xlfn.MAXIFS(A1:A5,B1:B5,_xlfn.IFS(C1>0,1))", want: "MAXIFS(A1:A5,B1:B5,IFS(C1>0,1))"},
 		{name: "strip nested dynamic array functions", in: `_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(A1:A10,A1:A10<>"")))`, want: `SORT(UNIQUE(FILTER(A1:A10,A1:A10<>"")))`},
 		{name: "strip mixed", in: "SUM(_xlfn.MAXIFS(A1:A5,B1:B5,1))", want: "SUM(MAXIFS(A1:A5,B1:B5,1))"},
+		{name: "strip LET param prefixes", in: "_xlfn.LET(_xlpm.x,5,_xlpm.x+1)", want: "LET(x,5,x+1)"},
+		{name: "strip MAP lambda param prefixes", in: "_xlfn.MAP(A1:A3,_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1))", want: "MAP(A1:A3,LAMBDA(x,x+1))"},
 		{name: "legacy unchanged", in: "IF(A1>0,1,0)", want: "IF(A1>0,1,0)"},
 		{name: "IFERROR", in: "_xlfn.IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
 	}
@@ -107,6 +135,25 @@ func TestAddStripRoundTrip(t *testing.T) {
 	for _, f := range formulas {
 		t.Run(f, func(t *testing.T) {
 			added := AddXlfnPrefixes(f)
+			stripped := StripXlfnPrefixes(added)
+			if stripped != f {
+				t.Errorf("round-trip failed: %q -> %q -> %q", f, added, stripped)
+			}
+		})
+	}
+}
+
+func TestAddStripRoundTrip_WithXlpmPrefixes(t *testing.T) {
+	formulas := []string{
+		"LET(x,5,x+1)",
+		"LET(x,5,y,x+1,y*2)",
+		"MAP(A1:A3,LAMBDA(x,x+1))",
+		"BYROW(A1:B2,LAMBDA(r,SUM(r)))",
+	}
+
+	for _, f := range formulas {
+		t.Run(f, func(t *testing.T) {
+			added := AddXlpmPrefixes(AddXlfnPrefixes(f))
 			stripped := StripXlfnPrefixes(added)
 			if stripped != f {
 				t.Errorf("round-trip failed: %q -> %q -> %q", f, added, stripped)

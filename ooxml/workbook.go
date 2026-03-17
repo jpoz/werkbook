@@ -10,6 +10,12 @@ type xlsxWorkbookPr struct {
 	Date1904 string `xml:"date1904,attr,omitempty"`
 }
 
+// xlsxExtLst is kept as raw XML because the future-function workbook payload
+// mirrors Excel-authored markup exactly, including x15/xcalcf-prefixed nodes.
+type xlsxExtLst struct {
+	InnerXML string `xml:",innerxml"`
+}
+
 type xlsxCalcPr struct {
 	CalcMode       string `xml:"calcMode,attr,omitempty"`
 	CalcID         int    `xml:"calcId,attr,omitempty"`
@@ -18,14 +24,19 @@ type xlsxCalcPr struct {
 	CalcCompleted  string `xml:"calcCompleted,attr,omitempty"`
 }
 
+// xlsxWorkbook field order intentionally matches the workbook child-element
+// order that Excel writes and expects. In particular, <calcPr> and <extLst>
+// must come after <sheets> and <definedNames>; emitting them earlier causes
+// Excel to offer workbook repair for future-function files.
 type xlsxWorkbook struct {
 	XMLName      xml.Name          `xml:"workbook"`
 	Xmlns        string            `xml:"xmlns,attr"`
 	XmlnsR       string            `xml:"xmlns:r,attr"`
 	WorkbookPr   *xlsxWorkbookPr   `xml:"workbookPr,omitempty"`
-	CalcPr       *xlsxCalcPr       `xml:"calcPr,omitempty"`
 	Sheets       xlsxSheets        `xml:"sheets"`
 	DefinedNames *xlsxDefinedNames `xml:"definedNames,omitempty"`
+	CalcPr       *xlsxCalcPr       `xml:"calcPr,omitempty"`
+	ExtLst       *xlsxExtLst       `xml:"extLst,omitempty"`
 }
 
 type xlsxDefinedNames struct {
