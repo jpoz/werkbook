@@ -2,6 +2,7 @@ package werkbook_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/xml"
 	"io"
 	"os"
@@ -559,6 +560,149 @@ func TestDynamicArrayFormulaSerializationAvoidsMetadataXML(t *testing.T) {
 	wantFormula := `SINGLE(IF(SUMIFS('treasury-ledger'!F:F,'treasury-ledger'!E:E,ANCHORARRAY(A2))>0,"Inflow","Outflow"))`
 	if got != wantFormula {
 		t.Fatalf("formula round-trip = %q, want %q", got, wantFormula)
+	}
+}
+
+func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
+	const (
+		sheetName    = "Out - Fee Accruals"
+		sourceSheet  = "venture-fee-accrual-line-items"
+		anchorCell   = "A2"
+		spillRef     = "A2:A20"
+		userFormula  = `FILTER('venture-fee-accrual-line-items'!E2:E41,DATEVALUE('venture-fee-accrual-line-items'!E2:E41)>=TODAY(),"No upcoming fees")`
+		ooxmlFormula = `_xlfn._xlws.FILTER('venture-fee-accrual-line-items'!E2:E41,DATEVALUE('venture-fee-accrual-line-items'!E2:E41)>=TODAY(),"No upcoming fees")`
+	)
+
+	fixture := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: sheetName,
+				Rows: []ooxml.RowData{{Num: 2, Cells: []ooxml.CellData{{
+					Ref:            anchorCell,
+					Type:           "str",
+					Value:          "2026-04-01",
+					Formula:        ooxmlFormula,
+					FormulaType:    "array",
+					FormulaRef:     spillRef,
+					IsDynamicArray: true,
+				}}}},
+			},
+			{
+				Name: sourceSheet,
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{{Ref: "E1", Type: "s", Value: "fee_date"}}},
+					{Num: 2, Cells: []ooxml.CellData{{Ref: "E2", Type: "s", Value: "2026-04-01"}}},
+				},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "dynamic-array-source.xlsx")
+	var buf bytes.Buffer
+	if err := ooxml.WriteWorkbook(&buf, fixture); err != nil {
+		t.Fatalf("WriteWorkbook fixture: %v", err)
+	}
+	if err := os.WriteFile(srcPath, buf.Bytes(), 0o600); err != nil {
+		t.Fatalf("WriteFile fixture: %v", err)
+	}
+
+	srcSheetXML := string(readSheetXML(t, srcPath, "xl/worksheets/sheet1.xml"))
+	for _, want := range []string{
+		`cm="1"`,
+		`<f t="array"`,
+		`aca="1"`,
+		`ref="A2:A20"`,
+		`ca="1">_xlfn._xlws.FILTER(`,
+	} {
+		if !strings.Contains(srcSheetXML, want) {
+			t.Fatalf("fixture workbook missing dynamic-array metadata %q\nxml: %s", want, srcSheetXML)
+		}
+	}
+	if !zipHasEntry(t, srcPath, "xl/metadata.xml") {
+		t.Fatal("fixture workbook missing xl/metadata.xml")
+	}
+
+	f, err := werkbook.Open(srcPath)
+	if err != nil {
+		t.Fatalf("Open fixture: %v", err)
+	}
+	got, err := f.Sheet(sheetName).GetFormula(anchorCell)
+	if err != nil {
+		t.Fatalf("GetFormula(%s): %v", anchorCell, err)
+	}
+	if got != userFormula {
+		t.Fatalf("formula round-trip = %q, want %q", got, userFormula)
+	}
+
+	dstPath := filepath.Join(dir, "dynamic-array-roundtrip.xlsx")
+	if err := f.SaveAs(dstPath); err != nil {
+		t.Fatalf("SaveAs round-trip workbook: %v", err)
+	}
+
+	dstSheetXML := string(readSheetXML(t, dstPath, "xl/worksheets/sheet1.xml"))
+	for _, want := range []string{
+		`cm="1"`,
+		`<f t="array"`,
+		`aca="1"`,
+		`ref="A2:A20"`,
+		`ca="1">_xlfn._xlws.FILTER(`,
+	} {
+		if !strings.Contains(dstSheetXML, want) {
+			t.Fatalf("round-trip workbook missing dynamic-array metadata %q\nxml: %s", want, dstSheetXML)
+		}
+	}
+
+	workbookRels := string(readSheetXML(t, dstPath, "xl/_rels/workbook.xml.rels"))
+	if !strings.Contains(workbookRels, `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata"`) {
+		t.Fatalf("expected workbook relationships to preserve sheet metadata, XML: %s", workbookRels)
+	}
+
+	contentTypes := string(readSheetXML(t, dstPath, "[Content_Types].xml"))
+	if !strings.Contains(contentTypes, `PartName="/xl/metadata.xml"`) {
+		t.Fatalf("expected content types to preserve metadata.xml, XML: %s", contentTypes)
+	}
+	if !zipHasEntry(t, dstPath, "xl/metadata.xml") {
+		t.Fatal("round-trip workbook missing xl/metadata.xml")
+	}
+
+	r, err := os.Open(dstPath)
+	if err != nil {
+		t.Fatalf("Open round-trip xlsx: %v", err)
+	}
+	defer r.Close()
+	info, err := r.Stat()
+	if err != nil {
+		t.Fatalf("Stat round-trip xlsx: %v", err)
+	}
+	data, err := ooxml.ReadWorkbook(r, info.Size())
+	if err != nil {
+		t.Fatalf("ReadWorkbook round-trip: %v", err)
+	}
+
+	foundAnchor := false
+	for _, sd := range data.Sheets {
+		if sd.Name != sheetName {
+			continue
+		}
+		for _, rd := range sd.Rows {
+			for _, cd := range rd.Cells {
+				if cd.Ref != anchorCell {
+					continue
+				}
+				foundAnchor = true
+				if !cd.IsDynamicArray {
+					t.Fatalf("expected %s to remain a dynamic array anchor: %#v", anchorCell, cd)
+				}
+				if cd.FormulaRef != spillRef {
+					t.Fatalf("FormulaRef = %q, want %q", cd.FormulaRef, spillRef)
+				}
+			}
+		}
+	}
+	if !foundAnchor {
+		t.Fatalf("%s not found in parsed round-trip workbook data", anchorCell)
 	}
 }
 

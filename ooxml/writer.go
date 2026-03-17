@@ -19,6 +19,9 @@ const (
 	// Omitting this bundle causes Excel to open the file with a repair prompt
 	// even when the individual sheet formulas are serialized correctly.
 	futureFunctionsWorkbookExtXML = `<ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><x15:workbookPr chartTrackingRefBase="1"/></ext><ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures"><xcalcf:calcFeatures><xcalcf:feature name="microsoft.com:RD"/><xcalcf:feature name="microsoft.com:Single"/><xcalcf:feature name="microsoft.com:FV"/><xcalcf:feature name="microsoft.com:CNMTM"/><xcalcf:feature name="microsoft.com:LET_WF"/><xcalcf:feature name="microsoft.com:LAMBDA_WF"/><xcalcf:feature name="microsoft.com:ARRAYTEXT_WF"/></xcalcf:calcFeatures></ext>`
+
+	dynamicArrayMetadataXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray"><metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/></metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk></futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata></metadata>`
 )
 
 type tableWriteInfo struct {
@@ -36,6 +39,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 	tablePlan := buildTableWritePlan(data.Tables)
 	hasCoreProps := len(data.CorePropsRaw) > 0 || hasCorePropertiesData(data.CoreProps)
+	hasDynamicArrayMetadata := workbookNeedsDynamicArrayMetadata(data)
 
 	// Build shared string table from all string cells.
 	sst := NewSharedStringTable()
@@ -65,7 +69,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasCoreProps); err != nil {
+	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasCoreProps, hasDynamicArrayMetadata); err != nil {
 		return err
 	}
 
@@ -92,7 +96,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/_rels/workbook.xml.rels
-	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0); err != nil {
+	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0, hasDynamicArrayMetadata); err != nil {
 		return err
 	}
 
@@ -118,6 +122,12 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		return err
 	}
 
+	if hasDynamicArrayMetadata {
+		if err := writeDynamicArrayMetadata(zw); err != nil {
+			return err
+		}
+	}
+
 	// xl/sharedStrings.xml (only if there are strings)
 	if sst.Len() > 0 {
 		if err := writeSST(zw, sst); err != nil {
@@ -128,7 +138,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCoreProps bool) error {
+func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCoreProps, hasDynamicArrayMetadata bool) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -163,6 +173,12 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCo
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
 			PartName:    fmt.Sprintf("/xl/tables/table%d.xml", i+1),
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
+		})
+	}
+	if hasDynamicArrayMetadata {
+		ct.Overrides = append(ct.Overrides, xlsxOverride{
+			PartName:    "/xl/metadata.xml",
+			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml",
 		})
 	}
 	return writeXML(zw, "[Content_Types].xml", ct)
@@ -248,7 +264,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 	return writeXML(zw, "xl/workbook.xml", wb)
 }
 
-func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
+func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrayMetadata bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
 	}
@@ -271,6 +287,14 @@ func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST bool) error {
 			ID:     fmt.Sprintf("rId%d", nextID),
 			Type:   RelTypeSharedStr,
 			Target: "sharedStrings.xml",
+		})
+	}
+	if hasDynamicArrayMetadata {
+		nextID++
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     fmt.Sprintf("rId%d", nextID),
+			Type:   RelTypeSheetMetadata,
+			Target: "metadata.xml",
 		})
 	}
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
@@ -331,7 +355,16 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 			}
 			if cd.Formula != "" {
 				c.FE = &xlsxF{Text: cd.Formula}
-				if !cd.IsDynamicArray {
+				if cd.IsDynamicArray && cd.FormulaRef != "" {
+					c.CM = 1
+					c.FE.T = cd.FormulaType
+					if c.FE.T == "" {
+						c.FE.T = "array"
+					}
+					c.FE.Ref = cd.FormulaRef
+					c.FE.Aca = 1
+					c.FE.Ca = 1
+				} else if !cd.IsDynamicArray {
 					c.FE.T = cd.FormulaType
 					c.FE.Ref = cd.FormulaRef
 				}
@@ -406,6 +439,30 @@ func workbookNeedsFutureFunctionsMetadata(data *WorkbookData) bool {
 		}
 	}
 	return false
+}
+
+func workbookNeedsDynamicArrayMetadata(data *WorkbookData) bool {
+	for _, sheet := range data.Sheets {
+		for _, row := range sheet.Rows {
+			for _, cell := range row.Cells {
+				if cell.IsDynamicArray && cell.FormulaRef != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func writeDynamicArrayMetadata(zw *zip.Writer) error {
+	w, err := zw.Create("xl/metadata.xml")
+	if err != nil {
+		return fmt.Errorf("create xl/metadata.xml: %w", err)
+	}
+	if _, err := io.WriteString(w, dynamicArrayMetadataXML); err != nil {
+		return fmt.Errorf("write xl/metadata.xml: %w", err)
+	}
+	return nil
 }
 
 func writeSST(zw *zip.Writer, sst *SharedStringTable) error {
