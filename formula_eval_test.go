@@ -467,3 +467,264 @@ func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 		t.Errorf("SUM(INDEX(A1:A3,0)) = %g, want 60", val.Number)
 	}
 }
+
+// TestSUM_IncludesSpillRows_FullColumn verifies that SUM over a full-column
+// reference (e.g. B:B) includes all rows produced by a FILTER dynamic array
+// spill, not just the anchor cell.
+func TestSUM_IncludesSpillRows_FullColumn(t *testing.T) {
+	f := werkbook.New()
+	data := f.Sheet("Sheet1")
+	f.SetSheetName("Sheet1", "Data")
+	data = f.Sheet("Data")
+
+	data.SetValue("A1", "Include")
+	data.SetValue("B1", "Amount")
+	data.SetValue("A2", true)
+	data.SetValue("B2", 10.0)
+	data.SetValue("A3", false)
+	data.SetValue("B3", 20.0)
+	data.SetValue("A4", true)
+	data.SetValue("B4", 30.0)
+	data.SetValue("A5", false)
+	data.SetValue("B5", 40.0)
+	data.SetValue("A6", true)
+	data.SetValue("B6", 50.0)
+
+	spill, _ := f.NewSheet("Spill")
+	spill.SetValue("B1", "Filtered")
+	spill.SetFormula("B2", `FILTER(Data!B2:B6,Data!A2:A6)`)
+
+	sum, _ := f.NewSheet("Sum")
+	sum.SetFormula("A1", `SUM(Spill!B:B)`)
+
+	f.Recalculate()
+
+	val, err := sum.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 90 {
+		t.Errorf("SUM(Spill!B:B) = %g, want 90", val.Number)
+	}
+}
+
+// TestSUM_IncludesSpillRows_BoundedRange verifies that SUM over a bounded
+// range that extends beyond the last physical row still picks up spill values.
+func TestSUM_IncludesSpillRows_BoundedRange(t *testing.T) {
+	f := werkbook.New()
+	data := f.Sheet("Sheet1")
+	f.SetSheetName("Sheet1", "Data")
+	data = f.Sheet("Data")
+
+	data.SetValue("A1", "Include")
+	data.SetValue("B1", "Amount")
+	data.SetValue("A2", true)
+	data.SetValue("B2", 10.0)
+	data.SetValue("A3", false)
+	data.SetValue("B3", 20.0)
+	data.SetValue("A4", true)
+	data.SetValue("B4", 30.0)
+	data.SetValue("A5", false)
+	data.SetValue("B5", 40.0)
+	data.SetValue("A6", true)
+	data.SetValue("B6", 50.0)
+
+	spill, _ := f.NewSheet("Spill")
+	spill.SetValue("B1", "Filtered")
+	spill.SetFormula("B2", `FILTER(Data!B2:B6,Data!A2:A6)`)
+
+	sum, _ := f.NewSheet("Sum")
+	sum.SetFormula("A1", `SUM(Spill!B1:B10)`)
+
+	f.Recalculate()
+
+	val, err := sum.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 90 {
+		t.Errorf("SUM(Spill!B1:B10) = %g, want 90", val.Number)
+	}
+}
+
+// TestAVERAGE_IncludesSpillRows verifies that AVERAGE over a range including
+// spill rows computes the correct average.
+func TestAVERAGE_IncludesSpillRows(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 100.0)
+	s.SetValue("A2", 200.0)
+	s.SetValue("A3", 300.0)
+
+	// FILTER returns {100; 300} (rows where value != 200)
+	s.SetFormula("B1", `FILTER(A1:A3,A1:A3<>200)`)
+	s.SetFormula("C1", `AVERAGE(B:B)`)
+
+	f.Recalculate()
+
+	val, err := s.GetValue("C1")
+	if err != nil {
+		t.Fatalf("GetValue(C1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("C1 type = %v, want TypeNumber", val.Type)
+	}
+	// AVERAGE(100, 300) = 200
+	if val.Number != 200 {
+		t.Errorf("AVERAGE(B:B) = %g, want 200", val.Number)
+	}
+}
+
+// TestCOUNT_IncludesSpillRows verifies that COUNT over a column with spill
+// rows counts all spilled numeric values.
+func TestCOUNT_IncludesSpillRows(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 10.0)
+	s.SetValue("A2", 20.0)
+	s.SetValue("A3", 30.0)
+	s.SetValue("A4", 40.0)
+	s.SetValue("A5", 50.0)
+
+	// FILTER returns {10; 30; 50} (odd-indexed)
+	s.SetValue("B1", true)
+	s.SetValue("B2", false)
+	s.SetValue("B3", true)
+	s.SetValue("B4", false)
+	s.SetValue("B5", true)
+	s.SetFormula("C1", `FILTER(A1:A5,B1:B5)`)
+	s.SetFormula("D1", `COUNT(C:C)`)
+
+	f.Recalculate()
+
+	val, err := s.GetValue("D1")
+	if err != nil {
+		t.Fatalf("GetValue(D1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("D1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 3 {
+		t.Errorf("COUNT(C:C) = %g, want 3", val.Number)
+	}
+}
+
+// TestSUM_SpillOnSameSheet verifies that SUM picks up spill rows when
+// the FILTER formula and the SUM are on the same sheet.
+func TestSUM_SpillOnSameSheet(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", true)
+	s.SetValue("A2", true)
+	s.SetValue("A3", true)
+	s.SetValue("B1", 1000.0)
+	s.SetValue("B2", 2000.0)
+	s.SetValue("B3", 3000.0)
+
+	// FILTER in C1 spills to C1:C3
+	s.SetFormula("C1", `FILTER(B1:B3,A1:A3)`)
+	// SUM over full column C
+	s.SetFormula("D1", `SUM(C:C)`)
+
+	f.Recalculate()
+
+	val, err := s.GetValue("D1")
+	if err != nil {
+		t.Fatalf("GetValue(D1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("D1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 6000 {
+		t.Errorf("SUM(C:C) = %g, want 6000", val.Number)
+	}
+}
+
+// TestSUM_FullRowIncludesHorizontalSpill verifies that whole-row references
+// include dynamic-array spill values that extend past the last physical column.
+func TestSUM_FullRowIncludesHorizontalSpill(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetFormula("B1", `HSTACK(10,20,30)`)
+	s.SetFormula("A2", `SUM(1:1)`)
+
+	f.Recalculate()
+
+	val, err := s.GetValue("A2")
+	if err != nil {
+		t.Fatalf("GetValue(A2): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("A2 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 60 {
+		t.Errorf("SUM(1:1) = %g, want 60", val.Number)
+	}
+}
+
+// TestSUM_FullColumnIgnoresUnrelatedTallSpill verifies that a spill outside
+// the referenced columns does not change the materialized height of B:C.
+func TestSUM_FullColumnIgnoresUnrelatedTallSpill(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("B1", 1.0)
+	s.SetValue("C1", 2.0)
+	s.SetFormula("A1", `SUM(B:C)`)
+	s.SetFormula("Z1", `SEQUENCE(600000)`)
+
+	f.Recalculate()
+
+	val, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 3 {
+		t.Errorf("SUM(B:C) = %g, want 3", val.Number)
+	}
+}
+
+// TestSUM_FullColumnSkipsUnrelatedSpillEval verifies that reading B:B does not
+// force an unrelated spill anchor outside the requested column into a circular error.
+func TestSUM_FullColumnSkipsUnrelatedSpillEval(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("B1", 1.0)
+	s.SetFormula("A1", `SUM(B:B)`)
+	s.SetFormula("Z1", `SEQUENCE(A1)`)
+
+	f.Recalculate()
+
+	sum, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if sum.Type != werkbook.TypeNumber || sum.Number != 1 {
+		t.Fatalf("A1 = %#v, want 1", sum)
+	}
+
+	spill, err := s.GetValue("Z1")
+	if err != nil {
+		t.Fatalf("GetValue(Z1): %v", err)
+	}
+	if spill.Type != werkbook.TypeNumber {
+		t.Fatalf("Z1 type = %v, want TypeNumber", spill.Type)
+	}
+	if spill.Number != 1 {
+		t.Errorf("Z1 = %g, want 1", spill.Number)
+	}
+}

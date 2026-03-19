@@ -838,10 +838,11 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	}
 
 	// Clamp the row range to the sheet's actual data extent so that
-	// full-column references (e.g. F:F → F1:F1048576) don't allocate
-	// rows far beyond the populated extent. Empty sheets fall back to the
-	// range's start row so full-column references still evaluate as blanks.
-	toRow := addr.ToRow
+	// references like F:F don't allocate rows far beyond the populated
+	// extent. Empty sheets fall back to the range's start row so full-column
+	// references still evaluate as blanks.
+	logicalToRow := addr.ToRow
+	toRow := logicalToRow
 	maxRow := s.MaxRow()
 	if maxRow < addr.FromRow {
 		maxRow = addr.FromRow
@@ -852,7 +853,8 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	if toRow < addr.FromRow {
 		toRow = addr.FromRow
 	}
-	toCol := addr.ToCol
+	logicalToCol := addr.ToCol
+	toCol := logicalToCol
 	if addr.FromCol == 1 && addr.ToCol >= MaxColumns {
 		maxCol := s.MaxCol()
 		if maxCol < addr.FromCol {
@@ -876,6 +878,43 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	for i := range occupied {
 		occupied[i] = make([]bool, nCols)
 	}
+	growRange := func(nextToRow, nextToCol int) bool {
+		if nextToRow < addr.FromRow {
+			nextToRow = addr.FromRow
+		}
+		if nextToCol < addr.FromCol {
+			nextToCol = addr.FromCol
+		}
+		if nextToRow > logicalToRow {
+			nextToRow = logicalToRow
+		}
+		if nextToCol > logicalToCol {
+			nextToCol = logicalToCol
+		}
+		if nextToRow <= toRow && nextToCol <= toCol {
+			return true
+		}
+		nextRows := nextToRow - addr.FromRow + 1
+		nextCols := nextToCol - addr.FromCol + 1
+		if formula.RangeCellCountExceedsLimit(nextRows, nextCols) {
+			return false
+		}
+		grownRows := newFormulaValueMatrix(nextRows, nextCols)
+		grownOccupied := make([][]bool, nextRows)
+		for i := range grownOccupied {
+			grownOccupied[i] = make([]bool, nextCols)
+		}
+		for i := range rows {
+			copy(grownRows[i], rows[i])
+			copy(grownOccupied[i], occupied[i])
+		}
+		rows = grownRows
+		occupied = grownOccupied
+		toRow = nextToRow
+		toCol = nextToCol
+		nCols = nextCols
+		return true
+	}
 	for rowNum, sheetRow := range s.rows {
 		if rowNum < addr.FromRow || rowNum > toRow {
 			continue
@@ -896,6 +935,9 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 			continue
 		}
 		for anchorCol, cell := range sheetRow.cells {
+			if anchorCol > logicalToCol {
+				continue
+			}
 			if cell.formula == "" || cell.isArrayFormula || !formula.IsDynamicArrayFormula(cell.formula) {
 				continue
 			}
@@ -905,6 +947,31 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 			}
 			if raw.Type != formula.ValueArray || raw.NoSpill {
 				continue
+			}
+			spillCols := 0
+			for _, spillRow := range raw.Array {
+				if len(spillRow) > spillCols {
+					spillCols = len(spillRow)
+				}
+			}
+			if len(raw.Array) == 0 || spillCols == 0 {
+				continue
+			}
+			spillEndRow := anchorRow + len(raw.Array) - 1
+			spillEndCol := anchorCol + spillCols - 1
+			if spillEndRow < addr.FromRow || spillEndCol < addr.FromCol {
+				continue
+			}
+			nextToRow := toRow
+			nextToCol := toCol
+			if spillEndRow > nextToRow {
+				nextToRow = spillEndRow
+			}
+			if spillEndCol > nextToCol {
+				nextToCol = spillEndCol
+			}
+			if (nextToRow > toRow || nextToCol > toCol) && !growRange(nextToRow, nextToCol) {
+				return rangeOverflow()
 			}
 			for rowOffset, spillRow := range raw.Array {
 				rowNum := anchorRow + rowOffset
