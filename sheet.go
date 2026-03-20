@@ -297,6 +297,11 @@ func (s *Sheet) valueAt(col, row int) (Value, bool) {
 	if r, ok := s.rows[row]; ok {
 		if c, ok := r.cells[col]; ok {
 			s.resolveCell(c, col, row)
+			if !cellOccupiesSpillSlot(c) {
+				if v, ok := s.spillValueAt(col, row); ok {
+					return v, true
+				}
+			}
 			return c.value, true
 		}
 	}
@@ -345,6 +350,17 @@ func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
 		}
 	}
 	return formula.Value{}, false
+}
+
+// cellOccupiesSpillSlot reports whether a physical cell should block
+// dynamic-array spill semantics. Imported OOXML can contain empty placeholder
+// cells inside a spill range; those cells must behave like absent cells so
+// direct references and range materialization can still see the spill result.
+func cellOccupiesSpillSlot(c *Cell) bool {
+	if c == nil {
+		return false
+	}
+	return c.formula != "" || c.value.Type != TypeEmpty
 }
 
 func (s *Sheet) ensureRow(num int) *Row {
@@ -795,6 +811,11 @@ func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
 	}
 
 	s.resolveCell(c, addr.Col, addr.Row)
+	if !cellOccupiesSpillSlot(c) {
+		if v, ok := s.spillFormulaValueAt(addr.Col, addr.Row); ok {
+			return v
+		}
+	}
 	return valueToFormulaValue(c.value)
 }
 
@@ -927,7 +948,9 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 			s.resolveCell(cell, colNum, rowNum)
 			idx := colNum - addr.FromCol
 			row[idx] = valueToFormulaValue(cell.value)
-			occupied[rowNum-addr.FromRow][idx] = true
+			if cellOccupiesSpillSlot(cell) {
+				occupied[rowNum-addr.FromRow][idx] = true
+			}
 		}
 	}
 	for anchorRow, sheetRow := range s.rows {

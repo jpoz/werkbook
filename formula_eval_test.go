@@ -1,6 +1,7 @@
 package werkbook_test
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -468,6 +469,62 @@ func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 	}
 }
 
+func newFilteredNumberSpill(values ...float64) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet) {
+	f := werkbook.New()
+	_ = f.SetSheetName("Sheet1", "Data")
+	data := f.Sheet("Data")
+
+	for i, value := range values {
+		row := i + 2
+		data.SetValue(fmt.Sprintf("A%d", row), true)
+		data.SetValue(fmt.Sprintf("B%d", row), value)
+	}
+
+	spill, _ := f.NewSheet("Spill")
+	spill.SetFormula("B1", fmt.Sprintf(`FILTER(Data!B2:B%d,Data!A2:A%d)`, len(values)+1, len(values)+1))
+
+	calc, _ := f.NewSheet("Calc")
+	return f, spill, calc
+}
+
+func newFilteredTextSpill(values ...string) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet) {
+	f := werkbook.New()
+	_ = f.SetSheetName("Sheet1", "Data")
+	data := f.Sheet("Data")
+
+	for i, value := range values {
+		row := i + 2
+		data.SetValue(fmt.Sprintf("A%d", row), true)
+		data.SetValue(fmt.Sprintf("B%d", row), value)
+	}
+
+	spill, _ := f.NewSheet("Spill")
+	spill.SetFormula("B1", fmt.Sprintf(`FILTER(Data!B2:B%d,Data!A2:A%d)`, len(values)+1, len(values)+1))
+
+	calc, _ := f.NewSheet("Calc")
+	return f, spill, calc
+}
+
+func newFilteredLookupSpill(keys []string, values []float64) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet) {
+	f := werkbook.New()
+	_ = f.SetSheetName("Sheet1", "Data")
+	data := f.Sheet("Data")
+
+	for i, key := range keys {
+		row := i + 2
+		data.SetValue(fmt.Sprintf("A%d", row), true)
+		data.SetValue(fmt.Sprintf("B%d", row), key)
+		data.SetValue(fmt.Sprintf("C%d", row), values[i])
+	}
+
+	spill, _ := f.NewSheet("Spill")
+	spill.SetFormula("A1", fmt.Sprintf(`FILTER(Data!B2:B%d,Data!A2:A%d)`, len(keys)+1, len(keys)+1))
+	spill.SetFormula("B1", fmt.Sprintf(`FILTER(Data!C2:C%d,Data!A2:A%d)`, len(values)+1, len(values)+1))
+
+	calc, _ := f.NewSheet("Calc")
+	return f, spill, calc
+}
+
 // TestSUM_IncludesSpillRows_FullColumn verifies that SUM over a full-column
 // reference (e.g. B:B) includes all rows produced by a FILTER dynamic array
 // spill, not just the anchor cell.
@@ -614,6 +671,125 @@ func TestCOUNT_IncludesSpillRows(t *testing.T) {
 	}
 	if val.Number != 3 {
 		t.Errorf("COUNT(C:C) = %g, want 3", val.Number)
+	}
+}
+
+// TestCOUNTA_IncludesTextSpillRows verifies that COUNTA over a full-column
+// reference includes spilled text values beyond the anchor row.
+func TestCOUNTA_IncludesTextSpillRows(t *testing.T) {
+	f, _, calc := newFilteredTextSpill("beta", "alpha", "gamma")
+	calc.SetFormula("A1", `COUNTA(Spill!B:B)`)
+
+	f.Recalculate()
+
+	val, err := calc.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if val.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", val.Type)
+	}
+	if val.Number != 3 {
+		t.Errorf("COUNTA(Spill!B:B) = %g, want 3", val.Number)
+	}
+}
+
+// TestMINMAX_IncludesSpillRows verifies that full-column MIN/MAX formulas
+// see spilled rows after the anchor cell.
+func TestMINMAX_IncludesSpillRows(t *testing.T) {
+	f, _, calc := newFilteredNumberSpill(30, 10, 50)
+	calc.SetFormula("A1", `MIN(Spill!B:B)`)
+	calc.SetFormula("A2", `MAX(Spill!B:B)`)
+
+	f.Recalculate()
+
+	minVal, err := calc.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if minVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", minVal.Type)
+	}
+	if minVal.Number != 10 {
+		t.Errorf("MIN(Spill!B:B) = %g, want 10", minVal.Number)
+	}
+
+	maxVal, err := calc.GetValue("A2")
+	if err != nil {
+		t.Fatalf("GetValue(A2): %v", err)
+	}
+	if maxVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A2 type = %v, want TypeNumber", maxVal.Type)
+	}
+	if maxVal.Number != 50 {
+		t.Errorf("MAX(Spill!B:B) = %g, want 50", maxVal.Number)
+	}
+}
+
+// TestSUMIFCOUNTIF_IncludeSpillRows verifies that criteria-based functions
+// operating over full-column references include all spilled values.
+func TestSUMIFCOUNTIF_IncludeSpillRows(t *testing.T) {
+	f, _, calc := newFilteredNumberSpill(30, 10, 50)
+	calc.SetFormula("A1", `SUMIF(Spill!B:B,">20")`)
+	calc.SetFormula("A2", `COUNTIF(Spill!B:B,">20")`)
+
+	f.Recalculate()
+
+	sumVal, err := calc.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if sumVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", sumVal.Type)
+	}
+	if sumVal.Number != 80 {
+		t.Errorf("SUMIF(Spill!B:B,\">20\") = %g, want 80", sumVal.Number)
+	}
+
+	countVal, err := calc.GetValue("A2")
+	if err != nil {
+		t.Fatalf("GetValue(A2): %v", err)
+	}
+	if countVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A2 type = %v, want TypeNumber", countVal.Type)
+	}
+	if countVal.Number != 2 {
+		t.Errorf("COUNTIF(Spill!B:B,\">20\") = %g, want 2", countVal.Number)
+	}
+}
+
+// TestMATCHXLOOKUP_FindSpillFollowers verifies that lookup functions reading
+// full-column ranges can find spilled values beyond the anchor row.
+func TestMATCHXLOOKUP_FindSpillFollowers(t *testing.T) {
+	f, _, calc := newFilteredLookupSpill(
+		[]string{"beta", "alpha", "gamma"},
+		[]float64{200, 100, 300},
+	)
+	calc.SetFormula("A1", `MATCH("gamma",Spill!A:A,0)`)
+	calc.SetFormula("A2", `XLOOKUP("gamma",Spill!A:A,Spill!B:B)`)
+
+	f.Recalculate()
+
+	matchVal, err := calc.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if matchVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", matchVal.Type)
+	}
+	if matchVal.Number != 3 {
+		t.Errorf("MATCH(\"gamma\",Spill!A:A,0) = %g, want 3", matchVal.Number)
+	}
+
+	xlookupVal, err := calc.GetValue("A2")
+	if err != nil {
+		t.Fatalf("GetValue(A2): %v", err)
+	}
+	if xlookupVal.Type != werkbook.TypeNumber {
+		t.Fatalf("A2 type = %v, want TypeNumber", xlookupVal.Type)
+	}
+	if xlookupVal.Number != 300 {
+		t.Errorf("XLOOKUP(\"gamma\",Spill!A:A,Spill!B:B) = %g, want 300", xlookupVal.Number)
 	}
 }
 
