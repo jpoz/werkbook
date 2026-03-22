@@ -3,6 +3,8 @@
 [![Go](https://github.com/jpoz/werkbook/actions/workflows/go.yml/badge.svg)](https://github.com/jpoz/werkbook/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jpoz/werkbook.svg)](https://pkg.go.dev/github.com/jpoz/werkbook)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/werkbook)](https://goreportcard.com/report/github.com/jpoz/werkbook)
+[![Latest Release](https://img.shields.io/github/v/release/jpoz/werkbook)](https://github.com/jpoz/werkbook/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/jpoz/werkbook)](https://github.com/jpoz/werkbook)
 
 A Go library for reading, writing and calculating spreadsheets (.xlsx) with a built-in formula engine. Zero external dependencies.
 
@@ -118,4 +120,4 @@ WERKBOOK_EXCEL_SMOKE=1 WERKBOOK_EXCEL_SMOKE_CASES=spill-core,spill-lambda gotest
 
 ## License
 
-No license has been granted yet. Until a `LICENSE` file is added, all rights are reserved.
+[MIT](LICENSE)
