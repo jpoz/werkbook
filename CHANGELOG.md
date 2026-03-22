@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.1
+
+- Added MIT license
+
 ## v0.8.0
 
 ### New formula functions (9 functions)
