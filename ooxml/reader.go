@@ -151,6 +151,9 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 				sd.Rows = append(sd.Rows, rd)
 			}
 		}
+		// Expand shared formulas so child cells get their own formula text.
+		expandSharedFormulas(&sd)
+
 		if ws.MergeCells != nil {
 			for _, mc := range ws.MergeCells.MergeCell {
 				parts := strings.SplitN(mc.Ref, ":", 2)
@@ -190,6 +193,7 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		FormulaRef:     formulaRef(xc.FE),
 		IsArrayFormula: isArrayFormula,
 		IsDynamicArray: isDynamicArray,
+		SharedIndex:    sharedIndex(xc.FE),
 		StyleIdx:       xc.S,
 	}
 
@@ -248,6 +252,13 @@ func formulaRef(fe *xlsxF) string {
 		return ""
 	}
 	return fe.Ref
+}
+
+func sharedIndex(fe *xlsxF) int {
+	if fe == nil || fe.T != "shared" {
+		return -1
+	}
+	return fe.Si
 }
 
 // readStyles parses xl/styles.xml and returns a []StyleData indexed by cellXfs position.

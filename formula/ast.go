@@ -107,7 +107,7 @@ func (n *CellRef) String() string {
 	if n.AbsCol {
 		b.WriteByte('$')
 	}
-	b.WriteString(colNumberToLetters(n.Col))
+	b.WriteString(ColNumberToLetters(n.Col))
 	if n.AbsRow {
 		b.WriteByte('$')
 	}
@@ -316,8 +316,8 @@ func needsQuoting(name string) bool {
 	return false
 }
 
-// colNumberToLetters converts a 1-based column number to column letters (e.g. 1→"A", 27→"AA").
-func colNumberToLetters(col int) string {
+// ColNumberToLetters converts a 1-based column number to column letters (e.g. 1→"A", 27→"AA").
+func ColNumberToLetters(col int) string {
 	var buf [3]byte
 	i := len(buf)
 	for col > 0 {

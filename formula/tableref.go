@@ -178,7 +178,7 @@ func expandSimpleColumn(table *TableInfo, colName string) string {
 	}
 
 	absCol := table.FirstCol + colIdx
-	colLetters := colNumberToLetters(absCol)
+	colLetters := ColNumberToLetters(absCol)
 	dataFirst := table.DataFirstRow()
 	dataLast := table.DataLastRow()
 
@@ -243,7 +243,7 @@ func expandThisRow(table *TableInfo, colNames []string, currentRow int) string {
 		absCol := table.FirstCol + colIdx
 		var b strings.Builder
 		writeSheetPrefix(&b, table.SheetName)
-		b.WriteString(colNumberToLetters(absCol))
+		b.WriteString(ColNumberToLetters(absCol))
 		b.WriteString(itoa(currentRow))
 		return b.String()
 	}
@@ -257,10 +257,10 @@ func expandThisRow(table *TableInfo, colNames []string, currentRow int) string {
 		col2 := table.FirstCol + idx2
 		var b strings.Builder
 		writeSheetPrefix(&b, table.SheetName)
-		b.WriteString(colNumberToLetters(col1))
+		b.WriteString(ColNumberToLetters(col1))
 		b.WriteString(itoa(currentRow))
 		b.WriteByte(':')
-		b.WriteString(colNumberToLetters(col2))
+		b.WriteString(ColNumberToLetters(col2))
 		b.WriteString(itoa(currentRow))
 		return b.String()
 	}
@@ -281,7 +281,7 @@ func expandHeaders(table *TableInfo, colNames []string) string {
 		absCol := table.FirstCol + colIdx
 		var b strings.Builder
 		writeSheetPrefix(&b, table.SheetName)
-		b.WriteString(colNumberToLetters(absCol))
+		b.WriteString(ColNumberToLetters(absCol))
 		b.WriteString(itoa(headerRow))
 		return b.String()
 	}
@@ -302,7 +302,7 @@ func expandTotals(table *TableInfo, colNames []string) string {
 		absCol := table.FirstCol + colIdx
 		var b strings.Builder
 		writeSheetPrefix(&b, table.SheetName)
-		b.WriteString(colNumberToLetters(absCol))
+		b.WriteString(ColNumberToLetters(absCol))
 		b.WriteString(itoa(totalsRow))
 		return b.String()
 	}
@@ -326,10 +326,10 @@ func expandData(table *TableInfo, colNames []string) string {
 		dataLast := table.DataLastRow()
 		var b strings.Builder
 		writeSheetPrefix(&b, table.SheetName)
-		b.WriteString(colNumberToLetters(col1))
+		b.WriteString(ColNumberToLetters(col1))
 		b.WriteString(itoa(dataFirst))
 		b.WriteByte(':')
-		b.WriteString(colNumberToLetters(col2))
+		b.WriteString(ColNumberToLetters(col2))
 		b.WriteString(itoa(dataLast))
 		return b.String()
 	}

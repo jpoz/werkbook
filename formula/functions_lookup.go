@@ -675,7 +675,7 @@ func fnADDRESS(args []Value) (Value, error) {
 
 	var result string
 	if a1Style {
-		colName := colNumberToLetters(col)
+		colName := ColNumberToLetters(col)
 		switch absNum {
 		case 1:
 			result = fmt.Sprintf("$%s$%d", colName, row)
@@ -1081,7 +1081,7 @@ func indirectParseCell(s string) (col, row int, err error) {
 	if i == 0 || i == len(s) {
 		return 0, 0, fmt.Errorf("invalid cell reference %q", s)
 	}
-	col = colLettersToNumber(s[:i])
+	col = ColLettersToNumber(s[:i])
 	if col < 1 || col > maxCols {
 		return 0, 0, fmt.Errorf("column out of range in %q", s)
 	}
@@ -1122,8 +1122,8 @@ func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
 
 	// Column-only range like "A:C"
 	if leftIsColOnly && rightIsColOnly {
-		c1 := colLettersToNumber(left)
-		c2 := colLettersToNumber(right)
+		c1 := ColLettersToNumber(left)
+		c2 := ColLettersToNumber(right)
 		if c1 < 1 || c2 < 1 {
 			return RangeAddr{}, fmt.Errorf("invalid column range")
 		}
@@ -1210,7 +1210,7 @@ func r1c1ToA1(ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return prefix + colNumberToLetters(c1) + strconv.Itoa(r1) + ":" + colNumberToLetters(c2) + strconv.Itoa(r2), nil
+		return prefix + ColNumberToLetters(c1) + strconv.Itoa(r1) + ":" + ColNumberToLetters(c2) + strconv.Itoa(r2), nil
 	}
 
 	// Single cell.
@@ -1218,7 +1218,7 @@ func r1c1ToA1(ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return prefix + colNumberToLetters(c) + strconv.Itoa(r), nil
+	return prefix + ColNumberToLetters(c) + strconv.Itoa(r), nil
 }
 
 func isAllDigits(s string) bool {

@@ -805,6 +805,63 @@ func TestRoundTrip_MultipleTablesOnSheet(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// External workbook references in defined names are stripped
+// ---------------------------------------------------------------------------
+
+func TestRoundTrip_ExternalRefDefinedNamesStripped(t *testing.T) {
+	data := &WorkbookData{
+		Styles: []StyleData{{}},
+		Sheets: []SheetData{
+			{Name: "Sheet1", Rows: []RowData{
+				{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}},
+			}},
+		},
+		DefinedNames: []DefinedName{
+			{Name: "Good", Value: "Sheet1!$A$1", LocalSheetID: -1},
+			{Name: "ExtRef", Value: "'[1]Other Sheet'!$G$5", LocalSheetID: 0},
+			{Name: "AlsoExt", Value: "[2]Sheet2!$A$1", LocalSheetID: -1},
+			{Name: "LocalOK", Value: "Sheet1!$B$2", LocalSheetID: 0},
+		},
+	}
+	got := writeAndRead(t, data)
+
+	// Only the two non-external defined names should survive.
+	if len(got.DefinedNames) != 2 {
+		t.Fatalf("got %d defined names, want 2: %+v", len(got.DefinedNames), got.DefinedNames)
+	}
+	if got.DefinedNames[0].Name != "Good" {
+		t.Errorf("DefinedNames[0].Name = %q, want Good", got.DefinedNames[0].Name)
+	}
+	if got.DefinedNames[1].Name != "LocalOK" {
+		t.Errorf("DefinedNames[1].Name = %q, want LocalOK", got.DefinedNames[1].Name)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// All defined names are external refs → no DefinedNames element at all
+// ---------------------------------------------------------------------------
+
+func TestRoundTrip_AllExternalRefsStripped(t *testing.T) {
+	data := &WorkbookData{
+		Styles: []StyleData{{}},
+		Sheets: []SheetData{
+			{Name: "Sheet1", Rows: []RowData{
+				{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1"}}},
+			}},
+		},
+		DefinedNames: []DefinedName{
+			{Name: "Ext1", Value: "'[1]Sheet'!$A$1", LocalSheetID: 0},
+			{Name: "Ext2", Value: "[2]Sheet2!$B$2", LocalSheetID: -1},
+		},
+	}
+	got := writeAndRead(t, data)
+
+	if len(got.DefinedNames) != 0 {
+		t.Fatalf("got %d defined names, want 0: %+v", len(got.DefinedNames), got.DefinedNames)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helper
 // ---------------------------------------------------------------------------
 

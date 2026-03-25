@@ -843,14 +843,14 @@ func lambdaParamName(n Node) (string, bool) {
 	if !ok || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
 		return "", false
 	}
-	return strings.ToUpper(colNumberToLetters(ref.Col)), true
+	return strings.ToUpper(ColNumberToLetters(ref.Col)), true
 }
 
 func substituteLambdaNames(n Node, subst map[string]Node) Node {
 	switch v := n.(type) {
 	case *CellRef:
 		if v.Row == 0 && v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
-			if repl, ok := subst[strings.ToUpper(colNumberToLetters(v.Col))]; ok {
+			if repl, ok := subst[strings.ToUpper(ColNumberToLetters(v.Col))]; ok {
 				return cloneNode(repl)
 			}
 		}

@@ -167,9 +167,9 @@ func TestColLettersToNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := colLettersToNumber(tt.input)
+			got := ColLettersToNumber(tt.input)
 			if got != tt.want {
-				t.Errorf("colLettersToNumber(%q) = %d, want %d", tt.input, got, tt.want)
+				t.Errorf("ColLettersToNumber(%q) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
 	}

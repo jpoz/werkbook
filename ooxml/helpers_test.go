@@ -253,6 +253,58 @@ func TestOoxmlBoolUnmarshalXMLAttr(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// isExternalRef
+// ---------------------------------------------------------------------------
+
+func TestIsExternalRef(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"[1]Sheet!$A$1", true},
+		{"'[1]Other Sheet'!$G$5", true},
+		{"[2]Sheet2!$B$2", true},
+		{"'[99]Sheet'!$A$1", true},
+		{"Sheet1!$A$1", false},
+		{"Sheet1!$A$1", false},
+		{"", false},
+		{"SUM(A1:A10)", false},
+		// Brackets in the middle should not be flagged.
+		{"Sheet1!$A$1+[ignored]", false},
+		{"INDEX(A1:A10,[1])", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			if got := isExternalRef(tt.value); got != tt.want {
+				t.Errorf("isExternalRef(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// sharedIndex
+// ---------------------------------------------------------------------------
+
+func TestSharedIndex(t *testing.T) {
+	if got := sharedIndex(nil); got != -1 {
+		t.Errorf("sharedIndex(nil) = %d, want -1", got)
+	}
+	if got := sharedIndex(&xlsxF{T: "array"}); got != -1 {
+		t.Errorf("sharedIndex(array) = %d, want -1", got)
+	}
+	if got := sharedIndex(&xlsxF{T: ""}); got != -1 {
+		t.Errorf("sharedIndex(empty type) = %d, want -1", got)
+	}
+	if got := sharedIndex(&xlsxF{T: "shared", Si: 0}); got != 0 {
+		t.Errorf("sharedIndex(shared, si=0) = %d, want 0", got)
+	}
+	if got := sharedIndex(&xlsxF{T: "shared", Si: 5}); got != 5 {
+		t.Errorf("sharedIndex(shared, si=5) = %d, want 5", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // SharedStringTable
 // ---------------------------------------------------------------------------
 

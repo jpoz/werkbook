@@ -478,7 +478,7 @@ func xlpmIdentifierName(raw string) (string, bool) {
 	if err != nil || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
 		return "", false
 	}
-	return strings.ToUpper(colNumberToLetters(ref.Col)), true
+	return strings.ToUpper(ColNumberToLetters(ref.Col)), true
 }
 
 func stripXlpmPrefix(raw string) string {

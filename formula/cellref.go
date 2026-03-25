@@ -75,7 +75,7 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 	if i == colStart {
 		return nil, fmt.Errorf("expected column letters in %q", raw)
 	}
-	ref.Col = colLettersToNumber(s[colStart:i])
+	ref.Col = ColLettersToNumber(s[colStart:i])
 	if ref.Col > 16384 { // XFD = 16384, max column
 		return nil, fmt.Errorf("column out of range in %q", raw)
 	}
@@ -134,8 +134,8 @@ func findDotSheetSeparator(s string) int {
 	return -1
 }
 
-// colLettersToNumber converts column letters (e.g. "A", "AA", "XFD") to a 1-based column number.
-func colLettersToNumber(s string) int {
+// ColLettersToNumber converts column letters (e.g. "A", "AA", "XFD") to a 1-based column number.
+func ColLettersToNumber(s string) int {
 	col := 0
 	for _, c := range strings.ToUpper(s) {
 		col = col*26 + int(c-'A') + 1

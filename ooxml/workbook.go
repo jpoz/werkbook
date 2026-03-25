@@ -220,9 +220,10 @@ type CellData struct {
 	Type           string // "s" (shared string), "b" (bool), "inlineStr", "str", "e", or "" (number)
 	Value          string // raw value (SST index for strings, "0"/"1" for bools, float string for numbers)
 	Formula        string // formula text (empty = no formula)
-	FormulaType    string // OOXML formula type, e.g. "array"
+	FormulaType    string // OOXML formula type, e.g. "array", "shared"
 	FormulaRef     string // OOXML formula ref attribute for array/shared formulas
 	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
 	IsDynamicArray bool   // true if the formula uses dynamic-array spill semantics
+	SharedIndex    int    // shared formula group index (si attribute); -1 if not a shared formula
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }
