@@ -572,7 +572,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 					formulaRef = ""
 					saveValue = Value{}
 				} else {
-					formulaRef = dynamicArrayFormulaRef(ref, cn, rn, c)
+					formulaRef = s.dynamicArrayFormulaRef(ref, cn, rn, c)
 				}
 			}
 			cd := cellToData(ref, saveValue, c.formula, c.isArrayFormula, formulaRef)
@@ -607,7 +607,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 	return sd
 }
 
-func dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell) string {
+func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell) string {
 	if c == nil {
 		return anchorRef
 	}
@@ -615,27 +615,33 @@ func dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell)
 	if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 		return anchorRef
 	}
+	raw := c.rawValue
+	if c.formula != "" && (c.dirty || c.rawCachedGen != s.file.calcGen) {
+		raw = s.evaluateFormulaRaw(c, anchorCol, anchorRow)
+	}
+	if raw.Type == formula.ValueArray && !raw.NoSpill {
+		spillCols := 0
+		for _, row := range raw.Array {
+			if len(row) > spillCols {
+				spillCols = len(row)
+			}
+		}
+		if len(raw.Array) == 0 || spillCols == 0 {
+			return anchorRef
+		}
+		endRef, err := CoordinatesToCellName(anchorCol+spillCols-1, anchorRow+len(raw.Array)-1)
+		if err != nil || endRef == anchorRef {
+			return anchorRef
+		}
+		return anchorRef + ":" + endRef
+	}
+	// Imported workbooks can carry valid dynamic-array metadata even when the
+	// current engine cannot derive a fresh spill result. Preserve that metadata
+	// as a fallback rather than discarding it on save.
 	if c.formulaRef != "" {
 		return c.formulaRef
 	}
-	raw := c.rawValue
-	if raw.Type != formula.ValueArray || raw.NoSpill {
-		return anchorRef
-	}
-	spillCols := 0
-	for _, row := range raw.Array {
-		if len(row) > spillCols {
-			spillCols = len(row)
-		}
-	}
-	if len(raw.Array) == 0 || spillCols == 0 {
-		return anchorRef
-	}
-	endRef, err := CoordinatesToCellName(anchorCol+spillCols-1, anchorRow+len(raw.Array)-1)
-	if err != nil || endRef == anchorRef {
-		return anchorRef
-	}
-	return anchorRef + ":" + endRef
+	return anchorRef
 }
 
 func (s *Sheet) adjustMergedRows(deletedRow int) {

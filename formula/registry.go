@@ -434,7 +434,14 @@ var directRangeArgStartFuncs = map[string]int{
 // required for functions like FILTER whose include argument is commonly a
 // boolean range expression rather than a plain range reference.
 var arrayArgFuncs = map[string]map[int]bool{
-	"FILTER":  {0: true, 1: true},
+	"FILTER": {0: true, 1: true},
+}
+
+// inheritedArrayArgFuncs evaluate the listed argument positions in array
+// context only when the call appears inside an outer array-forcing expression.
+// This preserves element-wise wrappers like IFERROR/IFNA inside SUMPRODUCT
+// without changing their normal legacy scalar implicit-intersection behavior.
+var inheritedArrayArgFuncs = map[string]map[int]bool{
 	"IFERROR": {0: true, 1: true},
 	"IFNA":    {0: true, 1: true},
 }
@@ -495,4 +502,9 @@ func ArgEvalModeForFuncArg(name string, argIndex int) FuncArgEvalMode {
 		return FuncArgEvalDirectRange
 	}
 	return FuncArgEvalDefault
+}
+
+func inheritedArrayEvalForFuncArg(name string, argIndex int) bool {
+	positions, ok := inheritedArrayArgFuncs[strings.ToUpper(name)]
+	return ok && positions[argIndex]
 }

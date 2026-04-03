@@ -719,6 +719,160 @@ func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenSaveRecomputesImportedDynamicArraySpillRefAfterRecalc(t *testing.T) {
+	const (
+		dataSheet    = "Data"
+		spillSheet   = "Spill"
+		spillAnchor  = "B2"
+		originalRef  = "B2:B4"
+		updatedRef   = "B2:B3"
+		userFormula  = `FILTER(Data!B2:B6,Data!A2:A6)`
+		ooxmlFormula = `_xlfn._xlws.FILTER(Data!B2:B6,Data!A2:A6)`
+	)
+
+	fixture := &ooxml.WorkbookData{
+		Styles: []ooxml.StyleData{{}},
+		Sheets: []ooxml.SheetData{
+			{
+				Name: dataSheet,
+				Rows: []ooxml.RowData{
+					{Num: 1, Cells: []ooxml.CellData{
+						{Ref: "A1", Type: "s", Value: "Include"},
+						{Ref: "B1", Type: "s", Value: "Amount"},
+					}},
+					{Num: 2, Cells: []ooxml.CellData{
+						{Ref: "A2", Type: "b", Value: "1"},
+						{Ref: "B2", Value: "10"},
+					}},
+					{Num: 3, Cells: []ooxml.CellData{
+						{Ref: "A3", Type: "b", Value: "1"},
+						{Ref: "B3", Value: "20"},
+					}},
+					{Num: 4, Cells: []ooxml.CellData{
+						{Ref: "A4", Type: "b", Value: "1"},
+						{Ref: "B4", Value: "30"},
+					}},
+					{Num: 5, Cells: []ooxml.CellData{
+						{Ref: "A5", Type: "b", Value: "0"},
+						{Ref: "B5", Value: "40"},
+					}},
+					{Num: 6, Cells: []ooxml.CellData{
+						{Ref: "A6", Type: "b", Value: "0"},
+						{Ref: "B6", Value: "50"},
+					}},
+				},
+			},
+			{
+				Name: spillSheet,
+				Rows: []ooxml.RowData{
+					{Num: 2, Cells: []ooxml.CellData{{
+						Ref:            spillAnchor,
+						Type:           "str",
+						Value:          "10",
+						Formula:        ooxmlFormula,
+						FormulaType:    "array",
+						FormulaRef:     originalRef,
+						IsDynamicArray: true,
+					}}},
+					{Num: 3, Cells: []ooxml.CellData{{Ref: "B3"}}},
+					{Num: 4, Cells: []ooxml.CellData{{Ref: "B4"}}},
+				},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "dynamic-array-source.xlsx")
+	var buf bytes.Buffer
+	if err := ooxml.WriteWorkbook(&buf, fixture); err != nil {
+		t.Fatalf("WriteWorkbook fixture: %v", err)
+	}
+	if err := os.WriteFile(srcPath, buf.Bytes(), 0o600); err != nil {
+		t.Fatalf("WriteFile fixture: %v", err)
+	}
+
+	f, err := werkbook.Open(srcPath)
+	if err != nil {
+		t.Fatalf("Open fixture: %v", err)
+	}
+	if got, err := f.Sheet(spillSheet).GetFormula(spillAnchor); err != nil {
+		t.Fatalf("GetFormula(%s): %v", spillAnchor, err)
+	} else if got != userFormula {
+		t.Fatalf("formula round-trip = %q, want %q", got, userFormula)
+	}
+
+	if err := f.Sheet(dataSheet).SetValue("A4", false); err != nil {
+		t.Fatalf("SetValue(A4): %v", err)
+	}
+
+	if val, err := f.Sheet(spillSheet).GetValue(spillAnchor); err != nil {
+		t.Fatalf("GetValue(%s): %v", spillAnchor, err)
+	} else if val.Type != werkbook.TypeNumber || val.Number != 10 {
+		t.Fatalf("%s value = %#v, want 10", spillAnchor, val)
+	}
+	if val, err := f.Sheet(spillSheet).GetValue("B3"); err != nil {
+		t.Fatalf("GetValue(B3): %v", err)
+	} else if val.Type != werkbook.TypeNumber || val.Number != 20 {
+		t.Fatalf("B3 value = %#v, want 20 after spill shrink", val)
+	}
+	if val, err := f.Sheet(spillSheet).GetValue("B4"); err != nil {
+		t.Fatalf("GetValue(B4): %v", err)
+	} else if val.Type != werkbook.TypeEmpty {
+		t.Fatalf("B4 value = %#v, want empty after spill shrink", val)
+	}
+
+	dstPath := filepath.Join(dir, "dynamic-array-roundtrip.xlsx")
+	if err := f.SaveAs(dstPath); err != nil {
+		t.Fatalf("SaveAs round-trip workbook: %v", err)
+	}
+
+	dstSheetXML := string(readSheetXML(t, dstPath, "xl/worksheets/sheet2.xml"))
+	if strings.Contains(dstSheetXML, `ref="`+originalRef+`"`) {
+		t.Fatalf("saved worksheet still contains stale spill ref %q\nxml: %s", originalRef, dstSheetXML)
+	}
+	if !strings.Contains(dstSheetXML, `ref="`+updatedRef+`"`) {
+		t.Fatalf("saved worksheet missing updated spill ref %q\nxml: %s", updatedRef, dstSheetXML)
+	}
+
+	r, err := os.Open(dstPath)
+	if err != nil {
+		t.Fatalf("Open round-trip xlsx: %v", err)
+	}
+	defer r.Close()
+	info, err := r.Stat()
+	if err != nil {
+		t.Fatalf("Stat round-trip xlsx: %v", err)
+	}
+	data, err := ooxml.ReadWorkbook(r, info.Size())
+	if err != nil {
+		t.Fatalf("ReadWorkbook round-trip: %v", err)
+	}
+
+	foundAnchor := false
+	for _, sd := range data.Sheets {
+		if sd.Name != spillSheet {
+			continue
+		}
+		for _, rd := range sd.Rows {
+			for _, cd := range rd.Cells {
+				if cd.Ref != spillAnchor {
+					continue
+				}
+				foundAnchor = true
+				if !cd.IsDynamicArray {
+					t.Fatalf("expected %s to remain a dynamic array anchor: %#v", spillAnchor, cd)
+				}
+				if cd.FormulaRef != updatedRef {
+					t.Fatalf("FormulaRef = %q, want %q", cd.FormulaRef, updatedRef)
+				}
+			}
+		}
+	}
+	if !foundAnchor {
+		t.Fatalf("%s not found in parsed round-trip workbook data", spillAnchor)
+	}
+}
+
 func TestFormulaAndValueCoexist(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")

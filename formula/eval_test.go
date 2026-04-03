@@ -1634,6 +1634,58 @@ func TestEvalIFNA(t *testing.T) {
 	}
 }
 
+func TestEvalErrorWrappersRespectImplicitIntersectionInScalarContext(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(11),
+			{Col: 2, Row: 1}: NumberVal(22),
+			{Col: 1, Row: 2}: NumberVal(202),
+			{Col: 1, Row: 3}: NumberVal(303),
+		},
+	}
+
+	tests := []struct {
+		name    string
+		formula string
+		ctx     *EvalContext
+		want    Value
+	}{
+		{
+			name:    "iferror_full_row",
+			formula: `IFERROR(1/0,1:1)`,
+			ctx: &EvalContext{
+				CurrentCol:     2,
+				CurrentRow:     2,
+				CurrentSheet:   "Sheet1",
+				IsArrayFormula: false,
+			},
+			want: NumberVal(22),
+		},
+		{
+			name:    "ifna_full_row",
+			formula: `IFNA(#N/A,1:1)`,
+			ctx: &EvalContext{
+				CurrentCol:     2,
+				CurrentRow:     2,
+				CurrentSheet:   "Sheet1",
+				IsArrayFormula: false,
+			},
+			want: NumberVal(22),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, tt.ctx)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 3D sheet references — parse, compile, and evaluate correctly
 // ---------------------------------------------------------------------------

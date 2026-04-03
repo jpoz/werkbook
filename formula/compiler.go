@@ -436,6 +436,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
 	}
 
+	inheritedArrayCtx := inArrayCtx
 	// Array-forcing behavior should apply to the direct SUMPRODUCT/INDEX/etc.
 	// argument expressions, but it must not leak into nested non-array
 	// function arguments. Suspending the inherited array context here matches
@@ -522,6 +523,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		c.emit(OpEnterArrayCtx, 0)
 	}
 	for i, arg := range n.Args {
+		forceInheritedArrayArg := suspendInheritedArrayCtx && inheritedArrayCtx && inheritedArrayEvalForFuncArg(name, i)
 		if !arrayCtx {
 			switch ArgEvalModeForFuncArg(name, i) {
 			case FuncArgEvalArray:
@@ -540,6 +542,14 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 					c.emit(OpLeaveArrayCtx, 0)
 					continue
 				}
+			}
+			if forceInheritedArrayArg {
+				c.emit(OpEnterArrayCtx, 0)
+				if err := c.compileNodeCtx(arg, true); err != nil {
+					return err
+				}
+				c.emit(OpLeaveArrayCtx, 0)
+				continue
 			}
 		}
 		if err := c.compileNodeCtx(arg, inArrayCtx || arrayCtx); err != nil {
