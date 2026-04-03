@@ -355,14 +355,12 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 					if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 						continue
 					}
-					fc, fr, tc, tr, err := RangeToCoordinates(c.formulaRef)
+					_, _, tc, tr, err := RangeToCoordinates(c.formulaRef)
 					if err == nil {
 						ranges = append(ranges, spillRange{
 							anchorCol: col, anchorRow: r.num,
 							toCol: tc, toRow: tr,
 						})
-						_ = fc
-						_ = fr
 					}
 				}
 			}

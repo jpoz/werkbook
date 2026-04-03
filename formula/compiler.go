@@ -445,6 +445,9 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name)
 	if suspendInheritedArrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
+		// The deferred restore intentionally covers the early-return paths
+		// below (AREAS, COLUMN/ROW, ISREF, OFFSET) — if we suspended the
+		// inherited array context we must always re-enter it before returning.
 		defer c.emit(OpEnterArrayCtx, 0)
 		inArrayCtx = false
 	}

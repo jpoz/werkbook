@@ -576,6 +576,68 @@ func TestSpillBlockedByOccupiedCell(t *testing.T) {
 	}
 }
 
+// TestSpillConflict2DInteriorBlocker verifies #SPILL! when a cell in the
+// interior of a 2D spill rectangle (SEQUENCE(3,3)) is occupied.
+func TestSpillConflict2DInteriorBlocker(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	// SEQUENCE(3,3) anchored at A1 should fill A1:C3 with 1..9.
+	if err := s.SetFormula("A1", "SEQUENCE(3,3)"); err != nil {
+		t.Fatal(err)
+	}
+	// Place a blocker at B2, which is in the interior of the 3×3 rectangle.
+	if err := s.SetValue("B2", "blocker"); err != nil {
+		t.Fatal(err)
+	}
+	f.Recalculate()
+
+	// A1 (anchor) should show #SPILL!.
+	v, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Type != werkbook.TypeError || v.String != "#SPILL!" {
+		t.Fatalf("A1 = %#v, want #SPILL! error", v)
+	}
+
+	// Other cells in the rectangle (except the blocker) should be empty.
+	for _, cell := range []string{"A2", "A3", "C1", "C2", "C3"} {
+		cv, _ := s.GetValue(cell)
+		if cv.Type != werkbook.TypeEmpty {
+			t.Fatalf("%s = %#v, want empty (spill blocked)", cell, cv)
+		}
+	}
+
+	// B2 retains the user value.
+	bv, _ := s.GetValue("B2")
+	if bv.Type != werkbook.TypeString || bv.String != "blocker" {
+		t.Fatalf("B2 = %#v, want \"blocker\"", bv)
+	}
+
+	// Remove blocker — spill should succeed.
+	if err := s.SetValue("B2", nil); err != nil {
+		t.Fatal(err)
+	}
+	f.Recalculate()
+
+	// Verify the full 3×3 grid: SEQUENCE(3,3) produces 1..9 row-major.
+	expected := []struct {
+		cell string
+		num  float64
+	}{
+		{"A1", 1}, {"B1", 2}, {"C1", 3},
+		{"A2", 4}, {"B2", 5}, {"C2", 6},
+		{"A3", 7}, {"B3", 8}, {"C3", 9},
+	}
+	for _, e := range expected {
+		cv, _ := s.GetValue(e.cell)
+		if cv.Type != werkbook.TypeNumber || cv.Number != e.num {
+			t.Fatalf("%s = %#v, want %g", e.cell, cv, e.num)
+		}
+	}
+}
+
 // TestCrossSheetSUMOnSpillRange verifies that SUM/COUNT on another sheet's
 // spill range work correctly through data changes.
 func TestCrossSheetSUMOnSpillRange(t *testing.T) {
