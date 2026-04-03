@@ -128,9 +128,12 @@ func cmdCheck(args []string, globals globalFlags) int {
 				if err != nil {
 					continue
 				}
+				// Use GetValue to resolve dirty cells whose cached values
+				// are stale due to uncached dynamic array spill data.
+				v, _ := s.GetValue(ref)
 				cached[cellID{sheet: name, ref: ref}] = cachedEntry{
 					formula: formula,
-					value:   cell.Value(),
+					value:   v,
 				}
 			}
 		}

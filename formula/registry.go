@@ -442,7 +442,6 @@ var arrayArgFuncs = map[string]map[int]bool{
 // This preserves element-wise wrappers like IFERROR/IFNA inside SUMPRODUCT
 // without changing their normal legacy scalar implicit-intersection behavior.
 var inheritedArrayArgFuncs = map[string]map[int]bool{
-	"IF":      {0: true, 1: true, 2: true},
 	"IFERROR": {0: true, 1: true},
 	"IFNA":    {0: true, 1: true},
 }
