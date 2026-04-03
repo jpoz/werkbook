@@ -1991,7 +1991,7 @@ func TestEvalSUMPRODUCTWithLiftedTextAndDateFunctions(t *testing.T) {
 	}
 }
 
-func TestEvalSUMPRODUCTInheritsArrayContextIntoNestedIFArgs(t *testing.T) {
+func TestEvalSUMPRODUCTDoesNotLeakArrayContextIntoNestedIFArgs(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
 			{Col: 1, Row: 1}: StringVal("completed"),
@@ -2019,10 +2019,8 @@ func TestEvalSUMPRODUCTInheritsArrayContextIntoNestedIFArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	// With IF inheriting array context from SUMPRODUCT, the formula evaluates
-	// element-wise: row1=5, row2=0, row3=10 → SUMPRODUCT = 15.
-	if got.Type != ValueNumber || got.Num != 15 {
-		t.Fatalf("nested IF SUMPRODUCT = %v (%g), want 15", got.Type, got.Num)
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Fatalf("nested IF SUMPRODUCT = %v (%g), want 0", got.Type, got.Num)
 	}
 }
 

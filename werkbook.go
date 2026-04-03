@@ -327,8 +327,14 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 				c.dynamicArraySpill = cd.IsDynamicArray && (cd.FormulaRef != "" || cd.HasCMMetadata)
 				c.formulaRef = cd.FormulaRef
 				// Trust the file's cached value for formula cells that have one.
+				// Exception: dynamic array formulas without a cached spill range
+				// (FormulaRef) must be re-evaluated so their spill results are
+				// available to other formulas (e.g. SUM on the spill range).
 				if cd.Formula != "" && v.Type != TypeEmpty {
-					c.cachedGen = f.calcGen
+					spillMissing := c.dynamicArraySpill && cd.FormulaRef == ""
+					if !spillMissing {
+						c.cachedGen = f.calcGen
+					}
 				}
 				// Assign style if non-default.
 				if cd.StyleIdx > 0 && cd.StyleIdx < len(parsedStyles) {
@@ -426,6 +432,27 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 	if err := f.registerAllFormulas(true); err != nil {
 		return nil, err
 	}
+
+	// Resolve dynamic array formulas that have no cached spill data in the
+	// file, then invalidate dependent formulas so they pick up the new spill
+	// results instead of using stale cached values.
+	for _, s := range f.sheets {
+		for _, r := range s.rows {
+			for col, c := range r.cells {
+				if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
+					raw := s.evaluateFormulaRaw(c, col, r.num)
+					if raw.Type == formula.ValueArray && !raw.NoSpill {
+						for rowOff, arrRow := range raw.Array {
+							for colOff := range arrRow {
+								f.invalidateDependents(s.name, col+colOff, r.num+rowOff)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return f, nil
 }
 
@@ -589,6 +616,23 @@ func (f *File) DirectDependents(sheet, cell string) ([]formula.QualifiedCell, er
 	}
 	qc := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
 	return f.deps.DirectDependents(qc), nil
+}
+
+// HasUncachedDynamicArrayFormulas reports whether the workbook contains
+// dynamic array formulas (e.g. FILTER, SORT) whose spill results were not
+// cached in the file. When true, formulas that reference the spill range
+// (such as SUM on a FILTER output sheet) may have stale cached values.
+func (f *File) HasUncachedDynamicArrayFormulas() bool {
+	for _, s := range f.sheets {
+		for _, r := range s.rows {
+			for _, c := range r.cells {
+				if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Recalculate evaluates all dirty formula cells. Cells are evaluated lazily
