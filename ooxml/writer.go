@@ -381,6 +381,12 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 					c.FE.Ref = cd.FormulaRef
 					c.FE.Aca = 1
 					c.FE.Ca = 1
+				} else if cd.IsDynamicArray && cd.FormulaRef == "" {
+					// Dynamic array without a spill range (e.g. #SPILL!).
+					// Write cm=1 so the formula is recognized as dynamic on
+					// reimport, but omit t="array" and ref.
+					c.CM = 1
+					c.FE.Ca = 1
 				} else if !cd.IsDynamicArray {
 					c.FE.T = cd.FormulaType
 					c.FE.Ref = cd.FormulaRef
@@ -462,7 +468,7 @@ func workbookNeedsDynamicArrayMetadata(data *WorkbookData) bool {
 	for _, sheet := range data.Sheets {
 		for _, row := range sheet.Rows {
 			for _, cell := range row.Cells {
-				if cell.IsDynamicArray && cell.FormulaRef != "" {
+				if cell.IsDynamicArray {
 					return true
 				}
 			}

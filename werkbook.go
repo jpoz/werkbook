@@ -324,7 +324,7 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 				c.value = v
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
 				c.isArrayFormula = cd.IsArrayFormula
-				c.dynamicArraySpill = cd.IsDynamicArray && cd.FormulaRef != ""
+				c.dynamicArraySpill = cd.IsDynamicArray && (cd.FormulaRef != "" || cd.HasCMMetadata)
 				c.formulaRef = cd.FormulaRef
 				// Trust the file's cached value for formula cells that have one.
 				if cd.Formula != "" && v.Type != TypeEmpty {
@@ -337,6 +337,59 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 			}
 		}
 	}
+	// Clear cached spill shadow cells: OOXML stores cached values in cells
+	// within a dynamic array formula's spill range. These stale values must
+	// be cleared so they don't block live spill results or inflate aggregates.
+	for _, s := range f.sheets {
+		type spillRange struct {
+			anchorCol, anchorRow int
+			toCol, toRow         int
+		}
+		var ranges []spillRange
+		for _, r := range s.rows {
+			for col, c := range r.cells {
+				if c.dynamicArraySpill && c.formulaRef != "" {
+					// If the anchor's cached value is #SPILL!, the cells in
+					// the FormulaRef are blockers (user data), not cached
+					// spill results. Don't clear them.
+					if c.value.Type == TypeError && c.value.String == "#SPILL!" {
+						continue
+					}
+					fc, fr, tc, tr, err := RangeToCoordinates(c.formulaRef)
+					if err == nil {
+						ranges = append(ranges, spillRange{
+							anchorCol: col, anchorRow: r.num,
+							toCol: tc, toRow: tr,
+						})
+						_ = fc
+						_ = fr
+					}
+				}
+			}
+		}
+		for _, sr := range ranges {
+			for row := sr.anchorRow; row <= sr.toRow; row++ {
+				r, ok := s.rows[row]
+				if !ok {
+					continue
+				}
+				for col := sr.anchorCol; col <= sr.toCol; col++ {
+					if row == sr.anchorRow && col == sr.anchorCol {
+						continue // skip the anchor cell itself
+					}
+					c, ok := r.cells[col]
+					if !ok {
+						continue
+					}
+					// Only clear cells that have no formula of their own.
+					if c.formula == "" {
+						c.value = Value{}
+					}
+				}
+			}
+		}
+	}
+
 	// Build table info from parsed table definitions.
 	for _, td := range data.Tables {
 		col1, row1, col2, row2, err := RangeToCoordinates(td.Ref)

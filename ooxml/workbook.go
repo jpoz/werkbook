@@ -224,6 +224,7 @@ type CellData struct {
 	FormulaRef     string // OOXML formula ref attribute for array/shared formulas
 	IsArrayFormula bool   // true if the formula is a CSE (Ctrl+Shift+Enter) array formula
 	IsDynamicArray bool   // true if the formula uses dynamic-array spill semantics
+	HasCMMetadata  bool   // true if cell had cm!=0 in OOXML (XLDAPR dynamic-array metadata index)
 	SharedIndex    int    // shared formula group index (si attribute); -1 if not a shared formula
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
 }

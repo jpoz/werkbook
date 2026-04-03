@@ -77,7 +77,7 @@ type xlsxC struct {
 	R  string  `xml:"r,attr"`
 	S  int     `xml:"s,attr,omitempty"`
 	T  string  `xml:"t,attr,omitempty"`
-	CM int     `xml:"cm,attr,omitempty"`
+	CM int     `xml:"cm,attr,omitempty"` // cell metadata index; in practice, non-zero means XLDAPR dynamic array
 	FE *xlsxF  `xml:"f,omitempty"` // formula element with attributes
 	V  string  `xml:"v,omitempty"`
 	IS *xlsxIS `xml:"is,omitempty"`

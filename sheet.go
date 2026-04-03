@@ -330,6 +330,10 @@ func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
 			if anchorCol > col || cell.formula == "" || cell.isArrayFormula || !cell.dynamicArraySpill {
 				continue
 			}
+			// If the anchor cell shows #SPILL!, its spill is blocked.
+			if cell.value.Type == TypeError && cell.value.String == "#SPILL!" {
+				continue
+			}
 			raw := cell.rawValue
 			if cell.dirty || cell.rawCachedGen != s.file.calcGen {
 				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
@@ -352,6 +356,31 @@ func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
 		}
 	}
 	return formula.Value{}, false
+}
+
+// hasSpillConflict checks whether any cell in the proposed spill range
+// (excluding the anchor at anchorCol,anchorRow) is occupied by a non-empty
+// value or formula. Returns true if at least one cell would block the spill.
+func (s *Sheet) hasSpillConflict(anchorCol, anchorRow int, arr [][]formula.Value) bool {
+	for rowOff, arrRow := range arr {
+		for colOff := range arrRow {
+			if rowOff == 0 && colOff == 0 {
+				continue // skip anchor
+			}
+			r, ok := s.rows[anchorRow+rowOff]
+			if !ok {
+				continue
+			}
+			c, ok := r.cells[anchorCol+colOff]
+			if !ok {
+				continue
+			}
+			if cellOccupiesSpillSlot(c) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cellOccupiesSpillSlot reports whether a physical cell should block
@@ -535,10 +564,18 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
 			formulaRef := c.formulaRef
+			saveValue := c.value
 			if c.dynamicArraySpill && !c.isArrayFormula {
-				formulaRef = dynamicArrayFormulaRef(ref, cn, rn, c)
+				if c.value.Type == TypeError && c.value.String == "#SPILL!" {
+					// #SPILL! means the spill failed. Write as plain formula
+					// with no cached value — Excel re-detects and recomputes.
+					formulaRef = ""
+					saveValue = Value{}
+				} else {
+					formulaRef = dynamicArrayFormulaRef(ref, cn, rn, c)
+				}
 			}
-			cd := cellToData(ref, c.value, c.formula, c.isArrayFormula, formulaRef)
+			cd := cellToData(ref, saveValue, c.formula, c.isArrayFormula, formulaRef)
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
@@ -572,6 +609,10 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 
 func dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell) string {
 	if c == nil {
+		return anchorRef
+	}
+	// #SPILL! means the spill failed — don't claim a spill range.
+	if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 		return anchorRef
 	}
 	if c.formulaRef != "" {
@@ -711,6 +752,15 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	}
 	c.rawValue = result
 	c.rawCachedGen = f.calcGen
+
+	// Dynamic array spill conflict: if the formula produces an array and
+	// would spill, check that every target cell is either empty or an
+	// empty placeholder. If any cell is occupied, the anchor gets #SPILL!.
+	if c.dynamicArraySpill && result.Type == formula.ValueArray && !result.NoSpill {
+		if s.hasSpillConflict(col, row, result.Array) {
+			return Value{Type: TypeError, String: "#SPILL!"}
+		}
+	}
 
 	return formulaValueToValue(result, c.isArrayFormula)
 }
@@ -997,6 +1047,10 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 			if cell.formula == "" || cell.isArrayFormula || !cell.dynamicArraySpill {
 				continue
 			}
+			// Skip anchors that have a #SPILL! error — their spill is blocked.
+			if cell.value.Type == TypeError && cell.value.String == "#SPILL!" {
+				continue
+			}
 			raw := cell.rawValue
 			if cell.dirty || cell.rawCachedGen != fr.file.calcGen {
 				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
@@ -1212,10 +1266,12 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 		}
 		cd.IsArrayFormula = true
 	}
-	if !isArrayFormula && formulaRef != "" && formula.IsDynamicArrayFormula(f) {
-		cd.FormulaType = "array"
-		cd.FormulaRef = formulaRef
+	if !isArrayFormula && formula.IsDynamicArrayFormula(f) {
 		cd.IsDynamicArray = true
+		if formulaRef != "" {
+			cd.FormulaType = "array"
+			cd.FormulaRef = formulaRef
+		}
 	}
 
 	switch v.Type {
@@ -1253,7 +1309,7 @@ func cellToData(ref string, v Value, f string, isArrayFormula bool, formulaRef s
 
 func isLegacyFormulaError(err string) bool {
 	switch err {
-	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!":
+	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!", "#SPILL!":
 		return true
 	default:
 		return false

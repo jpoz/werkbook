@@ -186,6 +186,16 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		isDynamicArray = true
 		isArrayFormula = false
 	}
+	// The cm attribute is a cell-metadata index (ECMA-376 §18.3.1.4).
+	// In practice, the only known use of cm in modern Excel is to point
+	// at XLDAPR (Dynamic Array PRoperties) metadata in metadata.xml,
+	// so cm!=0 reliably identifies a dynamic-array formula — even when
+	// t="array" and ref are absent (e.g. a #SPILL! cell saved without
+	// full array metadata).
+	if xc.CM != 0 && xc.FE != nil {
+		isDynamicArray = true
+		isArrayFormula = false
+	}
 	cd := CellData{
 		Ref:            xc.R,
 		Formula:        xc.F(),
@@ -193,6 +203,7 @@ func parseCellData(xc xlsxC, sst []string) CellData {
 		FormulaRef:     formulaRef(xc.FE),
 		IsArrayFormula: isArrayFormula,
 		IsDynamicArray: isDynamicArray,
+		HasCMMetadata:  xc.CM != 0,
 		SharedIndex:    sharedIndex(xc.FE),
 		StyleIdx:       xc.S,
 	}
