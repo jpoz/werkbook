@@ -7809,23 +7809,23 @@ func TestSYD_SmallAsset(t *testing.T) {
 }
 
 func TestSYD_FractionalLifeTruncated(t *testing.T) {
-	// SYD(10000, 1000, 5.9, 1) — life truncated to 5
-	// = 9000 * 5 / 15 = 3000
+	// SYD(10000, 1000, 5.9, 1) - fractional life used in calculation
+	// = 9000 * (5.9-1+1) / (5.9*6.9/2) = 9000 * 5.9 / 20.355 = 2608.695652...
 	v, err := fnSYD(numArgs(10000, 1000, 5.9, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "SYD fractional life", v, 3000)
+	assertClose(t, "SYD fractional life", v, 2608.695652173913)
 }
 
 func TestSYD_FractionalPerTruncated(t *testing.T) {
-	// SYD(10000, 1000, 5, 2.7) — per truncated to 2
-	// = 9000 * 4 / 15 = 2400
+	// SYD(10000, 1000, 5, 2.7) - fractional per used in calculation
+	// = 9000 * (5-2.7+1) / (5*6/2) = 9000 * 3.3 / 15 = 1980
 	v, err := fnSYD(numArgs(10000, 1000, 5, 2.7))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertClose(t, "SYD fractional per", v, 2400)
+	assertClose(t, "SYD fractional per", v, 1980)
 }
 
 func TestSYD_NegativeDepreciableAmount(t *testing.T) {

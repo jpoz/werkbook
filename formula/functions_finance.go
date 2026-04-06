@@ -1343,7 +1343,7 @@ func fnRri(args []Value) (Value, error) {
 		return ErrorVal(ErrValNUM), nil
 	}
 	if pv == 0 {
-		return ErrorVal(ErrValDIV0), nil
+		return ErrorVal(ErrValNUM), nil
 	}
 	ratio := fv / pv
 	result := math.Pow(ratio, 1.0/nper)
@@ -1376,11 +1376,10 @@ func fnSYD(args []Value) (Value, error) {
 		return *e, nil
 	}
 
-	// Truncate life and per to integers.
-	life = math.Trunc(life)
-	per = math.Trunc(per)
+	lifeInt := math.Trunc(life)
+	perInt := math.Trunc(per)
 
-	if life <= 0 || per < 1 || per > life {
+	if lifeInt <= 0 || perInt < 1 || perInt > lifeInt {
 		return ErrorVal(ErrValNUM), nil
 	}
 

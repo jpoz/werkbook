@@ -613,12 +613,17 @@ func fnBin2Oct(args []Value) (Value, error) {
 }
 
 // formatComplexNum formats a float64 for use in COMPLEX output.
-// Integers display without decimals (e.g. 3, not 3.0).
+// Values are rounded to 15 significant digits to match Excel's display
+// precision. Integers display without decimals (e.g. 3, not 3.0).
+// Scientific notation uses uppercase E to match Excel (e.g. 1.5E-16).
 func formatComplexNum(f float64) string {
 	if f == math.Trunc(f) && !math.IsInf(f, 0) && !math.IsNaN(f) {
 		return strconv.FormatFloat(f, 'f', 0, 64)
 	}
-	return strconv.FormatFloat(f, 'f', -1, 64)
+	s := strconv.FormatFloat(f, 'g', 15, 64)
+	s = strings.Replace(s, "e+", "E+", 1)
+	s = strings.Replace(s, "e-", "E-", 1)
+	return s
 }
 
 // fnComplex implements the COMPLEX function.
@@ -2037,6 +2042,9 @@ func parseComplexWithSuffix(s string) (real, imag float64, suffix string, fail b
 
 // formatComplex formats a complex number as a formatted string
 // using the same formatting rules as the COMPLEX function.
+// Both components are rounded to 15 significant digits (matching Excel's
+// display precision). Excel preserves tiny floating-point artifacts
+// like sin(pi) = 1.22e-16 rather than suppressing them.
 func formatComplex(real, imag float64, suffix string) string {
 	// Both zero: just "0".
 	if real == 0 && imag == 0 {

@@ -53,7 +53,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | CEILING | Rounds a number up to the nearest multiple of a significance. | Math & Trig | 51 |
 | CEILING.MATH | Rounds a number up using Excel's CEILING.MATH rules. | Math & Trig | 37 |
 | CEILING.PRECISE | Rounds a number up to the nearest significance, ignoring the sign of the significance. | Math & Trig | 37 |
-| CHAR | Returns the character for a numeric code. | Text | 41 |
+| CHAR | Returns the character for a numeric code. | Text | 56 |
 | CHISQ.DIST | Returns the chi-square distribution. | Statistical | 39 |
 | CHISQ.DIST.RT | Returns the right-tailed chi-square probability. | Statistical | 29 |
 | CHISQ.INV | Returns the inverse of the chi-square cumulative distribution. | Statistical | 36 |
@@ -400,7 +400,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | TBILLEQ | Returns the bond-equivalent yield for a Treasury bill. | Financial | 34 |
 | TBILLPRICE | Returns the price per 100 face value for a Treasury bill. | Financial | 36 |
 | TBILLYIELD | Returns the yield for a Treasury bill. | Financial | 35 |
-| TEXT | Formats a value as text using a number format pattern. | Text | 127 |
+| TEXT | Formats a value as text using a number format pattern. | Text | 134 |
 | TEXTAFTER | Returns the text that appears after a delimiter. | Text | 34 |
 | TEXTBEFORE | Returns the text that appears before a delimiter. | Text | 34 |
 | TEXTJOIN | Joins text values with a delimiter. | Text | 66 |

@@ -67,6 +67,8 @@ func TestTEXTFormat(t *testing.T) {
 		{`TEXT(12.344,"0.00")`, "12.34"},
 		{`TEXT(12.344,"0.0")`, "12.3"},
 		{`TEXT(12.3,"###.##")`, "12.3"},
+		// Currency symbols (multi-byte UTF-8 characters)
+		{"TEXT(12.3,\"\u00a3000.00\")", "\u00a3012.30"}, // £000.00
 	}
 
 	for _, tt := range tests {
@@ -79,6 +81,32 @@ func TestTEXTFormat(t *testing.T) {
 		if got.Type != ValueString || got.Str != tt.want {
 			t.Errorf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Currency symbols in number formats (multi-byte UTF-8)
+// ---------------------------------------------------------------------------
+
+func TestFormatNumberCurrencySymbols(t *testing.T) {
+	tests := []struct {
+		name   string
+		value  float64
+		format string
+		want   string
+	}{
+		{"pound_prefix", 12.3, "\u00a3000.00", "\u00a3012.30"},
+		{"yen_with_suffix", 12.3, "\u00a5#.00\" after\"", "\u00a512.30 after"},
+		{"yen_with_prefix", 12.3, "\"before \"\u00a5#.00", "before \u00a512.30"},
+		{"euro_sign", 12.3, "\u20ac#.00", "\u20ac12.30"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatNumber(tt.value, tt.format, false)
+			if got != tt.want {
+				t.Errorf("formatNumber(%v, %q) = %q, want %q", tt.value, tt.format, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -518,6 +546,19 @@ func TestTEXTFraction(t *testing.T) {
 		{name: "frac_zero_pad_val1", formula: `TEXT(1, "|#\:? ?0#/000")`, want: "|:1  00/001"},
 		// Denominator left-justified (right-padded) with ?? placeholders
 		{name: "frac_denom_left_align", formula: `TEXT(1/3, "# ??/??")`, want: "  1/3 "},
+		// Whole-part placeholder type controls middle literal behavior when wholePart=0
+		// # whole: suppress digit AND suppress middle literals entirely
+		{name: "frac_hash_whole_middle_suppress", formula: `TEXT(0.75, "|#\:#=/=?|")`, want: "|3=/=4|"},
+		// ? whole: space-pad digit AND replace each middle literal char with a space
+		{name: "frac_qmark_whole_middle_pad", formula: `TEXT(0.75, "|?\:#=/=#|")`, want: "|  3=/=4|"},
+		// 0 whole: show 0 and show middle literals as-is
+		{name: "frac_zero_whole_middle_show", formula: `TEXT(0.75, "|0\:#=/=#|")`, want: "|0:3=/=4|"},
+		// ? whole with zero fraction: whole shows 0 via forceZero, fraction area all spaces
+		{name: "frac_qmark_whole_zero_frac", formula: `TEXT(0, "|?\:#=/=#|")`, want: "|0      |"},
+		// # whole with zero fraction and numerator 0 placeholder
+		{name: "frac_hash_whole_zero_num0", formula: `TEXT(0, "|#\:0=/=#|")`, want: "|0=/=1|"},
+		// ? whole with integer value (zero fraction = spaces)
+		{name: "frac_qmark_whole_int1", formula: `TEXT(1, "|?\:#=/=#|")`, want: "|1      |"},
 	}
 
 	for _, tt := range tests {
@@ -578,7 +619,7 @@ func TestTEXTLiterals(t *testing.T) {
 		{name: "general_large_1.12345e11", formula: `TEXT(112345000000, "General")`, want: "1.12345E+11"},
 		{name: "general_large_1e11", formula: `TEXT(100000000000, "General")`, want: "1E+11"},
 		{name: "general_small_1.123e-10", formula: `TEXT(1.123E-10, "General")`, want: "1.123E-10"},
-		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "1E-5"},
+		{name: "general_small_1e-5", formula: `TEXT(0.00001, "General")`, want: "0.00001"},
 		{name: "general_not_sci_1e10", formula: `TEXT(10000000000, "General")`, want: "10000000000"},
 		{name: "general_negative_large", formula: `TEXT(-110000000000, "General")`, want: "-1.1E+11"},
 		{name: "bool_true_numeric_fmt", formula: `TEXT(TRUE, "0")`, want: "TRUE"},
@@ -2700,7 +2741,7 @@ func TestT(t *testing.T) {
 	})
 }
 
-func TestCODE_Windows1252(t *testing.T) {
+func TestCODE_MacRoman(t *testing.T) {
 	resolver := &mockResolver{}
 
 	tests := []struct {
@@ -2708,25 +2749,23 @@ func TestCODE_Windows1252(t *testing.T) {
 		formula string
 		want    float64
 	}{
-		// ASCII characters — same in Unicode and Windows-1252
+		// ASCII characters (same in Mac Roman and ASCII)
 		{"ASCII A", `CODE("A")`, 65},
 		{"ASCII underscore", `CODE("_")`, 95},
 		{"ASCII space", `CODE(" ")`, 32},
 
-		// Windows-1252 range 0x80–0x9F — these Unicode code points
-		// must map back to their Windows-1252 byte values.
-		{"Euro sign U+20AC -> 0x80", `CODE("€")`, 0x80},
-		{"Left single quote U+2018 -> 0x91", "CODE(\"\u2018\")", 0x91},
-		{"Em dash U+2014 -> 0x97", `CODE("—")`, 0x97},
-		{"Trademark U+2122 -> 0x99", `CODE("™")`, 0x99},
+		// Mac OS Roman mappings: Unicode code points that map back
+		// to Mac Roman byte values.
+		{"A-diaeresis U+00C4 -> 0x80", `CODE("Ä")`, 0x80},
+		{"Euro sign U+20AC -> 0xDB", `CODE("€")`, 0xDB},
+		{"Left single quote U+2018 -> 0xD4", "CODE(\"\u2018\")", 0xD4},
+		{"Trademark U+2122 -> 0xAA", `CODE("™")`, 0xAA},
+		{"Right guillemet U+00BB -> 0xC8", `CODE("»")`, 0xC8},
+		{"Ogonek U+02DB -> 0xFE", "CODE(\"\u02DB\")", 0xFE},
+		{"Caron U+02C7 -> 0xFF", "CODE(\"\u02C7\")", 0xFF},
 
-		// Latin-1 supplement (0xA0–0xFF) — same in Unicode and Windows-1252
-		{"Latin A-grave U+00C0 -> 0xC0", `CODE("À")`, 0xC0},
-		{"Section sign U+00A7 -> 0xA7", `CODE("§")`, 0xA7},
-
-		// Characters outside Windows-1252 → replacement '_' = 95
+		// Characters outside Mac Roman -> replacement '_' = 95
 		{"CJK char -> replacement", `CODE("日")`, 95},
-		{"Greek alpha -> replacement", `CODE("α")`, 95},
 	}
 
 	for _, tt := range tests {
@@ -2862,7 +2901,7 @@ func TestUNICHAR(t *testing.T) {
 	}
 }
 
-func TestCHAR_Windows1252(t *testing.T) {
+func TestCHAR_MacRoman(t *testing.T) {
 	resolver := &mockResolver{}
 
 	strTests := []struct {
@@ -2870,19 +2909,42 @@ func TestCHAR_Windows1252(t *testing.T) {
 		formula string
 		want    string
 	}{
-		// ASCII range — same as before
+		// ASCII range (same in Mac Roman and ASCII)
 		{"CHAR(65)", `CHAR(65)`, "A"},
 		{"CHAR(95)", `CHAR(95)`, "_"},
 
-		// Windows-1252 range 0x80–0x9F — should produce the correct
-		// Unicode character, not the raw byte value.
-		{"CHAR(128) = Euro", `CHAR(128)`, "€"},
-		{"CHAR(151) = Em dash", `CHAR(151)`, "—"},
-		{"CHAR(153) = Trademark", `CHAR(153)`, "™"},
+		// Mac OS Roman 0x80-0x9F range
+		{"CHAR(128) = A-diaeresis", `CHAR(128)`, "\u00C4"}, // Ä
+		{"CHAR(129) = A-ring", `CHAR(129)`, "\u00C5"},       // Å
+		{"CHAR(130) = C-cedilla", `CHAR(130)`, "\u00C7"},    // Ç
+		{"CHAR(131) = E-acute", `CHAR(131)`, "\u00C9"},      // É
+		{"CHAR(135) = a-acute", `CHAR(135)`, "\u00E1"},      // á
 
-		// Latin-1 supplement — same in both encodings
-		{"CHAR(192) = A-grave", `CHAR(192)`, "À"},
-		{"CHAR(167) = Section", `CHAR(167)`, "§"},
+		// Mac OS Roman 0xA0-0xBF range
+		{"CHAR(160) = dagger", `CHAR(160)`, "\u2020"},       // †
+		{"CHAR(161) = degree", `CHAR(161)`, "\u00B0"},       // °
+		{"CHAR(162) = cent", `CHAR(162)`, "\u00A2"},         // ¢
+		{"CHAR(164) = section", `CHAR(164)`, "\u00A7"},      // §
+		{"CHAR(169) = copyright", `CHAR(169)`, "\u00A9"},    // ©
+		{"CHAR(170) = trademark", `CHAR(170)`, "\u2122"},    // ™
+		{"CHAR(176) = infinity", `CHAR(176)`, "\u221E"},     // ∞
+
+		// Mac OS Roman 0xC0-0xDF range
+		{"CHAR(192) = inv_question", `CHAR(192)`, "\u00BF"}, // ¿
+		{"CHAR(199) = left_guillemet", `CHAR(199)`, "\u00AB"}, // «
+		{"CHAR(200) = right_guillemet", `CHAR(200)`, "\u00BB"}, // »
+		{"CHAR(201) = ellipsis", `CHAR(201)`, "\u2026"},     // …
+		{"CHAR(210) = left_double_quote", `CHAR(210)`, "\u201C"}, // "
+		{"CHAR(211) = right_double_quote", `CHAR(211)`, "\u201D"}, // "
+		{"CHAR(212) = left_single_quote", `CHAR(212)`, "\u2018"}, // '
+		{"CHAR(213) = right_single_quote", `CHAR(213)`, "\u2019"}, // '
+		{"CHAR(216) = y-diaeresis", `CHAR(216)`, "\u00FF"},  // ÿ
+
+		// Mac OS Roman 0xE0-0xFF range
+		{"CHAR(219) = euro", `CHAR(219)`, "\u20AC"},         // €
+		{"CHAR(247) = em_dash", `CHAR(208)`, "\u2013"},      // en dash at 0xD0
+		{"CHAR(254) = ogonek", `CHAR(254)`, "\u02DB"},       // ˛
+		{"CHAR(255) = caron", `CHAR(255)`, "\u02C7"},        // ˇ
 
 		// Minimum valid code
 		{"CHAR(1) = SOH", `CHAR(1)`, "\x01"},
@@ -2911,15 +2973,6 @@ func TestCHAR_Windows1252(t *testing.T) {
 		// Lowercase boundaries
 		{"CHAR(97) = lowercase_a", `CHAR(97)`, "a"},
 		{"CHAR(122) = lowercase_z", `CHAR(122)`, "z"},
-
-		// High codes (Latin-1 supplement)
-		{"CHAR(200) = E-grave", `CHAR(200)`, "È"},
-		{"CHAR(255) = y-diaeresis", `CHAR(255)`, "ÿ"},
-
-		// Additional Windows-1252 special characters
-		{"CHAR(130) = single_low_quote", `CHAR(130)`, "‚"},
-		{"CHAR(145) = left_single_quote", `CHAR(145)`, "\u2018"},
-		{"CHAR(146) = right_single_quote", `CHAR(146)`, "\u2019"},
 
 		// Decimal truncation: int(65.9) = 65
 		{"CHAR(65.9) = truncate_to_A", `CHAR(65.9)`, "A"},
