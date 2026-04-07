@@ -467,6 +467,9 @@ var inheritedArrayArgFuncs = map[string]map[int]bool{
 	"COSH":  {0: true},
 	"TANH":  {0: true},
 
+	// Date/text functions that lift to arrays via LiftUnary.
+	"DATEVALUE": {0: true},
+
 	// Info functions that also lift to arrays.
 	"ISNUMBER": {0: true},
 	"ISTEXT":   {0: true},

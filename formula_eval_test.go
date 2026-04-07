@@ -904,3 +904,54 @@ func TestSUM_FullColumnSkipsUnrelatedSpillEval(t *testing.T) {
 		t.Errorf("Z1 = %g, want 1", spill.Number)
 	}
 }
+
+// TestFILTER_FullColumnWithDATEVALUE verifies that FILTER with full-column
+// references inside IFERROR(DATEVALUE(...)) correctly propagates array context
+// through nested non-array functions.
+func TestFILTER_FullColumnWithDATEVALUE(t *testing.T) {
+	f := werkbook.New()
+	data := f.Sheet("Sheet1")
+	f.SetSheetName("Sheet1", "Data")
+	data = f.Sheet("Data")
+
+	data.SetValue("E1", "Accrued On")
+	data.SetValue("I1", "Amount")
+	data.SetValue("E2", "2026-07-01")
+	data.SetValue("I2", 216994.0)
+	data.SetValue("E3", "2026-10-01")
+	data.SetValue("I3", 216994.0)
+	data.SetValue("E4", "2022-01-01")
+	data.SetValue("I4", 50000.0)
+
+	out, _ := f.NewSheet("Out")
+	out.SetFormula("A1", `FILTER(Data!I:I/100,IFERROR(DATEVALUE(Data!E:E),0)>=TODAY(),"")`)
+
+	sum, _ := f.NewSheet("Sum")
+	sum.SetFormula("A1", `SUM('Out'!A:A)`)
+
+	f.Recalculate()
+
+	// A1 should have the first filtered result (216994/100 = 2169.94).
+	v, err := out.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(A1): %v", err)
+	}
+	if v.Type != werkbook.TypeNumber {
+		t.Fatalf("A1 type = %v, want TypeNumber", v.Type)
+	}
+	if v.Number != 2169.94 {
+		t.Errorf("FILTER A1 = %g, want 2169.94", v.Number)
+	}
+
+	// SUM should include both filtered rows.
+	s, err := sum.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue(Sum!A1): %v", err)
+	}
+	if s.Type != werkbook.TypeNumber {
+		t.Fatalf("Sum!A1 type = %v, want TypeNumber", s.Type)
+	}
+	if s.Number != 4339.88 {
+		t.Errorf("SUM(Out!A:A) = %g, want 4339.88", s.Number)
+	}
+}
