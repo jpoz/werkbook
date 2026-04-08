@@ -603,13 +603,21 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				}
 			}
 
+			// Precompute per-array bounds to avoid O(rows) scans per element.
+			type arrBounds struct{ rows, cols int }
+			arrBoundsCache := make([]arrBounds, len(arrays))
+			for k, arr := range arrays {
+				r, c := arrayOpBoundsOrScalar(arr)
+				arrBoundsCache[k] = arrBounds{r, c}
+			}
+
 			// For each element position, bind params and eval the sub-formula
 			result := newValueMatrix(rows, cols)
 			paramVals := make([]Value, numArrays)
 			for i := 0; i < rows; i++ {
 				for j := 0; j < cols; j++ {
 					for k, arr := range arrays {
-						paramVals[k] = ArrayElement(arr, i, j)
+						paramVals[k] = arrayElementDirect(arr, arrBoundsCache[k].rows, arrBoundsCache[k].cols, i, j)
 					}
 					cellResult, err := evalWithParams(subFormula, resolver, ctx, paramVals)
 					if err != nil {
@@ -1216,11 +1224,13 @@ func binaryArith(a, b Value, op func(float64, float64) Value) Value {
 
 	// At least one operand is an array — do element-wise computation.
 	rows, cols := arrayDims(a, b)
+	aRows, aCols := arrayOpBoundsOrScalar(a)
+	bRows, bCols := arrayOpBoundsOrScalar(b)
 	result := newValueMatrix(rows, cols)
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			av := ArrayElement(a, i, j)
-			bv := ArrayElement(b, i, j)
+			av := arrayElementDirect(a, aRows, aCols, i, j)
+			bv := arrayElementDirect(b, bRows, bCols, i, j)
 			an, ae := CoerceNum(av)
 			bn, be := CoerceNum(bv)
 			if ae != nil {
@@ -1252,11 +1262,13 @@ func binaryCompare(a, b Value, op func(int) bool) Value {
 
 	// At least one operand is an array — do element-wise comparison.
 	rows, cols := arrayDims(a, b)
+	aRows, aCols := arrayOpBoundsOrScalar(a)
+	bRows, bCols := arrayOpBoundsOrScalar(b)
 	result := newValueMatrix(rows, cols)
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			av := ArrayElement(a, i, j)
-			bv := ArrayElement(b, i, j)
+			av := arrayElementDirect(a, aRows, aCols, i, j)
+			bv := arrayElementDirect(b, bRows, bCols, i, j)
 			if av.Type == ValueError {
 				result[i][j] = av
 			} else if bv.Type == ValueError {
@@ -1281,7 +1293,7 @@ func LiftUnary(arr Value, fn func(Value) Value) Value {
 	result := newValueMatrix(rows, cols)
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			result[i][j] = fn(ArrayElement(arr, i, j))
+			result[i][j] = fn(arrayElementDirect(arr, rows, cols, i, j))
 		}
 	}
 	out := Value{Type: ValueArray, Array: result}

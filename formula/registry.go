@@ -284,13 +284,20 @@ func arrayDimsAll(args []Value) (rows, cols int) {
 
 func callElementWise(args []Value, ctx *EvalContext, fn Func) (Value, error) {
 	rows, cols := arrayDimsAll(args)
+	// Precompute per-arg bounds to avoid O(rows) scans per element access.
+	type argBounds struct{ rows, cols int }
+	bounds := make([]argBounds, len(args))
+	for k, arg := range args {
+		r, c := arrayOpBoundsOrScalar(arg)
+		bounds[k] = argBounds{r, c}
+	}
 	result := make([][]Value, rows)
 	scalarArgs := make([]Value, len(args))
 	for i := 0; i < rows; i++ {
 		result[i] = make([]Value, cols)
 		for j := 0; j < cols; j++ {
 			for k, arg := range args {
-				scalarArgs[k] = ArrayElement(arg, i, j)
+				scalarArgs[k] = arrayElementDirect(arg, bounds[k].rows, bounds[k].cols, i, j)
 			}
 			cell, err := fn(scalarArgs, ctx)
 			if err != nil {

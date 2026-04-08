@@ -20,6 +20,7 @@ type Sheet struct {
 	rows      map[int]*Row
 	colWidths map[int]float64
 	merges    []MergeRange
+	spill     spillOverlay
 }
 
 func newSheet(name string, file *File) *Sheet {
@@ -63,6 +64,7 @@ func (s *Sheet) SetValue(cell string, v any) error {
 
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	s.clearSpillState(c)
 	// Unregister old formula if any.
 	if c.formula != "" {
 		s.file.deps.Unregister(formula.QualifiedCell{Sheet: s.name, Col: col, Row: row})
@@ -77,6 +79,7 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	c.cachedGen = 0
 	c.rawCachedGen = 0
 	s.file.calcGen++
+	s.markOverlappingSpillAnchorsDirty(col, row)
 	s.file.invalidateDependents(s.name, col, row)
 	return nil
 }
@@ -94,6 +97,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	}
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
+	s.clearSpillState(c)
 	// Unregister old formula if any.
 	qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
 	if c.formula != "" {
@@ -119,6 +123,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
 		}
 	}
+	s.markOverlappingSpillAnchorsDirty(col, row)
 	s.file.invalidateDependents(s.name, col, row)
 	return nil
 }
@@ -322,38 +327,34 @@ func (s *Sheet) spillValueAt(col, row int) (Value, bool) {
 }
 
 func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
-	for anchorRow, sheetRow := range s.rows {
-		if anchorRow > row {
+	overlay := s.ensureSpillOverlay()
+	for _, anchor := range overlay.anchors {
+		if anchor.row > row || anchor.col > col {
 			continue
 		}
-		for anchorCol, cell := range sheetRow.cells {
-			if anchorCol > col || cell.formula == "" || cell.isArrayFormula || !cell.dynamicArraySpill {
-				continue
-			}
-			// If the anchor cell shows #SPILL!, its spill is blocked.
-			if cell.value.Type == TypeError && cell.value.String == "#SPILL!" {
-				continue
-			}
-			raw := cell.rawValue
-			if cell.dirty || cell.rawCachedGen != s.file.calcGen {
-				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
-			}
-			if raw.Type != formula.ValueArray || raw.NoSpill {
-				continue
-			}
-			rowOffset := row - anchorRow
-			colOffset := col - anchorCol
-			if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
-				continue
-			}
-			if colOffset >= len(raw.Array[rowOffset]) {
-				continue
-			}
-			if rowOffset == 0 && colOffset == 0 {
-				continue
-			}
-			return raw.Array[rowOffset][colOffset], true
+		s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
+		if !cellHasPublishedSpill(anchor.cell, anchor.col, anchor.row, s.file.calcGen) {
+			continue
 		}
+		if row > anchor.cell.spillPublishedToRow || col > anchor.cell.spillPublishedToCol {
+			continue
+		}
+		rowOffset := row - anchor.row
+		colOffset := col - anchor.col
+		if rowOffset == 0 && colOffset == 0 {
+			continue
+		}
+		raw := anchor.cell.rawValue
+		if raw.Type != formula.ValueArray || raw.NoSpill {
+			continue
+		}
+		if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
+			continue
+		}
+		if colOffset >= len(raw.Array[rowOffset]) {
+			continue
+		}
+		return raw.Array[rowOffset][colOffset], true
 	}
 	return formula.Value{}, false
 }
@@ -611,29 +612,13 @@ func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow in
 	if c == nil {
 		return anchorRef
 	}
+	s.refreshSpillState(c, anchorCol, anchorRow)
 	// #SPILL! means the spill failed — don't claim a spill range.
 	if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 		return anchorRef
 	}
-	raw := c.rawValue
-	if c.formula != "" && (c.dirty || c.rawCachedGen != s.file.calcGen) {
-		raw = s.evaluateFormulaRaw(c, anchorCol, anchorRow)
-	}
-	if raw.Type == formula.ValueArray && !raw.NoSpill {
-		spillCols := 0
-		for _, row := range raw.Array {
-			if len(row) > spillCols {
-				spillCols = len(row)
-			}
-		}
-		if len(raw.Array) == 0 || spillCols == 0 {
-			return anchorRef
-		}
-		endRef, err := CoordinatesToCellName(anchorCol+spillCols-1, anchorRow+len(raw.Array)-1)
-		if err != nil || endRef == anchorRef {
-			return anchorRef
-		}
-		return anchorRef + ":" + endRef
+	if ref, ok := cellSpillFormulaRef(c, anchorCol, anchorRow); ok {
+		return ref
 	}
 	// Imported workbooks can carry valid dynamic-array metadata even when the
 	// current engine cannot derive a fresh spill result. Preserve that metadata
@@ -762,10 +747,19 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	// Dynamic array spill conflict: if the formula produces an array and
 	// would spill, check that every target cell is either empty or an
 	// empty placeholder. If any cell is occupied, the anchor gets #SPILL!.
+	blocked := false
 	if c.dynamicArraySpill && result.Type == formula.ValueArray && !result.NoSpill {
 		if s.hasSpillConflict(col, row, result.Array) {
-			return Value{Type: TypeError, String: "#SPILL!"}
+			blocked = true
 		}
+	}
+	if c.dynamicArraySpill && !c.isArrayFormula {
+		s.publishSpillState(c, col, row, result, blocked)
+	} else {
+		s.clearSpillState(c)
+	}
+	if blocked {
+		return Value{Type: TypeError, String: "#SPILL!"}
 	}
 
 	return formulaValueToValue(result, c.isArrayFormula)
@@ -1042,70 +1036,49 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 			}
 		}
 	}
-	for anchorRow, sheetRow := range s.rows {
-		if anchorRow > toRow {
+	overlay := s.ensureSpillOverlay()
+	for _, anchor := range overlay.anchors {
+		if anchor.row > toRow || anchor.col > logicalToCol {
 			continue
 		}
-		for anchorCol, cell := range sheetRow.cells {
-			if anchorCol > logicalToCol {
+		s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
+		if !cellHasPublishedSpill(anchor.cell, anchor.col, anchor.row, fr.file.calcGen) {
+			continue
+		}
+		if anchor.cell.spillPublishedToRow < addr.FromRow || anchor.cell.spillPublishedToCol < addr.FromCol {
+			continue
+		}
+		nextToRow := toRow
+		nextToCol := toCol
+		if anchor.cell.spillPublishedToRow > nextToRow {
+			nextToRow = anchor.cell.spillPublishedToRow
+		}
+		if anchor.cell.spillPublishedToCol > nextToCol {
+			nextToCol = anchor.cell.spillPublishedToCol
+		}
+		if (nextToRow > toRow || nextToCol > toCol) && !growRange(nextToRow, nextToCol) {
+			return rangeOverflow()
+		}
+		raw := anchor.cell.rawValue
+		if raw.Type != formula.ValueArray || raw.NoSpill {
+			continue
+		}
+		for rowOffset, spillRow := range raw.Array {
+			rowNum := anchor.row + rowOffset
+			if rowNum < addr.FromRow || rowNum > toRow {
 				continue
 			}
-			if cell.formula == "" || cell.isArrayFormula || !cell.dynamicArraySpill {
-				continue
-			}
-			// Skip anchors that have a #SPILL! error — their spill is blocked.
-			if cell.value.Type == TypeError && cell.value.String == "#SPILL!" {
-				continue
-			}
-			raw := cell.rawValue
-			if cell.dirty || cell.rawCachedGen != fr.file.calcGen {
-				raw = s.evaluateFormulaRaw(cell, anchorCol, anchorRow)
-			}
-			if raw.Type != formula.ValueArray || raw.NoSpill {
-				continue
-			}
-			spillCols := 0
-			for _, spillRow := range raw.Array {
-				if len(spillRow) > spillCols {
-					spillCols = len(spillRow)
-				}
-			}
-			if len(raw.Array) == 0 || spillCols == 0 {
-				continue
-			}
-			spillEndRow := anchorRow + len(raw.Array) - 1
-			spillEndCol := anchorCol + spillCols - 1
-			if spillEndRow < addr.FromRow || spillEndCol < addr.FromCol {
-				continue
-			}
-			nextToRow := toRow
-			nextToCol := toCol
-			if spillEndRow > nextToRow {
-				nextToRow = spillEndRow
-			}
-			if spillEndCol > nextToCol {
-				nextToCol = spillEndCol
-			}
-			if (nextToRow > toRow || nextToCol > toCol) && !growRange(nextToRow, nextToCol) {
-				return rangeOverflow()
-			}
-			for rowOffset, spillRow := range raw.Array {
-				rowNum := anchorRow + rowOffset
-				if rowNum < addr.FromRow || rowNum > toRow {
+			row := rows[rowNum-addr.FromRow]
+			for colOffset, spillVal := range spillRow {
+				colNum := anchor.col + colOffset
+				if colNum < addr.FromCol || colNum > toCol {
 					continue
 				}
-				row := rows[rowNum-addr.FromRow]
-				for colOffset, spillVal := range spillRow {
-					colNum := anchorCol + colOffset
-					if colNum < addr.FromCol || colNum > toCol {
-						continue
-					}
-					idx := colNum - addr.FromCol
-					if occupied[rowNum-addr.FromRow][idx] {
-						continue
-					}
-					row[idx] = spillVal
+				idx := colNum - addr.FromCol
+				if occupied[rowNum-addr.FromRow][idx] {
+					continue
 				}
+				row[idx] = spillVal
 			}
 		}
 	}

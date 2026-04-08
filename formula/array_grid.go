@@ -40,6 +40,24 @@ func materializedArrayCols(rows [][]Value) int {
 	return cols
 }
 
+// arrayElementDirect returns element [i][j] from an array Value using
+// precomputed bounds, avoiding repeated O(rows) scans of materializedArrayCols.
+func arrayElementDirect(v Value, rows, cols, i, j int) Value {
+	if v.Type != ValueArray {
+		return v
+	}
+	if i < 0 || j < 0 || i >= rows || j >= cols {
+		return ErrorVal(ErrValNA)
+	}
+	if i < len(v.Array) && j < len(v.Array[i]) {
+		return v.Array[i][j]
+	}
+	if v.RangeOrigin != nil {
+		return EmptyVal()
+	}
+	return ErrorVal(ErrValNA)
+}
+
 func newValueMatrix(rowCount, colCount int) [][]Value {
 	if rowCount <= 0 || colCount <= 0 {
 		return nil
@@ -51,6 +69,15 @@ func newValueMatrix(rowCount, colCount int) [][]Value {
 		rows[i] = cells[start : start+colCount]
 	}
 	return rows
+}
+
+// arrayOpBoundsOrScalar returns precomputed array bounds, or (1,1) for scalars.
+// Used to avoid repeated O(rows) scans in hot element-access loops.
+func arrayOpBoundsOrScalar(v Value) (rows, cols int) {
+	if v.Type != ValueArray {
+		return 1, 1
+	}
+	return arrayOpBounds(v)
 }
 
 func usesFullSheetAxisRange(v Value) bool {

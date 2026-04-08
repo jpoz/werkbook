@@ -11,14 +11,19 @@ type Cell struct {
 	// dynamicArraySpill controls whether this cell's dynamic-array result
 	// should spill into neighboring cells. Imported formulas without OOXML
 	// dynamic-array metadata do not spill in Excel and should stay scalar.
-	dynamicArraySpill bool
-	formulaRef        string
-	compiled          *formula.CompiledFormula
-	rawValue          formula.Value
-	cachedGen         uint64 // file.calcGen when value was last computed from formula
-	rawCachedGen      uint64 // file.calcGen when rawValue was last computed from formula
-	dirty             bool   // needs recalculation via dependency graph
-	style             *Style
+	dynamicArraySpill   bool
+	formulaRef          string
+	compiled            *formula.CompiledFormula
+	rawValue            formula.Value
+	cachedGen           uint64 // file.calcGen when value was last computed from formula
+	rawCachedGen        uint64 // file.calcGen when rawValue was last computed from formula
+	dirty               bool   // needs recalculation via dependency graph
+	spillStateGen       uint64 // file.calcGen when spill bounds were last published
+	spillAttemptedToCol int
+	spillAttemptedToRow int
+	spillPublishedToCol int
+	spillPublishedToRow int
+	style               *Style
 }
 
 // Col returns the 1-based column number.
