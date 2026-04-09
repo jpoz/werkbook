@@ -230,8 +230,22 @@ func (f *File) WriteTo(w io.Writer) error {
 	return ooxml.WriteWorkbook(w, f.buildWorkbookData())
 }
 
+// OpenOption configures how a workbook is opened.
+type OpenOption func(*openConfig)
+
+type openConfig struct {
+	skipFormulas bool
+}
+
+// WithoutFormulas skips formula compilation, dependency graph construction,
+// and dynamic array evaluation. The resulting File can be used for
+// metadata inspection but formula evaluation will not work.
+func WithoutFormulas() OpenOption {
+	return func(c *openConfig) { c.skipFormulas = true }
+}
+
 // Open opens an existing XLSX file for reading.
-func Open(name string) (*File, error) {
+func Open(name string, opts ...OpenOption) (*File, error) {
 	osf, err := os.Open(name)
 	if err != nil {
 		return nil, err
@@ -243,28 +257,32 @@ func Open(name string) (*File, error) {
 		return nil, err
 	}
 
-	return OpenReaderAt(osf, info.Size())
+	return OpenReaderAt(osf, info.Size(), opts...)
 }
 
 // OpenReader opens an XLSX from an arbitrary reader.
-func OpenReader(r io.Reader) (*File, error) {
+func OpenReader(r io.Reader, opts ...OpenOption) (*File, error) {
 	buf, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	return OpenReaderAt(bytes.NewReader(buf), int64(len(buf)))
+	return OpenReaderAt(bytes.NewReader(buf), int64(len(buf)), opts...)
 }
 
 // OpenReaderAt opens an XLSX from a random-access reader.
-func OpenReaderAt(r io.ReaderAt, size int64) (*File, error) {
+func OpenReaderAt(r io.ReaderAt, size int64, opts ...OpenOption) (*File, error) {
 	data, err := ooxml.ReadWorkbook(r, size)
 	if err != nil {
 		return nil, err
 	}
-	return fileFromData(data)
+	var cfg openConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return fileFromData(data, cfg)
 }
 
-func fileFromData(data *ooxml.WorkbookData) (*File, error) {
+func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 	f := &File{
 		calcGen:      1,
 		date1904:     data.Date1904,
@@ -429,22 +447,24 @@ func fileFromData(data *ooxml.WorkbookData) (*File, error) {
 		})
 	}
 
-	if err := f.registerAllFormulas(true); err != nil {
-		return nil, err
-	}
+	if !cfg.skipFormulas {
+		if err := f.registerAllFormulas(true); err != nil {
+			return nil, err
+		}
 
-	// Resolve dynamic array formulas that have no cached spill data in the
-	// file, then invalidate dependent formulas so they pick up the new spill
-	// results instead of using stale cached values.
-	for _, s := range f.sheets {
-		for _, r := range s.rows {
-			for col, c := range r.cells {
-				if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
-					raw := s.evaluateFormulaRaw(c, col, r.num)
-					if raw.Type == formula.ValueArray && !raw.NoSpill {
-						for rowOff, arrRow := range raw.Array {
-							for colOff := range arrRow {
-								f.invalidateDependents(s.name, col+colOff, r.num+rowOff)
+		// Resolve dynamic array formulas that have no cached spill data in the
+		// file, then invalidate dependent formulas so they pick up the new spill
+		// results instead of using stale cached values.
+		for _, s := range f.sheets {
+			for _, r := range s.rows {
+				for col, c := range r.cells {
+					if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
+						raw := s.evaluateFormulaRaw(c, col, r.num)
+						if raw.Type == formula.ValueArray && !raw.NoSpill {
+							for rowOff, arrRow := range raw.Array {
+								for colOff := range arrRow {
+									f.invalidateDependents(s.name, col+colOff, r.num+rowOff)
+								}
 							}
 						}
 					}

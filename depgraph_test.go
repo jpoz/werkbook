@@ -232,7 +232,7 @@ func TestDepGraphFileLoadAndModify(t *testing.T) {
 
 	// Simulate round-trip through ooxml data.
 	data := f.buildWorkbookData()
-	f2, err := fileFromData(data)
+	f2, err := fileFromData(data, openConfig{})
 	if err != nil {
 		t.Fatalf("fileFromData error: %v", err)
 	}
