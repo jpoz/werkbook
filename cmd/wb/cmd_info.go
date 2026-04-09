@@ -62,7 +62,7 @@ func cmdInfo(args []string, globals globalFlags) int {
 		return ExitUsage
 	}
 
-	f, err := werkbook.Open(filePath)
+	f, err := werkbook.Open(filePath, werkbook.WithoutFormulas())
 	if err != nil {
 		if os.IsNotExist(err) {
 			writeError(cmd, errFileNotFound(filePath, err), globals)
@@ -117,12 +117,7 @@ func buildSheetInfo(s *werkbook.Sheet) sheetInfo {
 	hasFormulas := false
 	for row := range s.Rows() {
 		for _, cell := range row.Cells() {
-			ref, err := werkbook.CoordinatesToCellName(cell.Col(), row.Num())
-			if err != nil {
-				continue
-			}
-			v, _ := s.GetValue(ref)
-			if !v.IsEmpty() {
+			if !cell.Value().IsEmpty() || cell.Formula() != "" {
 				nonEmpty++
 			}
 			if !hasFormulas && cell.Formula() != "" {
