@@ -237,14 +237,17 @@ type openConfig struct {
 	skipFormulas bool
 }
 
-// WithoutFormulas skips formula compilation, dependency graph construction,
-// and dynamic array evaluation. The resulting File can be used for
-// metadata inspection but formula evaluation will not work.
+// WithoutFormulas skips eager formula compilation/registration during Open,
+// dependency graph construction, and dynamic array initialization. The
+// resulting File is suitable for metadata inspection: cached formula values
+// remain readable, and formulas may still compile/evaluate lazily later, but
+// callers should not assume those results are current.
 func WithoutFormulas() OpenOption {
 	return func(c *openConfig) { c.skipFormulas = true }
 }
 
-// Open opens an existing XLSX file for reading.
+// Open opens an existing XLSX file for reading. opts can modify open
+// behavior, for example via WithoutFormulas.
 func Open(name string, opts ...OpenOption) (*File, error) {
 	osf, err := os.Open(name)
 	if err != nil {
@@ -260,7 +263,8 @@ func Open(name string, opts ...OpenOption) (*File, error) {
 	return OpenReaderAt(osf, info.Size(), opts...)
 }
 
-// OpenReader opens an XLSX from an arbitrary reader.
+// OpenReader opens an XLSX from an arbitrary reader. opts can modify open
+// behavior, for example via WithoutFormulas.
 func OpenReader(r io.Reader, opts ...OpenOption) (*File, error) {
 	buf, err := io.ReadAll(r)
 	if err != nil {
@@ -269,7 +273,8 @@ func OpenReader(r io.Reader, opts ...OpenOption) (*File, error) {
 	return OpenReaderAt(bytes.NewReader(buf), int64(len(buf)), opts...)
 }
 
-// OpenReaderAt opens an XLSX from a random-access reader.
+// OpenReaderAt opens an XLSX from a random-access reader. opts can modify
+// open behavior, for example via WithoutFormulas.
 func OpenReaderAt(r io.ReaderAt, size int64, opts ...OpenOption) (*File, error) {
 	data, err := ooxml.ReadWorkbook(r, size)
 	if err != nil {
