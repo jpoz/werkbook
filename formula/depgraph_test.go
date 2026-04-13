@@ -66,12 +66,19 @@ func TestUnregister(t *testing.T) {
 	g.Register(b1, "Sheet1", []CellAddr{
 		{Col: 1, Row: 1},
 	}, nil)
+	g.SetDynamicRanges(b1, DynamicRangeKindSpillBlocker, []RangeAddr{
+		{Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 3},
+	})
 
 	g.Unregister(b1)
 
 	deps := g.DirectDependents(QualifiedCell{Sheet: "Sheet1", Col: 1, Row: 1})
 	if len(deps) != 0 {
 		t.Errorf("expected no dependents after unregister, got %v", deps)
+	}
+	deps = g.DirectDependents(QualifiedCell{Sheet: "Sheet1", Col: 1, Row: 2})
+	if len(deps) != 0 {
+		t.Errorf("expected no dynamic dependents after unregister, got %v", deps)
 	}
 }
 
@@ -110,6 +117,96 @@ func TestRangeContainment(t *testing.T) {
 	deps = g.DirectDependents(QualifiedCell{Sheet: "S", Col: 4, Row: 4})
 	if len(deps) != 0 {
 		t.Errorf("expected no dependents, got %v", deps)
+	}
+}
+
+func TestDirectDependentsDeduplicatesPointRangeAndDynamicEdges(t *testing.T) {
+	g := NewDepGraph()
+
+	b1 := QualifiedCell{Sheet: "S", Col: 2, Row: 1}
+	g.Register(b1, "S", []CellAddr{{Col: 1, Row: 1}}, []RangeAddr{
+		{FromCol: 1, FromRow: 1, ToCol: 3, ToRow: 3},
+	})
+	g.SetDynamicRanges(b1, DynamicRangeKindMaterialized, []RangeAddr{
+		{Sheet: "S", FromCol: 1, FromRow: 1, ToCol: 3, ToRow: 3},
+	})
+
+	deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 1})
+	if !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected a single dependent for shared point/range edges, got %v", deps)
+	}
+}
+
+func TestSetDynamicRangesReplacesOnlyOneKind(t *testing.T) {
+	g := NewDepGraph()
+
+	b1 := QualifiedCell{Sheet: "S", Col: 2, Row: 1}
+	g.Register(b1, "S", []CellAddr{{Col: 1, Row: 1}}, nil)
+	g.SetDynamicRanges(b1, DynamicRangeKindSpillBlocker, []RangeAddr{
+		{Sheet: "S", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 3},
+	})
+	g.SetDynamicRanges(b1, DynamicRangeKindMaterialized, []RangeAddr{
+		{Sheet: "S", FromCol: 1, FromRow: 4, ToCol: 1, ToRow: 5},
+	})
+
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 1}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected static dependent for A1, got %v", deps)
+	}
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 2}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected spill-blocker dependent for A2, got %v", deps)
+	}
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 4}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected materialized dependent for A4, got %v", deps)
+	}
+
+	g.SetDynamicRanges(b1, DynamicRangeKindSpillBlocker, []RangeAddr{
+		{Sheet: "S", FromCol: 1, FromRow: 6, ToCol: 1, ToRow: 7},
+	})
+
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 2}); len(deps) != 0 {
+		t.Fatalf("expected old spill-blocker range to be replaced, got %v", deps)
+	}
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 6}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected new spill-blocker range for A6, got %v", deps)
+	}
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 4}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected materialized range to survive spill-blocker replacement, got %v", deps)
+	}
+
+	g.SetDynamicRanges(b1, DynamicRangeKindMaterialized, nil)
+
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 4}); len(deps) != 0 {
+		t.Fatalf("expected materialized range to be cleared, got %v", deps)
+	}
+	if deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 6}); !qcEqual(deps, []QualifiedCell{b1}) {
+		t.Fatalf("expected spill-blocker range to remain after clearing materialized kind, got %v", deps)
+	}
+}
+
+func TestUnregisterClearsPointRangeAndDynamicEdges(t *testing.T) {
+	g := NewDepGraph()
+
+	b1 := QualifiedCell{Sheet: "S", Col: 2, Row: 1}
+	g.Register(b1, "S", []CellAddr{{Col: 1, Row: 1}}, []RangeAddr{
+		{FromCol: 1, FromRow: 1, ToCol: 3, ToRow: 3},
+	})
+	g.SetDynamicRanges(b1, DynamicRangeKindSpillBlocker, []RangeAddr{
+		{Sheet: "S", FromCol: 1, FromRow: 4, ToCol: 1, ToRow: 5},
+	})
+
+	g.Unregister(b1)
+
+	deps := g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 1})
+	if len(deps) != 0 {
+		t.Fatalf("expected no dependents after unregister, got %v", deps)
+	}
+	deps = g.DirectDependents(QualifiedCell{Sheet: "S", Col: 2, Row: 2})
+	if len(deps) != 0 {
+		t.Fatalf("expected no range dependents after unregister, got %v", deps)
+	}
+	deps = g.DirectDependents(QualifiedCell{Sheet: "S", Col: 1, Row: 4})
+	if len(deps) != 0 {
+		t.Fatalf("expected no dynamic dependents after unregister, got %v", deps)
 	}
 }
 

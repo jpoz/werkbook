@@ -4,13 +4,26 @@ import "github.com/jpoz/werkbook/formula"
 
 type spillOverlay struct {
 	gen     uint64
-	anchors []spillAnchorRef
+	anchors map[cellKey]*spillAnchorState
+	refs    []spillAnchorRef
 }
 
 type spillAnchorRef struct {
-	col  int
-	row  int
-	cell *Cell
+	col   int
+	row   int
+	cell  *Cell
+	state *spillAnchorState
+}
+
+type spillAnchorState struct {
+	attemptedToCol, attemptedToRow int
+	publishedToCol, publishedToRow int
+	blocked                        bool
+	gen                            uint64
+
+	// Imported or last-known OOXML formula ref. The raw array value remains
+	// formula-cache state on Cell; the overlay owns bounds and writer fallback.
+	formulaRef string
 }
 
 func isDynamicArrayAnchor(c *Cell) bool {
@@ -42,7 +55,6 @@ func spillArrayRect(raw formula.Value, anchorCol, anchorRow int) (toCol, toRow i
 
 func (s *Sheet) invalidateSpillOverlay() {
 	s.spill.gen = 0
-	s.spill.anchors = nil
 }
 
 func (s *Sheet) ensureSpillOverlay() *spillOverlay {
@@ -54,14 +66,28 @@ func (s *Sheet) ensureSpillOverlay() *spillOverlay {
 }
 
 func (s *Sheet) rebuildSpillOverlay() {
-	next := spillOverlay{gen: s.file.calcGen}
+	next := spillOverlay{
+		gen:     s.file.calcGen,
+		anchors: make(map[cellKey]*spillAnchorState),
+	}
 	for anchorRow, sheetRow := range s.rows {
 		for anchorCol, cell := range sheetRow.cells {
 			if isDynamicArrayAnchor(cell) {
-				next.anchors = append(next.anchors, spillAnchorRef{
-					col:  anchorCol,
-					row:  anchorRow,
-					cell: cell,
+				key := cellKey{sheet: s.name, col: anchorCol, row: anchorRow}
+				var state *spillAnchorState
+				if existing, ok := s.spill.anchors[key]; ok {
+					cp := *existing
+					state = &cp
+					next.anchors[key] = state
+				} else {
+					state = &spillAnchorState{}
+					next.anchors[key] = state
+				}
+				next.refs = append(next.refs, spillAnchorRef{
+					col:   anchorCol,
+					row:   anchorRow,
+					cell:  cell,
+					state: state,
 				})
 			}
 		}
@@ -69,9 +95,38 @@ func (s *Sheet) rebuildSpillOverlay() {
 	s.spill = next
 }
 
+func (s *Sheet) ensureSpillState(col, row int) *spillAnchorState {
+	if s.spill.anchors == nil {
+		s.spill.anchors = make(map[cellKey]*spillAnchorState)
+	}
+	key := cellKey{sheet: s.name, col: col, row: row}
+	state := s.spill.anchors[key]
+	if state == nil {
+		state = &spillAnchorState{}
+		s.spill.anchors[key] = state
+	}
+	return state
+}
+
+func (s *Sheet) spillState(col, row int) (*spillAnchorState, bool) {
+	if s.spill.anchors == nil {
+		return nil, false
+	}
+	state, ok := s.spill.anchors[cellKey{sheet: s.name, col: col, row: row}]
+	return state, ok
+}
+
+func (s *Sheet) setSpillFormulaRef(col, row int, formulaRef string) {
+	if formulaRef == "" {
+		return
+	}
+	state := s.ensureSpillState(col, row)
+	state.formulaRef = formulaRef
+}
+
 func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 	if !isDynamicArrayAnchor(c) {
-		s.clearSpillState(c)
+		s.clearSpillState(col, row)
 		return
 	}
 	if s.file.isEvaluatingCell(s.name, col, row) {
@@ -96,6 +151,7 @@ func (s *Sheet) publishSpillState(c *Cell, col, row int, raw formula.Value, bloc
 	if c == nil {
 		return
 	}
+	state := s.ensureSpillState(col, row)
 	attemptedToCol, attemptedToRow := col, row
 	if toCol, toRow, ok := spillArrayRect(raw, col, row); ok {
 		attemptedToCol, attemptedToRow = toCol, toRow
@@ -106,52 +162,69 @@ func (s *Sheet) publishSpillState(c *Cell, col, row int, raw formula.Value, bloc
 			publishedToCol, publishedToRow = toCol, toRow
 		}
 	}
-	if c.spillStateGen == s.file.calcGen &&
-		c.spillAttemptedToCol == attemptedToCol &&
-		c.spillAttemptedToRow == attemptedToRow &&
-		c.spillPublishedToCol == publishedToCol &&
-		c.spillPublishedToRow == publishedToRow {
+	if state.gen == s.file.calcGen &&
+		state.attemptedToCol == attemptedToCol &&
+		state.attemptedToRow == attemptedToRow &&
+		state.publishedToCol == publishedToCol &&
+		state.publishedToRow == publishedToRow &&
+		state.blocked == blocked {
+		s.setSpillBlockerDynamicRanges(col, row, state)
 		return
 	}
-	c.spillStateGen = s.file.calcGen
-	c.spillAttemptedToCol = attemptedToCol
-	c.spillAttemptedToRow = attemptedToRow
-	c.spillPublishedToCol = publishedToCol
-	c.spillPublishedToRow = publishedToRow
+	state.gen = s.file.calcGen
+	state.attemptedToCol = attemptedToCol
+	state.attemptedToRow = attemptedToRow
+	state.publishedToCol = publishedToCol
+	state.publishedToRow = publishedToRow
+	state.blocked = blocked
+	s.setSpillBlockerDynamicRanges(col, row, state)
 	s.invalidateSpillOverlay()
 }
 
-func (s *Sheet) clearSpillState(c *Cell) {
-	if c == nil {
+func (s *Sheet) clearSpillState(col, row int) {
+	key := cellKey{sheet: s.name, col: col, row: row}
+	if _, ok := s.spill.anchors[key]; !ok {
 		return
 	}
-	if c.spillStateGen == 0 &&
-		c.spillAttemptedToCol == 0 &&
-		c.spillAttemptedToRow == 0 &&
-		c.spillPublishedToCol == 0 &&
-		c.spillPublishedToRow == 0 {
-		return
-	}
-	c.spillStateGen = 0
-	c.spillAttemptedToCol = 0
-	c.spillAttemptedToRow = 0
-	c.spillPublishedToCol = 0
-	c.spillPublishedToRow = 0
+	delete(s.spill.anchors, key)
+	s.file.deps.SetDynamicRanges(
+		formula.QualifiedCell{Sheet: s.name, Col: col, Row: row},
+		formula.DynamicRangeKindSpillBlocker,
+		nil,
+	)
 	s.invalidateSpillOverlay()
 }
 
-func cellHasPublishedSpill(c *Cell, anchorCol, anchorRow int, gen uint64) bool {
-	if c == nil || c.spillStateGen != gen {
+func (s *Sheet) setSpillBlockerDynamicRanges(anchorCol, anchorRow int, state *spillAnchorState) {
+	qc := formula.QualifiedCell{Sheet: s.name, Col: anchorCol, Row: anchorRow}
+	if state == nil || state.attemptedToCol <= anchorCol && state.attemptedToRow <= anchorRow {
+		s.file.deps.SetDynamicRanges(qc, formula.DynamicRangeKindSpillBlocker, nil)
+		return
+	}
+	s.file.deps.SetDynamicRanges(qc, formula.DynamicRangeKindSpillBlocker, []formula.RangeAddr{{
+		Sheet:   s.name,
+		FromCol: anchorCol,
+		FromRow: anchorRow,
+		ToCol:   state.attemptedToCol,
+		ToRow:   state.attemptedToRow,
+	}})
+}
+
+func spillStateHasPublishedSpill(state *spillAnchorState, anchorCol, anchorRow int, gen uint64) bool {
+	if state == nil || state.gen != gen || state.blocked {
 		return false
 	}
-	return c.spillPublishedToCol > anchorCol || c.spillPublishedToRow > anchorRow
+	return state.publishedToCol > anchorCol || state.publishedToRow > anchorRow
 }
 
-func cellSpillFormulaRef(c *Cell, anchorCol, anchorRow int) (string, bool) {
-	if !cellHasPublishedSpill(c, anchorCol, anchorRow, c.spillStateGen) {
+func spillStateFormulaRef(state *spillAnchorState, anchorCol, anchorRow int) (string, bool) {
+	if state == nil {
 		return "", false
 	}
-	endRef, err := CoordinatesToCellName(c.spillPublishedToCol, c.spillPublishedToRow)
+	if !spillStateHasPublishedSpill(state, anchorCol, anchorRow, state.gen) {
+		return "", false
+	}
+	endRef, err := CoordinatesToCellName(state.publishedToCol, state.publishedToRow)
 	if err != nil {
 		return "", false
 	}
@@ -162,17 +235,18 @@ func cellSpillFormulaRef(c *Cell, anchorCol, anchorRow int) (string, bool) {
 	return anchorRef + ":" + endRef, true
 }
 
-func (s *Sheet) spillAttemptedRect(c *Cell, anchorCol, anchorRow int) (toCol, toRow int, ok bool) {
-	if c == nil {
+func (s *Sheet) spillAttemptedRect(anchorCol, anchorRow int) (toCol, toRow int, ok bool) {
+	state, ok := s.spillState(anchorCol, anchorRow)
+	if !ok || state == nil {
 		return 0, 0, false
 	}
-	if c.spillStateGen != 0 && (c.spillAttemptedToCol > anchorCol || c.spillAttemptedToRow > anchorRow) {
-		return c.spillAttemptedToCol, c.spillAttemptedToRow, true
+	if state.gen != 0 && (state.attemptedToCol > anchorCol || state.attemptedToRow > anchorRow) {
+		return state.attemptedToCol, state.attemptedToRow, true
 	}
-	if c.formulaRef == "" {
+	if state.formulaRef == "" {
 		return 0, 0, false
 	}
-	_, _, toCol, toRow, err := RangeToCoordinates(c.formulaRef)
+	_, _, toCol, toRow, err := RangeToCoordinates(state.formulaRef)
 	if err != nil {
 		return 0, 0, false
 	}
@@ -180,25 +254,4 @@ func (s *Sheet) spillAttemptedRect(c *Cell, anchorCol, anchorRow int) (toCol, to
 		return 0, 0, false
 	}
 	return toCol, toRow, true
-}
-
-func (s *Sheet) markOverlappingSpillAnchorsDirty(col, row int) {
-	for anchorRow, sheetRow := range s.rows {
-		for anchorCol, cell := range sheetRow.cells {
-			if !isDynamicArrayAnchor(cell) {
-				continue
-			}
-			if anchorCol == col && anchorRow == row {
-				continue
-			}
-			toCol, toRow, ok := s.spillAttemptedRect(cell, anchorCol, anchorRow)
-			if !ok {
-				continue
-			}
-			if row < anchorRow || row > toRow || col < anchorCol || col > toCol {
-				continue
-			}
-			cell.dirty = true
-		}
-	}
 }

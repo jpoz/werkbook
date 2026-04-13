@@ -721,6 +721,126 @@ func TestSpillRangeAggregationWithDefinedName(t *testing.T) {
 	)
 }
 
+func TestSpillFromRangeArithmetic(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+	for i, v := range []float64{10, 20, 30} {
+		mustSetValue(t, data, "B"+strconv.Itoa(i+2), v)
+	}
+	mustSetFormula(t, spill, "B2", `Data!B2:B4*2`)
+
+	f.Recalculate()
+	assertSheetWants(t, spill,
+		numWant("B2", 20),
+		numWant("B3", 40),
+		numWant("B4", 60),
+	)
+
+	f2 := saveAndReopen(t, f)
+	spill2 := f2.Sheet("Spill")
+	if spill2 == nil {
+		t.Fatal("reopened workbook missing Spill sheet")
+	}
+	assertSheetWants(t, spill2,
+		numWant("B2", 20),
+		numWant("B3", 40),
+		numWant("B4", 60),
+	)
+}
+
+func TestSpillFromReciprocalRangeArithmetic(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+	for i, v := range []float64{2, 4, 5} {
+		mustSetValue(t, data, "B"+strconv.Itoa(i+2), v)
+	}
+	mustSetFormula(t, spill, "B2", `1/Data!B2:B4`)
+
+	f.Recalculate()
+	assertSheetWants(t, spill,
+		numWant("B2", 0.5),
+		numWant("B3", 0.25),
+		numWant("B4", 0.2),
+	)
+}
+
+func TestSpillFromIFBroadcast(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+	for i, v := range []float64{10, 20, 30} {
+		mustSetValue(t, data, "B"+strconv.Itoa(i+2), v)
+	}
+	mustSetFormula(t, spill, "B2", `IF(Data!B2:B4>15,Data!B2:B4,0)`)
+
+	f.Recalculate()
+	assertSheetWants(t, spill,
+		numWant("B2", 0),
+		numWant("B3", 20),
+		numWant("B4", 30),
+	)
+}
+
+func TestSpillProbeKeepsScalarReductionScalar(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+	for i, v := range []float64{10, 20, 30} {
+		mustSetValue(t, data, "B"+strconv.Itoa(i+2), v)
+	}
+	mustSetFormula(t, spill, "B2", `SUM(Data!B2:B4)`)
+
+	f.Recalculate()
+	assertSheetWants(t, spill, numWant("B2", 60))
+	assertEmptyCell(t, spill, "B3")
+}
+
+func TestNonLexicalSpillSerializesDynamicArrayMetadata(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+	for i, v := range []float64{10, 20, 30} {
+		mustSetValue(t, data, "B"+strconv.Itoa(i+2), v)
+	}
+	mustSetFormula(t, spill, "B2", `Data!B2:B4*2`)
+	f.Recalculate()
+
+	path := filepath.Join(t.TempDir(), "range-arithmetic-spill.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+	r, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open saved xlsx: %v", err)
+	}
+	defer r.Close()
+	info, err := r.Stat()
+	if err != nil {
+		t.Fatalf("Stat saved xlsx: %v", err)
+	}
+	dataFile, err := ooxml.ReadWorkbook(r, info.Size())
+	if err != nil {
+		t.Fatalf("ReadWorkbook: %v", err)
+	}
+
+	var found bool
+	for _, sd := range dataFile.Sheets {
+		if sd.Name != "Spill" {
+			continue
+		}
+		for _, rd := range sd.Rows {
+			for _, cd := range rd.Cells {
+				if cd.Ref != "B2" {
+					continue
+				}
+				found = true
+				if !cd.IsDynamicArray {
+					t.Fatalf("B2 IsDynamicArray = false, want true")
+				}
+				if cd.FormulaType != "array" || cd.FormulaRef != "B2:B4" {
+					t.Fatalf("B2 formula metadata = type %q ref %q, want array B2:B4",
+						cd.FormulaType, cd.FormulaRef)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("saved workbook missing Spill!B2")
+	}
+}
+
 // TestSpillArrayContextInheritance locks down that scalar functions
 // registered in formula.inheritedArrayArgFuncs actually lift to array
 // context when called inside an array-forcing outer (FILTER, SUMPRODUCT,

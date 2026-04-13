@@ -1,13 +1,11 @@
 # Supported Formulas
 
-Werkbook supports **446** spreadsheet formula functions.
+Werkbook supports **417** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
-| ABS | Returns the absolute value of a number. | Math & Trig | 26 |
 | ACCRINT | Returns accrued interest for a security that pays periodic interest. | Financial | 19 |
 | ACCRINTM | Returns accrued interest for a security that pays interest at maturity. | Financial | 15 |
-| ACOS | Returns the arccosine of a number. | Math & Trig | 32 |
 | ACOSH | Returns the inverse hyperbolic cosine of a number. | Math & Trig | 32 |
 | ACOT | Returns the arccotangent of a number. | Math & Trig | 29 |
 | ACOTH | Returns the inverse hyperbolic cotangent of a number. | Math & Trig | 32 |
@@ -20,9 +18,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | ARABIC | Converts Roman numeral text to an Arabic number. | Math & Trig | 38 |
 | AREAS | Counts the number of areas in a reference. | Information | 23 |
 | ARRAYTOTEXT | Converts an array into a text representation. | Text | 48 |
-| ASIN | Returns the arcsine of a number. | Math & Trig | 30 |
 | ASINH | Returns the inverse hyperbolic sine of a number. | Math & Trig | 26 |
-| ATAN | Returns the arctangent of a number. | Math & Trig | 25 |
 | ATAN2 | Returns the arctangent from x and y coordinates. | Math & Trig | 30 |
 | ATANH | Returns the inverse hyperbolic tangent of a number. | Math & Trig | 31 |
 | AVEDEV | Returns the average absolute deviation from the mean. | Statistical | 22 |
@@ -75,11 +71,9 @@ Werkbook supports **446** spreadsheet formula functions.
 | CONFIDENCE.T | Returns a Student's t-distribution confidence interval half-width. | Statistical | 50 |
 | CONVERT | Converts a number from one measurement system to another. | Engineering | 185 |
 | CORREL | Returns the correlation coefficient between two data sets. | Statistical | 51 |
-| COS | Returns the cosine of an angle. | Math & Trig | 28 |
-| COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
 | COT | Returns the cotangent of an angle. | Math & Trig | 26 |
 | COTH | Returns the hyperbolic cotangent of a number. | Math & Trig | 26 |
-| COUNT | Counts numeric values. | Statistical | 42 |
+| COUNT | Counts numeric values. | Statistical | 43 |
 | COUNTA | Counts non-empty values. | Statistical | 22 |
 | COUNTBLANK | Counts blank cells in a range. | Statistical | 40 |
 | COUNTIF | Counts values that match one condition. | Statistical | 78 |
@@ -99,7 +93,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | CUMPRINC | Returns cumulative principal paid over a span of payment periods. | Financial | 53 |
 | DATE | Builds a date from year, month, and day numbers. | Date & Time | 72 |
 | DATEDIF | Returns the difference between two dates in requested units. | Date & Time | 72 |
-| DATEVALUE | Converts date text to a serial date number. | Date & Time | 39 |
 | DAVERAGE | Returns the average of matching records in a database range. | Db | 5 |
 | DAY | Returns the day of the month from a date. | Date & Time | 28 |
 | DAYS | Returns the number of days between two dates. | Date & Time | 17 |
@@ -141,7 +134,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | ERROR.TYPE | Returns a number identifying an error value. | Information | 19 |
 | EVEN | Rounds a number away from zero to the nearest even integer. | Math & Trig | 34 |
 | EXACT | Returns TRUE when two text values match exactly. | Text | 32 |
-| EXP | Returns e raised to a power. | Math & Trig | 29 |
 | EXPAND | Pads an array to a larger size with a fill value. | Lookup & Reference | 27 |
 | EXPON.DIST | Returns the exponential distribution. | Statistical | 28 |
 | F.DIST | Returns the F probability distribution. | Statistical | 42 |
@@ -149,10 +141,9 @@ Werkbook supports **446** spreadsheet formula functions.
 | F.INV | Returns the inverse of the F cumulative distribution. | Statistical | 36 |
 | F.INV.RT | Returns the inverse of the right-tailed F distribution. | Statistical | 34 |
 | F.TEST | Returns the result of an F-test for two arrays. | Statistical | 42 |
-| FACT | Returns the factorial of a number. | Math & Trig | 28 |
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
-| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 104 |
+| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 107 |
 | FIND | Returns the position of one text value inside another, case-sensitive. | Text | 48 |
 | FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
 | FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
@@ -185,9 +176,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 22 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 46 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 64 |
-| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 37 |
-| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 77 |
-| IFNA | Returns a fallback value when a formula returns #N/A. | Information | 45 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 39 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
 | IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
 | IMAGINARY | Returns the imaginary coefficient of a complex number. | Engineering | 38 |
@@ -216,26 +205,19 @@ Werkbook supports **446** spreadsheet formula functions.
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
 | INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 132 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 61 |
-| INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 39 |
 | INTRATE | Returns the interest rate for a fully invested security. | Financial | 11 |
 | IPMT | Returns the interest portion of a payment for a given period. | Financial | 4 |
 | IRR | Returns the internal rate of return for periodic cash flows. | Financial | 19 |
-| ISBLANK | Returns TRUE when a value is blank. | Information | 23 |
-| ISERR | Returns TRUE for any error except #N/A. | Information | 22 |
-| ISERROR | Returns TRUE for any error value. | Information | 22 |
 | ISEVEN | Returns TRUE when a number is even. | Information | 33 |
 | ISFORMULA | Returns TRUE when a referenced cell contains a formula. | Information | 34 |
 | ISLOGICAL | Returns TRUE when a value is logical. | Information | 27 |
-| ISNA | Returns TRUE when a value is #N/A. | Information | 30 |
 | ISNONTEXT | Returns TRUE when a value is not text. | Information | 26 |
-| ISNUMBER | Returns TRUE when a value is numeric. | Information | 25 |
 | ISO.CEILING | Rounds a number up using ISO.CEILING rules. | Math & Trig | 48 |
 | ISODD | Returns TRUE when a number is odd. | Information | 33 |
 | ISOWEEKNUM | Returns the ISO week number for a date. | Date & Time | 26 |
 | ISPMT | Returns the interest paid during a period for straight-line amortization. | Financial | 17 |
 | ISREF | Returns TRUE when a value is a reference. | Information | 24 |
-| ISTEXT | Returns TRUE when a value is text. | Information | 25 |
 | KURT | Returns the kurtosis of a data set. | Statistical | 22 |
 | LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 13 |
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 31 |
@@ -244,9 +226,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | LEN | Returns the number of characters in text. | Text | 37 |
 | LET | Assigns names to intermediate values within a formula. | Logical | 36 |
 | LINEST | Returns linear regression statistics. | Statistical | 3 |
-| LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
 | LOG | Returns the logarithm of a number in a chosen base. | Math & Trig | 35 |
-| LOG10 | Returns the base-10 logarithm of a number. | Math & Trig | 31 |
 | LOGEST | Returns exponential regression statistics. | Statistical | 2 |
 | LOGNORM.DIST | Returns the lognormal distribution. | Statistical | 31 |
 | LOGNORM.INV | Returns the inverse of the lognormal cumulative distribution. | Statistical | 31 |
@@ -254,7 +234,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | LOWER | Converts text to lowercase. | Text | 48 |
 | MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 32 |
 | MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 26 |
-| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 76 |
+| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 77 |
 | MAX | Returns the largest numeric value. | Statistical | 41 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
@@ -277,7 +257,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | MROUND | Rounds a number to the nearest multiple. | Math & Trig | 38 |
 | MULTINOMIAL | Returns the multinomial of a set of numbers. | Math & Trig | 36 |
 | MUNIT | Returns a unit matrix of a requested size. | Math & Trig | 38 |
-| N | Converts a value to a number using spreadsheet coercion rules. | Information | 19 |
 | NA | Returns the #N/A error value. | Information | 17 |
 | NEGBINOM.DIST | Returns the negative binomial distribution. | Statistical | 62 |
 | NETWORKDAYS | Counts working days between two dates. | Date & Time | 53 |
@@ -287,7 +266,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | NORM.INV | Returns the inverse of the normal cumulative distribution. | Statistical | 28 |
 | NORM.S.DIST | Returns the standard normal distribution. | Statistical | 27 |
 | NORM.S.INV | Returns the inverse of the standard normal cumulative distribution. | Statistical | 27 |
-| NOT | Returns the opposite of a logical value. | Logical | 45 |
 | NOW | Returns the current date and time. | Date & Time | 2 |
 | NPER | Returns the number of periods for an investment or loan. | Financial | 14 |
 | NPV | Returns the net present value of periodic cash flows. | Financial | 25 |
@@ -351,13 +329,10 @@ Werkbook supports **446** spreadsheet formula functions.
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
 | SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
 | SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |
-| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 107 |
+| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 109 |
 | SERIESSUM | Returns the sum of a power series. | Math & Trig | 27 |
 | SHEET | Returns the sheet index of a reference. | Information | 14 |
 | SHEETS | Returns the number of sheets in a reference or workbook scope. | Information | 8 |
-| SIGN | Returns the sign of a number. | Math & Trig | 30 |
-| SIN | Returns the sine of an angle. | Math & Trig | 33 |
-| SINH | Returns the hyperbolic sine of a number. | Math & Trig | 23 |
 | SKEW | Returns the sample skewness of a data set. | Statistical | 23 |
 | SKEW.P | Returns the population skewness of a data set. | Statistical | 27 |
 | SLN | Returns straight-line depreciation for one period. | Financial | 53 |
@@ -365,7 +340,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 29 |
 | SORT | Sorts an array by row or column order. | Logical | 52 |
 | SORTBY | Sorts an array by one or more companion arrays. | Logical | 4 |
-| SQRT | Returns the square root of a number. | Math & Trig | 29 |
 | SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
 | STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 34 |
 | STDEV | Returns the sample standard deviation. | Statistical | 27 |
@@ -377,10 +351,10 @@ Werkbook supports **446** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 41 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 69 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 75 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 104 |
-| SUMIF | Returns the sum of values that match one condition. | Statistical | 74 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 109 |
+| SUMIF | Returns the sum of values that match one condition. | Statistical | 75 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 65 |
-| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 82 |
+| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 83 |
 | SUMSQ | Returns the sum of squares of the supplied values. | Statistical | 30 |
 | SUMX2MY2 | Returns the sum of the difference of squares of paired arrays. | Math & Trig | 55 |
 | SUMX2PY2 | Returns the sum of the sum of squares of paired arrays. | Math & Trig | 57 |
@@ -395,8 +369,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | T.INV.2T | Returns the inverse of the two-tailed Student's t-distribution. | Statistical | 37 |
 | T.TEST | Returns the probability associated with a Student's t-test. | Statistical | 56 |
 | TAKE | Returns a requested number of rows or columns from an array. | Lookup & Reference | 31 |
-| TAN | Returns the tangent of an angle. | Math & Trig | 23 |
-| TANH | Returns the hyperbolic tangent of a number. | Math & Trig | 27 |
 | TBILLEQ | Returns the bond-equivalent yield for a Treasury bill. | Financial | 34 |
 | TBILLPRICE | Returns the price per 100 face value for a Treasury bill. | Financial | 36 |
 | TBILLYIELD | Returns the yield for a Treasury bill. | Financial | 35 |
@@ -416,7 +388,6 @@ Werkbook supports **446** spreadsheet formula functions.
 | TRIMMEAN | Returns the mean after trimming values from both tails of a data set. | Statistical | 23 |
 | TRUE | Returns the logical value TRUE. | Logical | 10 |
 | TRUNC | Truncates a number to an integer or fixed precision. | Math & Trig | 34 |
-| TYPE | Returns a numeric code describing a value's type. | Information | 25 |
 | UNICHAR | Returns the Unicode character for a code point. | Text | 48 |
 | UNICODE | Returns the Unicode code point for the first character in text. | Text | 36 |
 | UNIQUE | Returns distinct rows or columns from an array. | Lookup & Reference | 53 |

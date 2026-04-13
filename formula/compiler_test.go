@@ -151,6 +151,35 @@ func TestCompileRangeRef(t *testing.T) {
 	}
 }
 
+func TestCompileNeedsSpillProbe(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"A1:A3", true},
+		{"A1:A3*2", true},
+		{"1/A1:A3", true},
+		{"IF(A1:A3>0,A1:A3,0)", true},
+		{"ABS(A1:A3)", true},
+		{"FILTER(A1:A3,A1:A3>0)", true},
+		{"SUM(A1:A3)", false},
+		{"SUM(A:A)", false},
+		{"COUNT(A:A)", false},
+		{"SUMIF(A:A,\">0\")", false},
+		{"MATCH(1,A:A,0)", false},
+		{"SUMPRODUCT(A1:A3*B1:B3)", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			cf := compileFormula(t, tt.input)
+			if cf.NeedsSpillProbe != tt.want {
+				t.Fatalf("NeedsSpillProbe = %v, want %v", cf.NeedsSpillProbe, tt.want)
+			}
+		})
+	}
+}
+
 func TestCompileRangeRefWithSheet(t *testing.T) {
 	cf := compileFormula(t, "Sheet1!A1:B5")
 	if len(cf.Ranges) != 1 {

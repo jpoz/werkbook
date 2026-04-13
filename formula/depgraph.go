@@ -13,6 +13,18 @@ type rangeSub struct {
 	rng         RangeAddr // Sheet is always qualified
 }
 
+// DynamicRangeKind distinguishes dynamic dependency edge families.
+type DynamicRangeKind uint8
+
+const (
+	// DynamicRangeKindSpillBlocker tracks the attempted spill rectangle for
+	// a dynamic array anchor so blockers can dirty it.
+	DynamicRangeKindSpillBlocker DynamicRangeKind = iota
+	// DynamicRangeKindMaterialized tracks grown ranges discovered while
+	// materializing array results.
+	DynamicRangeKindMaterialized
+)
+
 // DepGraph tracks formula-to-cell dependencies for incremental recalculation.
 type DepGraph struct {
 	// forward edges: formula cell → set of cells it reads
@@ -21,13 +33,16 @@ type DepGraph struct {
 	dependents map[QualifiedCell]map[QualifiedCell]bool
 	// range subscriptions for containment checks
 	rangeSubs []rangeSub
+	// dynamic range subscriptions grouped by formula cell and kind.
+	dynamicRanges map[QualifiedCell]map[DynamicRangeKind][]RangeAddr
 }
 
 // NewDepGraph creates an empty dependency graph.
 func NewDepGraph() *DepGraph {
 	return &DepGraph{
-		dependsOn:  make(map[QualifiedCell]map[QualifiedCell]bool),
-		dependents: make(map[QualifiedCell]map[QualifiedCell]bool),
+		dependsOn:     make(map[QualifiedCell]map[QualifiedCell]bool),
+		dependents:    make(map[QualifiedCell]map[QualifiedCell]bool),
+		dynamicRanges: make(map[QualifiedCell]map[DynamicRangeKind][]RangeAddr),
 	}
 }
 
@@ -76,6 +91,48 @@ func (g *DepGraph) Register(formulaCell QualifiedCell, owningSheet string, refs 
 	}
 }
 
+// SetDynamicRanges replaces the dynamic ranges for formulaCell/kind without
+// disturbing static dependencies or other dynamic kinds.
+func (g *DepGraph) SetDynamicRanges(formulaCell QualifiedCell, kind DynamicRangeKind, ranges []RangeAddr) {
+	if g.dynamicRanges == nil {
+		g.dynamicRanges = make(map[QualifiedCell]map[DynamicRangeKind][]RangeAddr)
+	}
+
+	byKind := g.dynamicRanges[formulaCell]
+	if len(ranges) == 0 {
+		if byKind != nil {
+			delete(byKind, kind)
+			if len(byKind) == 0 {
+				delete(g.dynamicRanges, formulaCell)
+			}
+		}
+		return
+	}
+	if byKind != nil && rangeAddrsEqual(byKind[kind], ranges) {
+		return
+	}
+
+	if byKind == nil {
+		byKind = make(map[DynamicRangeKind][]RangeAddr)
+		g.dynamicRanges[formulaCell] = byKind
+	}
+	copied := make([]RangeAddr, len(ranges))
+	copy(copied, ranges)
+	byKind[kind] = copied
+}
+
+func rangeAddrsEqual(a, b []RangeAddr) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Unregister removes all edges from formulaCell.
 func (g *DepGraph) Unregister(formulaCell QualifiedCell) {
 	// Remove point dependencies.
@@ -100,6 +157,8 @@ func (g *DepGraph) Unregister(formulaCell QualifiedCell) {
 		}
 	}
 	g.rangeSubs = g.rangeSubs[:n]
+
+	delete(g.dynamicRanges, formulaCell)
 }
 
 // DirectDependents returns the immediate formula cells that depend on cell,
@@ -121,12 +180,28 @@ func (g *DepGraph) DirectDependents(cell QualifiedCell) []QualifiedCell {
 		if seen[rs.formulaCell] {
 			continue
 		}
-		r := rs.rng
-		if cell.Sheet == r.Sheet &&
-			cell.Col >= r.FromCol && cell.Col <= r.ToCol &&
-			cell.Row >= r.FromRow && cell.Row <= r.ToRow {
+		if rangeContainsCell(rs.rng, cell) {
 			seen[rs.formulaCell] = true
 			result = append(result, rs.formulaCell)
+		}
+	}
+
+	for formulaCell, byKind := range g.dynamicRanges {
+		if seen[formulaCell] {
+			continue
+		}
+		for _, ranges := range byKind {
+			for _, rng := range ranges {
+				if !rangeContainsCell(rng, cell) {
+					continue
+				}
+				seen[formulaCell] = true
+				result = append(result, formulaCell)
+				break
+			}
+			if seen[formulaCell] {
+				break
+			}
 		}
 	}
 
@@ -145,6 +220,12 @@ func (g *DepGraph) DependsOn(cell QualifiedCell) (points []QualifiedCell, ranges
 		}
 	}
 	return points, ranges
+}
+
+func rangeContainsCell(rng RangeAddr, cell QualifiedCell) bool {
+	return cell.Sheet == rng.Sheet &&
+		cell.Col >= rng.FromCol && cell.Col <= rng.ToCol &&
+		cell.Row >= rng.FromRow && cell.Row <= rng.ToRow
 }
 
 // Dependents returns all formula cells that transitively depend on changed,
