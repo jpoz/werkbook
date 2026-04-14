@@ -8,10 +8,29 @@ import (
 // Func is the standard signature for all registered formula functions.
 type Func func(args []Value, ctx *EvalContext) (Value, error)
 
+// FnKind classifies a registered function for metadata-driven compiler logic.
+type FnKind uint8
+
+const (
+	FnKindUnknown FnKind = iota
+	FnKindScalarLifted
+	FnKindReduction
+	FnKindArrayNative
+	FnKindLookup
+	FnKindStateful
+)
+
+// FuncMeta stores registration-time metadata for a formula function.
+type FuncMeta struct {
+	Kind               FnKind
+	InheritedArrayArgs map[int]bool
+}
+
 var (
-	registry = map[string]Func{}
-	nameToID = map[string]int{}
-	idToName []string
+	registry       = map[string]Func{}
+	funcMetaByName = map[string]FuncMeta{}
+	nameToID       = map[string]int{}
+	idToName       []string
 )
 
 // Register adds a formula function to the global registry.
@@ -24,7 +43,25 @@ func Register(name string, fn Func) {
 		idToName = append(idToName, upper)
 		nameToID[upper] = id
 	}
+	delete(funcMetaByName, upper)
 	registry[upper] = fn
+}
+
+// RegisterWithMeta adds a formula function and stores registration metadata
+// keyed by the function name.
+func RegisterWithMeta(name string, fn Func, meta FuncMeta) {
+	Register(name, fn)
+	funcMetaByName[strings.ToUpper(name)] = cloneFuncMeta(meta)
+}
+
+// RegisterScalarLifted registers a scalar function that should inherit array
+// context for its first argument when the compiler is already in an inherited
+// array evaluation path.
+func RegisterScalarLifted(name string, fn Func) {
+	RegisterWithMeta(name, fn, FuncMeta{
+		Kind:               FnKindScalarLifted,
+		InheritedArrayArgs: map[int]bool{0: true},
+	})
 }
 
 // LookupFunc returns the function ID for use by the compiler.
@@ -58,6 +95,26 @@ func RegisteredFunctions() []string {
 	out := make([]string, len(idToName))
 	copy(out, idToName)
 	return out
+}
+
+func cloneFuncMeta(meta FuncMeta) FuncMeta {
+	if len(meta.InheritedArrayArgs) == 0 {
+		return meta
+	}
+	cloned := make(map[int]bool, len(meta.InheritedArrayArgs))
+	for idx, ok := range meta.InheritedArrayArgs {
+		cloned[idx] = ok
+	}
+	meta.InheritedArrayArgs = cloned
+	return meta
+}
+
+func funcMetaForName(name string) (FuncMeta, bool) {
+	meta, ok := funcMetaByName[strings.ToUpper(name)]
+	if !ok {
+		return FuncMeta{}, false
+	}
+	return cloneFuncMeta(meta), true
 }
 
 // NoCtx wraps a function that doesn't need EvalContext into a Func.
@@ -444,10 +501,8 @@ var arrayArgFuncs = map[string]map[int]bool{
 	"FILTER": {0: true, 1: true},
 }
 
-// inheritedArrayArgFuncs evaluate the listed argument positions in array
-// context only when the call appears inside an outer array-forcing expression.
-// This preserves element-wise wrappers like IFERROR/IFNA inside SUMPRODUCT
-// without changing their normal legacy scalar implicit-intersection behavior.
+// inheritedArrayArgFuncs is a temporary compatibility fallback for functions
+// that have not yet been migrated to registration-time metadata.
 var inheritedArrayArgFuncs = map[string]map[int]bool{
 	"IFERROR": {0: true, 1: true},
 	"IFNA":    {0: true, 1: true},
@@ -548,6 +603,9 @@ func ArgEvalModeForFuncArg(name string, argIndex int) FuncArgEvalMode {
 }
 
 func inheritedArrayEvalForFuncArg(name string, argIndex int) bool {
+	if meta, ok := funcMetaForName(name); ok && meta.InheritedArrayArgs != nil {
+		return meta.InheritedArrayArgs[argIndex]
+	}
 	positions, ok := inheritedArrayArgFuncs[strings.ToUpper(name)]
 	return ok && positions[argIndex]
 }

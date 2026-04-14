@@ -348,7 +348,9 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 				c.formula = formula.StripXlfnPrefixes(cd.Formula)
 				c.isArrayFormula = cd.IsArrayFormula
 				c.dynamicArraySpill = cd.IsDynamicArray && (cd.FormulaRef != "" || cd.HasCMMetadata)
-				c.formulaRef = cd.FormulaRef
+				if c.dynamicArraySpill {
+					s.setSpillFormulaRef(col, row, cd.FormulaRef)
+				}
 				// Trust the file's cached value for formula cells that have one.
 				// Exception: dynamic array formulas without a cached spill range
 				// (FormulaRef) must be re-evaluated so their spill results are
@@ -377,14 +379,14 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 		var ranges []spillRange
 		for _, r := range s.rows {
 			for col, c := range r.cells {
-				if c.dynamicArraySpill && c.formulaRef != "" {
+				if state, ok := s.spillState(col, r.num); ok && c.dynamicArraySpill && state.formulaRef != "" {
 					// If the anchor's cached value is #SPILL!, the cells in
 					// the FormulaRef are blockers (user data), not cached
 					// spill results. Don't clear them.
 					if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 						continue
 					}
-					_, _, tc, tr, err := RangeToCoordinates(c.formulaRef)
+					_, _, tc, tr, err := RangeToCoordinates(state.formulaRef)
 					if err == nil {
 						ranges = append(ranges, spillRange{
 							anchorCol: col, anchorRow: r.num,
@@ -463,8 +465,19 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 		for _, s := range f.sheets {
 			for _, r := range s.rows {
 				for col, c := range r.cells {
-					if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
+					state, hasState := s.spillState(col, r.num)
+					if c.dynamicArraySpill && (!hasState || state.formulaRef == "") && c.formula != "" {
+						// Probe the raw spill result so dependents can be invalidated,
+						// but restore the display cache afterward. The raw read mutates
+						// the anchor's scalar cache to the top-left element, which would
+						// otherwise turn blocked anchors back into their pre-spill value.
+						savedValue := c.value
+						savedCachedGen := c.cachedGen
+						savedDirty := c.dirty
 						raw := s.evaluateFormulaRaw(c, col, r.num)
+						c.value = savedValue
+						c.cachedGen = savedCachedGen
+						c.dirty = savedDirty
 						if raw.Type == formula.ValueArray && !raw.NoSpill {
 							for rowOff, arrRow := range raw.Array {
 								for colOff := range arrRow {
@@ -651,7 +664,8 @@ func (f *File) HasUncachedDynamicArrayFormulas() bool {
 	for _, s := range f.sheets {
 		for _, r := range s.rows {
 			for _, c := range r.cells {
-				if c.dynamicArraySpill && c.formulaRef == "" && c.formula != "" {
+				state, hasState := s.spillState(c.col, r.num)
+				if c.dynamicArraySpill && (!hasState || state.formulaRef == "") && c.formula != "" {
 					return true
 				}
 			}

@@ -46,6 +46,14 @@ func (v Value) Raw() any {
 	}
 }
 
+// ErrorCode returns the typed error code for error values.
+func (v Value) ErrorCode() (ErrorCode, bool) {
+	if v.Type != TypeError {
+		return 0, false
+	}
+	return ErrorCodeFromString(v.String), true
+}
+
 func (v Value) GoString() string {
 	switch v.Type {
 	case TypeEmpty:

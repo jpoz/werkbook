@@ -1,5 +1,5 @@
 // Script to regenerate FORMULAS.md from the source of truth:
-//  1. Supported functions = all Register() calls in formula/*.go
+//  1. Supported functions = all Register* helper calls in formula/*.go
 //  2. Test counts = formula strings + TestFUNC_ patterns in *_test.go
 //  3. Unsupported functions = those in the known function list but not registered
 //
@@ -775,7 +775,7 @@ func genericDescription(name, category string) string {
 // discoverSupported scans formula/*.go (non-test) for Register("NAME", ...) calls
 // and includes parser-level functions.
 func discoverSupported() map[string]funcInfo {
-	re := regexp.MustCompile(`Register\("([A-Z][A-Z0-9.]*)"`)
+	re := regexp.MustCompile(`Register(?:WithMeta|ScalarLifted)?\("([A-Z][A-Z0-9.]*)"`)
 	result := map[string]funcInfo{}
 
 	// Include parser-level functions

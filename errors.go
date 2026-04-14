@@ -7,6 +7,9 @@ import (
 	"github.com/jpoz/werkbook/ooxml"
 )
 
+// ErrorCode re-exports the formula engine's typed error enum for root-package callers.
+type ErrorCode = formula.ErrorValue
+
 var (
 	// ErrInvalidCellRef is returned when a cell reference string is invalid.
 	ErrInvalidCellRef = errors.New("invalid cell reference")
@@ -20,3 +23,8 @@ var (
 	// ErrEncryptedFile is returned when the file is encrypted/password-protected.
 	ErrEncryptedFile = ooxml.ErrEncryptedFile
 )
+
+// ErrorCodeFromString converts a display string such as "#SPILL!" to a typed error code.
+func ErrorCodeFromString(s string) ErrorCode {
+	return formula.ErrorValueFromString(s)
+}

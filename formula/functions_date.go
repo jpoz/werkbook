@@ -9,7 +9,7 @@ import (
 func init() {
 	Register("DATE", fnDATECtx)
 	Register("DATEDIF", NoCtx(fnDATEDIF))
-	Register("DATEVALUE", fnDATEVALUECtx)
+	RegisterScalarLifted("DATEVALUE", fnDATEVALUECtx)
 	Register("DAY", fnDAYCtx)
 	Register("DAYS", NoCtx(fnDAYS))
 	Register("DAYS360", NoCtx(fnDAYS360))

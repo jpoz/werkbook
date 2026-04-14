@@ -11,22 +11,42 @@ import (
 
 // Compile walks the AST rooted at node and emits bytecode.
 func Compile(source string, node Node) (*CompiledFormula, error) {
+	return compileWithMode(source, node, false)
+}
+
+// CompileSpillProbe compiles a formula for top-level dynamic-array probing.
+// It suppresses implicit intersection for the outer expression while preserving
+// the compiler's nested-function array-context suspension rules.
+func CompileSpillProbe(source string, node Node) (*CompiledFormula, error) {
+	return compileWithMode(source, node, true)
+}
+
+func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*CompiledFormula, error) {
 	c := &compiler{
 		numIdx: make(map[float64]uint32),
 		strIdx: make(map[string]uint32),
 		refIdx: make(map[CellAddr]uint32),
 		rngIdx: make(map[RangeAddr]uint32),
 	}
-	if err := c.compileNode(node); err != nil {
-		return nil, err
+	if topLevelArrayCtx {
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileNodeCtx(node, true); err != nil {
+			return nil, err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+	} else {
+		if err := c.compileNode(node); err != nil {
+			return nil, err
+		}
 	}
 	return &CompiledFormula{
-		Source:      source,
-		Code:        c.code,
-		Consts:      c.consts,
-		Refs:        c.refs,
-		Ranges:      c.ranges,
-		SubFormulas: c.subFormulas,
+		Source:          source,
+		Code:            c.code,
+		Consts:          c.consts,
+		Refs:            c.refs,
+		Ranges:          c.ranges,
+		SubFormulas:     c.subFormulas,
+		NeedsSpillProbe: formulaNeedsSpillProbe(node),
 	}, nil
 }
 
@@ -41,7 +61,6 @@ type compiler struct {
 	strIdx map[string]uint32
 	refIdx map[CellAddr]uint32
 	rngIdx map[RangeAddr]uint32
-
 }
 
 func (c *compiler) emit(op OpCode, operand uint32) {
@@ -410,6 +429,61 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 		return fmt.Errorf("unsupported AST node type %T", node)
 	}
 	return nil
+}
+
+func formulaNeedsSpillProbe(node Node) bool {
+	switch n := node.(type) {
+	case *RangeRef:
+		return true
+	case *ArrayLit:
+		return true
+	case *UnaryExpr:
+		return formulaNeedsSpillProbe(n.Operand)
+	case *BinaryExpr:
+		return formulaNeedsSpillProbe(n.Left) || formulaNeedsSpillProbe(n.Right)
+	case *FuncCall:
+		return funcCallNeedsSpillProbe(n)
+	case *MapExpr:
+		return true
+	case *ScanExpr:
+		return true
+	case *ByRowExpr:
+		return true
+	case *ByColExpr:
+		return true
+	case *MakeArrayExpr:
+		return true
+	}
+	return false
+}
+
+func funcCallNeedsSpillProbe(call *FuncCall) bool {
+	name := normalizeFuncName(call.Name)
+	if _, ok := dynamicArrayFunctions[name]; ok {
+		return true
+	}
+	if !functionCanReturnArrayFromArrayArgs(name) {
+		return false
+	}
+	for _, arg := range call.Args {
+		if formulaNeedsSpillProbe(arg) {
+			return true
+		}
+	}
+	return false
+}
+
+func functionCanReturnArrayFromArrayArgs(name string) bool {
+	if name == "IF" {
+		return true
+	}
+	if elementWiseCallFuncs[name] {
+		return true
+	}
+	if meta, ok := funcMetaForName(name); ok && meta.Kind == FnKindScalarLifted {
+		return true
+	}
+	return false
 }
 
 func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jpoz/werkbook/formula"
 	"github.com/jpoz/werkbook/ooxml"
 )
 
@@ -153,5 +154,20 @@ func TestCellDataToValue_DateCell(t *testing.T) {
 				t.Fatalf("cellDataToValue(%+v).Number = %v, want %v", tt.cd, got.Number, tt.want)
 			}
 		})
+	}
+}
+
+func TestErrorCodeCompatibility(t *testing.T) {
+	if got := ErrorCodeFromString("#SPILL!"); got != ErrorCode(formula.ErrValSPILL) {
+		t.Fatalf("ErrorCodeFromString(#SPILL!) = %v, want %v", got, formula.ErrValSPILL)
+	}
+
+	v := Value{Type: TypeError, String: "#REF!"}
+	code, ok := v.ErrorCode()
+	if !ok {
+		t.Fatal("Value.ErrorCode() reported non-error for TypeError value")
+	}
+	if code != ErrorCode(formula.ErrValREF) {
+		t.Fatalf("Value.ErrorCode() = %v, want %v", code, formula.ErrValREF)
 	}
 }

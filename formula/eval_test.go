@@ -2019,8 +2019,47 @@ func TestEvalSUMPRODUCTDoesNotLeakArrayContextIntoNestedIFArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
+	// Without array context, IF falls back to implicit intersection. Here the
+	// formula is on row 2, so Excel picks B2/C2 and returns 0 instead of an
+	// element-wise array result.
 	if got.Type != ValueNumber || got.Num != 0 {
 		t.Fatalf("nested IF SUMPRODUCT = %v (%g), want 0", got.Type, got.Num)
+	}
+}
+
+func TestEvalSUMPRODUCTNestedIFOutsideReferencedRowsReturnsValue(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 2}: StringVal("completed"),
+			{Col: 1, Row: 3}: StringVal("completed"),
+			{Col: 1, Row: 4}: StringVal("completed"),
+			{Col: 2, Row: 2}: NumberVal(5),
+			{Col: 2, Row: 3}: NumberVal(5),
+			{Col: 2, Row: 4}: NumberVal(10),
+			{Col: 3, Row: 2}: NumberVal(0),
+			{Col: 3, Row: 3}: NumberVal(5),
+			{Col: 3, Row: 4}: NumberVal(0),
+			{Col: 4, Row: 2}: NumberVal(1),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, `SUMPRODUCT((A2:A4="completed")*IF(B2:B4-C2:C4*D2>0,B2:B4-C2:C4*D2,0))`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// This mirrors fixture 31: with the formula above the referenced rows,
+	// implicit intersection cannot pick a row from B2:B4/C2:C4, so Excel
+	// returns #VALUE! rather than evaluating IF element-wise.
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("nested IF SUMPRODUCT outside range = %v (%v), want #VALUE!", got.Type, got.Err)
 	}
 }
 

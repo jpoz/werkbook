@@ -6,9 +6,12 @@ func init() {
 	Register("AND", NoCtx(fnAND))
 	Register("FALSE", NoCtx(fnFALSE))
 	Register("IF", NoCtx(fnIF))
-	Register("IFERROR", NoCtx(fnIFERROR))
+	RegisterWithMeta("IFERROR", NoCtx(fnIFERROR), FuncMeta{
+		Kind:               FnKindScalarLifted,
+		InheritedArrayArgs: map[int]bool{0: true, 1: true},
+	})
 	Register("IFS", NoCtx(fnIFS))
-	Register("NOT", NoCtx(fnNOT))
+	RegisterScalarLifted("NOT", NoCtx(fnNOT))
 	Register("OR", NoCtx(fnOR))
 	Register("SORT", NoCtx(fnSORT))
 	Register("SORTBY", NoCtx(fnSORTBY))

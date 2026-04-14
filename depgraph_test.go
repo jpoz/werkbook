@@ -2,6 +2,8 @@ package werkbook
 
 import (
 	"testing"
+
+	"github.com/jpoz/werkbook/formula"
 )
 
 // TestDepGraphSingleDep verifies a single A1→B1 dependency.
@@ -94,6 +96,38 @@ func TestDepGraphRangeDep(t *testing.T) {
 	v, _ = s.GetValue("B1")
 	if v.Number != 24 {
 		t.Fatalf("expected 24, got %v", v.Number)
+	}
+}
+
+// TestDepGraphMixedDeps verifies point and range dependencies coexist and both invalidate.
+func TestDepGraphMixedDeps(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+
+	s.SetValue("A1", 1)
+	s.SetValue("A2", 2)
+	s.SetValue("A3", 3)
+	s.SetFormula("B1", "A1+10")
+	s.SetFormula("C1", "SUM(A1:A3)")
+
+	if v, _ := s.GetValue("B1"); v.Number != 11 {
+		t.Fatalf("expected B1 to evaluate to 11, got %v", v)
+	}
+	if v, _ := s.GetValue("C1"); v.Number != 6 {
+		t.Fatalf("expected C1 to evaluate to 6, got %v", v)
+	}
+
+	deps := f.deps.DirectDependents(formula.QualifiedCell{Sheet: "Sheet1", Col: 1, Row: 1})
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 direct dependents for A1, got %v", deps)
+	}
+
+	s.SetValue("A1", 20)
+	if v, _ := s.GetValue("B1"); v.Number != 30 {
+		t.Fatalf("expected B1 to update to 30, got %v", v)
+	}
+	if v, _ := s.GetValue("C1"); v.Number != 25 {
+		t.Fatalf("expected C1 to update to 25, got %v", v)
 	}
 }
 

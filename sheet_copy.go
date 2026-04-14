@@ -48,6 +48,18 @@ func (f *File) CloneSheetFrom(src *Sheet, dstName string) (*Sheet, error) {
 		}
 		dst.rows[rowNum] = dstRow
 	}
+	if len(src.spill.anchors) > 0 {
+		dst.spill.anchors = make(map[cellKey]*spillAnchorState, len(src.spill.anchors))
+		for key, state := range src.spill.anchors {
+			if state == nil {
+				continue
+			}
+			copiedKey := cellKey{sheet: dst.name, col: key.col, row: key.row}
+			copiedState := *state
+			dst.spill.anchors[copiedKey] = &copiedState
+		}
+		dst.invalidateSpillOverlay()
+	}
 
 	_ = f.registerSheetFormulas(dst, false)
 	return dst, nil
@@ -60,7 +72,6 @@ func cloneCell(src *Cell) *Cell {
 		formula:           src.formula,
 		isArrayFormula:    src.isArrayFormula,
 		dynamicArraySpill: src.dynamicArraySpill,
-		formulaRef:        src.formulaRef,
 		style:             cloneStyle(src.style),
 	}
 	if clone.formula != "" {
@@ -93,6 +104,11 @@ func (f *File) registerSheetFormulas(s *Sheet, strict bool) error {
 			c.compiled = cf
 			qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: r.num}
 			f.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
+			if c.dynamicArraySpill {
+				if state, ok := s.spillState(col, r.num); ok {
+					s.setSpillBlockerDynamicRanges(col, r.num, state)
+				}
+			}
 		}
 	}
 	return nil

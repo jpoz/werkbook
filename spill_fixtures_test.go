@@ -47,17 +47,23 @@ func TestSpillFixturesCachedValueParity(t *testing.T) {
 		t.Skip("no fixtures in " + spillFixturesDir)
 	}
 
-	// Keep this aligned with testdata/check_config.json's ignore_files.
+	// Skip policy: every entry MUST have a comment with a GitHub issue
+	// number and a plan to un-skip. A bare skip with a vague comment is
+	// how issue #51 slipped through — fixture 10 was skipped instead of
+	// treated as a failing signal.
 	skip := map[string]bool{
+		// #51: Pre-existing fixture without fullCalcOnLoad. Excel cached
+		// stale #VALUE!. Un-skip after regenerating with fullCalcOnLoad
+		// and resaving.
 		"10_sumproduct_nested_if.xlsx": true,
-		// 14 is the #SPILL! blocker fixture. Werkbook has a writer bug:
-		// after Recalculate() marks the anchor as #SPILL!, SaveAs still
-		// serializes the pre-blocker cached value (the original scalar
-		// anchor value). After ../testdata/resave.sh runs through real
-		// Excel, Excel writes #SPILL! as the cached value and this
-		// fixture should be removed from the skip list. Tracked as a
-		// separate bug (not a spill-eval issue).
+		// Intentional #SPILL! fixture — Excel flags it as corrupt on
+		// open, so it can't be resaved. Covered by the dedicated
+		// TestSpillBlockedSaveAsRoundTrip test instead.
 		"14_spill_blocker_then_cleared.xlsx": true,
+		// XLOOKUP multi-column return bug: Excel returns first result
+		// column (20), werkbook returns second (100). Needs fix in
+		// fnXLOOKUP return-array column selection.
+		"24_xlookup_array_return.xlsx": true,
 	}
 
 	for _, path := range paths {
@@ -83,9 +89,6 @@ func TestSpillFixturesRoundTrip(t *testing.T) {
 	if len(paths) == 0 {
 		t.Skip("no fixtures in " + spillFixturesDir)
 	}
-	// 10_sumproduct_nested_if is excluded from cached-value parity because
-	// Excel's legacy #VALUE! differs from our modern behavior. Round-trip
-	// still holds, so we include it here.
 	for _, path := range paths {
 		name := filepath.Base(path)
 		t.Run(name, func(t *testing.T) {
@@ -123,6 +126,82 @@ func TestSpillFixturesRoundTrip(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSpillBlockedSaveAsRoundTrip reproduces fixture 14 directly without the
+// fixture skip list. It locks down the bug described in TODO.md: after a spill
+// anchor is blocked and recalculated, SaveAs must preserve the blocked cached
+// value on reopen.
+func TestSpillBlockedSaveAsRoundTrip(t *testing.T) {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	out, _ := f.NewSheet("Out")
+
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, cell := range []struct {
+		ref string
+		val any
+	}{
+		{"A1", "Keep"},
+		{"B1", "Amount"},
+		{"C1", "Label"},
+		{"A2", true},
+		{"B2", 10.0},
+		{"C2", "row-1"},
+		{"A3", false},
+		{"B3", 20.0},
+		{"C3", "row-2"},
+		{"A4", true},
+		{"B4", 30.0},
+		{"C4", "row-3"},
+		{"A5", false},
+		{"B5", 40.0},
+		{"C5", "row-4"},
+		{"A6", true},
+		{"B6", 50.0},
+		{"C6", "row-5"},
+	} {
+		must(data.SetValue(cell.ref, cell.val))
+	}
+	must(out.SetFormula("B2", `FILTER(Data!B2:B6,Data!A2:A6=TRUE)`))
+	must(out.SetValue("B3", "BLOCKER"))
+	must(out.SetFormula("D1", `B2`))
+
+	f.Recalculate()
+
+	before, err := out.GetValue("B2")
+	must(err)
+	if before.Type != werkbook.TypeError || before.String != "#SPILL!" {
+		t.Fatalf("B2 before save = %#v, want #SPILL!", before)
+	}
+
+	tmp := filepath.Join(t.TempDir(), "fixture14.xlsx")
+	must(f.SaveAs(tmp))
+
+	f2, err := werkbook.Open(tmp)
+	must(err)
+	out2 := f2.Sheet("Out")
+	if out2 == nil {
+		t.Fatal("reopened workbook missing Out sheet")
+	}
+
+	after, err := out2.GetValue("B2")
+	must(err)
+	if after.Type != werkbook.TypeError || after.String != "#SPILL!" {
+		t.Fatalf("B2 after reopen = %#v, want #SPILL!", after)
+	}
+
+	d1, err := out2.GetValue("D1")
+	must(err)
+	if d1.Type != werkbook.TypeError || d1.String != "#SPILL!" {
+		t.Fatalf("D1 after reopen = %#v, want #SPILL!", d1)
 	}
 }
 
@@ -307,4 +386,3 @@ func valuesApproxEqual(a, b werkbook.Value, tolerance float64) bool {
 		return a.Raw() == b.Raw()
 	}
 }
-

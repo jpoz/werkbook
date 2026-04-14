@@ -4,7 +4,7 @@ Werkbook supports **446** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
-| ABS | Returns the absolute value of a number. | Math & Trig | 26 |
+| ABS | Returns the absolute value of a number. | Math & Trig | 27 |
 | ACCRINT | Returns accrued interest for a security that pays periodic interest. | Financial | 19 |
 | ACCRINTM | Returns accrued interest for a security that pays interest at maturity. | Financial | 15 |
 | ACOS | Returns the arccosine of a number. | Math & Trig | 32 |
@@ -79,7 +79,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
 | COT | Returns the cotangent of an angle. | Math & Trig | 26 |
 | COTH | Returns the hyperbolic cotangent of a number. | Math & Trig | 26 |
-| COUNT | Counts numeric values. | Statistical | 42 |
+| COUNT | Counts numeric values. | Statistical | 43 |
 | COUNTA | Counts non-empty values. | Statistical | 22 |
 | COUNTBLANK | Counts blank cells in a range. | Statistical | 40 |
 | COUNTIF | Counts values that match one condition. | Statistical | 78 |
@@ -152,7 +152,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | FACT | Returns the factorial of a number. | Math & Trig | 28 |
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
-| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 104 |
+| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 107 |
 | FIND | Returns the position of one text value inside another, case-sensitive. | Text | 48 |
 | FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
 | FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
@@ -185,7 +185,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | HSTACK | Stacks arrays horizontally. | Lookup & Reference | 22 |
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 46 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 64 |
-| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 37 |
+| IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 39 |
 | IFERROR | Returns a fallback value when a formula returns an error. | Logical | 77 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 45 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
@@ -254,7 +254,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | LOWER | Converts text to lowercase. | Text | 48 |
 | MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 32 |
 | MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 26 |
-| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 76 |
+| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 77 |
 | MAX | Returns the largest numeric value. | Statistical | 41 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
@@ -351,7 +351,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
 | SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
 | SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |
-| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 107 |
+| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 109 |
 | SERIESSUM | Returns the sum of a power series. | Math & Trig | 27 |
 | SHEET | Returns the sheet index of a reference. | Information | 14 |
 | SHEETS | Returns the number of sheets in a reference or workbook scope. | Information | 8 |
@@ -377,10 +377,10 @@ Werkbook supports **446** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 41 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 69 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 75 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 104 |
-| SUMIF | Returns the sum of values that match one condition. | Statistical | 74 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 109 |
+| SUMIF | Returns the sum of values that match one condition. | Statistical | 75 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 65 |
-| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 82 |
+| SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 84 |
 | SUMSQ | Returns the sum of squares of the supplied values. | Statistical | 30 |
 | SUMX2MY2 | Returns the sum of the difference of squares of paired arrays. | Math & Trig | 55 |
 | SUMX2PY2 | Returns the sum of the sum of squares of paired arrays. | Math & Trig | 57 |
