@@ -230,11 +230,62 @@ func (f *File) WriteTo(w io.Writer) error {
 	return ooxml.WriteWorkbook(w, f.buildWorkbookData())
 }
 
+// ClearSpillShadowValues removes OOXML-cached spill shadow cell values. This
+// is normally done during Open but is deferred when WithSpillCache is used.
+// Call this after reading cached values and before Recalculate so the engine
+// can properly resolve spill results.
+func (f *File) ClearSpillShadowValues() {
+	for _, s := range f.sheets {
+		type spillRange struct {
+			anchorCol, anchorRow int
+			toCol, toRow         int
+		}
+		var ranges []spillRange
+		for _, r := range s.rows {
+			for col, c := range r.cells {
+				if state, ok := s.spillState(col, r.num); ok && c.dynamicArraySpill && state.formulaRef != "" {
+					if c.value.Type == TypeError && c.value.String == "#SPILL!" {
+						continue
+					}
+					_, _, tc, tr, err := RangeToCoordinates(state.formulaRef)
+					if err == nil {
+						ranges = append(ranges, spillRange{
+							anchorCol: col, anchorRow: r.num,
+							toCol: tc, toRow: tr,
+						})
+					}
+				}
+			}
+		}
+		for _, sr := range ranges {
+			for row := sr.anchorRow; row <= sr.toRow; row++ {
+				r, ok := s.rows[row]
+				if !ok {
+					continue
+				}
+				for col := sr.anchorCol; col <= sr.toCol; col++ {
+					if row == sr.anchorRow && col == sr.anchorCol {
+						continue
+					}
+					c, ok := r.cells[col]
+					if !ok {
+						continue
+					}
+					if c.formula == "" {
+						c.value = Value{}
+					}
+				}
+			}
+		}
+	}
+}
+
 // OpenOption configures how a workbook is opened.
 type OpenOption func(*openConfig)
 
 type openConfig struct {
-	skipFormulas bool
+	skipFormulas   bool
+	keepSpillCache bool
 }
 
 // WithoutFormulas skips eager formula compilation/registration during Open,
@@ -244,6 +295,15 @@ type openConfig struct {
 // callers should not assume those results are current.
 func WithoutFormulas() OpenOption {
 	return func(c *openConfig) { c.skipFormulas = true }
+}
+
+// WithSpillCache preserves OOXML-cached spill shadow values instead of
+// clearing them during import. This is useful for tools like the check
+// command that need to compare cached values against recomputed results.
+// The resulting File is NOT suitable for normal recalculation because the
+// stale shadow values will block live spill results.
+func WithSpillCache() OpenOption {
+	return func(c *openConfig) { c.keepSpillCache = true }
 }
 
 // Open opens an existing XLSX file for reading. opts can modify open
@@ -368,55 +428,9 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 			}
 		}
 	}
-	// Clear cached spill shadow cells: OOXML stores cached values in cells
-	// within a dynamic array formula's spill range. These stale values must
-	// be cleared so they don't block live spill results or inflate aggregates.
-	for _, s := range f.sheets {
-		type spillRange struct {
-			anchorCol, anchorRow int
-			toCol, toRow         int
-		}
-		var ranges []spillRange
-		for _, r := range s.rows {
-			for col, c := range r.cells {
-				if state, ok := s.spillState(col, r.num); ok && c.dynamicArraySpill && state.formulaRef != "" {
-					// If the anchor's cached value is #SPILL!, the cells in
-					// the FormulaRef are blockers (user data), not cached
-					// spill results. Don't clear them.
-					if c.value.Type == TypeError && c.value.String == "#SPILL!" {
-						continue
-					}
-					_, _, tc, tr, err := RangeToCoordinates(state.formulaRef)
-					if err == nil {
-						ranges = append(ranges, spillRange{
-							anchorCol: col, anchorRow: r.num,
-							toCol: tc, toRow: tr,
-						})
-					}
-				}
-			}
-		}
-		for _, sr := range ranges {
-			for row := sr.anchorRow; row <= sr.toRow; row++ {
-				r, ok := s.rows[row]
-				if !ok {
-					continue
-				}
-				for col := sr.anchorCol; col <= sr.toCol; col++ {
-					if row == sr.anchorRow && col == sr.anchorCol {
-						continue // skip the anchor cell itself
-					}
-					c, ok := r.cells[col]
-					if !ok {
-						continue
-					}
-					// Only clear cells that have no formula of their own.
-					if c.formula == "" {
-						c.value = Value{}
-					}
-				}
-			}
-		}
+	// Clear cached spill shadow cells unless keepSpillCache is set.
+	if !cfg.keepSpillCache {
+		f.ClearSpillShadowValues()
 	}
 
 	// Build table info from parsed table definitions.

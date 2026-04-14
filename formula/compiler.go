@@ -141,6 +141,12 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
+		if n.Col < 1 || n.Col > maxCols {
+			// Column outside valid range [A, XFD] (includes overflow-wrapped values)
+			// that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
 		addr := CellAddr{Sheet: n.Sheet, SheetEnd: n.SheetEnd, Col: n.Col, Row: n.Row}
 		if n.SheetEnd != "" {
 			// 3D reference (Sheet2:Sheet5!A1): treat as a range across sheets.
@@ -159,6 +165,12 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 	case *RangeRef:
 		if n.From.DotNotation || n.To.DotNotation {
 			// Dot-notation range (Sheet1.A1:Sheet1.A5) is a LibreOffice extension; returns #NAME?
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
+		if n.From.Col < 1 || n.From.Col > maxCols || n.To.Col < 1 || n.To.Col > maxCols {
+			// Column outside valid range [A, XFD] (includes overflow-wrapped values)
+			// that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
@@ -538,7 +550,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// cell value.  When the single argument is a direct cell reference, push
 	// a ValueRef (address only) so the function can extract col/row.
 	if (name == "AREAS" || name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY" || name == "ISREF") && argc == 1 {
-		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" {
+		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" && cr.Col <= maxCols {
 			idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 			c.emit(OpLoadCellRef, idx)
 			c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
@@ -546,7 +558,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		}
 		// For ISREF, range references are also references.
 		if name == "ISREF" {
-			if rr, ok := n.Args[0].(*RangeRef); ok {
+			if rr, ok := n.Args[0].(*RangeRef); ok && rr.From.Col >= 1 && rr.From.Col <= maxCols && rr.To.Col >= 1 && rr.To.Col <= maxCols {
 				idx := c.addRef(CellAddr{Sheet: rr.From.Sheet, Col: rr.From.Col, Row: rr.From.Row})
 				c.emit(OpLoadCellRef, idx)
 				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
@@ -578,8 +590,12 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		first := n.Args[0]
 		switch ref := first.(type) {
 		case *CellRef:
-			idx := c.addRef(CellAddr{Sheet: ref.Sheet, Col: ref.Col, Row: ref.Row})
-			c.emit(OpLoadCellRef, idx)
+			if ref.Col <= maxCols {
+				idx := c.addRef(CellAddr{Sheet: ref.Sheet, Col: ref.Col, Row: ref.Row})
+				c.emit(OpLoadCellRef, idx)
+			} else {
+				c.emit(OpPushError, uint32(ErrValNAME))
+			}
 		default:
 			// Range references already produce ValueArray with RangeOrigin.
 			if err := c.compileNodeCtx(first, inArrayCtx); err != nil {

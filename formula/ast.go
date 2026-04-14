@@ -317,22 +317,24 @@ func needsQuoting(name string) bool {
 }
 
 // ColNumberToLetters converts a 1-based column number to column letters (e.g. 1→"A", 27→"AA").
-// Values <= 0 return "" and values beyond the Excel maximum (16384 / "XFD") are clamped.
+// Values <= 0 return "". No upper-bound clamping is applied so that LET/LAMBDA parameter
+// names (which are encoded as large column numbers) round-trip correctly through the AST.
 func ColNumberToLetters(col int) string {
 	if col <= 0 {
 		return ""
 	}
-	// Excel columns go up to XFD = 16384; clamp to avoid buffer overrun.
-	if col > 16384 {
-		col = 16384
-	}
-	var buf [3]byte
-	i := len(buf)
+	// For normal columns (A–XFD) a 3-byte buffer suffices. LET/LAMBDA parameter
+	// names can encode arbitrarily long identifiers, so we append each digit in
+	// reverse order and then reverse the result.
+	var buf []byte
 	for col > 0 {
 		col--
-		i--
-		buf[i] = byte('A' + col%26)
+		buf = append(buf, byte('A'+col%26))
 		col /= 26
 	}
-	return string(buf[i:])
+	// Reverse the slice.
+	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
+		buf[i], buf[j] = buf[j], buf[i]
+	}
+	return string(buf)
 }

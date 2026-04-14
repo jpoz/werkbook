@@ -147,6 +147,41 @@ var spillFixtureBuilders = []spillFixtureBuilder{
 		purpose:  "SUMPRODUCT nested IF with the formula row outside the referenced rows (#VALUE! via implicit intersection)",
 		build:    buildFixture31,
 	},
+	{
+		filename: "32_let_reuse_in_lifted_if.xlsx",
+		purpose:  "LET binding a FILTER result and reusing it inside IF(result=0,\"\",result)",
+		build:    buildFixture32,
+	},
+	{
+		filename: "33_iferror_datevalue_full_column.xlsx",
+		purpose:  "FILTER include mask with nested IFERROR(DATEVALUE(full-column)) array lifting",
+		build:    buildFixture33,
+	},
+	{
+		filename: "34_sortby_nested_index.xlsx",
+		purpose:  "SORTBY multi-column spill consumed by INDEX in both nested and spill-range forms",
+		build:    buildFixture34,
+	},
+	{
+		filename: "35_choosecols_chooserows_filter_2d.xlsx",
+		purpose:  "CHOOSECOLS / CHOOSEROWS selecting from a 2D FILTER result",
+		build:    buildFixture35,
+	},
+	{
+		filename: "36_byrow_bycol_map_filter_lambda.xlsx",
+		purpose:  "BYROW / BYCOL / MAP applying lambdas over FILTER spill outputs",
+		build:    buildFixture36,
+	},
+	{
+		filename: "37_textsplit_wrap_expand_chain.xlsx",
+		purpose:  "TEXTSPLIT feeding WRAPROWS / WRAPCOLS / EXPAND reshape chains",
+		build:    buildFixture37,
+	},
+	{
+		filename: "38_makearray_scan_reduce_nested.xlsx",
+		purpose:  "MAKEARRAY plus SCAN / REDUCE consuming dynamic-array outputs",
+		build:    buildFixture38,
+	},
 }
 
 // TestGenerateSpillFixtures writes each entry in spillFixtureBuilders to
@@ -495,5 +530,220 @@ func buildFixture31(t *testing.T) *werkbook.File {
 	// on row 2 so cached-value parity exercises the #VALUE! case.
 	mustSetFormula(t, out, "A1",
 		`SUMPRODUCT((Data!A2:A4="completed")*IF(Data!B2:B4-Data!C2:C4*Data!D2>0,Data!B2:B4-Data!C2:C4*Data!D2,0))`)
+	return f
+}
+
+func buildFixture32(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	mustSetValue(t, data, "A1", "Keep")
+	mustSetValue(t, data, "B1", "Amount")
+	rows := []struct {
+		keep   bool
+		amount float64
+	}{
+		{true, 10},
+		{false, 20},
+		{true, 0},
+		{true, 30},
+		{false, 40},
+		{true, 0},
+	}
+	for i, row := range rows {
+		n := i + 2
+		mustSetValue(t, data, "A"+strconv.Itoa(n), row.keep)
+		mustSetValue(t, data, "B"+strconv.Itoa(n), row.amount)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1",
+		`LET(result,FILTER(Data!B2:B7,Data!A2:A7=TRUE,""),IF(result=0,"",result))`)
+	mustSetFormula(t, out, "C1", `COUNT(A1:A10)`)
+	mustSetFormula(t, out, "C2", `SUM(A1:A10)`)
+	return f
+}
+
+func buildFixture33(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	mustSetValue(t, data, "A1", "Accrued On")
+	mustSetValue(t, data, "B1", "Amount")
+	rows := []struct {
+		date   string
+		amount float64
+	}{
+		{"not-a-date", 0},
+		{"2026-01-15", 15000},
+		{"2026-03-20", 27500},
+		{"", 99999},
+		{"2026-04-01", 42500},
+	}
+	for i, row := range rows {
+		n := i + 2
+		mustSetValue(t, data, "A"+strconv.Itoa(n), row.date)
+		mustSetValue(t, data, "B"+strconv.Itoa(n), row.amount)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1",
+		`FILTER(Data!B:B/100,IFERROR(DATEVALUE(Data!A:A),0)>=DATEVALUE("2026-03-01"),"")`)
+	sum, _ := f.NewSheet("Sum")
+	mustSetFormula(t, sum, "A1", `SUM(Out!A:A)`)
+	return f
+}
+
+func buildFixture34(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	for _, cell := range []struct {
+		ref string
+		val any
+	}{
+		{"A1", "Name"},
+		{"B1", "Score"},
+		{"C1", "Amount"},
+		{"A2", "Alpha"},
+		{"B2", 2.0},
+		{"C2", 10.0},
+		{"A3", "Bravo"},
+		{"B3", 1.0},
+		{"C3", 40.0},
+		{"A4", "Charlie"},
+		{"B4", 1.0},
+		{"C4", 20.0},
+		{"A5", "Delta"},
+		{"B5", 3.0},
+		{"C5", 60.0},
+		{"A6", "Echo"},
+		{"B6", 2.0},
+		{"C6", 30.0},
+	} {
+		mustSetValue(t, data, cell.ref, cell.val)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1", `SORTBY(Data!A2:C6,Data!B2:B6,1,Data!C2:C6,-1)`)
+	mustSetFormula(t, out, "E1", `INDEX(SORTBY(Data!A2:C6,Data!B2:B6,1,Data!C2:C6,-1),2,1)`)
+	mustSetFormula(t, out, "E2", `INDEX(A1:C10,2,1)`)
+	mustSetFormula(t, out, "E3", `INDEX(A1:C10,1,3)`)
+	return f
+}
+
+func buildFixture35(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	for _, cell := range []struct {
+		ref string
+		val any
+	}{
+		{"A1", "ID"},
+		{"B1", "Name"},
+		{"C1", "Amount"},
+		{"D1", "Keep"},
+		{"A2", 101.0},
+		{"B2", "alpha"},
+		{"C2", 10.0},
+		{"D2", true},
+		{"A3", 102.0},
+		{"B3", "beta"},
+		{"C3", 20.0},
+		{"D3", false},
+		{"A4", 103.0},
+		{"B4", "gamma"},
+		{"C4", 30.0},
+		{"D4", true},
+		{"A5", 104.0},
+		{"B5", "delta"},
+		{"C5", 40.0},
+		{"D5", true},
+		{"A6", 105.0},
+		{"B6", "epsilon"},
+		{"C6", 50.0},
+		{"D6", false},
+	} {
+		mustSetValue(t, data, cell.ref, cell.val)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1", `CHOOSECOLS(FILTER(Data!A2:C6,Data!D2:D6=TRUE),1,3)`)
+	mustSetFormula(t, out, "D1", `CHOOSEROWS(FILTER(Data!A2:C6,Data!D2:D6=TRUE),1,3)`)
+	return f
+}
+
+func buildFixture36(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	for _, cell := range []struct {
+		ref string
+		val any
+	}{
+		{"A1", "Keep"},
+		{"B1", "Amount"},
+		{"C1", "Cost"},
+		{"D1", "Rate"},
+		{"A2", true},
+		{"B2", 10.0},
+		{"C2", 1.0},
+		{"D2", 2.0},
+		{"A3", false},
+		{"B3", 20.0},
+		{"C3", 2.0},
+		{"D3", 4.0},
+		{"A4", true},
+		{"B4", 30.0},
+		{"C4", 3.0},
+		{"D4", 6.0},
+		{"A5", true},
+		{"B5", 40.0},
+		{"C5", 4.0},
+		{"D5", 8.0},
+		{"A6", false},
+		{"B6", 50.0},
+		{"C6", 5.0},
+		{"D6", 10.0},
+		{"A7", true},
+		{"B7", 60.0},
+		{"C7", 6.0},
+		{"D7", 12.0},
+	} {
+		mustSetValue(t, data, cell.ref, cell.val)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1", `BYROW(FILTER(Data!B2:C7,Data!A2:A7=TRUE),LAMBDA(r,SUM(r)))`)
+	mustSetFormula(t, out, "C1", `BYCOL(FILTER(Data!B2:D7,Data!A2:A7=TRUE),LAMBDA(c,SUM(c)))`)
+	mustSetFormula(t, out, "F1", `MAP(FILTER(Data!B2:B7,Data!A2:A7=TRUE),LAMBDA(x,x*10))`)
+	return f
+}
+
+func buildFixture37(t *testing.T) *werkbook.File {
+	f := werkbook.New()
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1", `TEXTSPLIT("A,B;C;D,E,F",",",";",,,"pad")`)
+	mustSetFormula(t, out, "E1", `WRAPROWS(TEXTSPLIT("1,2,3,4,5",","),2,"pad")`)
+	mustSetFormula(t, out, "H1", `WRAPCOLS(TEXTSPLIT("x,y,z,w,q",","),2,"pad")`)
+	mustSetFormula(t, out, "K1", `EXPAND(TEXTSPLIT("red,blue;green",",",";"),3,3,"pad")`)
+	return f
+}
+
+func buildFixture38(t *testing.T) *werkbook.File {
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	mustSetValue(t, data, "A1", "Keep")
+	mustSetValue(t, data, "B1", "Amount")
+	for i, row := range []struct {
+		keep   bool
+		amount float64
+	}{
+		{true, 5},
+		{false, 10},
+		{true, 15},
+		{true, 20},
+		{false, 25},
+		{true, 30},
+	} {
+		n := i + 2
+		mustSetValue(t, data, "A"+strconv.Itoa(n), row.keep)
+		mustSetValue(t, data, "B"+strconv.Itoa(n), row.amount)
+	}
+	out, _ := f.NewSheet("Out")
+	mustSetFormula(t, out, "A1", `MAKEARRAY(3,2,LAMBDA(r,c,r*10+c))`)
+	mustSetFormula(t, out, "E1", `SCAN(0,FILTER(Data!B2:B7,Data!A2:A7=TRUE),LAMBDA(a,b,a+b))`)
+	mustSetFormula(t, out, "G1", `REDUCE(0,FILTER(Data!B2:B7,Data!A2:A7=TRUE),LAMBDA(a,b,a+b))`)
 	return f
 }

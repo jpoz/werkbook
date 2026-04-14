@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	werkbook "github.com/jpoz/werkbook"
@@ -273,7 +274,7 @@ func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, 
 		}
 	}()
 
-	f, err := werkbook.Open(filePath)
+	f, err := werkbook.Open(filePath, werkbook.WithSpillCache())
 	if err != nil {
 		return checkData{}, false, fmt.Sprintf("could not open %q: %v", filePath, err)
 	}
@@ -322,6 +323,31 @@ func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, 
 					formula: formula,
 					value:   v,
 				}
+
+				// For spill anchors, also cache all cells in the spill range.
+				// Skip when the anchor's cached value is #SPILL! — the cells
+				// in the range are blockers (user data), not spill shadow results.
+				if cell.IsDynamicArraySpill() && !(v.Type == werkbook.TypeError && v.String == "#SPILL!") {
+					toCol, toRow, ok := s.SpillBounds(cell.Col(), row.Num())
+					if ok {
+						for r := row.Num(); r <= toRow; r++ {
+							for c := cell.Col(); c <= toCol; c++ {
+								if c == cell.Col() && r == row.Num() {
+									continue // anchor already cached
+								}
+								spillRef, err := werkbook.CoordinatesToCellName(c, r)
+								if err != nil {
+									continue
+								}
+								sv, _ := s.GetValue(spillRef)
+								cached[cellID{sheet: name, ref: spillRef}] = cachedEntry{
+									formula: formula,
+									value:   sv,
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -357,6 +383,10 @@ func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, 
 		}
 	}
 
+	// Clear spill shadow values now that we have cached them, so the
+	// engine can properly resolve spill results during recalculation.
+	f.ClearSpillShadowValues()
+
 	// Recalculate.
 	f.Recalculate()
 
@@ -364,46 +394,42 @@ func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, 
 	var diffs []checkDiff
 	matches := 0
 
-	for _, name := range sheetNames {
-		s := f.Sheet(name)
+	for id, entry := range cached {
+		s := f.Sheet(id.sheet)
 		if s == nil {
 			continue
 		}
-		for row := range s.Rows() {
-			for _, cell := range row.Cells() {
-				if cell.Formula() == "" {
-					continue
-				}
-				ref, err := werkbook.CoordinatesToCellName(cell.Col(), row.Num())
-				if err != nil {
-					continue
-				}
-				id := cellID{sheet: name, ref: ref}
-				entry, ok := cached[id]
-				if !ok {
-					continue
-				}
+		computed, _ := s.GetValue(id.ref)
 
-				computed, _ := s.GetValue(ref)
-
-				if valuesEqual(entry.value, computed, cfg.Tolerance) {
-					matches++
-				} else {
-					diffs = append(diffs, checkDiff{
-						Sheet:   name,
-						Cell:    ref,
-						Formula: entry.formula,
-						Cached:  entry.value.Raw(),
-						Computed: computed.Raw(),
-					})
-				}
-			}
+		if valuesEqual(entry.value, computed, cfg.Tolerance) {
+			matches++
+		} else {
+			diffs = append(diffs, checkDiff{
+				Sheet:    id.sheet,
+				Cell:     id.ref,
+				Formula:  entry.formula,
+				Cached:   entry.value.Raw(),
+				Computed: computed.Raw(),
+			})
 		}
 	}
 
 	if diffs == nil {
 		diffs = []checkDiff{}
 	}
+
+	// Sort diffs by sheet, then row, then column for stable output.
+	sort.Slice(diffs, func(i, j int) bool {
+		if diffs[i].Sheet != diffs[j].Sheet {
+			return diffs[i].Sheet < diffs[j].Sheet
+		}
+		ci, ri, _ := werkbook.CellNameToCoordinates(diffs[i].Cell)
+		cj, rj, _ := werkbook.CellNameToCoordinates(diffs[j].Cell)
+		if ri != rj {
+			return ri < rj
+		}
+		return ci < cj
+	})
 
 	return checkData{
 		File:       filePath,

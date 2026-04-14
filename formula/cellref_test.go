@@ -129,24 +129,56 @@ func TestParseCellRefToken3DRef(t *testing.T) {
 }
 
 func TestParseCellRefTokenOutOfRange(t *testing.T) {
-	// Column or row numbers exceeding limits must return an error.
-	tests := []struct {
+	// Column refs beyond XFD now parse successfully (LET/LAMBDA desugaring
+	// consumes them before the compiler validates). Only row overflow is
+	// rejected at parse time.
+	t.Run("col_too_large_parses", func(t *testing.T) {
+		ref, err := parseCellRefToken("AAAA1")
+		if err != nil {
+			t.Fatalf("parseCellRefToken(%q) unexpected error: %v", "AAAA1", err)
+		}
+		if ref.Col != ColLettersToNumber("AAAA") {
+			t.Errorf("parseCellRefToken(%q) Col = %d, want %d", "AAAA1", ref.Col, ColLettersToNumber("AAAA"))
+		}
+	})
+	t.Run("col_beyond_xfd_parses", func(t *testing.T) {
+		ref, err := parseCellRefToken("XFE1")
+		if err != nil {
+			t.Fatalf("parseCellRefToken(%q) unexpected error: %v", "XFE1", err)
+		}
+		if ref.Col != ColLettersToNumber("XFE") {
+			t.Errorf("parseCellRefToken(%q) Col = %d, want %d", "XFE1", ref.Col, ColLettersToNumber("XFE"))
+		}
+	})
+
+	// Row overflow is still rejected at parse time.
+	rowTests := []struct {
 		name  string
 		input string
 	}{
-		{"col_too_large", "AAAA1"},           // 4 letters → col > 16384
-		{"col_beyond_xfd", "XFE1"},           // one past XFD
-		{"row_too_large", "A1048577"},        // one past max row
-		{"row_way_too_large", "A9999999999"}, // very large row
+		{"row_too_large", "A1048577"},
+		{"row_way_too_large", "A9999999999"},
 	}
-
-	for _, tt := range tests {
+	for _, tt := range rowTests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := parseCellRefToken(tt.input)
 			if err == nil {
-				t.Fatalf("parseCellRefToken(%q) expected error for out-of-range ref, got nil", tt.input)
+				t.Fatalf("parseCellRefToken(%q) expected error for out-of-range row, got nil", tt.input)
 			}
-			t.Logf("parseCellRefToken(%q) correctly returned error: %v", tt.input, err)
+		})
+	}
+}
+
+func TestColNumberToLettersRoundTrip(t *testing.T) {
+	// Verify that encoding → decoding round-trips for identifiers used by LET/LAMBDA.
+	names := []string{"RESULT", "TOTAL", "ITEM", "XFE", "AAAA"}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			col := ColLettersToNumber(name)
+			got := ColNumberToLetters(col)
+			if got != name {
+				t.Errorf("ColNumberToLetters(ColLettersToNumber(%q)) = %q, want %q", name, got, name)
+			}
 		})
 	}
 }

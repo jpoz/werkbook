@@ -35,6 +35,11 @@ func (c *Cell) Formula() string {
 	return c.formula
 }
 
+// IsDynamicArraySpill returns true if this cell is a dynamic-array spill anchor.
+func (c *Cell) IsDynamicArraySpill() bool {
+	return c.dynamicArraySpill
+}
+
 // Style returns the cell's style, or nil for default styling.
 func (c *Cell) Style() *Style {
 	return c.style

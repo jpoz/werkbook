@@ -284,6 +284,32 @@ func (s *Sheet) GetFormula(cell string) (string, error) {
 	return c.formula, nil
 }
 
+// SpillBounds returns the spill range for a dynamic-array anchor cell. After
+// recalculation it returns the published bounds; before recalculation it falls
+// back to the OOXML formula ref imported from the file. Returns zeroes and
+// false when the cell is not a spill anchor or has no spill range.
+func (s *Sheet) SpillBounds(col, row int) (toCol, toRow int, ok bool) {
+	state, exists := s.spillState(col, row)
+	if !exists {
+		return 0, 0, false
+	}
+	if spillStateHasPublishedSpill(state, col, row, s.file.calcGen) {
+		return state.publishedToCol, state.publishedToRow, true
+	}
+	// Fall back to imported OOXML formula ref (pre-recalculation).
+	if state.formulaRef == "" {
+		return 0, 0, false
+	}
+	_, _, toCol, toRow, err := RangeToCoordinates(state.formulaRef)
+	if err != nil {
+		return 0, 0, false
+	}
+	if toCol <= col && toRow <= row {
+		return 0, 0, false
+	}
+	return toCol, toRow, true
+}
+
 // GetValue returns the value of a cell by reference (e.g. "A1").
 func (s *Sheet) GetValue(cell string) (Value, error) {
 	col, row, err := CellNameToCoordinates(cell)

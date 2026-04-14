@@ -69,6 +69,9 @@ func TestLET(t *testing.T) {
 		{"LET(x, 0, x+1)", NumberVal(1)},
 		// Binding value is negative
 		{"LET(x, -10, ABS(x))", NumberVal(10)},
+		// Long parameter names (previously broke because col > XFD was rejected at parse time)
+		{"LET(result, 5, result+1)", NumberVal(6)},
+		{"LET(total, 10, item, total+5, item)", NumberVal(15)},
 	}
 
 	for _, tt := range tests {
@@ -130,6 +133,8 @@ func TestLETParseAST(t *testing.T) {
 		{"LET(x, 5, y, x+1, y*2)", "(* (+ 5 1) 2)"},
 		// Simple passthrough: LET(x, 42, x) => 42
 		{"LET(x, 42, x)", "42"},
+		// Long parameter names
+		{"LET(result, 5, result+1)", "(+ 5 1)"},
 	}
 
 	for _, tt := range tests {
