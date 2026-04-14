@@ -141,7 +141,7 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
-		if n.Col > 16384 {
+		if n.Col > maxCols {
 			// Column beyond XFD that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
@@ -167,7 +167,7 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
-		if n.From.Col > 16384 || n.To.Col > 16384 {
+		if n.From.Col > maxCols || n.To.Col > maxCols {
 			// Column beyond XFD that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
@@ -548,7 +548,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// cell value.  When the single argument is a direct cell reference, push
 	// a ValueRef (address only) so the function can extract col/row.
 	if (name == "AREAS" || name == "COLUMN" || name == "ROW" || name == "ISFORMULA" || name == "FORMULATEXT" || name == "ANCHORARRAY" || name == "ISREF") && argc == 1 {
-		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" && cr.Col <= 16384 {
+		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" && cr.Col <= maxCols {
 			idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 			c.emit(OpLoadCellRef, idx)
 			c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
@@ -588,7 +588,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		first := n.Args[0]
 		switch ref := first.(type) {
 		case *CellRef:
-			if ref.Col <= 16384 {
+			if ref.Col <= maxCols {
 				idx := c.addRef(CellAddr{Sheet: ref.Sheet, Col: ref.Col, Row: ref.Row})
 				c.emit(OpLoadCellRef, idx)
 			} else {

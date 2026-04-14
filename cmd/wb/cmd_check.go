@@ -325,7 +325,9 @@ func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, 
 				}
 
 				// For spill anchors, also cache all cells in the spill range.
-				if cell.IsDynamicArraySpill() {
+				// Skip when the anchor's cached value is #SPILL! — the cells
+				// in the range are blockers (user data), not spill shadow results.
+				if cell.IsDynamicArraySpill() && !(v.Type == werkbook.TypeError && v.String == "#SPILL!") {
 					toCol, toRow, ok := s.SpillBounds(cell.Col(), row.Num())
 					if ok {
 						for r := row.Num(); r <= toRow; r++ {

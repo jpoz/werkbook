@@ -324,8 +324,8 @@ func ColNumberToLetters(col int) string {
 		return ""
 	}
 	// For normal columns (A–XFD) a 3-byte buffer suffices. LET/LAMBDA parameter
-	// names can encode arbitrarily long identifiers, so we build in reverse and
-	// prepend each character.
+	// names can encode arbitrarily long identifiers, so we append each digit in
+	// reverse order and then reverse the result.
 	var buf []byte
 	for col > 0 {
 		col--
