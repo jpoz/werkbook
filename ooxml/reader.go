@@ -47,35 +47,101 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		files[f.Name] = f
 	}
 
+	contentDefaults, contentOverrides := readContentTypeMaps(files)
+	recognizedPaths := make(map[string]struct{}, 16)
+	recognizedPaths["[Content_Types].xml"] = struct{}{}
+	recognizedPaths["xl/workbook.xml"] = struct{}{}
+	recognizedPaths["xl/_rels/workbook.xml.rels"] = struct{}{}
+	recognizedPaths["xl/styles.xml"] = struct{}{}
+	recognizedPaths["docProps/app.xml"] = struct{}{}
+
 	// Parse workbook relationships to find sheet paths.
 	wbRels, err := readXML[xlsxRelationships](files, "xl/_rels/workbook.xml.rels")
 	if err != nil {
 		return nil, fmt.Errorf("read workbook rels: %w", err)
 	}
 	sheetRels := make(map[string]string) // rId -> target path
+	var extraWorkbookRels []OpaqueRel
 	for _, rel := range wbRels.Relationships {
-		if rel.Type == RelTypeWorksheet || rel.Type == RelTypeWorksheetStrict {
+		switch rel.Type {
+		case RelTypeWorksheet, RelTypeWorksheetStrict:
 			sheetRels[rel.ID] = rel.Target
+		case RelTypeStyles, RelTypeStylesStrict, RelTypeSharedStr, RelTypeSharedStrStrict, RelTypeSheetMetadata, RelTypeSheetMetadataStrict:
+			// recognized workbook-level relationships
+		default:
+			extraWorkbookRels = append(extraWorkbookRels, opaqueRelFromXML(rel))
 		}
 	}
 
 	// Parse workbook to get sheet names and ordering.
-	wb, err := readXML[xlsxWorkbook](files, "xl/workbook.xml")
+	wbRaw, err := readFile(files, "xl/workbook.xml")
 	if err != nil {
 		return nil, fmt.Errorf("read workbook: %w", err)
+	}
+	wb, err := unmarshalXMLBytes[xlsxWorkbook](wbRaw, "xl/workbook.xml")
+	if err != nil {
+		return nil, fmt.Errorf("read workbook: %w", err)
+	}
+	workbookRootAttrs, workbookExtraElements, err := captureRootAttrsAndExtras(
+		wbRaw,
+		func(name string) bool {
+			switch name {
+			case "workbookPr", "sheets", "definedNames", "calcPr":
+				return true
+			default:
+				return false
+			}
+		},
+		workbookOrderKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("capture workbook passthrough: %w", err)
 	}
 
 	// Parse shared string table (may not exist).
 	sst, _ := readSST(files)
+	if _, ok := files["xl/sharedStrings.xml"]; ok {
+		recognizedPaths["xl/sharedStrings.xml"] = struct{}{}
+	}
 
 	// Parse styles (may not exist).
 	styles := readStyles(files)
 
-	data := &WorkbookData{Styles: styles}
+	data := &WorkbookData{
+		Styles:        styles,
+		RootAttrs:     workbookRootAttrs,
+		ExtraElements: workbookExtraElements,
+		ExtraRels:     extraWorkbookRels,
+	}
 	if corePropsRaw, err := readFile(files, "docProps/core.xml"); err == nil {
+		recognizedPaths["docProps/core.xml"] = struct{}{}
 		data.CorePropsRaw = corePropsRaw
 		if coreProps, err := parseCoreProperties(corePropsRaw); err == nil {
 			data.CoreProps = coreProps
+		}
+	}
+
+	if rootRels, err := readXML[xlsxRelationships](files, "_rels/.rels"); err == nil {
+		recognizedPaths["_rels/.rels"] = struct{}{}
+		for _, rel := range rootRels.Relationships {
+			switch rel.Type {
+			case RelTypeWorkbook, RelTypeCoreProps, RelTypeExtendedApp:
+				// recognized root rels
+			default:
+				data.ExtraRootRels = append(data.ExtraRootRels, opaqueRelFromXML(rel))
+			}
+		}
+	}
+
+	for ext, contentType := range contentDefaults {
+		switch strings.ToLower(ext) {
+		case "xml", "rels":
+			continue
+		default:
+			data.OpaqueDefaults = append(data.OpaqueDefaults, OpaqueDefault{
+				Extension:   ext,
+				ContentType: contentType,
+			})
 		}
 	}
 
@@ -122,12 +188,37 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		} else {
 			path = "xl/" + target
 		}
-		ws, err := readXML[xlsxWorksheet](files, path)
+		wsRaw, err := readFile(files, path)
 		if err != nil {
 			return nil, fmt.Errorf("read sheet %q: %w", s.Name, err)
 		}
+		recognizedPaths[path] = struct{}{}
+		ws, err := unmarshalXMLBytes[xlsxWorksheet](wsRaw, path)
+		if err != nil {
+			return nil, fmt.Errorf("read sheet %q: %w", s.Name, err)
+		}
+		rootAttrs, extraElements, err := captureRootAttrsAndExtras(
+			wsRaw,
+			func(name string) bool {
+				switch name {
+				case "cols", "sheetData", "mergeCells", "tableParts":
+					return true
+				default:
+					return false
+				}
+			},
+			worksheetOrderKey,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("capture sheet %q passthrough: %w", s.Name, err)
+		}
 
-		sd := SheetData{Name: s.Name, State: s.State}
+		sd := SheetData{
+			Name:          s.Name,
+			State:         s.State,
+			RootAttrs:     rootAttrs,
+			ExtraElements: extraElements,
+		}
 
 		// Extract column widths.
 		if ws.Cols != nil {
@@ -171,11 +262,35 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 
 		// Read table definitions associated with this sheet.
 		sheetIdx := len(data.Sheets)
-		tables := readSheetTables(files, path, sheetIdx)
+		tables, extraSheetRels, relsPath, tablePaths := readSheetTables(files, path, sheetIdx)
+		if relsPath != "" {
+			recognizedPaths[relsPath] = struct{}{}
+		}
+		for _, tablePath := range tablePaths {
+			recognizedPaths[tablePath] = struct{}{}
+		}
 		data.Tables = append(data.Tables, tables...)
+		sd.ExtraRels = extraSheetRels
 
 		data.Sheets = append(data.Sheets, sd)
 	}
+
+	for _, f := range zr.File {
+		if _, ok := recognizedPaths[f.Name]; ok {
+			continue
+		}
+		entryData, err := readFile(files, f.Name)
+		if err != nil {
+			return nil, err
+		}
+		contentType := contentOverrides["/"+f.Name]
+		data.OpaqueEntries = append(data.OpaqueEntries, OpaqueEntry{
+			Path:        f.Name,
+			ContentType: contentType,
+			Data:        entryData,
+		})
+	}
+
 	return data, nil
 }
 
@@ -486,10 +601,11 @@ type xlsxTableStyleInfo struct {
 	ShowColumnStripes ooxmlBool `xml:"showColumnStripes,attr,omitempty"`
 }
 
-// readSheetTables reads table definitions referenced by a sheet's relationship file.
+// readSheetTables reads table definitions referenced by a sheet's relationship
+// file and returns any non-table relationships as opaque passthrough entries.
 // sheetPath is the path to the sheet XML (e.g. "xl/worksheets/sheet1.xml").
 // sheetIndex is the 0-based index of the sheet in WorkbookData.Sheets.
-func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex int) []TableDef {
+func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex int) ([]TableDef, []OpaqueRel, string, []string) {
 	// Determine the relationship file path for this sheet.
 	// e.g. "xl/worksheets/sheet1.xml" → "xl/worksheets/_rels/sheet1.xml.rels"
 	lastSlash := strings.LastIndex(sheetPath, "/")
@@ -504,59 +620,64 @@ func readSheetTables(files map[string]*zip.File, sheetPath string, sheetIndex in
 
 	sheetRels, err := readXML[xlsxRelationships](files, relsPath)
 	if err != nil {
-		return nil
+		return nil, nil, "", nil
 	}
 
 	var tables []TableDef
+	var extraRels []OpaqueRel
+	var tablePaths []string
 	for _, rel := range sheetRels.Relationships {
-		if rel.Type != RelTypeTable && rel.Type != RelTypeTableStrict {
-			continue
-		}
-		// Resolve the table path relative to the sheet directory.
-		var tablePath string
-		if strings.HasPrefix(rel.Target, "/") {
-			tablePath = rel.Target[1:]
-		} else if lastSlash >= 0 {
-			tablePath = resolveRelativePath(sheetPath[:lastSlash], rel.Target)
-		} else {
-			tablePath = rel.Target
-		}
-
-		xt, err := readXML[xlsxTable](files, tablePath)
-		if err != nil {
-			continue
-		}
-
-		td := TableDef{
-			Name:            xt.Name,
-			DisplayName:     xt.DisplayName,
-			Ref:             xt.Ref,
-			SheetIndex:      sheetIndex,
-			TotalsRowCount:  xt.TotalsRowCount,
-			HasAutoFilter:   xt.AutoFilter != nil,
-			HasActiveFilter: xt.AutoFilter != nil && len(xt.AutoFilter.FilterColumns) > 0,
-		}
-		// Default headerRowCount is 1 if not specified.
-		if xt.HeaderRowCount != nil {
-			td.HeaderRowCount = *xt.HeaderRowCount
-		} else {
-			td.HeaderRowCount = 1
-		}
-		for _, col := range xt.TableColumns.Column {
-			td.Columns = append(td.Columns, decodeOOXMLEscapes(col.Name))
-		}
-		if xt.TableStyleInfo != nil {
-			td.Style = &TableStyleData{
-				Name:              xt.TableStyleInfo.Name,
-				ShowFirstColumn:   xt.TableStyleInfo.ShowFirstColumn != 0,
-				ShowLastColumn:    xt.TableStyleInfo.ShowLastColumn != 0,
-				ShowRowStripes:    xt.TableStyleInfo.ShowRowStripes != 0,
-				ShowColumnStripes: xt.TableStyleInfo.ShowColumnStripes != 0,
+		if rel.Type == RelTypeTable || rel.Type == RelTypeTableStrict {
+			// Resolve the table path relative to the sheet directory.
+			var tablePath string
+			if strings.HasPrefix(rel.Target, "/") {
+				tablePath = rel.Target[1:]
+			} else if lastSlash >= 0 {
+				tablePath = resolveRelativePath(sheetPath[:lastSlash], rel.Target)
+			} else {
+				tablePath = rel.Target
 			}
+
+			xt, err := readXML[xlsxTable](files, tablePath)
+			if err != nil {
+				extraRels = append(extraRels, opaqueRelFromXML(rel))
+				continue
+			}
+
+			td := TableDef{
+				Name:            xt.Name,
+				DisplayName:     xt.DisplayName,
+				Ref:             xt.Ref,
+				SheetIndex:      sheetIndex,
+				TotalsRowCount:  xt.TotalsRowCount,
+				HasAutoFilter:   xt.AutoFilter != nil,
+				HasActiveFilter: xt.AutoFilter != nil && len(xt.AutoFilter.FilterColumns) > 0,
+			}
+			// Default headerRowCount is 1 if not specified.
+			if xt.HeaderRowCount != nil {
+				td.HeaderRowCount = *xt.HeaderRowCount
+			} else {
+				td.HeaderRowCount = 1
+			}
+			for _, col := range xt.TableColumns.Column {
+				td.Columns = append(td.Columns, decodeOOXMLEscapes(col.Name))
+			}
+			if xt.TableStyleInfo != nil {
+				td.Style = &TableStyleData{
+					Name:              xt.TableStyleInfo.Name,
+					ShowFirstColumn:   xt.TableStyleInfo.ShowFirstColumn != 0,
+					ShowLastColumn:    xt.TableStyleInfo.ShowLastColumn != 0,
+					ShowRowStripes:    xt.TableStyleInfo.ShowRowStripes != 0,
+					ShowColumnStripes: xt.TableStyleInfo.ShowColumnStripes != 0,
+				}
+			}
+			tables = append(tables, td)
+			tablePaths = append(tablePaths, tablePath)
+			continue
 		}
-		tables = append(tables, td)
+		extraRels = append(extraRels, opaqueRelFromXML(rel))
 	}
-	return tables
+	return tables, extraRels, relsPath, tablePaths
 }
 
 // resolveRelativePath resolves a relative target path against a base directory.
@@ -582,11 +703,42 @@ func readXML[T any](files map[string]*zip.File, name string) (T, error) {
 	if err != nil {
 		return zero, err
 	}
+	return unmarshalXMLBytes[T](data, name)
+}
+
+func unmarshalXMLBytes[T any](data []byte, name string) (T, error) {
+	var zero T
 	var v T
 	if err := xml.Unmarshal(data, &v); err != nil {
 		return zero, fmt.Errorf("unmarshal %s: %w", name, err)
 	}
 	return v, nil
+}
+
+func opaqueRelFromXML(rel xlsxRelationship) OpaqueRel {
+	return OpaqueRel{
+		ID:         rel.ID,
+		Type:       rel.Type,
+		Target:     rel.Target,
+		TargetMode: rel.TargetMode,
+	}
+}
+
+func readContentTypeMaps(files map[string]*zip.File) (map[string]string, map[string]string) {
+	defaults := make(map[string]string)
+	overrides := make(map[string]string)
+
+	types, err := readXML[xlsxTypes](files, "[Content_Types].xml")
+	if err != nil {
+		return defaults, overrides
+	}
+	for _, def := range types.Defaults {
+		defaults[strings.ToLower(def.Extension)] = def.ContentType
+	}
+	for _, override := range types.Overrides {
+		overrides[override.PartName] = override.ContentType
+	}
+	return defaults, overrides
 }
 
 func readFile(files map[string]*zip.File, name string) ([]byte, error) {

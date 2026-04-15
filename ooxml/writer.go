@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -68,13 +69,17 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 		}
 	}
 
+	hasSST := sst.Len() > 0
+	sheetRelIDs := nextRelationshipIDs(data.ExtraRels, len(data.Sheets))
+	emittedPaths := buildWriterPaths(data, tablePlan, hasSST, hasCoreProps, hasDynamicArrayMetadata)
+
 	// [Content_Types].xml
-	if err := writeContentTypes(zw, sheetCount, len(data.Tables), sst.Len() > 0, hasCoreProps, hasDynamicArrayMetadata); err != nil {
+	if err := writeContentTypes(zw, data, tablePlan, emittedPaths, hasSST, hasCoreProps, hasDynamicArrayMetadata); err != nil {
 		return err
 	}
 
 	// _rels/.rels
-	if err := writeRootRels(zw, hasCoreProps); err != nil {
+	if err := writeRootRels(zw, data.ExtraRootRels, hasCoreProps); err != nil {
 		return err
 	}
 
@@ -91,12 +96,12 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/workbook.xml
-	if err := writeWorkbookXML(zw, data); err != nil {
+	if err := writeWorkbookXML(zw, data, sheetRelIDs); err != nil {
 		return err
 	}
 
 	// xl/_rels/workbook.xml.rels
-	if err := writeWorkbookRels(zw, sheetCount, sst.Len() > 0, hasDynamicArrayMetadata); err != nil {
+	if err := writeWorkbookRels(zw, data, sheetRelIDs, hasSST, hasDynamicArrayMetadata); err != nil {
 		return err
 	}
 
@@ -108,11 +113,12 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	// xl/worksheets/sheet{N}.xml
 	for i, sd := range data.Sheets {
 		sheetTables := tablePlan[i]
-		if err := writeSheet(zw, i+1, &sd, styleIndexMap, sheetTables); err != nil {
+		tableRelIDs := nextRelationshipIDs(sd.ExtraRels, len(sheetTables))
+		if err := writeSheet(zw, i+1, &sd, styleIndexMap, sheetTables, tableRelIDs); err != nil {
 			return err
 		}
-		if len(sheetTables) > 0 {
-			if err := writeSheetRels(zw, i+1, sheetTables); err != nil {
+		if len(sheetTables) > 0 || len(sd.ExtraRels) > 0 {
+			if err := writeSheetRels(zw, &sd, i+1, sheetTables, tableRelIDs); err != nil {
 				return err
 			}
 		}
@@ -129,16 +135,26 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/sharedStrings.xml (only if there are strings)
-	if sst.Len() > 0 {
+	if hasSST {
 		if err := writeSST(zw, sst); err != nil {
 			return err
 		}
 	}
 
+	if err := writeOpaqueEntries(zw, data.OpaqueEntries, emittedPaths); err != nil {
+		return err
+	}
+
 	return zw.Close()
 }
 
-func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCoreProps, hasDynamicArrayMetadata bool) error {
+func writeContentTypes(
+	zw *zip.Writer,
+	data *WorkbookData,
+	tablePlan map[int][]tableWriteInfo,
+	emittedPaths map[string]struct{},
+	hasSST, hasCoreProps, hasDynamicArrayMetadata bool,
+) error {
 	ct := xlsxTypes{
 		Xmlns: contentTypesNS,
 		Defaults: []xlsxDefault{
@@ -157,7 +173,7 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCo
 			ContentType: "application/vnd.openxmlformats-package.core-properties+xml",
 		})
 	}
-	for i := range sheetCount {
+	for i := range data.Sheets {
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
 			PartName:    fmt.Sprintf("/xl/worksheets/sheet%d.xml", i+1),
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
@@ -169,11 +185,13 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCo
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
 		})
 	}
-	for i := range tableCount {
-		ct.Overrides = append(ct.Overrides, xlsxOverride{
-			PartName:    fmt.Sprintf("/xl/tables/table%d.xml", i+1),
-			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
-		})
+	for _, sheetTables := range tablePlan {
+		for _, tw := range sheetTables {
+			ct.Overrides = append(ct.Overrides, xlsxOverride{
+				PartName:    fmt.Sprintf("/xl/tables/table%d.xml", tw.PartNum),
+				ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
+			})
+		}
 	}
 	if hasDynamicArrayMetadata {
 		ct.Overrides = append(ct.Overrides, xlsxOverride{
@@ -181,39 +199,95 @@ func writeContentTypes(zw *zip.Writer, sheetCount, tableCount int, hasSST, hasCo
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml",
 		})
 	}
+
+	defaults := map[string]string{
+		"rels": "application/vnd.openxmlformats-package.relationships+xml",
+		"xml":  "application/xml",
+	}
+	for _, def := range data.OpaqueDefaults {
+		ext := strings.ToLower(def.Extension)
+		if ext == "xml" || ext == "rels" {
+			continue
+		}
+		if _, ok := defaults[ext]; ok {
+			continue
+		}
+		defaults[ext] = def.ContentType
+		ct.Defaults = append(ct.Defaults, xlsxDefault{
+			Extension:   def.Extension,
+			ContentType: def.ContentType,
+		})
+	}
+
+	seenOverrides := make(map[string]struct{}, len(ct.Overrides))
+	for _, override := range ct.Overrides {
+		seenOverrides[strings.ToLower(override.PartName)] = struct{}{}
+	}
+	for _, entry := range data.OpaqueEntries {
+		if entry.ContentType == "" {
+			continue
+		}
+		if _, known := emittedPaths[entry.Path]; known {
+			continue
+		}
+		partName := "/" + entry.Path
+		key := strings.ToLower(partName)
+		if _, ok := seenOverrides[key]; ok {
+			continue
+		}
+		seenOverrides[key] = struct{}{}
+		ct.Overrides = append(ct.Overrides, xlsxOverride{
+			PartName:    partName,
+			ContentType: entry.ContentType,
+		})
+	}
+
+	sort.SliceStable(ct.Defaults, func(i, j int) bool {
+		return strings.ToLower(ct.Defaults[i].Extension) < strings.ToLower(ct.Defaults[j].Extension)
+	})
+	sort.SliceStable(ct.Overrides, func(i, j int) bool {
+		return strings.ToLower(ct.Overrides[i].PartName) < strings.ToLower(ct.Overrides[j].PartName)
+	})
 	return writeXML(zw, "[Content_Types].xml", ct)
 }
 
-func writeRootRels(zw *zip.Writer, hasCoreProps bool) error {
+func writeRootRels(zw *zip.Writer, extra []OpaqueRel, hasCoreProps bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
-		Relationships: []xlsxRelationship{
-			{ID: "rId1", Type: RelTypeWorkbook, Target: "xl/workbook.xml"},
-		},
 	}
-	nextID := 2
+	for _, rel := range extra {
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:         rel.ID,
+			Type:       rel.Type,
+			Target:     rel.Target,
+			TargetMode: rel.TargetMode,
+		})
+	}
+	ids := nextRelationshipIDs(extra, 1+boolInt(hasCoreProps)+1)
+	idx := 0
+	rels.Relationships = append(rels.Relationships, xlsxRelationship{
+		ID:     ids[idx],
+		Type:   RelTypeWorkbook,
+		Target: "xl/workbook.xml",
+	})
+	idx++
 	if hasCoreProps {
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", nextID),
+			ID:     ids[idx],
 			Type:   RelTypeCoreProps,
 			Target: "docProps/core.xml",
 		})
-		nextID++
+		idx++
 	}
 	rels.Relationships = append(rels.Relationships, xlsxRelationship{
-		ID:     fmt.Sprintf("rId%d", nextID),
+		ID:     ids[idx],
 		Type:   RelTypeExtendedApp,
 		Target: "docProps/app.xml",
 	})
 	return writeXML(zw, "_rels/.rels", rels)
 }
 
-func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
-	wb := xlsxWorkbook{
-		Xmlns:  NSSpreadsheetML,
-		XmlnsR: NSOfficeDocument,
-	}
-
+func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) error {
 	// Future-function formulas are serialized with _xlfn.* prefixes in sheet XML.
 	// Excel expects the workbook part to advertise the matching calc metadata,
 	// otherwise it offers to repair the file on open.
@@ -221,31 +295,71 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 	if workbookNeedsFutureFunctionsMetadata(data) && calcProps.ID == 0 {
 		calcProps.ID = defaultFutureFunctionsCalcID
 	}
-	if data.Date1904 {
-		wb.WorkbookPr = &xlsxWorkbookPr{Date1904: "1"}
+	requiredAttrs := map[string]string{
+		"xmlns":   spreadsheetNamespace(data.RootAttrs),
+		"xmlns:r": relationshipsNamespace(data.RootAttrs),
 	}
+	rootAttrs := mergedRootAttrs(data.RootAttrs, requiredAttrs)
+
+	var fragments []xmlFragment
+	if data.Date1904 {
+		frag, err := encodeNamedXMLFragment("workbookPr", &xlsxWorkbookPr{Date1904: "1"})
+		if err != nil {
+			return fmt.Errorf("encode workbookPr: %w", err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: workbookElementOrder["workbookPr"],
+			Seq:      1 << 30,
+			XML:      frag,
+		})
+	}
+
+	sheets := xlsxSheets{}
+	for i, sd := range data.Sheets {
+		rid := fmt.Sprintf("rId%d", i+1)
+		if i < len(sheetRelIDs) {
+			rid = sheetRelIDs[i]
+		}
+		sheet := xlsxSheet{
+			Name:    sd.Name,
+			SheetID: i + 1,
+			RID:     rid,
+		}
+		if sd.State != "" {
+			sheet.State = sd.State
+		}
+		sheets.Sheet = append(sheets.Sheet, sheet)
+	}
+	sheetsFrag, err := encodeNamedXMLFragment("sheets", sheets)
+	if err != nil {
+		return fmt.Errorf("encode sheets: %w", err)
+	}
+	fragments = append(fragments, xmlFragment{
+		OrderKey: workbookElementOrder["sheets"],
+		Seq:      1 << 30,
+		XML:      sheetsFrag,
+	})
+
 	if hasCalcProps(calcProps) {
-		wb.CalcPr = &xlsxCalcPr{
+		calcFrag, err := encodeNamedXMLFragment("calcPr", &xlsxCalcPr{
 			CalcMode:       calcProps.Mode,
 			CalcID:         calcProps.ID,
 			FullCalcOnLoad: boolString(calcProps.FullCalcOnLoad),
 			ForceFullCalc:  boolString(calcProps.ForceFullCalc),
 			CalcCompleted:  boolString(calcProps.Completed),
+		})
+		if err != nil {
+			return fmt.Errorf("encode calcPr: %w", err)
 		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: workbookElementOrder["calcPr"],
+			Seq:      1 << 30,
+			XML:      calcFrag,
+		})
 	}
-	for i, sd := range data.Sheets {
-		sheet := xlsxSheet{
-			Name:    sd.Name,
-			SheetID: i + 1,
-			RID:     fmt.Sprintf("rId%d", i+1),
-		}
-		if sd.State != "" {
-			sheet.State = sd.State
-		}
-		wb.Sheets.Sheet = append(wb.Sheets.Sheet, sheet)
-	}
+
 	if len(data.DefinedNames) > 0 {
-		wb.DefinedNames = &xlsxDefinedNames{}
+		defs := &xlsxDefinedNames{}
 		for _, dn := range data.DefinedNames {
 			// Skip defined names that reference external workbooks (e.g.
 			// '[1]Sheet'!$A$1). werkbook does not preserve external link
@@ -262,16 +376,42 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData) error {
 				id := dn.LocalSheetID
 				xdn.LocalSheetID = &id
 			}
-			wb.DefinedNames.DefinedName = append(wb.DefinedNames.DefinedName, xdn)
+			defs.DefinedName = append(defs.DefinedName, xdn)
 		}
-		if len(wb.DefinedNames.DefinedName) == 0 {
-			wb.DefinedNames = nil
+		if len(defs.DefinedName) > 0 {
+			defsFrag, err := encodeNamedXMLFragment("definedNames", defs)
+			if err != nil {
+				return fmt.Errorf("encode definedNames: %w", err)
+			}
+			fragments = append(fragments, xmlFragment{
+				OrderKey: workbookElementOrder["definedNames"],
+				Seq:      1 << 30,
+				XML:      defsFrag,
+			})
 		}
 	}
-	if workbookNeedsFutureFunctionsMetadata(data) {
-		wb.ExtLst = &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML}
+
+	for _, extra := range data.ExtraElements {
+		fragments = append(fragments, xmlFragment{
+			OrderKey: extra.OrderKey,
+			Seq:      extra.Seq,
+			XML:      []byte(extra.XML),
+		})
 	}
-	return writeXML(zw, "xl/workbook.xml", wb)
+
+	if workbookNeedsFutureFunctionsMetadata(data) && !hasExtraElementName(data.ExtraElements, "extLst") {
+		extFrag, err := encodeNamedXMLFragment("extLst", &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML})
+		if err != nil {
+			return fmt.Errorf("encode workbook extLst: %w", err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: workbookElementOrder["extLst"],
+			Seq:      1 << 30,
+			XML:      extFrag,
+		})
+	}
+
+	return writePassthroughXML(zw, "xl/workbook.xml", "workbook", rootAttrs, fragments)
 }
 
 // isExternalRef returns true if a defined name value references an external
@@ -281,61 +421,68 @@ func isExternalRef(value string) bool {
 	return strings.HasPrefix(value, "[") || strings.HasPrefix(value, "'[")
 }
 
-func writeWorkbookRels(zw *zip.Writer, sheetCount int, hasSST, hasDynamicArrayMetadata bool) error {
+func writeWorkbookRels(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string, hasSST, hasDynamicArrayMetadata bool) error {
 	rels := xlsxRelationships{
 		Xmlns: NSRelationships,
 	}
-	for i := range sheetCount {
+	for _, rel := range data.ExtraRels {
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", i+1),
-			Type:   RelTypeWorksheet,
+			ID:         rel.ID,
+			Type:       rel.Type,
+			Target:     rel.Target,
+			TargetMode: rel.TargetMode,
+		})
+	}
+	relNS := relationshipsNamespace(data.RootAttrs)
+	worksheetType := strictRelationshipType(relNS, RelTypeWorksheet, RelTypeWorksheetStrict)
+	stylesType := strictRelationshipType(relNS, RelTypeStyles, RelTypeStylesStrict)
+	sharedStrType := strictRelationshipType(relNS, RelTypeSharedStr, RelTypeSharedStrStrict)
+	metadataType := strictRelationshipType(relNS, RelTypeSheetMetadata, RelTypeSheetMetadataStrict)
+	nextIDs := nextRelationshipIDs(data.ExtraRels, len(data.Sheets)+1+boolInt(hasSST)+boolInt(hasDynamicArrayMetadata))
+	idx := 0
+	for i := range data.Sheets {
+		id := nextIDs[idx]
+		if i < len(sheetRelIDs) {
+			id = sheetRelIDs[i]
+		}
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     id,
+			Type:   worksheetType,
 			Target: fmt.Sprintf("worksheets/sheet%d.xml", i+1),
 		})
+		idx++
 	}
-	nextID := sheetCount + 1
 	rels.Relationships = append(rels.Relationships, xlsxRelationship{
-		ID:     fmt.Sprintf("rId%d", nextID),
-		Type:   RelTypeStyles,
+		ID:     nextIDs[idx],
+		Type:   stylesType,
 		Target: "styles.xml",
 	})
+	idx++
 	if hasSST {
-		nextID++
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", nextID),
-			Type:   RelTypeSharedStr,
+			ID:     nextIDs[idx],
+			Type:   sharedStrType,
 			Target: "sharedStrings.xml",
 		})
+		idx++
 	}
 	if hasDynamicArrayMetadata {
-		nextID++
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", nextID),
-			Type:   RelTypeSheetMetadata,
+			ID:     nextIDs[idx],
+			Type:   metadataType,
 			Target: "metadata.xml",
 		})
 	}
 	return writeXML(zw, "xl/_rels/workbook.xml.rels", rels)
 }
 
-func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tables []tableWriteInfo) error {
-	ws := xlsxWorksheet{
-		Xmlns: NSSpreadsheetML,
-	}
-	if len(tables) > 0 {
-		ws.XmlnsR = NSOfficeDocument
-		ws.TableParts = &xlsxTableParts{Count: len(tables)}
-		for i := range tables {
-			ws.TableParts.TablePart = append(ws.TableParts.TablePart, xlsxTablePart{
-				RID: fmt.Sprintf("rId%d", i+1),
-			})
-		}
-	}
-
+func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tables []tableWriteInfo, tableRelIDs []string) error {
 	// Populate column widths.
+	var cols *xlsxCols
 	if len(sd.ColWidths) > 0 {
-		ws.Cols = &xlsxCols{}
+		cols = &xlsxCols{}
 		for _, cw := range sd.ColWidths {
-			ws.Cols.Col = append(ws.Cols.Col, xlsxCol{
+			cols.Col = append(cols.Col, xlsxCol{
 				Min:         cw.Min,
 				Max:         cw.Max,
 				Width:       cw.Width,
@@ -343,17 +490,19 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 			})
 		}
 	}
+	var mergeCells *xlsxMergeCells
 	if len(sd.MergeCells) > 0 {
-		ws.MergeCells = &xlsxMergeCells{Count: len(sd.MergeCells)}
+		mergeCells = &xlsxMergeCells{Count: len(sd.MergeCells)}
 		for _, mc := range sd.MergeCells {
 			ref := mc.StartAxis
 			if mc.EndAxis != "" && mc.EndAxis != mc.StartAxis {
 				ref += ":" + mc.EndAxis
 			}
-			ws.MergeCells.MergeCell = append(ws.MergeCells.MergeCell, xlsxMergeCell{Ref: ref})
+			mergeCells.MergeCell = append(mergeCells.MergeCell, xlsxMergeCell{Ref: ref})
 		}
 	}
 
+	var sheetData xlsxSheetData
 	for _, rd := range sd.Rows {
 		var hidden ooxmlBool
 		if rd.Hidden {
@@ -397,17 +546,103 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 			}
 			row.Cells = append(row.Cells, c)
 		}
-		ws.SheetData.Rows = append(ws.SheetData.Rows, row)
+		sheetData.Rows = append(sheetData.Rows, row)
 	}
-	return writeXML(zw, fmt.Sprintf("xl/worksheets/sheet%d.xml", num), ws)
+
+	var fragments []xmlFragment
+	rootAttrs := mergedRootAttrs(sd.RootAttrs, map[string]string{
+		"xmlns": spreadsheetNamespace(sd.RootAttrs),
+	})
+	if len(tables) > 0 || len(sd.ExtraRels) > 0 || rawAttrValue(rootAttrs, "xmlns:r") != "" {
+		rootAttrs = mergedRootAttrs(rootAttrs, map[string]string{
+			"xmlns:r": relationshipsNamespace(sd.RootAttrs),
+		})
+	}
+
+	if cols != nil {
+		frag, err := encodeNamedXMLFragment("cols", cols)
+		if err != nil {
+			return fmt.Errorf("encode cols: %w", err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: worksheetElementOrder["cols"],
+			Seq:      1 << 30,
+			XML:      frag,
+		})
+	}
+
+	sheetDataFrag, err := encodeNamedXMLFragment("sheetData", sheetData)
+	if err != nil {
+		return fmt.Errorf("encode sheetData: %w", err)
+	}
+	fragments = append(fragments, xmlFragment{
+		OrderKey: worksheetElementOrder["sheetData"],
+		Seq:      1 << 30,
+		XML:      sheetDataFrag,
+	})
+
+	if mergeCells != nil {
+		frag, err := encodeNamedXMLFragment("mergeCells", mergeCells)
+		if err != nil {
+			return fmt.Errorf("encode mergeCells: %w", err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: worksheetElementOrder["mergeCells"],
+			Seq:      1 << 30,
+			XML:      frag,
+		})
+	}
+
+	for _, extra := range sd.ExtraElements {
+		fragments = append(fragments, xmlFragment{
+			OrderKey: extra.OrderKey,
+			Seq:      extra.Seq,
+			XML:      []byte(extra.XML),
+		})
+	}
+
+	if len(tables) > 0 {
+		tableParts := &xlsxTableParts{Count: len(tables)}
+		for i := range tables {
+			rid := fmt.Sprintf("rId%d", i+1)
+			if i < len(tableRelIDs) {
+				rid = tableRelIDs[i]
+			}
+			tableParts.TablePart = append(tableParts.TablePart, xlsxTablePart{RID: rid})
+		}
+		frag, err := encodeNamedXMLFragment("tableParts", tableParts)
+		if err != nil {
+			return fmt.Errorf("encode tableParts: %w", err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: worksheetElementOrder["tableParts"],
+			Seq:      1 << 30,
+			XML:      frag,
+		})
+	}
+
+	return writePassthroughXML(zw, fmt.Sprintf("xl/worksheets/sheet%d.xml", num), "worksheet", rootAttrs, fragments)
 }
 
-func writeSheetRels(zw *zip.Writer, sheetNum int, tables []tableWriteInfo) error {
+func writeSheetRels(zw *zip.Writer, sd *SheetData, sheetNum int, tables []tableWriteInfo, tableRelIDs []string) error {
 	rels := xlsxRelationships{Xmlns: NSRelationships}
-	for i, tw := range tables {
+	for _, rel := range sd.ExtraRels {
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     fmt.Sprintf("rId%d", i+1),
-			Type:   RelTypeTable,
+			ID:         rel.ID,
+			Type:       rel.Type,
+			Target:     rel.Target,
+			TargetMode: rel.TargetMode,
+		})
+	}
+	tableType := strictRelationshipType(relationshipsNamespace(sd.RootAttrs), RelTypeTable, RelTypeTableStrict)
+	for i, tw := range tables {
+		rid := fmt.Sprintf("rId%d", i+1)
+		if i < len(tableRelIDs) {
+			rid = tableRelIDs[i]
+		}
+		rels.Relationships = append(rels.Relationships, xlsxRelationship{
+			ID:     rid,
+			Type:   tableType,
 			Target: fmt.Sprintf("../tables/table%d.xml", tw.PartNum),
 		})
 	}
@@ -434,6 +669,56 @@ func buildTableWritePlan(tables []TableDef) map[int][]tableWriteInfo {
 		})
 	}
 	return plan
+}
+
+func buildWriterPaths(
+	data *WorkbookData,
+	tablePlan map[int][]tableWriteInfo,
+	hasSST, hasCoreProps, hasDynamicArrayMetadata bool,
+) map[string]struct{} {
+	paths := map[string]struct{}{
+		"[Content_Types].xml":        {},
+		"_rels/.rels":                {},
+		"docProps/app.xml":           {},
+		"xl/workbook.xml":            {},
+		"xl/_rels/workbook.xml.rels": {},
+		"xl/styles.xml":              {},
+	}
+	if hasCoreProps {
+		paths["docProps/core.xml"] = struct{}{}
+	}
+	if hasSST {
+		paths["xl/sharedStrings.xml"] = struct{}{}
+	}
+	if hasDynamicArrayMetadata {
+		paths["xl/metadata.xml"] = struct{}{}
+	}
+	for i := range data.Sheets {
+		paths[fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1)] = struct{}{}
+		if len(tablePlan[i]) > 0 || len(data.Sheets[i].ExtraRels) > 0 {
+			paths[fmt.Sprintf("xl/worksheets/_rels/sheet%d.xml.rels", i+1)] = struct{}{}
+		}
+	}
+	for _, sheetTables := range tablePlan {
+		for _, tw := range sheetTables {
+			paths[fmt.Sprintf("xl/tables/table%d.xml", tw.PartNum)] = struct{}{}
+		}
+	}
+	return paths
+}
+
+func strictRelationshipType(relNS, transitional, strict string) string {
+	if relNS == NSOfficeDocumentStrict {
+		return strict
+	}
+	return transitional
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func hasCalcProps(props CalcPropertiesData) bool {
@@ -490,6 +775,25 @@ func writeDynamicArrayMetadata(zw *zip.Writer) error {
 
 func writeSST(zw *zip.Writer, sst *SharedStringTable) error {
 	return writeXML(zw, "xl/sharedStrings.xml", sst.ToXML())
+}
+
+func writeOpaqueEntries(zw *zip.Writer, entries []OpaqueEntry, emittedPaths map[string]struct{}) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	sorted := append([]OpaqueEntry(nil), entries...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return strings.ToLower(sorted[i].Path) < strings.ToLower(sorted[j].Path)
+	})
+	for _, entry := range sorted {
+		if _, ok := emittedPaths[entry.Path]; ok {
+			continue
+		}
+		if err := writeRawFile(zw, entry.Path, entry.Data); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeXML(zw *zip.Writer, name string, v any) error {

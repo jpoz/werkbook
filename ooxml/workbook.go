@@ -113,14 +113,20 @@ type DefinedName struct {
 
 // WorkbookData is the internal boundary between the public API and the ooxml package.
 type WorkbookData struct {
-	Date1904     bool // true if the workbook uses the 1904 date system
-	CalcProps    CalcPropertiesData
-	CoreProps    CorePropertiesData
-	CorePropsRaw []byte
-	Sheets       []SheetData
-	Styles       []StyleData   // index 0 = default (empty)
-	Tables       []TableDef    // table definitions parsed from xl/tables/table*.xml
-	DefinedNames []DefinedName // named ranges/formulas from <definedNames>
+	Date1904       bool // true if the workbook uses the 1904 date system
+	CalcProps      CalcPropertiesData
+	CoreProps      CorePropertiesData
+	CorePropsRaw   []byte
+	RootAttrs      []RawAttr
+	ExtraElements  []RawElement
+	Sheets         []SheetData
+	Styles         []StyleData   // index 0 = default (empty)
+	Tables         []TableDef    // table definitions parsed from xl/tables/table*.xml
+	DefinedNames   []DefinedName // named ranges/formulas from <definedNames>
+	OpaqueEntries  []OpaqueEntry
+	ExtraRels      []OpaqueRel
+	ExtraRootRels  []OpaqueRel
+	OpaqueDefaults []OpaqueDefault
 }
 
 // CalcPropertiesData holds workbook-level calculation settings from <calcPr>.
@@ -199,11 +205,14 @@ type ColWidthData struct {
 
 // SheetData holds the data for a single worksheet.
 type SheetData struct {
-	Name       string
-	State      string // "", "hidden", or "veryHidden"
-	Rows       []RowData
-	ColWidths  []ColWidthData
-	MergeCells []MergeCellData
+	Name          string
+	State         string // "", "hidden", or "veryHidden"
+	RootAttrs     []RawAttr
+	Rows          []RowData
+	ColWidths     []ColWidthData
+	MergeCells    []MergeCellData
+	ExtraRels     []OpaqueRel
+	ExtraElements []RawElement
 }
 
 // RowData holds the data for a single row.
@@ -227,4 +236,27 @@ type CellData struct {
 	HasCMMetadata  bool   // true if cell had cm!=0 in OOXML (XLDAPR dynamic-array metadata index)
 	SharedIndex    int    // shared formula group index (si attribute); -1 if not a shared formula
 	StyleIdx       int    // index into WorkbookData.Styles; 0 = default
+}
+
+// OpaqueEntry is a package part werkbook does not parse but preserves across
+// open/write round-trips.
+type OpaqueEntry struct {
+	Path        string
+	ContentType string
+	Data        []byte
+}
+
+// OpaqueRel preserves a relationship entry that werkbook does not interpret.
+type OpaqueRel struct {
+	ID         string
+	Type       string
+	Target     string
+	TargetMode string
+}
+
+// OpaqueDefault preserves a [Content_Types].xml Default mapping for an
+// extension that the writer does not synthesize itself.
+type OpaqueDefault struct {
+	Extension   string
+	ContentType string
 }
