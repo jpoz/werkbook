@@ -309,7 +309,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: workbookElementOrder["workbookPr"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      frag,
 		})
 	}
@@ -336,7 +336,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 	}
 	fragments = append(fragments, xmlFragment{
 		OrderKey: workbookElementOrder["sheets"],
-		Seq:      1 << 30,
+		Seq:      writerSeq,
 		XML:      sheetsFrag,
 	})
 
@@ -353,7 +353,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: workbookElementOrder["calcPr"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      calcFrag,
 		})
 	}
@@ -385,7 +385,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 			}
 			fragments = append(fragments, xmlFragment{
 				OrderKey: workbookElementOrder["definedNames"],
-				Seq:      1 << 30,
+				Seq:      writerSeq,
 				XML:      defsFrag,
 			})
 		}
@@ -399,6 +399,13 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 		})
 	}
 
+	// Known limitation: if the original file had an extLst with other
+	// extensions (e.g. chart tracking) but no future-function metadata,
+	// and the user programmatically adds a LET/LAMBDA formula, the
+	// future-function extensions won't be injected because we don't parse
+	// extLst content. The file will open with a repair prompt. To fix
+	// this properly, extLst would need to be partially parsed to detect
+	// whether specific extension URIs are present.
 	if workbookNeedsFutureFunctionsMetadata(data) && !hasExtraElementName(data.ExtraElements, "extLst") {
 		extFrag, err := encodeNamedXMLFragment("extLst", &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML})
 		if err != nil {
@@ -406,7 +413,7 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: workbookElementOrder["extLst"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      extFrag,
 		})
 	}
@@ -438,29 +445,28 @@ func writeWorkbookRels(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string,
 	stylesType := strictRelationshipType(relNS, RelTypeStyles, RelTypeStylesStrict)
 	sharedStrType := strictRelationshipType(relNS, RelTypeSharedStr, RelTypeSharedStrStrict)
 	metadataType := strictRelationshipType(relNS, RelTypeSheetMetadata, RelTypeSheetMetadataStrict)
-	nextIDs := nextRelationshipIDs(data.ExtraRels, len(data.Sheets)+1+boolInt(hasSST)+boolInt(hasDynamicArrayMetadata))
-	idx := 0
+
+	// Use the pre-computed sheetRelIDs for worksheet entries, then allocate
+	// additional IDs for styles/SST/metadata that don't collide.
 	for i := range data.Sheets {
-		id := nextIDs[idx]
-		if i < len(sheetRelIDs) {
-			id = sheetRelIDs[i]
-		}
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     id,
+			ID:     sheetRelIDs[i],
 			Type:   worksheetType,
 			Target: fmt.Sprintf("worksheets/sheet%d.xml", i+1),
 		})
-		idx++
 	}
+	tailCount := 1 + boolInt(hasSST) + boolInt(hasDynamicArrayMetadata)
+	tailIDs := nextRelationshipIDs(data.ExtraRels, tailCount, sheetRelIDs...)
+	idx := 0
 	rels.Relationships = append(rels.Relationships, xlsxRelationship{
-		ID:     nextIDs[idx],
+		ID:     tailIDs[idx],
 		Type:   stylesType,
 		Target: "styles.xml",
 	})
 	idx++
 	if hasSST {
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     nextIDs[idx],
+			ID:     tailIDs[idx],
 			Type:   sharedStrType,
 			Target: "sharedStrings.xml",
 		})
@@ -468,7 +474,7 @@ func writeWorkbookRels(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string,
 	}
 	if hasDynamicArrayMetadata {
 		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:     nextIDs[idx],
+			ID:     tailIDs[idx],
 			Type:   metadataType,
 			Target: "metadata.xml",
 		})
@@ -566,7 +572,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: worksheetElementOrder["cols"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      frag,
 		})
 	}
@@ -577,7 +583,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 	}
 	fragments = append(fragments, xmlFragment{
 		OrderKey: worksheetElementOrder["sheetData"],
-		Seq:      1 << 30,
+		Seq:      writerSeq,
 		XML:      sheetDataFrag,
 	})
 
@@ -588,7 +594,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: worksheetElementOrder["mergeCells"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      frag,
 		})
 	}
@@ -616,7 +622,7 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: worksheetElementOrder["tableParts"],
-			Seq:      1 << 30,
+			Seq:      writerSeq,
 			XML:      frag,
 		})
 	}

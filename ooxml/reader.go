@@ -103,6 +103,9 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 	if _, ok := files["xl/sharedStrings.xml"]; ok {
 		recognizedPaths["xl/sharedStrings.xml"] = struct{}{}
 	}
+	if _, ok := files["xl/metadata.xml"]; ok {
+		recognizedPaths["xl/metadata.xml"] = struct{}{}
+	}
 
 	// Parse styles (may not exist).
 	styles := readStyles(files)
@@ -124,12 +127,10 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 	if rootRels, err := readXML[xlsxRelationships](files, "_rels/.rels"); err == nil {
 		recognizedPaths["_rels/.rels"] = struct{}{}
 		for _, rel := range rootRels.Relationships {
-			switch rel.Type {
-			case RelTypeWorkbook, RelTypeCoreProps, RelTypeExtendedApp:
-				// recognized root rels
-			default:
-				data.ExtraRootRels = append(data.ExtraRootRels, opaqueRelFromXML(rel))
+			if isRecognizedRootRelType(rel.Type) {
+				continue
 			}
+			data.ExtraRootRels = append(data.ExtraRootRels, opaqueRelFromXML(rel))
 		}
 	}
 
@@ -713,6 +714,24 @@ func unmarshalXMLBytes[T any](data []byte, name string) (T, error) {
 		return zero, fmt.Errorf("unmarshal %s: %w", name, err)
 	}
 	return v, nil
+}
+
+// isRecognizedRootRelType returns true for relationship types that the writer
+// emits explicitly in _rels/.rels, covering both transitional and strict OOXML
+// namespace variants.
+func isRecognizedRootRelType(t string) bool {
+	switch t {
+	case RelTypeWorkbook,
+		RelTypeCoreProps,
+		RelTypeExtendedApp:
+		return true
+	}
+	// Strict OOXML uses different namespace URIs for the same rel types.
+	// RelTypeCoreProps and RelTypeExtendedApp use package-level URIs that
+	// are the same in both transitional and strict, but the workbook rel
+	// type differs.
+	const relTypeWorkbookStrict = NSOfficeDocumentStrict + "/officeDocument"
+	return t == relTypeWorkbookStrict
 }
 
 func opaqueRelFromXML(rel xlsxRelationship) OpaqueRel {

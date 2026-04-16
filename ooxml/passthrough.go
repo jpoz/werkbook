@@ -25,14 +25,9 @@ type RawElement struct {
 	Seq      int
 }
 
-func rawName(name xml.Name) string {
-	if name.Space == "" {
-		return name.Local
-	}
-	return name.Space + ":" + name.Local
-}
-
-func rawAttrName(name xml.Name) string {
+// rawTokenName returns a colon-joined "prefix:local" name from an xml.Name
+// obtained via RawToken (where Space is the prefix, not the namespace URI).
+func rawTokenName(name xml.Name) string {
 	if name.Space == "" {
 		return name.Local
 	}
@@ -159,7 +154,7 @@ func captureRootAttrsAndExtras(
 				rootAttrs = make([]RawAttr, 0, len(t.Attr))
 				for _, attr := range t.Attr {
 					rootAttrs = append(rootAttrs, RawAttr{
-						Name:  rawAttrName(attr.Name),
+						Name:  rawTokenName(attr.Name),
 						Value: attr.Value,
 					})
 				}
@@ -167,7 +162,7 @@ func captureRootAttrsAndExtras(
 				if capture != nil {
 					capture.depth++
 				} else if depth == 1 {
-					name := rawName(t.Name)
+					name := rawTokenName(t.Name)
 					if known(name) {
 						if key := orderKey(name, lastKnown); key >= 0 {
 							lastKnown = key
@@ -281,22 +276,16 @@ func hasExtraElementName(extras []RawElement, name string) bool {
 	return false
 }
 
+// writerSeq is the Seq value used for writer-generated fragments. It sorts
+// after all reader-captured extras (which use small sequential integers),
+// ensuring that when a writer-generated element and an opaque extra share the
+// same OrderKey, the extra's original position is respected.
+const writerSeq = 1 << 30
+
 type xmlFragment struct {
 	OrderKey int
 	Seq      int
 	XML      []byte
-}
-
-func encodeXMLFragment(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := xml.NewEncoder(&buf)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	if err := enc.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 func encodeNamedXMLFragment(name string, v any) ([]byte, error) {
@@ -373,15 +362,23 @@ type zipWriter interface {
 	Create(name string) (io.Writer, error)
 }
 
-func nextRelationshipIDs(existing []OpaqueRel, count int) []string {
+// nextRelationshipIDs allocates count new rId strings that do not collide with
+// any ID in existing or alreadyUsed.
+func nextRelationshipIDs(existing []OpaqueRel, count int, alreadyUsed ...string) []string {
 	if count == 0 {
 		return nil
 	}
-	used := make(map[string]struct{}, len(existing)+count)
+	used := make(map[string]struct{}, len(existing)+len(alreadyUsed)+count)
 	maxRID := 0
 	for _, rel := range existing {
 		used[rel.ID] = struct{}{}
 		if n, ok := parseRelationshipID(rel.ID); ok && n > maxRID {
+			maxRID = n
+		}
+	}
+	for _, id := range alreadyUsed {
+		used[id] = struct{}{}
+		if n, ok := parseRelationshipID(id); ok && n > maxRID {
 			maxRID = n
 		}
 	}
