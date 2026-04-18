@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.2
+
+### Bug fixes
+
+- **Tolerate leading `=` in `SetFormula`**: Formulas passed with a leading `=` (as typed in Excel) are now stripped at the public-API boundary. Previously the `=` nested inside the OOXML `<f>` element and saved as a `#NAME?` error cell.
+
 ## v0.9.1
 
 ### Features
