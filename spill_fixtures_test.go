@@ -60,10 +60,6 @@ func TestSpillFixturesCachedValueParity(t *testing.T) {
 		// open, so it can't be resaved. Covered by the dedicated
 		// TestSpillBlockedSaveAsRoundTrip test instead.
 		"14_spill_blocker_then_cleared.xlsx": true,
-		// XLOOKUP multi-column return bug: Excel returns first result
-		// column (20), werkbook returns second (100). Needs fix in
-		// fnXLOOKUP return-array column selection.
-		"24_xlookup_array_return.xlsx": true,
 	}
 
 	for _, path := range paths {
