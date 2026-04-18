@@ -2203,10 +2203,16 @@ func TestEvalElementWiseLiftedScalarFunctions(t *testing.T) {
 			want:    NumberVal(-299),
 		},
 		{
+			// IFERROR evaluates its first arg in scalar context even when
+			// nested in SUMPRODUCT: at CurrentRow=1 the I1:I3/J1:J3
+			// expression implicit-intersects to I1/J1 = 10/2 = 5, so
+			// IFERROR(5,0)=5 and SUMPRODUCT(5, K1:K3) can't line up the
+			// scalar against the 3-cell K1:K3 — #VALUE!. Verified against
+			// Excel in testdata/error_propagation/12_sumproduct_iferror_div.xlsx.
 			name:    "sumproduct_iferror",
 			formula: "SUMPRODUCT(IFERROR(I1:I3/J1:J3,0),K1:K3)",
 			ctx:     scalarCtx,
-			want:    NumberVal(605),
+			want:    ErrorVal(ErrValVALUE),
 		},
 	}
 

@@ -61,6 +61,13 @@ type compiler struct {
 	strIdx map[string]uint32
 	refIdx map[CellAddr]uint32
 	rngIdx map[RangeAddr]uint32
+
+	// dynamicArrayDepth tracks nesting inside dynamic-array-native functions
+	// (FILTER, SORT, UNIQUE, HSTACK, MAP, etc.). Inside those, IFERROR/IFNA
+	// lift over arrays like any element-wise function. Outside (top level or
+	// under legacy array-forcing like SUMPRODUCT), IFERROR/IFNA follow Excel's
+	// scalar implicit-intersection semantics.
+	dynamicArrayDepth int
 }
 
 func (c *compiler) emit(op OpCode, operand uint32) {
@@ -545,6 +552,40 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
 	}
 
+	// IFERROR and IFNA evaluate their arguments in Excel's legacy scalar
+	// context when called inside a legacy array-forcing function (SUMPRODUCT,
+	// SUMIF, MATCH, …): range references implicit-intersect at the formula
+	// cell's row/column before the function runs. Evidence:
+	// testdata/error_propagation/{06,11,12}_* all resolve SUMPRODUCT(IFERROR(
+	// range, …), …) to #VALUE! because the implicit-intersected IFERROR
+	// returns a scalar that SUMPRODUCT can't line up against the sibling
+	// range. Dynamic-array-native wrappers (FILTER, SORT, UNIQUE, …) keep
+	// array semantics — verified against Excel in spill fixture
+	// 33_iferror_datevalue_full_column.xlsx. CSE array formulas opt out via
+	// the opcode's ctx.IsArrayFormula guard.
+	if name == "IFERROR" || name == "IFNA" {
+		if c.dynamicArrayDepth == 0 {
+			wasArrayCtx := inArrayCtx
+			if wasArrayCtx {
+				c.emit(OpLeaveArrayCtx, 0)
+			}
+			for _, arg := range n.Args {
+				if err := c.compileNodeCtx(arg, false); err != nil {
+					return err
+				}
+				c.emit(OpImplicitIntersect, 0)
+			}
+			if wasArrayCtx {
+				c.emit(OpEnterArrayCtx, 0)
+			}
+			operand := uint32(funcID)<<8 | uint32(argc)
+			c.emit(OpCall, operand)
+			return nil
+		}
+		// Fall through to the element-wise lifting path for dynamic-array
+		// contexts.
+	}
+
 	inheritedArrayCtx := inArrayCtx
 	// Array-forcing behavior should apply to the direct SUMPRODUCT/INDEX/etc.
 	// argument expressions, but it must not leak into nested non-array
@@ -644,6 +685,10 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	if arrayCtx {
 		c.emit(OpEnterArrayCtx, 0)
 	}
+	if IsDynamicArrayFunc(name) {
+		c.dynamicArrayDepth++
+		defer func() { c.dynamicArrayDepth-- }()
+	}
 	for i, arg := range n.Args {
 		forceInheritedArrayArg := suspendInheritedArrayCtx && inheritedArrayCtx && inheritedArrayEvalForFuncArg(name, i)
 		if !arrayCtx {
@@ -677,18 +722,6 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		if err := c.compileNodeCtx(arg, inArrayCtx || arrayCtx); err != nil {
 			return err
 		}
-		// Legacy implicit intersection: in a non-array formula context, raw
-		// worksheet range refs passed as scalar "value" arguments collapse
-		// to a single cell at the formula's row/column before the function
-		// runs. We intentionally do NOT apply this when the enclosing
-		// context is array-forcing (e.g. SUMPRODUCT); Excel's cached
-		// behaviour there is inconsistent, and preserving array broadcasting
-		// for existing regressions (e.g. SUMPRODUCT(IFNA(range, 0)))
-		// matters more than matching the one-off D3 mismatch in
-		// error_propagation/06_sumproduct_error_propagation.xlsx.
-		if !inArrayCtx && !arrayCtx && implicitIntersectFuncArg(name, i) {
-			c.emit(OpImplicitIntersect, 0)
-		}
 	}
 	if arrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
@@ -697,20 +730,6 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	c.emit(OpCall, operand)
 	return nil
 }
-
-// implicitIntersectFuncArg reports whether a given function argument should
-// undergo legacy implicit intersection when the call appears in a non-array
-// formula context. This matches Excel's behavior where arguments typed as
-// "value" collapse raw range references to a single cell at the formula's
-// row/column.
-func implicitIntersectFuncArg(name string, argIndex int) bool {
-	switch strings.ToUpper(name) {
-	case "IFERROR", "IFNA":
-		return argIndex == 0 || argIndex == 1
-	}
-	return false
-}
-
 
 func binaryOpCode(op string) (OpCode, error) {
 	switch op {

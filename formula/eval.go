@@ -489,12 +489,12 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			// Only collapse ValueArray values originating from a worksheet
-			// range. Leave scalars and computed arrays untouched. Also skip
-			// when we're inside an array-forcing context (e.g. the opcode
-			// was emitted by accident under a suspended context); the
-			// compiler guards emission with the same condition.
-			if arrayCtxDepth == 0 && v.Type == ValueArray && v.RangeOrigin != nil {
+			// Collapse worksheet-range arrays (those with a RangeOrigin) to
+			// a single cell at the formula's row/column. The compiler only
+			// emits this opcode for IFERROR/IFNA arguments, which Excel
+			// evaluates in scalar context even when nested in an
+			// array-forcing function. CSE array formulas opt out.
+			if ctx != nil && !ctx.IsArrayFormula && v.Type == ValueArray && v.RangeOrigin != nil {
 				v = implicitIntersect(v, ctx)
 			}
 			push(v)

@@ -567,6 +567,16 @@ var arrayAllArgFuncs = map[string]bool{
 	"VSTACK": true,
 }
 
+// IsDynamicArrayFunc reports whether the function is a post–dynamic-array
+// native where nested IFERROR/IFNA must lift over range arguments instead of
+// applying Excel's legacy scalar implicit-intersection rule. Verified against
+// Excel: FILTER(range, IFERROR(DATEVALUE(range2),0)>=TODAY()) lifts, while
+// SUMPRODUCT(IFERROR(range, 0), …) implicit-intersects.
+func IsDynamicArrayFunc(name string) bool {
+	_, ok := dynamicArrayFunctions[strings.ToUpper(name)]
+	return ok
+}
+
 // IsArrayFunc reports whether the named function forces array evaluation of
 // its arguments. The compiler uses this to emit OpEnterArrayCtx / OpLeaveArrayCtx
 // around the function's argument expressions.
