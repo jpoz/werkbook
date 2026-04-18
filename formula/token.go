@@ -23,6 +23,7 @@ const (
 	TokArrayOpen            // {
 	TokArrayClose           // }
 	TokBang                 // ! (sheet separator, when not part of a cell ref)
+	TokIntersect            // whitespace intersection operator between references (Excel)
 )
 
 // Token is a single token produced by the lexer.
@@ -54,6 +55,7 @@ var tokenTypeNames = [...]string{
 	TokArrayOpen:  "ArrayOpen",
 	TokArrayClose: "ArrayClose",
 	TokBang:       "Bang",
+	TokIntersect:  "Intersect",
 }
 
 func (t TokenType) String() string {

@@ -41,6 +41,9 @@ const (
 	OpByRow                         // operand: subFormulaIdx; pop array, apply lambda to each row, return column vector
 	OpByCol                         // operand: subFormulaIdx; pop array, apply lambda to each column, return row vector
 	OpMakeArrayLambda               // operand: subFormulaIdx; pop rows and cols, build array by calling lambda(row, col)
+	OpImplicitIntersect             // operand: unused; pops Value, applies legacy implicit intersection, pushes result
+	OpIntersect                     // operand: unused; pops two range Values, pushes the rectangular intersection (or #NULL!)
+	OpUnion                         // operand: number of areas; pops N Values and pushes a flattened union array
 )
 
 var opNames = [...]string{
@@ -77,8 +80,11 @@ var opNames = [...]string{
 	OpReduce:          "Reduce",
 	OpScan:            "Scan",
 	OpByRow:           "ByRow",
-	OpByCol:           "ByCol",
-	OpMakeArrayLambda: "MakeArrayLambda",
+	OpByCol:             "ByCol",
+	OpMakeArrayLambda:   "MakeArrayLambda",
+	OpImplicitIntersect: "ImplicitIntersect",
+	OpIntersect:         "Intersect",
+	OpUnion:             "Union",
 }
 
 func (op OpCode) String() string {

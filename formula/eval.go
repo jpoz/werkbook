@@ -288,11 +288,21 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			an, ae := CoerceNum(a)
-			if ae != nil {
-				push(*ae)
+			if a.Type == ValueArray {
+				push(LiftUnary(a, func(v Value) Value {
+					n, e := CoerceNum(v)
+					if e != nil {
+						return *e
+					}
+					return NumberVal(n / 100)
+				}))
 			} else {
-				push(NumberVal(an / 100))
+				an, ae := CoerceNum(a)
+				if ae != nil {
+					push(*ae)
+				} else {
+					push(NumberVal(an / 100))
+				}
 			}
 
 		case OpConcat:
@@ -473,6 +483,48 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				return Value{}, err
 			}
 			push(BoolVal(v.Type != ValueError))
+
+		case OpImplicitIntersect:
+			v, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			// Only collapse ValueArray values originating from a worksheet
+			// range. Leave scalars and computed arrays untouched. Also skip
+			// when we're inside an array-forcing context (e.g. the opcode
+			// was emitted by accident under a suspended context); the
+			// compiler guards emission with the same condition.
+			if arrayCtxDepth == 0 && v.Type == ValueArray && v.RangeOrigin != nil {
+				v = implicitIntersect(v, ctx)
+			}
+			push(v)
+
+		case OpIntersect:
+			b, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			a, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			result := rangeIntersect(a, b, resolver, ctx, arrayCtxDepth > 0)
+			// In non-array contexts a multi-cell intersection is subject to
+			// implicit intersection based on the formula position.
+			if arrayCtxDepth == 0 && result.Type == ValueArray && result.RangeOrigin != nil {
+				result = implicitIntersect(result, ctx)
+			}
+			push(result)
+
+		case OpUnion:
+			n := int(inst.Operand)
+			if n > len(stack) {
+				return Value{}, fmt.Errorf("stack underflow in union")
+			}
+			areas := make([]Value, n)
+			copy(areas, stack[len(stack)-n:])
+			stack = stack[:len(stack)-n]
+			push(unionAreas(areas))
 
 		case OpLoadParam:
 			if params == nil || int(inst.Operand) >= len(params) {
@@ -1239,6 +1291,101 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 		return ErrorVal(ErrValVALUE)
 	}
 	return ErrorVal(ErrValVALUE)
+}
+
+// rangeIntersect computes the rectangular intersection of two range-origin
+// values for Excel's intersection operator (space between references).
+// Returns #VALUE! if either operand is not a proper range reference (must
+// have RangeOrigin) or the sheets differ, and #NULL! if the rectangles
+// don't overlap.
+func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArrayCtx bool) Value {
+	// Propagate existing errors.
+	if a.Type == ValueError {
+		return a
+	}
+	if b.Type == ValueError {
+		return b
+	}
+	aRo := extractRangeOrigin(a)
+	bRo := extractRangeOrigin(b)
+	if aRo == nil || bRo == nil {
+		return ErrorVal(ErrValVALUE)
+	}
+	if aRo.Sheet != bRo.Sheet || aRo.SheetEnd != "" || bRo.SheetEnd != "" {
+		return ErrorVal(ErrValVALUE)
+	}
+	fromCol := aRo.FromCol
+	if bRo.FromCol > fromCol {
+		fromCol = bRo.FromCol
+	}
+	fromRow := aRo.FromRow
+	if bRo.FromRow > fromRow {
+		fromRow = bRo.FromRow
+	}
+	toCol := aRo.ToCol
+	if bRo.ToCol < toCol {
+		toCol = bRo.ToCol
+	}
+	toRow := aRo.ToRow
+	if bRo.ToRow < toRow {
+		toRow = bRo.ToRow
+	}
+	if fromCol > toCol || fromRow > toRow {
+		return ErrorVal(ErrValNULL)
+	}
+	addr := RangeAddr{
+		Sheet:   aRo.Sheet,
+		FromCol: fromCol, FromRow: fromRow,
+		ToCol: toCol, ToRow: toRow,
+	}
+	// Single-cell intersection when not in array context: return the scalar.
+	if !inArrayCtx && fromCol == toCol && fromRow == toRow {
+		return resolver.GetCellValue(CellAddr{
+			Sheet: addr.Sheet, Col: fromCol, Row: fromRow,
+		})
+	}
+	rows := resolver.GetRangeValues(addr)
+	origin := addr
+	return Value{Type: ValueArray, Array: rows, RangeOrigin: &origin}
+}
+
+func extractRangeOrigin(v Value) *RangeAddr {
+	if v.Type == ValueArray && v.RangeOrigin != nil {
+		return v.RangeOrigin
+	}
+	if v.Type != ValueEmpty && v.CellOrigin != nil {
+		// Single-cell ref carried a CellOrigin.
+		c := v.CellOrigin
+		return &RangeAddr{
+			Sheet: c.Sheet, SheetEnd: c.SheetEnd,
+			FromCol: c.Col, FromRow: c.Row,
+			ToCol: c.Col, ToRow: c.Row,
+		}
+	}
+	return nil
+}
+
+// unionAreas flattens a sequence of area Values into a single ValueArray by
+// concatenating rows row-by-row. Scalars become 1x1 elements. The result has
+// no RangeOrigin because it no longer represents a single rectangle.
+// Errors are propagated: if any area is an error, that error becomes the
+// result.
+func unionAreas(areas []Value) Value {
+	var out [][]Value
+	for _, v := range areas {
+		if v.Type == ValueError {
+			return v
+		}
+		if v.Type == ValueArray {
+			out = append(out, v.Array...)
+			continue
+		}
+		out = append(out, []Value{v})
+	}
+	if len(out) == 0 {
+		return EmptyVal()
+	}
+	return Value{Type: ValueArray, Array: out}
 }
 
 // arrayDims returns the maximum row and column dimensions across two values,

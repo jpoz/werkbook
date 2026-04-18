@@ -189,8 +189,30 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpLoadRange, idx)
 		}
 
+	case *IntersectRef:
+		if !isReferenceNode(n.Left) || !isReferenceNode(n.Right) {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		if err := c.compileNodeCtx(n.Left, inArrayCtx); err != nil {
+			return err
+		}
+		if err := c.compileNodeCtx(n.Right, inArrayCtx); err != nil {
+			return err
+		}
+		c.emit(OpIntersect, 0)
+
 	case *UnionRef:
-		return fmt.Errorf("union references are only supported inside AREAS")
+		if len(n.Areas) == 0 {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		for _, area := range n.Areas {
+			if err := c.compileNodeCtx(area, inArrayCtx); err != nil {
+				return err
+			}
+		}
+		c.emit(OpUnion, uint32(len(n.Areas)))
 
 	case *UnaryExpr:
 		if err := c.compileNodeCtx(n.Operand, inArrayCtx); err != nil {
@@ -655,6 +677,18 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		if err := c.compileNodeCtx(arg, inArrayCtx || arrayCtx); err != nil {
 			return err
 		}
+		// Legacy implicit intersection: in a non-array formula context, raw
+		// worksheet range refs passed as scalar "value" arguments collapse
+		// to a single cell at the formula's row/column before the function
+		// runs. We intentionally do NOT apply this when the enclosing
+		// context is array-forcing (e.g. SUMPRODUCT); Excel's cached
+		// behaviour there is inconsistent, and preserving array broadcasting
+		// for existing regressions (e.g. SUMPRODUCT(IFNA(range, 0)))
+		// matters more than matching the one-off D3 mismatch in
+		// error_propagation/06_sumproduct_error_propagation.xlsx.
+		if !inArrayCtx && !arrayCtx && implicitIntersectFuncArg(name, i) {
+			c.emit(OpImplicitIntersect, 0)
+		}
 	}
 	if arrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
@@ -663,6 +697,20 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	c.emit(OpCall, operand)
 	return nil
 }
+
+// implicitIntersectFuncArg reports whether a given function argument should
+// undergo legacy implicit intersection when the call appears in a non-array
+// formula context. This matches Excel's behavior where arguments typed as
+// "value" collapse raw range references to a single cell at the formula's
+// row/column.
+func implicitIntersectFuncArg(name string, argIndex int) bool {
+	switch strings.ToUpper(name) {
+	case "IFERROR", "IFNA":
+		return argIndex == 0 || argIndex == 1
+	}
+	return false
+}
+
 
 func binaryOpCode(op string) (OpCode, error) {
 	switch op {
@@ -696,6 +744,26 @@ func binaryOpCode(op string) (OpCode, error) {
 }
 
 func isDirectRangeRefNode(node Node) bool {
-	_, ok := node.(*RangeRef)
-	return ok
+	switch node.(type) {
+	case *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	}
+	return false
+}
+
+// isReferenceNode reports whether a node can legitimately appear as an
+// operand of the intersection operator. This mirrors Excel's rule: only
+// reference-producing expressions (cells, ranges, nested intersections, and
+// certain reference-returning function calls) are permitted.
+func isReferenceNode(n Node) bool {
+	switch v := n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	case *FuncCall:
+		switch strings.ToUpper(v.Name) {
+		case "OFFSET", "INDIRECT", "INDEX", "CHOOSE", "IF", "IFS", "SWITCH", "ANCHORARRAY":
+			return true
+		}
+	}
+	return false
 }

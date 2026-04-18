@@ -77,9 +77,12 @@ var infixBP = map[string]bindingPower{
 }
 
 const (
-	colonLeftBP  = 14
-	colonRightBP = 15
-	prefixRBP    = 11 // unary - and + bind tighter than ^ (convention: -2^2 = 4)
+	colonLeftBP      = 14
+	colonRightBP     = 15
+	intersectLeftBP  = 13 // space intersection binds slightly weaker than colon
+	intersectRightBP = 14
+	prefixRBP        = 11 // unary - and + bind tighter than ^ (convention: -2^2 = 4)
+	postfixBP        = 12 // postfix % — above binary ops, below range colon
 
 	maxRow = maxRows // maximum row number
 	maxCol = maxCols // maximum column number (XFD)
@@ -92,14 +95,20 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 		return nil, err
 	}
 
-	// Greedy postfix % — consumed immediately, not in the BP table.
-	for p.peek().Type == TokPercent {
-		p.advance()
-		left = &PostfixExpr{Op: "%", Operand: left}
-	}
-
 	for {
 		tok := p.peek()
+
+		if tok.Type == TokPercent {
+			// Postfix % binds at postfixBP. Gated by minBP so that the RHS
+			// of a colon range (parsed at colonRightBP=15) leaves % to the
+			// surrounding range expression, e.g. A1:A4% parses as (A1:A4)%.
+			if postfixBP < minBP {
+				break
+			}
+			p.advance()
+			left = &PostfixExpr{Op: "%", Operand: left}
+			continue
+		}
 
 		if tok.Type == TokOp {
 			bp, ok := infixBP[tok.Value]
@@ -112,10 +121,19 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 				return nil, err
 			}
 			left = &BinaryExpr{Op: tok.Value, Left: left, Right: right}
-			for p.peek().Type == TokPercent {
-				p.advance()
-				left = &PostfixExpr{Op: "%", Operand: left}
+			continue
+		}
+
+		if tok.Type == TokIntersect {
+			if intersectLeftBP < minBP {
+				break
 			}
+			p.advance()
+			right, err := p.parseExpression(intersectRightBP)
+			if err != nil {
+				return nil, err
+			}
+			left = &IntersectRef{Left: left, Right: right}
 			continue
 		}
 
@@ -150,10 +168,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					// returning a parse error. This allows COUNT(#VALUE!) to
 					// return 0 instead of failing the entire formula.
 					if _, leftIsErr := left.(*ErrorLit); leftIsErr {
-						for p.peek().Type == TokPercent {
-							p.advance()
-							left = &PostfixExpr{Op: "%", Operand: left}
-						}
 						continue
 					}
 					if !fromOK {
@@ -169,10 +183,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 			// Note: Sheet1!A1:B5 is valid — B5 has no sheet and inherits Sheet1.
 			if toRef.Sheet != "" && toRef.Sheet != fromRef.Sheet {
 				left = &ErrorLit{Code: ErrVALUE}
-				for p.peek().Type == TokPercent {
-					p.advance()
-					left = &PostfixExpr{Op: "%", Operand: left}
-				}
 				continue
 			}
 
@@ -193,10 +203,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 				toRef.Col = maxCol
 			}
 			left = &RangeRef{From: fromRef, To: toRef}
-			for p.peek().Type == TokPercent {
-				p.advance()
-				left = &PostfixExpr{Op: "%", Operand: left}
-			}
 			continue
 		}
 
@@ -247,6 +253,26 @@ func (p *Parser) parseNud() (Node, error) {
 		expr, err := p.parseExpression(0)
 		if err != nil {
 			return nil, err
+		}
+		// A parenthesized list of references ( A1:A2, C1:C2, ... ) is a union
+		// reference when every element is reference-like.
+		if p.peek().Type == TokComma && isUnionReferenceNode(expr) {
+			areas := []Node{expr}
+			for p.peek().Type == TokComma {
+				p.advance()
+				area, err := p.parseExpression(0)
+				if err != nil {
+					return nil, err
+				}
+				if !isUnionReferenceNode(area) {
+					return nil, fmt.Errorf("union references must contain only direct cell or range references")
+				}
+				areas = append(areas, area)
+			}
+			if _, err := p.expect(TokRParen); err != nil {
+				return nil, fmt.Errorf("expected ')' to close reference list")
+			}
+			return &UnionRef{Areas: areas}, nil
 		}
 		if _, err := p.expect(TokRParen); err != nil {
 			return nil, fmt.Errorf("unmatched '(' at position %d", tok.Pos)
@@ -430,6 +456,17 @@ func isAREASReferenceNode(n Node) bool {
 	default:
 		return false
 	}
+}
+
+// isUnionReferenceNode reports whether a node can appear inside a
+// parenthesized union reference list. Matches AREAS's rules plus allows
+// nested intersections and unions.
+func isUnionReferenceNode(n Node) bool {
+	switch n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	}
+	return false
 }
 
 func (p *Parser) parseCallArgs() ([]Node, error) {

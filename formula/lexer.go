@@ -7,8 +7,14 @@ import (
 
 // Lexer tokenizes a formula string.
 type Lexer struct {
-	src []byte
-	pos int // current byte position
+	src     []byte
+	pos     int       // current byte position
+	prev    TokenType // last emitted token type (TokEOF when none)
+	prevVal string    // last emitted token value (used for disambiguation)
+	pendInt bool      // emit a synthetic TokIntersect before the next token
+	pendPos int       // position of the whitespace that introduced pendInt
+	buf     Token     // one-token lookahead buffer used when injecting TokIntersect
+	hasBuf  bool
 }
 
 // NewLexer creates a lexer for the given formula string.
@@ -37,7 +43,40 @@ func Tokenize(formula string) ([]Token, error) {
 
 // Next returns the next token from the input.
 func (l *Lexer) Next() (Token, error) {
-	l.skipWhitespace()
+	tok, err := l.nextRaw()
+	if err != nil {
+		return tok, err
+	}
+	// Apply pending intersection detection: a whitespace gap between the
+	// previously emitted token and this one becomes a TokIntersect only when
+	// both sides are reference-like.
+	if l.pendInt && canPrecedeIntersect(l.prev, l.prevVal) && canFollowIntersect(tok.Type, tok.Value) {
+		intersectTok := Token{Type: TokIntersect, Value: " ", Pos: l.pendPos}
+		l.pendInt = false
+		l.pendPos = 0
+		l.buf = tok
+		l.hasBuf = true
+		l.prev = intersectTok.Type
+		l.prevVal = intersectTok.Value
+		return intersectTok, nil
+	}
+	l.pendInt = false
+	l.pendPos = 0
+	l.prev = tok.Type
+	l.prevVal = tok.Value
+	return tok, nil
+}
+
+// nextRaw reads the next token from the input stream, detecting leading
+// whitespace and recording it as a potential intersection hint via pendInt.
+func (l *Lexer) nextRaw() (Token, error) {
+	if l.hasBuf {
+		t := l.buf
+		l.hasBuf = false
+		l.buf = Token{}
+		return t, nil
+	}
+	l.skipWhitespaceTracking()
 
 	if l.pos >= len(l.src) {
 		return Token{Type: TokEOF, Pos: l.pos}, nil
@@ -494,6 +533,47 @@ func (l *Lexer) skipWhitespace() {
 	for l.pos < len(l.src) && (l.src[l.pos] == ' ' || l.src[l.pos] == '\t' || l.src[l.pos] == '\n' || l.src[l.pos] == '\r') {
 		l.pos++
 	}
+}
+
+// skipWhitespaceTracking skips whitespace like skipWhitespace but records a
+// pending intersect hint if any whitespace was consumed.
+func (l *Lexer) skipWhitespaceTracking() {
+	start := l.pos
+	for l.pos < len(l.src) && (l.src[l.pos] == ' ' || l.src[l.pos] == '\t' || l.src[l.pos] == '\n' || l.src[l.pos] == '\r') {
+		l.pos++
+	}
+	if l.pos > start {
+		l.pendInt = true
+		l.pendPos = start
+	}
+}
+
+// canPrecedeIntersect reports whether a token of the given type/value can act
+// as the left operand of an intersection (i.e. produces a reference).
+func canPrecedeIntersect(t TokenType, _ string) bool {
+	switch t {
+	case TokCellRef, TokRParen:
+		return true
+	}
+	return false
+}
+
+// canFollowIntersect reports whether a token of the given type/value can act
+// as the right operand of an intersection (i.e. produces a reference).
+func canFollowIntersect(t TokenType, val string) bool {
+	switch t {
+	case TokCellRef, TokLParen:
+		return true
+	case TokFunc:
+		// Only reference-returning functions can participate in an
+		// intersection. We accept a small curated set; anything else
+		// causes the space to be ignored (Excel behavior).
+		switch strings.ToUpper(strings.TrimSuffix(val, "(")) {
+		case "OFFSET", "INDIRECT", "INDEX", "CHOOSE", "IF", "IFS", "SWITCH":
+			return true
+		}
+	}
+	return false
 }
 
 // looksLikeCellRef checks if a string looks like a valid cell reference.

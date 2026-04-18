@@ -1099,9 +1099,21 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	if args[0].Type != ValueArray {
-		return ErrorVal(ErrValVALUE), nil
+	// Propagate any error argument; promote scalar numeric/bool/string args to
+	// 1x1 arrays so SUMPRODUCT(scalar) matches Excel (e.g. SUMPRODUCT(5)=5,
+	// SUMPRODUCT(#N/A)=#N/A).
+	promoted := make([]Value, len(args))
+	for i, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
+		}
+		if arg.Type == ValueArray {
+			promoted[i] = arg
+			continue
+		}
+		promoted[i] = Value{Type: ValueArray, Array: [][]Value{{arg}}}
 	}
+	args = promoted
 	firstArr := args[0].Array
 	rows := len(firstArr)
 	cols := 0
@@ -1110,9 +1122,6 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 	}
 
 	for _, arg := range args[1:] {
-		if arg.Type != ValueArray {
-			return ErrorVal(ErrValVALUE), nil
-		}
 		if len(arg.Array) != rows {
 			return ErrorVal(ErrValVALUE), nil
 		}

@@ -15672,6 +15672,27 @@ func TestMATCH_ErrorPropagation(t *testing.T) {
 	}
 }
 
+// TestMATCH_ErrorLookupValue tests that an error lookup_value propagates
+// instead of being matched against a cell containing the same error.
+func TestMATCH_ErrorLookupValue(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: ErrorVal(ErrValNA),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, "MATCH(NA(),A1:A4,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("MATCH(NA(),A1:A4,0) = %v, want #N/A", got)
+	}
+}
+
 // TestINDEX_BooleanRowCol tests INDEX with boolean row/col arguments.
 func TestINDEX_BooleanRowCol(t *testing.T) {
 	// TRUE coerces to 1 via CoerceNum.

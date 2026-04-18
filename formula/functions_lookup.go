@@ -537,6 +537,9 @@ func fnMATCH(args []Value) (Value, error) {
 	}
 	lookup := args[0]
 	arr := args[1]
+	if lookup.Type == ValueError {
+		return lookup, nil
+	}
 	matchType := 1
 	if len(args) == 3 {
 		mt, e := CoerceNum(args[2])

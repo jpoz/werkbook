@@ -126,6 +126,19 @@ func (n *RangeRef) String() string {
 	return fmt.Sprintf("(: %s %s)", n.From, n.To)
 }
 
+// IntersectRef represents a reference intersection written as a space between
+// two references, e.g. A1:C3 B2:D4. The result is the rectangular overlap of
+// the two operand ranges (or #NULL! when they don't overlap).
+type IntersectRef struct {
+	Left  Node
+	Right Node
+}
+
+func (n *IntersectRef) nodeMarker() {}
+func (n *IntersectRef) String() string {
+	return fmt.Sprintf("(isect %s %s)", n.Left, n.Right)
+}
+
 // UnionRef represents a parenthesized multi-area reference list like
 // (A1:B2,C3,D4:E5). The parser only produces this node for AREAS.
 type UnionRef struct {

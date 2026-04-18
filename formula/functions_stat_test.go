@@ -832,13 +832,23 @@ func TestSUMPRODUCT_Comprehensive(t *testing.T) {
 		}
 	})
 
-	t.Run("non-array arg returns VALUE error", func(t *testing.T) {
+	t.Run("scalar arg promoted to 1x1 array", func(t *testing.T) {
 		got, err := fnSUMPRODUCT([]Value{NumberVal(5)})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf("got %v, want #VALUE!", got)
+		if got.Type != ValueNumber || got.Num != 5 {
+			t.Errorf("SUMPRODUCT(5) = %v, want 5", got)
+		}
+	})
+
+	t.Run("scalar error propagates", func(t *testing.T) {
+		got, err := fnSUMPRODUCT([]Value{ErrorVal(ErrValNAME)})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Type != ValueError || got.Err != ErrValNAME {
+			t.Errorf("SUMPRODUCT(#NAME?) = %v, want #NAME?", got)
 		}
 	})
 
