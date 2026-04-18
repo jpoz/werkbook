@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.3
+
+### Bug fixes
+
+- **VLOOKUP/HLOOKUP approximate match**: Switched approximate match (`range_lookup=TRUE`) from linear scan to binary search, matching Excel's behavior on sorted data
+- **XLOOKUP multi-column return arrays**: Return-array orientation logic now distinguishes row- vs column-oriented lookups, so multi-column returns select the matching column instead of flattening all return values
+
 ## v0.9.2
 
 ### Bug fixes
