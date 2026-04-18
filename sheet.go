@@ -83,12 +83,14 @@ func (s *Sheet) SetValue(cell string, v any) error {
 }
 
 // SetFormula sets a formula on a cell by reference (e.g. "A1").
-// The formula should not include the leading '=' sign.
+// A single leading '=' (as users often type in Excel) is tolerated and stripped;
+// leaving it in would nest inside the OOXML <f> element and save as a #NAME? cell.
 func (s *Sheet) SetFormula(cell string, f string) error {
 	col, row, err := CellNameToCoordinates(cell)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
+	f = strings.TrimPrefix(f, "=")
 	src, err := s.file.expandFormula(f, s.name, row)
 	if err != nil {
 		return err

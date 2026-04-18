@@ -40,6 +40,31 @@ func TestSetFormulaGetFormula(t *testing.T) {
 	}
 }
 
+func TestSetFormulaStripsLeadingEquals(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	if err := s.SetFormula("A1", "=SUM(1,2,3)"); err != nil {
+		t.Fatalf("SetFormula: %v", err)
+	}
+
+	got, err := s.GetFormula("A1")
+	if err != nil {
+		t.Fatalf("GetFormula: %v", err)
+	}
+	if got != "SUM(1,2,3)" {
+		t.Errorf("GetFormula = %q, want %q (leading '=' should be stripped)", got, "SUM(1,2,3)")
+	}
+
+	v, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue: %v", err)
+	}
+	if v.Type != werkbook.TypeNumber || v.Number != 6 {
+		t.Errorf("GetValue = %+v, want TypeNumber 6 (formula should evaluate normally)", v)
+	}
+}
+
 func TestFormulaRoundTrip(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
