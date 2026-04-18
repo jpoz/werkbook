@@ -259,28 +259,36 @@ func fnVLOOKUP(args []Value) (Value, error) {
 	}
 
 	if rangeLookup {
-		lastMatch := -1
-		for i, row := range table.Array {
+		// Excel uses binary search for approximate match. This matters
+		// on unsorted data where a linear scan and binary search diverge.
+		lo, hi := 0, len(table.Array)-1
+		result := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			row := table.Array[mid]
 			if len(row) == 0 {
+				// Skip empty rows by shrinking the window.
+				hi = mid - 1
 				continue
 			}
 			cmp := CompareValues(row[0], lookup)
 			if cmp == 0 {
-				lastMatch = i
+				result = mid
 				break
+			} else if cmp < 0 {
+				result = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
 			}
-			if cmp > 0 {
-				break
-			}
-			lastMatch = i
 		}
-		if lastMatch < 0 {
+		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if ci > len(table.Array[lastMatch]) {
+		if ci > len(table.Array[result]) {
 			return ErrorVal(ErrValREF), nil
 		}
-		return table.Array[lastMatch][ci-1], nil
+		return table.Array[result][ci-1], nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -352,25 +360,29 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	firstRow := table.Array[0]
 
 	if rangeLookup {
-		lastMatch := -1
-		for i, cell := range firstRow {
-			cmp := CompareValues(cell, lookup)
+		// Excel uses binary search for approximate match.
+		lo, hi := 0, len(firstRow)-1
+		result := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			cmp := CompareValues(firstRow[mid], lookup)
 			if cmp == 0 {
-				lastMatch = i
+				result = mid
 				break
+			} else if cmp < 0 {
+				result = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
 			}
-			if cmp > 0 {
-				break
-			}
-			lastMatch = i
 		}
-		if lastMatch < 0 {
+		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if lastMatch >= len(table.Array[ri-1]) {
+		if result >= len(table.Array[ri-1]) {
 			return ErrorVal(ErrValREF), nil
 		}
-		return table.Array[ri-1][lastMatch], nil
+		return table.Array[ri-1][result], nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -801,22 +813,53 @@ func fnXLOOKUP(args []Value) (Value, error) {
 		lookupValues = []Value{lookupArr}
 	}
 
-	var returnValues []Value
-	if returnArr.Type == ValueArray {
-		for _, row := range returnArr.Array {
-			returnValues = append(returnValues, row...)
-		}
-	} else {
-		returnValues = []Value{returnArr}
-	}
+	// Determine lookup orientation: row-oriented if the lookup array is a
+	// single row with multiple columns; column-oriented otherwise.
+	isRowOriented := lookupArr.Type == ValueArray &&
+		len(lookupArr.Array) == 1 && len(lookupArr.Array[0]) > 1
 
 	n := len(lookupValues)
 
 	xlookupReturn := func(i int) (Value, error) {
-		if i >= 0 && i < len(returnValues) {
-			return returnValues[i], nil
+		if returnArr.Type != ValueArray {
+			if i == 0 {
+				return returnArr, nil
+			}
+			return ErrorVal(ErrValNA), nil
 		}
-		return ErrorVal(ErrValNA), nil
+		if isRowOriented {
+			// Row-oriented lookup: index i is a column index in the
+			// return array. Extract column i across all rows.
+			rows := returnArr.Array
+			if len(rows) == 1 {
+				// Single-row return → scalar
+				if i >= 0 && i < len(rows[0]) {
+					return rows[0][i], nil
+				}
+				return ErrorVal(ErrValNA), nil
+			}
+			col := make([][]Value, len(rows))
+			for r, row := range rows {
+				if i >= 0 && i < len(row) {
+					col[r] = []Value{row[i]}
+				} else {
+					col[r] = []Value{EmptyVal()}
+				}
+			}
+			return Value{Type: ValueArray, Array: col}, nil
+		}
+		// Column-oriented lookup: index i is a row index.
+		if i < 0 || i >= len(returnArr.Array) {
+			return ErrorVal(ErrValNA), nil
+		}
+		row := returnArr.Array[i]
+		if len(row) <= 1 {
+			if len(row) == 1 {
+				return row[0], nil
+			}
+			return EmptyVal(), nil
+		}
+		return Value{Type: ValueArray, Array: [][]Value{row}}, nil
 	}
 
 	// --- Binary search modes (search_mode 2 or -2) ---
