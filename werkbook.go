@@ -257,8 +257,15 @@ func (f *File) ClearSpillShadowValues() {
 				}
 			}
 		}
+		// Clear shadow cells within the FormulaRef range, and also
+		// clear stale shadow cells below it. When a dynamic array spill
+		// shrinks (e.g. a FILTER that previously returned 14 rows now
+		// returns 8), the OOXML file may still contain cached cell values
+		// from the larger spill. These must be cleared so they don't
+		// contaminate downstream aggregations like SUM or COUNT.
+		sheetMaxRow := s.MaxRow()
 		for _, sr := range ranges {
-			for row := sr.anchorRow; row <= sr.toRow; row++ {
+			for row := sr.anchorRow; row <= sheetMaxRow; row++ {
 				r, ok := s.rows[row]
 				if !ok {
 					continue

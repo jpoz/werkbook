@@ -84,8 +84,13 @@ func usesFullSheetAxisRange(v Value) bool {
 	if v.RangeOrigin == nil {
 		return false
 	}
-	return v.RangeOrigin.ToRow-v.RangeOrigin.FromRow+1 >= maxRows ||
-		v.RangeOrigin.ToCol-v.RangeOrigin.FromCol+1 >= maxCols
+	// Check whether the range reaches the maximum row or column boundary,
+	// regardless of where it starts.  Ranges like A2:A1048576 are
+	// semantically equivalent to full-column references (A:A) for the
+	// purpose of keeping intermediate arrays small; the previous check
+	// (ToRow-FromRow+1 >= maxRows) missed ranges starting after row 1.
+	return v.RangeOrigin.ToRow >= maxRows ||
+		v.RangeOrigin.ToCol >= maxCols
 }
 
 // arrayOpBounds returns the dimensions evaluator-style array operations should

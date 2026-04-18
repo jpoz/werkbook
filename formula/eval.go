@@ -26,6 +26,7 @@ type EvalContext struct {
 	IsArrayFormula bool         // true for CSE (Ctrl+Shift+Enter) array formulas
 	Date1904       bool         // true if the workbook uses the 1904 date system
 	Resolver       CellResolver // the active resolver; used by SUBTOTAL to inspect cells
+	Tracer         EvalTracer   // optional; nil means no tracing
 }
 
 // SubtotalChecker is an optional interface that a CellResolver may implement
@@ -94,7 +95,9 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 		return v, nil
 	}
 
-	for _, inst := range cf.Code {
+	tracer := ctx != nil && ctx.Tracer != nil
+	for instIdx, inst := range cf.Code {
+		_ = instIdx
 		switch inst.Op {
 		case OpPushNum:
 			push(cf.Consts[inst.Operand])
@@ -156,7 +159,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			// clamps toRow to MaxRow to avoid huge allocations for
 			// full-column refs, but bounded ranges like A1:A5 need all
 			// requested rows so functions like COUNTBLANK see every blank.
-			if !isFullCol && !isFullRow {
+			// Skip padding for ranges that reach the sheet boundary
+			// (like A2:A1048576) — they behave like full-column refs.
+			reachesMaxAxis := addr.ToRow >= maxRows || addr.ToCol >= maxCols
+			if !isFullCol && !isFullRow && !reachesMaxAxis {
 				expectedRows := addr.ToRow - addr.FromRow + 1
 				cols := addr.ToCol - addr.FromCol + 1
 				for len(rows) < expectedRows {
@@ -249,7 +255,11 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 					return NumberVal(result)
 				}
 			}
-			push(binaryArith(a, b, fn))
+			result := binaryArith(a, b, fn)
+			if tracer {
+				ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, result)
+			}
+			push(result)
 
 		case OpNeg:
 			a, err := pop()
@@ -312,7 +322,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c == 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c == 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpNe:
 			b, err := pop()
@@ -323,7 +339,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c != 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c != 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpLt:
 			b, err := pop()
@@ -334,7 +356,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c < 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c < 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpLe:
 			b, err := pop()
@@ -345,7 +373,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c <= 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c <= 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpGt:
 			b, err := pop()
@@ -356,7 +390,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c > 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c > 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpGe:
 			b, err := pop()
@@ -367,7 +407,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			push(binaryCompare(a, b, func(c int) bool { return c >= 0 }))
+			{
+				r := binaryCompare(a, b, func(c int) bool { return c >= 0 })
+				if tracer {
+					ctx.Tracer.OnBinaryOp(instIdx, inst.Op, a, b, r)
+				}
+				push(r)
+			}
 
 		case OpCall:
 			funcID := int(inst.Operand >> 8)
@@ -382,6 +428,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			result, err := CallFunc(funcID, args, ctx)
 			if err != nil {
 				return Value{}, err
+			}
+			if tracer {
+				name := ""
+				if funcID >= 0 && funcID < len(idToName) {
+					name = idToName[funcID]
+				}
+				ctx.Tracer.OnCallFunc(instIdx, name, args, result)
 			}
 			push(result)
 

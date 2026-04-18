@@ -529,7 +529,13 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// function arguments. Suspending the inherited array context here matches
 	// Excel's legacy implicit-intersection behavior for formulas like:
 	//   SUMPRODUCT(mask*IF(range-range*scalar>0, range-range*scalar, 0))
-	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name)
+	// Element-wise functions (ROUND, IFERROR, etc.) must NOT have their
+	// inherited array context suspended, because their arguments need array
+	// semantics for the arithmetic inside them to broadcast correctly.
+	// Without this, expressions like ROUND(G*scalar, 0) inside FILTER
+	// conditions lose array context, causing G to be implicitly intersected
+	// to a single cell.
+	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name) && !elementWiseCallFuncs[name]
 	if suspendInheritedArrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
 		// The deferred restore intentionally covers the early-return paths
