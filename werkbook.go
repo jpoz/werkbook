@@ -470,7 +470,7 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 	for _, dn := range data.DefinedNames {
 		f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
 			Name:         dn.Name,
-			Value:        dn.Value,
+			Value:        formula.StripXlfnPrefixes(dn.Value),
 			LocalSheetID: dn.LocalSheetID,
 		})
 	}

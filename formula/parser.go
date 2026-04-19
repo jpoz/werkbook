@@ -875,9 +875,43 @@ func desugarMAKEARRAY(args []Node) (Node, error) {
 	}, nil
 }
 
+// inlineBoundLambdaCall checks whether funcName refers to a name in subst that
+// is bound to a LAMBDA. If so, it desugars the invocation into the lambda's
+// body with callArgs substituted for its parameters. Returns (node, true) on a
+// successful inline.
+func inlineBoundLambdaCall(funcName string, callArgs []Node, subst map[string]Node) (Node, bool) {
+	key := strings.ToUpper(funcName)
+	key = strings.TrimPrefix(key, "_XLFN._XLWS.")
+	key = strings.TrimPrefix(key, "_XLFN.")
+	key = strings.TrimPrefix(key, "_XLPM.")
+	repl, ok := subst[key]
+	if !ok {
+		return nil, false
+	}
+	lambdaCall, ok := repl.(*FuncCall)
+	if !ok || !isLambdaFuncName(lambdaCall.Name) {
+		return nil, false
+	}
+	lambdaArgs := make([]Node, len(lambdaCall.Args))
+	for i, a := range lambdaCall.Args {
+		lambdaArgs[i] = cloneNode(a)
+	}
+	node, err := desugarLambdaInvocation(lambdaArgs, callArgs)
+	if err != nil {
+		return nil, false
+	}
+	return node, true
+}
+
 func lambdaParamName(n Node) (string, bool) {
 	ref, ok := n.(*CellRef)
-	if !ok || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+	if !ok || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+		return "", false
+	}
+	if ref.Name != "" {
+		return strings.ToUpper(ref.Name), true
+	}
+	if ref.Row != 0 {
 		return "", false
 	}
 	return strings.ToUpper(ColNumberToLetters(ref.Col)), true
@@ -886,9 +920,15 @@ func lambdaParamName(n Node) (string, bool) {
 func substituteLambdaNames(n Node, subst map[string]Node) Node {
 	switch v := n.(type) {
 	case *CellRef:
-		if v.Row == 0 && v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
-			if repl, ok := subst[strings.ToUpper(ColNumberToLetters(v.Col))]; ok {
-				return cloneNode(repl)
+		if v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
+			if v.Name != "" {
+				if repl, ok := subst[strings.ToUpper(v.Name)]; ok {
+					return cloneNode(repl)
+				}
+			} else if v.Row == 0 {
+				if repl, ok := subst[strings.ToUpper(ColNumberToLetters(v.Col))]; ok {
+					return cloneNode(repl)
+				}
 			}
 		}
 		return cloneNode(v)
@@ -911,6 +951,11 @@ func substituteLambdaNames(n Node, subst map[string]Node) Node {
 		args := make([]Node, len(v.Args))
 		for i, arg := range v.Args {
 			args[i] = substituteLambdaNames(arg, subst)
+		}
+		// If the function name itself refers to a LET-bound LAMBDA, inline
+		// the invocation (e.g. LET(sq, LAMBDA(n,n*n), sq(A1)) → (n*n)[n:=A1]).
+		if inlined, ok := inlineBoundLambdaCall(v.Name, args, subst); ok {
+			return inlined
 		}
 		return &FuncCall{Name: v.Name, Args: args}
 	case *UnionRef:

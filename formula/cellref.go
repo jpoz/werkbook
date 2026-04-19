@@ -106,10 +106,41 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 	}
 
 	if i != len(s) {
+		// Fall back to a bare-identifier CellRef when the input looks like an
+		// identifier (letters, digits, underscores, dots) rather than a cell
+		// reference. LET and LAMBDA use this for parameter names like
+		// `running_sum` that can't be encoded as column+row. Only accept the
+		// fallback when the raw input has no sheet qualifier, no '$', and
+		// starts with a letter or underscore.
+		if isBareIdentifier(raw) && ref.Sheet == "" && ref.SheetEnd == "" && !ref.AbsCol && !ref.AbsRow && !ref.DotNotation {
+			return &CellRef{Name: raw}, nil
+		}
 		return nil, fmt.Errorf("unexpected trailing characters in cell ref %q", raw)
 	}
 
 	return ref, nil
+}
+
+// isBareIdentifier reports whether s is a legal Excel-style name identifier:
+// starts with a letter or underscore, followed by letters, digits, underscores
+// or dots. Intended for falling back from a failed cell-ref parse to a
+// named-identifier interpretation.
+func isBareIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // findDotSheetSeparator finds a '.' that separates a sheet name from a cell

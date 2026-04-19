@@ -783,9 +783,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 					return Value{}, err
 				}
 
-				// BYROW lambda must return a scalar. If it returns an array, #CALC!
+				// Per Excel: BYROW returns #VALUE! if the lambda produces
+				// anything but a single value.
 				if res.Type == ValueArray {
-					res = ErrorVal(ErrValCALC)
+					res = ErrorVal(ErrValVALUE)
 				}
 
 				byrowResult[i] = []Value{res}
@@ -892,9 +893,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 					return Value{}, err
 				}
 
-				// BYCOL lambda must return a scalar. If it returns an array, #CALC!
+				// Per Excel: BYCOL returns #VALUE! if the lambda produces
+				// anything but a single value.
 				if res.Type == ValueArray {
-					res = ErrorVal(ErrValCALC)
+					res = ErrorVal(ErrValVALUE)
 				}
 
 				bycolResult[0][j] = res

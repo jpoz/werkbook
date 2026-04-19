@@ -216,10 +216,10 @@ func TestBYCOL(t *testing.T) {
 		},
 		// 26. Lambda must return a scalar, not an array
 		{
-			name:    "array result returns calc",
+			name:    "array result returns value error",
 			formula: `BYCOL({1,2;3,4}, LAMBDA(c, TOCOL(c)))`,
 			want: Value{Type: ValueArray, Array: [][]Value{
-				{ErrorVal(ErrValCALC), ErrorVal(ErrValCALC)},
+				{ErrorVal(ErrValVALUE), ErrorVal(ErrValVALUE)},
 			}},
 		},
 	}

@@ -71,6 +71,7 @@ var xlfnPrefix = map[string]string{
 	"IMCSCH":          "_xlfn.",
 	"IMSECH":          "_xlfn.",
 	"IMSINH":          "_xlfn.",
+	"ISOMITTED":       "_xlfn.",
 	"ISOWEEKNUM":      "_xlfn.",
 	"LAMBDA":          "_xlfn.",
 	"LET":             "_xlfn.",
@@ -312,6 +313,10 @@ func StripXlfnPrefixes(f string) string {
 				removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn._xlws.")})
 			case strings.HasPrefix(upper, "_XLFN."):
 				removals = append(removals, removal{pos: tok.Pos, len: len("_xlfn.")})
+			case strings.HasPrefix(upper, "_XLPM."):
+				// Workbook-level named LAMBDAs and LET-bound LAMBDAs are
+				// serialized as `_xlpm.name(args)` call-sites by Excel.
+				removals = append(removals, removal{pos: tok.Pos, len: len("_xlpm.")})
 			}
 		case TokCellRef:
 			upper := strings.ToUpper(tok.Value)

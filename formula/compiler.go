@@ -148,6 +148,12 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
+		if n.Name != "" {
+			// Bare identifier that was not resolved as a defined name nor
+			// consumed by LET/LAMBDA desugaring.
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
 		if n.Col < 1 || n.Col > maxCols {
 			// Column outside valid range [A, XFD] (includes overflow-wrapped values)
 			// that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
@@ -543,6 +549,22 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// removed earlier.
 	name = strings.TrimPrefix(name, "_XLFN._XLWS.")
 	name = strings.TrimPrefix(name, "_XLFN.")
+	// ISOMITTED checks whether its argument was an omitted LAMBDA parameter.
+	// Because LAMBDA invocation substitutes the raw AST node (including
+	// *EmptyArg for empty argument slots), this is a purely syntactic check
+	// at compile time.
+	if name == "ISOMITTED" {
+		if len(n.Args) != 1 {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		if _, isEmpty := n.Args[0].(*EmptyArg); isEmpty {
+			c.emit(OpPushBool, 1)
+			return nil
+		}
+		c.emit(OpPushBool, 0)
+		return nil
+	}
 	funcID := LookupFunc(name)
 	if funcID < 0 {
 		return fmt.Errorf("unknown function %q", n.Name)

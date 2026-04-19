@@ -81,9 +81,16 @@ func (n *EmptyArg) String() string {
 }
 
 // CellRef represents a cell reference, possibly sheet-qualified.
+//
+// When Name is non-empty, this node represents a bare identifier that does not
+// follow the letter+digit cell reference form (e.g. `running_sum`). LET and
+// LAMBDA carry parameter names this way so that underscores and digits can
+// appear in parameter names. If a Name-only CellRef reaches the compiler
+// (i.e. no desugaring consumed it), it compiles to #NAME?.
 type CellRef struct {
 	Sheet       string // empty if not sheet-qualified
 	SheetEnd    string // non-empty for 3D references (Sheet2:Sheet5!A1); the end sheet name
+	Name        string // non-empty for bare identifiers that aren't cell refs (e.g. LET/LAMBDA param names)
 	Col         int    // 1-based column number
 	Row         int    // 1-based row number
 	AbsCol      bool   // true if column is absolute ($A)
@@ -93,6 +100,9 @@ type CellRef struct {
 
 func (n *CellRef) nodeMarker() {}
 func (n *CellRef) String() string {
+	if n.Name != "" {
+		return n.Name
+	}
 	var b strings.Builder
 	if n.Sheet != "" {
 		if needsQuoting(n.Sheet) {
