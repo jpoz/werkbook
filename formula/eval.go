@@ -228,8 +228,25 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				return Value{}, err
 			}
 			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
+				aWasRange := a.Type == ValueArray && a.RangeOrigin != nil
+				bWasRange := b.Type == ValueArray && b.RangeOrigin != nil
 				a = implicitIntersect(a, ctx)
 				b = implicitIntersect(b, ctx)
+				// If one side was a range and got intersected to a scalar but
+				// the other is still an anonymous array (e.g. a LET-bound
+				// SCAN/SEQUENCE result), Excel intersects it to its top-left
+				// element so both operands match. Leaving it as an array
+				// would cause lop-sided broadcasts like A1:A8 - {rm}.
+				if aWasRange && a.Type != ValueArray && b.Type == ValueArray && b.RangeOrigin == nil {
+					if len(b.Array) > 0 && len(b.Array[0]) > 0 {
+						b = b.Array[0][0]
+					}
+				}
+				if bWasRange && b.Type != ValueArray && a.Type == ValueArray && a.RangeOrigin == nil {
+					if len(a.Array) > 0 && len(a.Array[0]) > 0 {
+						a = a.Array[0][0]
+					}
+				}
 			}
 			var fn func(float64, float64) Value
 			switch inst.Op {
