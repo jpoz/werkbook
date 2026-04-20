@@ -1,6 +1,6 @@
 # Supported Formulas
 
-Werkbook supports **446** spreadsheet formula functions.
+Werkbook supports **449** spreadsheet formula functions.
 
 | Function | Description | Category | Tests |
 |----------|-------------|----------|------:|
@@ -48,8 +48,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | BITOR | Returns the bitwise OR of two integers. | Math & Trig | 27 |
 | BITRSHIFT | Returns a number shifted right by a requested number of bits. | Math & Trig | 27 |
 | BITXOR | Returns the bitwise XOR of two integers. | Math & Trig | 27 |
-| BYCOL | Applies a lambda to each column of an array. | Logical | 29 |
-| BYROW | Applies a lambda to each row of an array. | Logical | 26 |
+| BYCOL | Applies a lambda to each column of an array. | Logical | 30 |
+| BYROW | Applies a lambda to each row of an array. | Logical | 27 |
 | CEILING | Rounds a number up to the nearest multiple of a significance. | Math & Trig | 51 |
 | CEILING.MATH | Rounds a number up using Excel's CEILING.MATH rules. | Math & Trig | 37 |
 | CEILING.PRECISE | Rounds a number up to the nearest significance, ignoring the sign of the significance. | Math & Trig | 37 |
@@ -60,8 +60,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | CHISQ.INV.RT | Returns the inverse of the right-tailed chi-square distribution. | Statistical | 32 |
 | CHISQ.TEST | Returns the result of a chi-square test. | Statistical | 23 |
 | CHOOSE | Returns the value at a position from a supplied list of choices. | Text | 49 |
-| CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 28 |
-| CHOOSEROWS | Returns selected rows from an array. | Lookup & Reference | 28 |
+| CHOOSECOLS | Returns selected columns from an array. | Lookup & Reference | 29 |
+| CHOOSEROWS | Returns selected rows from an array. | Lookup & Reference | 29 |
 | CLEAN | Removes non-printing characters from text. | Text | 25 |
 | CODE | Returns the numeric code for the first character in text. | Text | 13 |
 | COLUMN | Returns the column number of a reference. | Information | 25 |
@@ -79,7 +79,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | COSH | Returns the hyperbolic cosine of a number. | Math & Trig | 26 |
 | COT | Returns the cotangent of an angle. | Math & Trig | 26 |
 | COTH | Returns the hyperbolic cotangent of a number. | Math & Trig | 26 |
-| COUNT | Counts numeric values. | Statistical | 43 |
+| COUNT | Counts numeric values. | Statistical | 45 |
 | COUNTA | Counts non-empty values. | Statistical | 22 |
 | COUNTBLANK | Counts blank cells in a range. | Statistical | 40 |
 | COUNTIF | Counts values that match one condition. | Statistical | 78 |
@@ -142,7 +142,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | EVEN | Rounds a number away from zero to the nearest even integer. | Math & Trig | 34 |
 | EXACT | Returns TRUE when two text values match exactly. | Text | 32 |
 | EXP | Returns e raised to a power. | Math & Trig | 29 |
-| EXPAND | Pads an array to a larger size with a fill value. | Lookup & Reference | 27 |
+| EXPAND | Pads an array to a larger size with a fill value. | Lookup & Reference | 28 |
 | EXPON.DIST | Returns the exponential distribution. | Statistical | 28 |
 | F.DIST | Returns the F probability distribution. | Statistical | 42 |
 | F.DIST.RT | Returns the right-tailed F probability distribution. | Statistical | 30 |
@@ -186,7 +186,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | HYPERLINK | Creates a clickable hyperlink. | Lookup & Reference | 46 |
 | HYPGEOM.DIST | Returns the hypergeometric distribution. | Statistical | 64 |
 | IF | Returns one value when a condition is TRUE and another when it is FALSE. | Logical | 39 |
-| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 77 |
+| IFERROR | Returns a fallback value when a formula returns an error. | Logical | 78 |
 | IFNA | Returns a fallback value when a formula returns #N/A. | Information | 45 |
 | IFS | Evaluates conditions in order and returns the value for the first TRUE condition. | Logical | 32 |
 | IMABS | Returns the absolute value of a complex number. | Engineering | 38 |
@@ -214,7 +214,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | IMSUB | Subtracts one complex number from another. | Engineering | 34 |
 | IMSUM | Returns the sum of complex numbers. | Engineering | 37 |
 | IMTAN | Returns the tangent of a complex number. | Engineering | 28 |
-| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 132 |
+| INDEX | Returns a value or subrange at a row and column position. | Lookup & Reference | 135 |
 | INDIRECT | Turns text into a reference and returns its value. | Lookup & Reference | 61 |
 | INT | Rounds a number down to the nearest integer. | Math & Trig | 27 |
 | INTERCEPT | Returns the y-intercept of a linear regression line. | Statistical | 39 |
@@ -237,12 +237,12 @@ Werkbook supports **446** spreadsheet formula functions.
 | ISREF | Returns TRUE when a value is a reference. | Information | 24 |
 | ISTEXT | Returns TRUE when a value is text. | Information | 25 |
 | KURT | Returns the kurtosis of a data set. | Statistical | 22 |
-| LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 13 |
+| LAMBDA | Defines a reusable custom formula from parameters and an expression. | Logical | 14 |
 | LARGE | Returns the k-th largest value in a data set. | Statistical | 31 |
 | LCM | Returns the least common multiple. | Math & Trig | 39 |
 | LEFT | Returns characters from the left side of a text value. | Text | 42 |
 | LEN | Returns the number of characters in text. | Text | 37 |
-| LET | Assigns names to intermediate values within a formula. | Logical | 36 |
+| LET | Assigns names to intermediate values within a formula. | Logical | 48 |
 | LINEST | Returns linear regression statistics. | Statistical | 3 |
 | LN | Returns the natural logarithm of a number. | Math & Trig | 32 |
 | LOG | Returns the logarithm of a number in a chosen base. | Math & Trig | 35 |
@@ -252,9 +252,9 @@ Werkbook supports **446** spreadsheet formula functions.
 | LOGNORM.INV | Returns the inverse of the lognormal cumulative distribution. | Statistical | 31 |
 | LOOKUP | Looks up a value in a one-dimensional range and returns the matching result. | Lookup & Reference | 24 |
 | LOWER | Converts text to lowercase. | Text | 48 |
-| MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 32 |
-| MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 26 |
-| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 77 |
+| MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 33 |
+| MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 27 |
+| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 79 |
 | MAX | Returns the largest numeric value. | Statistical | 41 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 45 |
@@ -334,7 +334,10 @@ Werkbook supports **446** spreadsheet formula functions.
 | RANK.EQ | Returns the rank of a number in a list with ties sharing the same rank. | Statistical | 46 |
 | RATE | Returns the interest rate per period for an annuity. | Financial | 6 |
 | RECEIVED | Returns the amount received at maturity for a fully invested security. | Financial | 11 |
-| REDUCE | Folds an array to a single result by repeatedly applying a lambda. | Logical | 25 |
+| REDUCE | Folds an array to a single result by repeatedly applying a lambda. | Logical | 26 |
+| REGEXEXTRACT | Extracts one or more substrings that match a regular expression. | Text | 17 |
+| REGEXREPLACE | Replaces substrings that match a regular expression. | Text | 17 |
+| REGEXTEST | Returns TRUE if a string matches a regular expression. | Text | 12 |
 | REPLACE | Replaces characters within text at a given position. | Text | 82 |
 | REPT | Repeats text a specified number of times. | Text | 26 |
 | RIGHT | Returns characters from the right side of a text value. | Text | 41 |
@@ -346,7 +349,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | ROWS | Returns the number of rows in a reference or array. | Information | 37 |
 | RRI | Returns an equivalent interest rate for investment growth. | Financial | 21 |
 | RSQ | Returns the square of the Pearson correlation coefficient. | Statistical | 42 |
-| SCAN | Returns the running accumulation produced by a lambda over an array. | Logical | 25 |
+| SCAN | Returns the running accumulation produced by a lambda over an array. | Logical | 26 |
 | SEARCH | Returns the position of one text value inside another, case-insensitive. | Text | 51 |
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
 | SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
@@ -364,7 +367,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | SLOPE | Returns the slope of a linear regression line. | Statistical | 39 |
 | SMALL | Returns the k-th smallest value in a data set. | Statistical | 29 |
 | SORT | Sorts an array by row or column order. | Logical | 52 |
-| SORTBY | Sorts an array by one or more companion arrays. | Logical | 4 |
+| SORTBY | Sorts an array by one or more companion arrays. | Logical | 5 |
 | SQRT | Returns the square root of a number. | Math & Trig | 29 |
 | SQRTPI | Returns the square root of a number multiplied by pi. | Math & Trig | 25 |
 | STANDARDIZE | Returns a normalized value from a mean and standard deviation. | Statistical | 34 |
@@ -377,7 +380,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | STEYX | Returns the standard error of predicted y values in regression. | Statistical | 41 |
 | SUBSTITUTE | Replaces matching text within a string. | Text | 69 |
 | SUBTOTAL | Returns a subtotal using a selected aggregate function. | Math & Trig | 75 |
-| SUM | Returns the sum of supplied numbers. | Statistical | 109 |
+| SUM | Returns the sum of supplied numbers. | Statistical | 117 |
 | SUMIF | Returns the sum of values that match one condition. | Statistical | 75 |
 | SUMIFS | Returns the sum of values that match all supplied conditions. | Statistical | 65 |
 | SUMPRODUCT | Returns the sum of pairwise products across arrays. | Statistical | 84 |
@@ -404,7 +407,7 @@ Werkbook supports **446** spreadsheet formula functions.
 | TEXTAFTER | Returns the text that appears after a delimiter. | Text | 34 |
 | TEXTBEFORE | Returns the text that appears before a delimiter. | Text | 34 |
 | TEXTJOIN | Joins text values with a delimiter. | Text | 67 |
-| TEXTSPLIT | Splits text into rows or columns around delimiters. | Text | 88 |
+| TEXTSPLIT | Splits text into rows or columns around delimiters. | Text | 89 |
 | TIME | Builds a time value from hour, minute, and second numbers. | Date & Time | 47 |
 | TIMEVALUE | Converts time text to a serial time value. | Date & Time | 48 |
 | TOCOL | Flattens an array into a single column. | Lookup & Reference | 23 |
@@ -437,8 +440,8 @@ Werkbook supports **446** spreadsheet formula functions.
 | WEIBULL.DIST | Returns the Weibull distribution. | Statistical | 33 |
 | WORKDAY | Returns a working day offset from a start date. | Date & Time | 42 |
 | WORKDAY.INTL | Returns a working day offset using a custom weekend pattern. | Date & Time | 34 |
-| WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 20 |
-| WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 19 |
+| WRAPCOLS | Wraps a vector into a two-dimensional array by columns. | Lookup & Reference | 21 |
+| WRAPROWS | Wraps a vector into a two-dimensional array by rows. | Lookup & Reference | 20 |
 | XIRR | Returns the internal rate of return for cash flows on irregular dates. | Financial | 38 |
 | XLOOKUP | Looks up a value in one array and returns the matching value from another array. | Lookup & Reference | 113 |
 | XMATCH | Returns the position of a lookup value with exact, wildcard, or binary search modes. | Lookup & Reference | 81 |

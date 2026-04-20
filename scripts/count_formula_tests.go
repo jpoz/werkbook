@@ -50,6 +50,7 @@ var categoryMap = map[string]string{
 	"logic":   "Logical",
 	"lookup":  "Lookup & Reference",
 	"math":    "Math & Trig",
+	"regex":   "Text",
 	"stat":    "Statistical",
 	"text":    "Text",
 }
@@ -335,6 +336,9 @@ var descriptionMap = map[string]string{
 	"RATE":                     "Returns the interest rate per period for an annuity.",
 	"RECEIVED":                 "Returns the amount received at maturity for a fully invested security.",
 	"REDUCE":                   "Folds an array to a single result by repeatedly applying a lambda.",
+	"REGEXEXTRACT":             "Extracts one or more substrings that match a regular expression.",
+	"REGEXREPLACE":             "Replaces substrings that match a regular expression.",
+	"REGEXTEST":                "Returns TRUE if a string matches a regular expression.",
 	"REPLACE":                  "Replaces characters within text at a given position.",
 	"REPLACEB":                 "Replaces bytes within text at a given position.",
 	"REPT":                     "Repeats text a specified number of times.",
