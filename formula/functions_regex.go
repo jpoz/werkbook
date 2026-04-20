@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 func init() {
@@ -163,8 +164,10 @@ func regexExtractScalar(re *regexp.Regexp, text string, mode int) Value {
 			return ErrorVal(ErrValNA)
 		}
 		if len(sub) == 1 {
-			// No capture groups: return whole match as a 1x1 row.
-			return StringVal(sub[0])
+			// No capture groups: return the whole match as a 1x1 row so
+			// the shape is consistent with the capture-group path and with
+			// regexExtractArray mode 2.
+			return Value{Type: ValueArray, Array: [][]Value{{StringVal(sub[0])}}}
 		}
 		groups := sub[1:]
 		row := make([]Value, len(groups))
@@ -176,11 +179,12 @@ func regexExtractScalar(re *regexp.Regexp, text string, mode int) Value {
 	return ErrorVal(ErrValVALUE)
 }
 
-// regexExtractArray lifts REGEXEXTRACT over an array input. Mode 0 broadcasts
-// element-wise (N rows → N rows, 1 col). Mode 1 returns an N×M array where M
-// is the maximum match count across inputs; short rows padded with #N/A.
-// Mode 2 returns an N×G array where G is the capture-group count of the first
-// row with any match; missing groups / non-matching rows are #N/A.
+// regexExtractArray lifts REGEXEXTRACT over an array input. Mode 0 applies
+// element-wise and preserves the input array shape (rows×cols). Mode 1
+// returns an N×M array where M is the maximum match count across inputs;
+// short rows are padded with #N/A. Mode 2 returns an N×G array where G is
+// the regexp capture-group count (re.NumSubexp(), or 1 when the pattern has
+// no capture groups); missing groups and non-matching rows are #N/A.
 func regexExtractArray(re *regexp.Regexp, input Value, mode int) (Value, error) {
 	rows, cols := effectiveArrayBounds(input)
 	// Flatten in row-major order to a single list of inputs.
@@ -429,11 +433,12 @@ func applyRegexReplacements(text, replacement string, matches [][]int) string {
 		cursor = end
 		if start == end {
 			// Zero-width match: emit one literal rune so we advance,
-			// matching how ReplaceAllString handles empty matches.
+			// matching how ReplaceAllString handles empty matches. Decode
+			// the rune so multi-byte UTF-8 characters aren't split.
 			if cursor < len(text) {
-				r := text[cursor]
-				b.WriteByte(r)
-				cursor++
+				r, size := utf8.DecodeRuneInString(text[cursor:])
+				b.WriteRune(r)
+				cursor += size
 			}
 		}
 	}

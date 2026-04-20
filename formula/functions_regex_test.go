@@ -121,6 +121,54 @@ func TestREGEXEXTRACT_Mode2_CaptureGroups(t *testing.T) {
 	}
 }
 
+func TestREGEXEXTRACT_Mode2_NoCaptureGroups(t *testing.T) {
+	// Mode 2 without capture groups returns the whole match as a 1x1 array
+	// so scalar and array-input paths share the same shape semantics.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `REGEXEXTRACT("abc123", "[0-9]+", 2)`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("want array, got %+v", got)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("want 1x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Str != "123" {
+		t.Errorf("got %q, want 123", got.Array[0][0].Str)
+	}
+}
+
+func TestREGEXREPLACE_ZeroWidthMultibyte(t *testing.T) {
+	// Zero-width match with multi-byte UTF-8 must advance by a full rune,
+	// not a single byte, or the result is corrupt.
+	resolver := &mockResolver{}
+	cf := evalCompile(t, `REGEXREPLACE("日本語", "^", "X")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "X日本語" {
+		t.Errorf("got %+v, want %q", got, "X日本語")
+	}
+	// \b is a zero-width boundary: every word boundary gets a '|'. For an
+	// all-word input the boundaries are at the start and end, so the output
+	// must be well-formed UTF-8 with both delimiters.
+	cf2 := evalCompile(t, `REGEXREPLACE("日本", "\b", "|")`)
+	got2, err := Eval(cf2, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// Go's \b is ASCII-word-aware; non-ASCII letters are not word chars, so
+	// \b won't match at all here. We only care that the string is not
+	// corrupted — result equals the input.
+	if got2.Type != ValueString || got2.Str != "日本" {
+		t.Errorf("got %+v, want %q", got2, "日本")
+	}
+}
+
 func TestREGEXREPLACE_BasicAndBackrefs(t *testing.T) {
 	resolver := &mockResolver{}
 
