@@ -266,6 +266,12 @@ var elementWiseCallFuncs = map[string]bool{
 	"TANH":            true,
 	"TRUNC":           true,
 
+	// Financial.
+	"DB":  true,
+	"DDB": true,
+	"SLN": true,
+	"SYD": true,
+
 	// Scalar statistics and distributions.
 	"BINOM.DIST":       true,
 	"BINOM.DIST.RANGE": true,

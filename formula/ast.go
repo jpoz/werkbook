@@ -136,6 +136,20 @@ func (n *RangeRef) String() string {
 	return fmt.Sprintf("(: %s %s)", n.From, n.To)
 }
 
+// DynamicRangeRef represents a range built from two reference-producing
+// expressions where at least one side isn't a static cell reference, e.g.
+// A1:INDEX(A:A,n) or OFFSET(A1,1,1):B5. Both endpoints are evaluated at
+// runtime and must resolve to single-cell references.
+type DynamicRangeRef struct {
+	From Node
+	To   Node
+}
+
+func (n *DynamicRangeRef) nodeMarker() {}
+func (n *DynamicRangeRef) String() string {
+	return fmt.Sprintf("(: %s %s)", n.From, n.To)
+}
+
 // IntersectRef represents a reference intersection written as a space between
 // two references, e.g. A1:C3 B2:D4. The result is the rectangular overlap of
 // the two operand ranges (or #NULL! when they don't overlap).

@@ -521,7 +521,15 @@ func fnINDEX(args []Value) (Value, error) {
 	if colNum < 0 || colNum >= cols {
 		return ErrorVal(ErrValREF), nil
 	}
-	return indexArrayValue(arr, ri, colNum), nil
+	v := indexArrayValue(arr, ri, colNum)
+	if arr.RangeOrigin != nil {
+		v.CellOrigin = &CellAddr{
+			Sheet: arr.RangeOrigin.Sheet,
+			Col:   arr.RangeOrigin.FromCol + colNum,
+			Row:   arr.RangeOrigin.FromRow + ri,
+		}
+	}
+	return v, nil
 }
 
 func indexArrayValue(arr Value, rowIdx, colIdx int) Value {

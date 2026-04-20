@@ -1,7 +1,6 @@
 package formula
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -394,16 +393,24 @@ func TestCompileStringDeduplication(t *testing.T) {
 }
 
 func TestCompileUnknownFunction(t *testing.T) {
-	node, err := Parse("NOTAFUNCTION(1)")
+	// Unknown functions must produce #NAME? at runtime (not a compile error)
+	// so wrappers like IFERROR/ISERROR/ERROR.TYPE can catch them, matching
+	// Excel's behavior.
+	src := "NOTAFUNCTION(1)"
+	node, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	_, err = Compile("NOTAFUNCTION(1)", node)
-	if err == nil {
-		t.Fatal("expected compile error for unknown function")
+	cf, err := Compile(src, node)
+	if err != nil {
+		t.Fatalf("unexpected compile error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown function") {
-		t.Errorf("error = %q, want it to contain 'unknown function'", err.Error())
+	result, err := Eval(cf, nil, &EvalContext{})
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNAME {
+		t.Errorf("got %v, want #NAME? error", result)
 	}
 }
 

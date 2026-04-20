@@ -543,6 +543,17 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			stack = stack[:len(stack)-n]
 			push(unionAreas(areas))
 
+		case OpBuildRange:
+			b, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			a, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			push(buildRangeFromRefs(a, b, resolver, ctx))
+
 		case OpLoadParam:
 			if params == nil || int(inst.Operand) >= len(params) {
 				return Value{}, fmt.Errorf("parameter index %d out of range", inst.Operand)
@@ -1368,17 +1379,100 @@ func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArray
 	return Value{Type: ValueArray, Array: rows, RangeOrigin: &origin}
 }
 
+// buildRangeFromRefs constructs the rectangular range spanning two single-cell
+// references for the dynamic range operator (e.g. A1:INDEX(A:A,n)). Each
+// operand must resolve to a single cell — either a ValueRef, a value carrying
+// a CellOrigin, or a single-cell array carrying a RangeOrigin. Mismatched
+// sheets or unresolvable operands yield #REF!.
+func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Value {
+	if a.Type == ValueError {
+		return a
+	}
+	if b.Type == ValueError {
+		return b
+	}
+	aRo := extractRangeOrigin(a)
+	bRo := extractRangeOrigin(b)
+	if aRo == nil || bRo == nil {
+		return ErrorVal(ErrValREF)
+	}
+	if aRo.SheetEnd != "" || bRo.SheetEnd != "" {
+		return ErrorVal(ErrValREF)
+	}
+	// Resolve empty sheet names to the current sheet. OpLoadRange leaves the
+	// sheet empty for unqualified refs while OpLoadCellRef substitutes the
+	// current sheet, so the two operands of A1:INDEX(A:A,n) would otherwise
+	// disagree even though both refer to the same sheet.
+	currentSheet := ""
+	if ctx != nil {
+		currentSheet = ctx.CurrentSheet
+	}
+	aSheet := aRo.Sheet
+	if aSheet == "" {
+		aSheet = currentSheet
+	}
+	bSheet := bRo.Sheet
+	if bSheet == "" {
+		bSheet = currentSheet
+	}
+	if aSheet != bSheet {
+		return ErrorVal(ErrValREF)
+	}
+	aRo.Sheet = aSheet
+	fromCol := aRo.FromCol
+	if bRo.FromCol < fromCol {
+		fromCol = bRo.FromCol
+	}
+	fromRow := aRo.FromRow
+	if bRo.FromRow < fromRow {
+		fromRow = bRo.FromRow
+	}
+	toCol := aRo.ToCol
+	if bRo.ToCol > toCol {
+		toCol = bRo.ToCol
+	}
+	toRow := aRo.ToRow
+	if bRo.ToRow > toRow {
+		toRow = bRo.ToRow
+	}
+	addr := RangeAddr{
+		Sheet:   aRo.Sheet,
+		FromCol: fromCol, FromRow: fromRow,
+		ToCol: toCol, ToRow: toRow,
+	}
+	if fromCol == toCol && fromRow == toRow {
+		v := resolver.GetCellValue(CellAddr{Sheet: addr.Sheet, Col: fromCol, Row: fromRow})
+		v.FromCell = true
+		v.CellOrigin = &CellAddr{Sheet: addr.Sheet, Col: fromCol, Row: fromRow}
+		return v
+	}
+	rows := resolver.GetRangeValues(addr)
+	origin := addr
+	return Value{Type: ValueArray, Array: rows, RangeOrigin: &origin}
+}
+
 func extractRangeOrigin(v Value) *RangeAddr {
 	if v.Type == ValueArray && v.RangeOrigin != nil {
 		return v.RangeOrigin
 	}
-	if v.Type != ValueEmpty && v.CellOrigin != nil {
-		// Single-cell ref carried a CellOrigin.
+	if v.CellOrigin != nil {
+		// Single-cell ref carried a CellOrigin (including empty-cell results
+		// from INDEX/OFFSET that still represent a worksheet address).
 		c := v.CellOrigin
 		return &RangeAddr{
 			Sheet: c.Sheet, SheetEnd: c.SheetEnd,
 			FromCol: c.Col, FromRow: c.Row,
 			ToCol: c.Col, ToRow: c.Row,
+		}
+	}
+	if v.Type == ValueRef {
+		encoded := int(v.Num)
+		col := encoded % 100_000
+		row := encoded / 100_000
+		return &RangeAddr{
+			Sheet:   v.Str,
+			FromCol: col, FromRow: row,
+			ToCol: col, ToRow: row,
 		}
 	}
 	return nil

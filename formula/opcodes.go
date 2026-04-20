@@ -44,6 +44,7 @@ const (
 	OpImplicitIntersect             // operand: unused; pops Value, applies legacy implicit intersection, pushes result
 	OpIntersect                     // operand: unused; pops two range Values, pushes the rectangular intersection (or #NULL!)
 	OpUnion                         // operand: number of areas; pops N Values and pushes a flattened union array
+	OpBuildRange                    // operand: unused; pops two single-cell refs and pushes the rectangular range between them
 )
 
 var opNames = [...]string{
@@ -85,6 +86,7 @@ var opNames = [...]string{
 	OpImplicitIntersect: "ImplicitIntersect",
 	OpIntersect:         "Intersect",
 	OpUnion:             "Union",
+	OpBuildRange:        "BuildRange",
 }
 
 func (op OpCode) String() string {

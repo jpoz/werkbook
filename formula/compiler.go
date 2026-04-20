@@ -207,13 +207,30 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValVALUE))
 			return nil
 		}
-		if err := c.compileNodeCtx(n.Left, inArrayCtx); err != nil {
+		if err := c.compileIntersectOperand(n.Left, inArrayCtx); err != nil {
 			return err
 		}
-		if err := c.compileNodeCtx(n.Right, inArrayCtx); err != nil {
+		if err := c.compileIntersectOperand(n.Right, inArrayCtx); err != nil {
 			return err
 		}
 		c.emit(OpIntersect, 0)
+
+	case *DynamicRangeRef:
+		// Both endpoints must yield single-cell references at runtime.
+		// CellRef operands compile to OpLoadCellRef so their address is
+		// available without resolving the cell value; other ref-returning
+		// expressions are compiled in array context so full-column/row
+		// args (e.g. A:A inside INDEX(A:A,n)) don't implicit-intersect
+		// before the function can use them as references.
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileIntersectOperand(n.From, true); err != nil {
+			return err
+		}
+		if err := c.compileIntersectOperand(n.To, true); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		c.emit(OpBuildRange, 0)
 
 	case *UnionRef:
 		if len(n.Areas) == 0 {
@@ -567,7 +584,10 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	}
 	funcID := LookupFunc(name)
 	if funcID < 0 {
-		return fmt.Errorf("unknown function %q", n.Name)
+		// Unknown function names produce #NAME? at runtime in Excel so that
+		// wrappers like IFERROR/ISERROR/ERROR.TYPE can catch the error.
+		c.emit(OpPushError, uint32(ErrValNAME))
+		return nil
 	}
 	argc := len(n.Args)
 	if argc > 255 {
@@ -790,6 +810,20 @@ func isDirectRangeRefNode(node Node) bool {
 		return true
 	}
 	return false
+}
+
+// compileIntersectOperand compiles an operand of the intersection operator.
+// CellRef operands are loaded as ValueRef so rangeIntersect can recover their
+// address; otherwise OpLoadCell would push a value with no origin and the
+// intersection of two single-cell refs would fall through to #VALUE! instead
+// of computing the rectangle (and #NULL! when they don't overlap).
+func (c *compiler) compileIntersectOperand(n Node, inArrayCtx bool) error {
+	if cr, ok := n.(*CellRef); ok && !cr.DotNotation && cr.Name == "" && cr.SheetEnd == "" && cr.Col >= 1 && cr.Col <= maxCols {
+		idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
+		c.emit(OpLoadCellRef, idx)
+		return nil
+	}
+	return c.compileNodeCtx(n, inArrayCtx)
 }
 
 // isReferenceNode reports whether a node can legitimately appear as an

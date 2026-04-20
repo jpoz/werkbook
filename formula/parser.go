@@ -170,6 +170,15 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					if _, leftIsErr := left.(*ErrorLit); leftIsErr {
 						continue
 					}
+					// Allow ref-returning expressions on either side
+					// (e.g. A1:INDEX(A:A,n) or OFFSET(A1,1,0):B5). Both
+					// endpoints must be reference-producing — cells,
+					// ranges, or functions like INDEX/OFFSET/INDIRECT/
+					// CHOOSE/IF/IFS/SWITCH/ANCHORARRAY.
+					if isRefProducingNode(left) && isRefProducingNode(right) {
+						left = &DynamicRangeRef{From: left, To: right}
+						continue
+					}
 					if !fromOK {
 						return nil, fmt.Errorf("left side of ':' must be a cell reference, got %s", left)
 					}
@@ -210,6 +219,24 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 	}
 
 	return left, nil
+}
+
+// isRefProducingNode reports whether a node yields a cell or range reference,
+// either statically (CellRef/RangeRef/IntersectRef/UnionRef) or via a
+// reference-returning function call (INDEX/OFFSET/INDIRECT/CHOOSE/IF/IFS/
+// SWITCH/ANCHORARRAY). Used to determine whether `LEFT:RIGHT` should be
+// parsed as a DynamicRangeRef when the static cell-ref form doesn't apply.
+func isRefProducingNode(n Node) bool {
+	switch v := n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef, *DynamicRangeRef:
+		return true
+	case *FuncCall:
+		switch strings.ToUpper(v.Name) {
+		case "INDEX", "OFFSET", "INDIRECT", "CHOOSE", "IF", "IFS", "SWITCH", "ANCHORARRAY":
+			return true
+		}
+	}
+	return false
 }
 
 // parseNud handles prefix parselets (atoms and prefix operators).

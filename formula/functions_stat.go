@@ -915,7 +915,11 @@ func fnSUMIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(sumRange.Array[r][c]); e == nil {
+				sv := sumRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					sum += n
 				}
 			}
@@ -1080,6 +1084,11 @@ func fnAVERAGEIF(args []Value) (Value, error) {
 					var sv Value
 					if avgRange.Type == ValueArray && i < len(avgRange.Array) && j < len(avgRange.Array[i]) {
 						sv = avgRange.Array[i][j]
+					} else if avgRange.Type != ValueArray {
+						sv = avgRange
+					}
+					if sv.Type == ValueError {
+						return sv, nil
 					}
 					if n, e := CoerceNum(sv); e == nil {
 						sum += n
@@ -1295,7 +1304,11 @@ func fnAVERAGEIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(avgRange.Array[r][c]); e == nil {
+				sv := avgRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					sum += n
 					count++
 				}
@@ -1335,7 +1348,11 @@ func fnMAXIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(maxRange.Array[r][c]); e == nil {
+				sv := maxRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					if !found || n > maxVal {
 						maxVal = n
 						found = true
@@ -1377,7 +1394,11 @@ func fnMINIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(minRange.Array[r][c]); e == nil {
+				sv := minRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					if !found || n < minVal {
 						minVal = n
 						found = true
