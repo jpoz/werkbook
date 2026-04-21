@@ -3939,6 +3939,39 @@ func TestINDIRECT_R1C1_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestSplitSheetPrefix locks down the quote-aware sheet-prefix split used
+// by r1c1ToA1. Naive strings.LastIndex(ref, "!") breaks whenever a sheet
+// name is quoted and contains its own '!' or escaped '' character.
+func TestSplitSheetPrefix(t *testing.T) {
+	cases := []struct {
+		in         string
+		wantPrefix string
+		wantRest   string
+	}{
+		{"A1", "", "A1"},
+		{"Sheet1!A1", "Sheet1!", "A1"},
+		{"Sheet1!R1C1", "Sheet1!", "R1C1"},
+		{"'Sheet Name'!R1C1", "'Sheet Name'!", "R1C1"},
+		// Quoted sheet name with embedded '!': the naive LastIndex
+		// would split at the inner '!' and corrupt the sheet name.
+		{"'Sheet!Name'!R1C1", "'Sheet!Name'!", "R1C1"},
+		{"'a!b!c'!R2C3", "'a!b!c'!", "R2C3"},
+		// Quoted sheet name with escaped '' inside the quotes.
+		{"'Bob''s Sheet'!R1C1", "'Bob''s Sheet'!", "R1C1"},
+		{"'Bob''s!Sheet'!R1C1", "'Bob''s!Sheet'!", "R1C1"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			prefix, rest := splitSheetPrefix(tc.in)
+			if prefix != tc.wantPrefix || rest != tc.wantRest {
+				t.Errorf("splitSheetPrefix(%q) = (%q, %q), want (%q, %q)",
+					tc.in, prefix, rest, tc.wantPrefix, tc.wantRest)
+			}
+		})
+	}
+}
+
 func TestINDIRECT_R1C1_Invalid(t *testing.T) {
 	resolver := &mockResolver{cells: map[CellAddr]Value{}}
 	ctx := &EvalContext{Resolver: resolver}

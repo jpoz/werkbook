@@ -760,21 +760,25 @@ func (s *Sheet) evalCellFormula(c *Cell, col, row int, spillProbe bool) (formula
 	if spillProbe {
 		src, err := f.expandFormula(c.formula, s.name, row)
 		if err != nil {
-			return formula.Value{}, err
+			// Expansion failures are almost always size-budget overflows
+			// (ErrFormulaTooLarge); ErrorValueFromErr maps those to #VALUE!.
+			return formula.Value{}, formula.WrapEvalError(formula.ErrorValueFromErr(err), err)
 		}
 		node, err := formula.Parse(src)
 		if err != nil {
-			return formula.Value{}, err
+			return formula.Value{}, formula.WrapEvalError(formula.ErrValNAME, err)
 		}
 		cf, err = formula.CompileSpillProbe(src, node)
 		if err != nil {
-			return formula.Value{}, err
+			return formula.Value{}, formula.WrapEvalError(formula.ErrValNAME, err)
 		}
 	} else {
 		var err error
 		cf, err = s.compileCellFormula(c, col, row)
 		if err != nil {
-			return formula.Value{}, err
+			// compileCellFormula wraps expandFormula, Parse, and Compile;
+			// classify as VALUE for size overflow and NAME for parse/compile.
+			return formula.Value{}, formula.WrapEvalError(formula.ErrorValueFromErr(err), err)
 		}
 	}
 
@@ -795,7 +799,9 @@ func (s *Sheet) evalCellFormula(c *Cell, col, row int, spillProbe bool) (formula
 	}
 	result, err := formula.Eval(cf, resolver, ctx)
 	f.deps.SetDynamicRanges(qc, formula.DynamicRangeKindMaterialized, resolver.materializedDeps)
-	return result, err
+	// Runtime evaluation failures are engine bugs or resource exhaustion
+	// (stack underflow, bad opcode); Excel would surface these as #VALUE!.
+	return result, formula.WrapEvalError(formula.ErrValVALUE, err)
 }
 
 // evaluateFormula parses, compiles, and executes the formula on the given cell.
@@ -814,10 +820,15 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 
 	result, err := s.evalCellFormula(c, col, row, false)
 	if err != nil {
+		// Classify the failure (parse/compile → #NAME?; expansion overflow
+		// or runtime engine failure → #VALUE!) instead of collapsing every
+		// error to #NAME?. The underlying message stays reachable via
+		// errors.Is / errors.As on an *formula.EvalError.
+		code := formula.ErrorValueFromErr(err).String()
 		if c.value.Type == TypeString {
-			return Value{Type: TypeString, String: "#NAME?"}
+			return Value{Type: TypeString, String: code}
 		}
-		return Value{Type: TypeError, String: "#NAME?"}
+		return Value{Type: TypeError, String: code}
 	}
 	raw := result
 	if c.dynamicArraySpill && !c.isArrayFormula && (result.Type != formula.ValueArray || result.NoSpill) {

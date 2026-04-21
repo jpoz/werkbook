@@ -1043,17 +1043,19 @@ func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
 	// Strip dollar signs (absolute markers) for parsing.
 	cleaned := strings.ReplaceAll(refText, "$", "")
 
-	// Extract optional sheet prefix.
+	// Extract optional sheet prefix. splitSheetPrefix is quote-aware so
+	// a sheet name containing '!' (Excel-legal, though unusual) or an
+	// escaped '' inside single quotes doesn't get mis-split.
 	sheet := ""
-	cellPart := cleaned
-	if idx := strings.LastIndex(cleaned, "!"); idx >= 0 {
-		sheetPart := cleaned[:idx]
-		// Remove surrounding quotes from sheet name.
+	prefix, cellPart := splitSheetPrefix(cleaned)
+	if prefix != "" {
+		// Strip the trailing '!' and the outer quotes (if quoted), then
+		// unescape '' → ' so the sheet name matches what Sheet() expects.
+		sheetPart := prefix[:len(prefix)-1]
 		if len(sheetPart) >= 2 && sheetPart[0] == '\'' && sheetPart[len(sheetPart)-1] == '\'' {
-			sheetPart = sheetPart[1 : len(sheetPart)-1]
+			sheetPart = strings.ReplaceAll(sheetPart[1:len(sheetPart)-1], "''", "'")
 		}
 		sheet = sheetPart
-		cellPart = cleaned[idx+1:]
 	}
 
 	// Check if it's a range (contains colon).
@@ -1244,13 +1246,10 @@ func parseR1C1Cell(s string) (col, row int, err error) {
 // r1c1ToA1 converts an R1C1-style reference string to A1-style.
 // Supports single cell (R1C1), ranges (R1C1:R5C3), and optional sheet prefixes.
 func r1c1ToA1(ref string) (string, error) {
-	// Preserve sheet prefix.
-	prefix := ""
-	cellPart := ref
-	if idx := strings.LastIndex(ref, "!"); idx >= 0 {
-		prefix = ref[:idx+1]
-		cellPart = ref[idx+1:]
-	}
+	// Preserve sheet prefix. splitSheetPrefix is quote-aware so a sheet
+	// name quoted like 'Bob's-Sheet' (with an escaped '') does not get
+	// mis-split at an embedded '!'.
+	prefix, cellPart := splitSheetPrefix(ref)
 
 	// Check if it's a range.
 	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
@@ -1273,6 +1272,38 @@ func r1c1ToA1(ref string) (string, error) {
 		return "", err
 	}
 	return prefix + ColNumberToLetters(c) + strconv.Itoa(r), nil
+}
+
+// splitSheetPrefix separates a reference string like "Sheet1!A1" or
+// "'Sheet Name'!A1" into its sheet-qualifier prefix (including the
+// trailing '!') and the cell portion. When the sheet name is quoted,
+// embedded '!' characters (and escaped '' quotes) inside the quotes
+// are preserved and do not split the reference. If no sheet qualifier
+// is present, prefix is empty and rest is the whole input.
+func splitSheetPrefix(ref string) (prefix, rest string) {
+	if ref == "" {
+		return "", ref
+	}
+	if ref[0] == '\'' {
+		for i := 1; i < len(ref); i++ {
+			if ref[i] != '\'' {
+				continue
+			}
+			if i+1 < len(ref) && ref[i+1] == '\'' {
+				i++ // step over the second '; outer loop increment skips it
+				continue
+			}
+			if i+1 < len(ref) && ref[i+1] == '!' {
+				return ref[:i+2], ref[i+2:]
+			}
+			return "", ref
+		}
+		return "", ref
+	}
+	if idx := strings.IndexByte(ref, '!'); idx >= 0 {
+		return ref[:idx+1], ref[idx+1:]
+	}
+	return "", ref
 }
 
 func isAllDigits(s string) bool {

@@ -80,6 +80,29 @@ func ExpandTableRefs(formula string, tables []TableInfo, currentRow int) string 
 			continue
 		}
 
+		// Skip quoted sheet names like 'my-sheet'!A1. Without this guard, a
+		// table whose name appears as a substring of the sheet name and is
+		// (implausibly but legally) followed by '[' would trigger spurious
+		// structured-reference expansion inside the quotes. Mirrors the guard
+		// in ExpandDefinedNamesBounded.
+		if formula[i] == '\'' {
+			j := i + 1
+			for j < len(formula) {
+				if formula[j] == '\'' {
+					if j+1 < len(formula) && formula[j+1] == '\'' {
+						j += 2 // escaped quote inside sheet name
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			result.WriteString(formula[i:j])
+			i = j
+			continue
+		}
+
 		// Look for TableName[ pattern.
 		if isIdentStartByte(formula[i]) {
 			nameStart := i

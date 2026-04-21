@@ -1245,11 +1245,10 @@ func TestSpillBlockedTransitions(t *testing.T) {
 	}
 }
 
-// TestSpillFullRowRangeReference is a live tripwire for a known gap:
-// full-row range references like Spill!2:3 currently return #NAME? because
-// the range parser does not accept row-only syntax on sheet-qualified refs.
-// When the gap is fixed, the test will flip from skip to assert and will
-// lock down that full-row refs correctly pick up published spill bounds.
+// TestSpillFullRowRangeReference locks down sheet-qualified full-row
+// range references (Spill!2:3), the mirror of the long-supported full-column
+// form (Spill!B:D). Regression coverage for parser + cellref handling of
+// row-only refs when a sheet qualifier is present.
 func TestSpillFullRowRangeReference(t *testing.T) {
 	f, _, _, calc := buildHorizontalHStackHarness(t)
 	mustSetFormula(t, calc, "A1", `SUM(Spill!2:3)`)
@@ -1258,10 +1257,6 @@ func TestSpillFullRowRangeReference(t *testing.T) {
 	val, err := calc.GetValue("A1")
 	if err != nil {
 		t.Fatalf("GetValue: %v", err)
-	}
-	if val.Type == werkbook.TypeError && val.String == "#NAME?" {
-		t.Skip("full-row range references (Spill!2:3) not yet supported; " +
-			"remove this skip once the parser accepts row-only syntax")
 	}
 	if val.Type != werkbook.TypeNumber || val.Number != 60 {
 		t.Fatalf("SUM(Spill!2:3) = %#v, want number 60", val)

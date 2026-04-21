@@ -68,6 +68,13 @@ func TestParseCellRefTokenColumnOnly(t *testing.T) {
 		{"Sheet1!F", CellRef{Sheet: "Sheet1", Col: 6, Row: 0}},
 		{"Ledger!F", CellRef{Sheet: "Ledger", Col: 6, Row: 0}},
 		{"'Sheet Name'!B", CellRef{Sheet: "Sheet Name", Col: 2, Row: 0}},
+
+		// Sheet-qualified row-only refs (Col=0, Row>0). The mirror of
+		// the column-only case above; Sheet1!2:3 → full-row range.
+		{"Sheet1!2", CellRef{Sheet: "Sheet1", Col: 0, Row: 2}},
+		{"Ledger!1048576", CellRef{Sheet: "Ledger", Col: 0, Row: 1048576}},
+		{"'Sheet Name'!5", CellRef{Sheet: "Sheet Name", Col: 0, Row: 5}},
+		{"'venture-distributions'!2", CellRef{Sheet: "venture-distributions", Col: 0, Row: 2}},
 	}
 
 	for _, tt := range tests {

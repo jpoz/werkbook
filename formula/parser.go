@@ -162,6 +162,18 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					}
 					fromRef = &CellRef{Col: 0, Row: fromRow}
 					toRef = &CellRef{Col: 0, Row: toRow}
+				} else if fromOK && toIsNum && fromRef.Col == 0 {
+					// Sheet-qualified row-only range like Sheet1!2:3. The
+					// left side is a CellRef with Col==0 (row-only); the
+					// right side parsed as a bare number and needs to be
+					// lifted into a matching CellRef that inherits the
+					// sheet qualifier.
+					toRow := int(toNum.Value)
+					if toRow < 1 || float64(toRow) != toNum.Value {
+						return nil, fmt.Errorf("invalid row range endpoint %s", toNum.Raw)
+					}
+					toRef = &CellRef{Col: 0, Row: toRow}
+					toOK = true
 				} else {
 					// If one side is already an error (e.g. from a cross-sheet
 					// range that produced #VALUE!), propagate it instead of
