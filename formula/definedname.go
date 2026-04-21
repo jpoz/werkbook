@@ -105,6 +105,32 @@ func ExpandDefinedNamesBounded(src string, names []DefinedNameInfo, currentSheet
 			continue
 		}
 
+		// Skip quoted sheet names like 'my-sheet'!A1. Without this guard, a
+		// defined name whose identifier appears as a substring of the sheet
+		// name (e.g. a "Distributions" name inside 'venture-distributions')
+		// would be expanded inside the quotes and corrupt the reference.
+		// Single quotes in Excel formulas are only used for quoted sheet
+		// qualifiers, so skipping content between matching ''-pairs is safe.
+		if src[i] == '\'' {
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\'' {
+					if j+1 < len(src) && src[j+1] == '\'' {
+						j += 2 // escaped quote inside the sheet name
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			if err := writeExpandedString(&result, &written, src[i:j], maxBytes); err != nil {
+				return "", err
+			}
+			i = j
+			continue
+		}
+
 		// Look for identifiers.
 		if isIdentStartByte(src[i]) {
 			nameStart := i
