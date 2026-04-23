@@ -54,7 +54,16 @@ func TestUnaryInfoFuncSpecs(t *testing.T) {
 }
 
 func TestDirectRangeReducerFuncSpecs(t *testing.T) {
-	names := []string{"SUM", "AVERAGE", "COUNT"}
+	names := []string{
+		"SUM",
+		"AVERAGE",
+		"COUNT",
+		"COUNTA",
+		"MAX",
+		"MIN",
+		"SUMSQ",
+		"DEVSQ",
+	}
 
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
@@ -212,6 +221,38 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			{NumberVal(5), StringVal("x")},
 		},
 	}
+	countaRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(7)},
+			{EmptyVal()},
+			{ErrorVal(ErrValDIV0)},
+			{StringVal("x")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 4,
+			FromRow: 3,
+			ToCol:   4,
+			ToRow:   6,
+		},
+	}
+	errorRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(9)},
+			{ErrorVal(ErrValNA)},
+			{NumberVal(1)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 5,
+			FromRow: 1,
+			ToCol:   5,
+			ToRow:   3,
+		},
+	}
+	directCellText := Value{Type: ValueString, Str: "x", FromCell: true}
 
 	tests := []struct {
 		caseName string
@@ -248,6 +289,60 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			name:     "COUNT",
 			args:     []Value{BoolVal(true), fullColumnRange, anonArray},
 			want:     NumberVal(4),
+		},
+		{
+			caseName: "counta_bounded_range_counts_errors",
+			name:     "COUNTA",
+			args:     []Value{countaRange},
+			want:     NumberVal(3),
+		},
+		{
+			caseName: "max_full_column_trimmed_ref",
+			name:     "MAX",
+			args:     []Value{fullColumnRange},
+			want:     NumberVal(30),
+		},
+		{
+			caseName: "max_direct_cell_text_errors",
+			name:     "MAX",
+			args:     []Value{directCellText, NumberVal(4)},
+			want:     ErrorVal(ErrValVALUE),
+		},
+		{
+			caseName: "min_full_row_trimmed_ref",
+			name:     "MIN",
+			args:     []Value{fullRowRange},
+			want:     NumberVal(6),
+		},
+		{
+			caseName: "min_error_propagation",
+			name:     "MIN",
+			args:     []Value{errorRange},
+			want:     ErrorVal(ErrValNA),
+		},
+		{
+			caseName: "sumsq_scalar_and_array_inputs",
+			name:     "SUMSQ",
+			args:     []Value{NumberVal(3), anonArray},
+			want:     NumberVal(34),
+		},
+		{
+			caseName: "sumsq_error_propagation",
+			name:     "SUMSQ",
+			args:     []Value{ErrorVal(ErrValDIV0), NumberVal(2)},
+			want:     ErrorVal(ErrValDIV0),
+		},
+		{
+			caseName: "devsq_scalar_and_array_inputs",
+			name:     "DEVSQ",
+			args:     []Value{NumberVal(1), anonArray},
+			want:     NumberVal(8),
+		},
+		{
+			caseName: "devsq_direct_cell_text_ignored",
+			name:     "DEVSQ",
+			args:     []Value{directCellText, NumberVal(4)},
+			want:     NumberVal(0),
 		},
 	}
 

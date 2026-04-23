@@ -637,6 +637,59 @@ func TestEvalCOUNTAPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalMAXPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 5}: NumberVal(30),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     4,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "MAX(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Errorf("MAX(A:A) = %v (%g), want 30", got.Type, got.Num)
+	}
+}
+
+func TestEvalDEVSQPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 5}: NumberVal(1),
+			{Col: 3, Row: 5}: BoolVal(true),
+			{Col: 4, Row: 5}: NumberVal(3),
+			{Col: 6, Row: 5}: NumberVal(5),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "DEVSQ(5:5)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 8 {
+		t.Errorf("DEVSQ(5:5) = %v (%g), want 8", got.Type, got.Num)
+	}
+}
+
 func TestEvalXLOOKUPPreservesFullColumnArgsInScalarFormula(t *testing.T) {
 	resolver := &sparseResolver{
 		cells: map[CellAddr]Value{
