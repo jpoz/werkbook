@@ -479,8 +479,26 @@ func fnTRIM(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	s := ValueToString(args[0])
-	fields := strings.Fields(s)
-	return StringVal(strings.Join(fields, " ")), nil
+	// Excel TRIM only collapses ASCII space (U+0020). It deliberately leaves
+	// NBSP (U+00A0) and other Unicode whitespace in place, which is a
+	// well-documented gotcha when cleaning data copied from web sources.
+	var b strings.Builder
+	b.Grow(len(s))
+	inRun := false
+	for i := 0; i < len(s); i++ {
+		if s[i] == ' ' {
+			if !inRun {
+				inRun = true
+			}
+			continue
+		}
+		if inRun && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		inRun = false
+		b.WriteByte(s[i])
+	}
+	return StringVal(b.String()), nil
 }
 
 func fnUnichar(args []Value) (Value, error) {
@@ -999,24 +1017,11 @@ func fnVALUEFn(args []Value) (Value, error) {
 		return args[0], nil
 	}
 	s := ValueToString(args[0])
-	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, ",", "")
-	s = strings.ReplaceAll(s, "$", "")
-
-	if strings.HasSuffix(s, "%") {
-		s = strings.TrimSuffix(s, "%")
-		num, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		return NumberVal(num / 100), nil
-	}
-
-	num, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	n, ok := excelParseNumber(s)
+	if !ok {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	return NumberVal(num), nil
+	return NumberVal(n), nil
 }
 
 // romanPair maps an integer value to its Roman numeral representation.

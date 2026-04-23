@@ -318,6 +318,14 @@ func (p *Parser) parseNud() (Node, error) {
 		}
 		return expr, nil
 
+	case TokAt:
+		p.advance()
+		operand, err := p.parseExpression(prefixRBP)
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpr{Op: "@", Operand: operand}, nil
+
 	case TokArrayOpen:
 		return p.parseArray()
 

@@ -1191,8 +1191,9 @@ func TestTRIMEdgeCases(t *testing.T) {
 		{`TRIM(" ")`, ""},
 		// Multiple words with various spacing
 		{`TRIM("  the   quick   brown   fox  ")`, "the quick brown fox"},
-		// Tab characters — strings.Fields splits on all whitespace
-		{`TRIM("hello` + "\t" + `world")`, "hello world"},
+		// Tab characters — Excel's TRIM only handles ASCII space (0x20),
+		// so tabs are preserved verbatim.
+		{`TRIM("hello` + "\t" + `world")`, "hello\tworld"},
 		// Number coercion (42 → "42", no spaces to trim)
 		{`TRIM(42)`, "42"},
 		// Boolean coercion (TRUE → "TRUE")
@@ -1322,26 +1323,20 @@ func TestTRIMComprehensive(t *testing.T) {
 	})
 
 	t.Run("whitespace characters", func(t *testing.T) {
-		// strings.Fields splits on all Unicode whitespace, so tabs and
-		// newlines are treated as separators and collapsed. This differs
-		// from Excel's TRIM which only handles ASCII space (0x20).
+		// Excel's TRIM only removes ASCII space (U+0020). Tabs, newlines,
+		// and NBSP pass through untouched — callers need CLEAN or
+		// SUBSTITUTE to handle those.
 		tests := []struct {
-			name    string
-			input   []Value
-			want    string
+			name  string
+			input []Value
+			want  string
 		}{
-			// Tab between words
-			{"tab between words", []Value{StringVal("hello\tworld")}, "hello world"},
-			// Newline between words
-			{"newline between words", []Value{StringVal("hello\nworld")}, "hello world"},
-			// Carriage return
-			{"cr between words", []Value{StringVal("hello\rworld")}, "hello world"},
-			// Mixed whitespace
-			{"mixed whitespace", []Value{StringVal("  hello\t\n  world  ")}, "hello world"},
-			// Only tabs
-			{"only tabs", []Value{StringVal("\t\t\t")}, ""},
-			// Only newlines
-			{"only newlines", []Value{StringVal("\n\n\n")}, ""},
+			{"tab between words", []Value{StringVal("hello\tworld")}, "hello\tworld"},
+			{"newline between words", []Value{StringVal("hello\nworld")}, "hello\nworld"},
+			{"cr between words", []Value{StringVal("hello\rworld")}, "hello\rworld"},
+			{"mixed whitespace", []Value{StringVal("  hello\t\n  world  ")}, "hello\t\n world"},
+			{"only tabs", []Value{StringVal("\t\t\t")}, "\t\t\t"},
+			{"only newlines", []Value{StringVal("\n\n\n")}, "\n\n\n"},
 		}
 
 		for _, tt := range tests {
@@ -1358,15 +1353,15 @@ func TestTRIMComprehensive(t *testing.T) {
 	})
 
 	t.Run("non-breaking space", func(t *testing.T) {
-		// Non-breaking space (U+00A0) — strings.Fields treats it as whitespace
-		// in Go, so it will be collapsed like regular spaces.
+		// Excel's TRIM leaves NBSP (U+00A0) in place — callers need
+		// SUBSTITUTE(..., UNICHAR(160), " ") before TRIM to clean it.
 		input := "hello\u00A0\u00A0world"
 		got, err := fnTRIM([]Value{StringVal(input)})
 		if err != nil {
 			t.Fatalf("fnTRIM: %v", err)
 		}
-		if got.Type != ValueString || got.Str != "hello world" {
-			t.Fatalf("fnTRIM with NBSP = %q, want %q", got.Str, "hello world")
+		if got.Type != ValueString || got.Str != input {
+			t.Fatalf("fnTRIM with NBSP = %q, want %q", got.Str, input)
 		}
 	})
 

@@ -24,6 +24,7 @@ type EvalContext struct {
 	CurrentRow     int
 	CurrentSheet   string
 	IsArrayFormula bool         // true for CSE (Ctrl+Shift+Enter) array formulas
+	InheritedArray bool         // internal: true while a call executes inside inherited array context
 	Date1904       bool         // true if the workbook uses the 1904 date system
 	Resolver       CellResolver // the active resolver; used by SUBTOTAL to inspect cells
 	Tracer         EvalTracer   // optional; nil means no tracing
@@ -443,7 +444,8 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			}
 
 		case OpCall:
-			funcID := int(inst.Operand >> 8)
+			funcID := int((inst.Operand >> 8) & funcIDMask)
+			inheritedArrayCtx := inst.Operand&callFlagInheritedArrayCtx != 0
 			argc := int(inst.Operand & 0xFF)
 			if argc > len(stack) {
 				return Value{}, fmt.Errorf("stack underflow in function call")
@@ -452,7 +454,41 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			copy(args, stack[len(stack)-argc:])
 			stack = stack[:len(stack)-argc]
 
+			// Legacy implicit intersection for scalar-lifted functions.
+			// When a function in elementWiseCallFuncs is invoked in true
+			// scalar context — not CSE, not inside any array-forcing caller
+			// (even a suspended one like IF inside SUMPRODUCT) — Excel
+			// applies implicit intersection to each range argument instead
+			// of broadcasting. Example: TEXTJOIN(",", FALSE,
+			// SUBSTITUTE(A1:A4, …)) collapses SUBSTITUTE to the row-aligned
+			// cell rather than lifting over the whole range.
+			//
+			// The inheritedArrayCtx flag (set at compile time when the call
+			// site was inside an array-forcing function) suppresses this
+			// gate so broadcast behaviour still applies inside IF arms
+			// inside SUMPRODUCT, etc.
+			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 &&
+				!inheritedArrayCtx &&
+				funcID >= 0 && funcID < len(idToName) &&
+				functionNeedsLegacyElementwisePreIntersect(idToName[funcID]) {
+				for i := range args {
+					if args[i].Type == ValueArray && args[i].RangeOrigin != nil {
+						args[i] = implicitIntersect(args[i], ctx)
+					}
+				}
+			}
+
+			restoreInheritedArray := false
+			prevInheritedArray := false
+			if ctx != nil {
+				restoreInheritedArray = true
+				prevInheritedArray = ctx.InheritedArray
+				ctx.InheritedArray = inheritedArrayCtx
+			}
 			result, err := CallFunc(funcID, args, ctx)
+			if restoreInheritedArray {
+				ctx.InheritedArray = prevInheritedArray
+			}
 			if err != nil {
 				return Value{}, err
 			}
@@ -506,13 +542,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			if err != nil {
 				return Value{}, err
 			}
-			// Collapse worksheet-range arrays (those with a RangeOrigin) to
-			// a single cell at the formula's row/column. The compiler only
-			// emits this opcode for IFERROR/IFNA arguments, which Excel
-			// evaluates in scalar context even when nested in an
-			// array-forcing function. CSE array formulas opt out.
-			if ctx != nil && !ctx.IsArrayFormula && v.Type == ValueArray && v.RangeOrigin != nil {
-				v = implicitIntersect(v, ctx)
+			// Scalarize arrays for explicit @/SINGLE and the legacy IFERROR/
+			// IFNA compatibility path. CSE array formulas opt out.
+			if ctx != nil && !ctx.IsArrayFormula && v.Type == ValueArray {
+				v = explicitIntersect(v, ctx)
 			}
 			push(v)
 
@@ -812,9 +845,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				}
 
 				// Per Excel: BYROW returns #VALUE! if the lambda produces
-				// anything but a single value.
+				// anything but a single value. A 1x1 array is still scalar.
 				if res.Type == ValueArray {
-					res = ErrorVal(ErrValVALUE)
+					if r, c := effectiveArrayBounds(res); r == 1 && c == 1 {
+						res = ArrayElement(res, 0, 0)
+					} else {
+						res = ErrorVal(ErrValVALUE)
+					}
 				}
 
 				byrowResult[i] = []Value{res}
@@ -922,9 +959,13 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				}
 
 				// Per Excel: BYCOL returns #VALUE! if the lambda produces
-				// anything but a single value.
+				// anything but a single value. A 1x1 array is still scalar.
 				if res.Type == ValueArray {
-					res = ErrorVal(ErrValVALUE)
+					if r, c := effectiveArrayBounds(res); r == 1 && c == 1 {
+						res = ArrayElement(res, 0, 0)
+					} else {
+						res = ErrorVal(ErrValVALUE)
+					}
 				}
 
 				bycolResult[0][j] = res
@@ -962,12 +1003,17 @@ func CoerceNum(v Value) (float64, *Value) {
 			e := ErrorVal(ErrValVALUE)
 			return 0, &e
 		}
-		n, err := strconv.ParseFloat(trimmed, 64)
-		if err != nil {
-			e := ErrorVal(ErrValVALUE)
-			return 0, &e
+		if n, ok := excelParseNumber(trimmed); ok {
+			return n, nil
 		}
-		return n, nil
+		// Excel coerces text dates (and datetimes) to their serial value
+		// during arithmetic, so anything parseDateTimeString accepts
+		// behaves like a number here.
+		if serial, _, ok := parseDateTimeString(trimmed); ok {
+			return serial, nil
+		}
+		e := ErrorVal(ErrValVALUE)
+		return 0, &e
 	case ValueError:
 		return 0, &v
 	default:
@@ -977,10 +1023,10 @@ func CoerceNum(v Value) (float64, *Value) {
 }
 
 // numberToString formats a number for concatenation using Excel's rules:
-// - At most 15 significant digits (via Go's 'G' format with precision 15)
-// - Prefer plain decimal notation; only use scientific notation for
-//   extremely large numbers (exponent > 20) or extremely small numbers
-//   (more than 9 leading zeros after the decimal point, i.e. exponent < -9).
+//   - At most 15 significant digits (via Go's 'G' format with precision 15)
+//   - Prefer plain decimal notation; only use scientific notation for
+//     extremely large numbers (exponent > 20) or extremely small numbers
+//     (more than 9 leading zeros after the decimal point, i.e. exponent < -9).
 func numberToString(f float64) string {
 	if f == 0 {
 		return "0"
@@ -1140,7 +1186,9 @@ func CompareValues(a, b Value) int {
 		case ValueNumber:
 			return cmpFloat(a.Num, b.Num)
 		case ValueString:
-			return strings.Compare(strings.ToLower(a.Str), strings.ToLower(b.Str))
+			sa := stripDefaultIgnorable(a.Str)
+			sb := stripDefaultIgnorable(b.Str)
+			return strings.Compare(strings.ToLower(sa), strings.ToLower(sb))
 		case ValueBool:
 			if a.Bool == b.Bool {
 				return 0
@@ -1153,6 +1201,50 @@ func CompareValues(a, b Value) int {
 	}
 
 	return typeRank(a.Type) - typeRank(b.Type)
+}
+
+// stripDefaultIgnorable removes Unicode default-ignorable code points. Excel's
+// `=`, `<`, `>` operators normalise characters like ZWSP (U+200B) and BOM
+// (U+FEFF) out before comparing text, even though LEN/FIND/SUBSTITUTE still
+// see them. Lookup functions use CompareValuesExact, which deliberately does
+// NOT call this — VLOOKUP stays strict.
+func stripDefaultIgnorable(s string) string {
+	needs := false
+	for _, r := range s {
+		if isDefaultIgnorable(r) {
+			needs = true
+			break
+		}
+	}
+	if !needs {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if !isDefaultIgnorable(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func isDefaultIgnorable(r rune) bool {
+	switch {
+	case r == 0x00AD: // SOFT HYPHEN
+		return true
+	case r >= 0x200B && r <= 0x200F: // ZWSP, ZWNJ, ZWJ, LRM, RLM
+		return true
+	case r >= 0x202A && r <= 0x202E: // bidi embedding/override markers
+		return true
+	case r >= 0x2060 && r <= 0x2064: // WJ and invisible math operators
+		return true
+	case r >= 0xFE00 && r <= 0xFE0F: // variation selectors 1–16
+		return true
+	case r == 0xFEFF: // BOM / ZWNBSP
+		return true
+	}
+	return false
 }
 
 // CompareValuesExact is like CompareValues but uses bit-exact float
@@ -1286,13 +1378,9 @@ func IsTruthy(v Value) bool {
 	}
 }
 
-// implicitIntersect reduces a ValueArray loaded from a worksheet range to a
-// scalar value using implicit intersection rules (legacy non-array
-// formula behaviour).  For a single-column range the value at the formula's
-// row is returned; for a single-row range the value at the formula's column
-// is returned.  If the range is multi-row and multi-column, or the formula
-// position falls outside the range, #VALUE! is returned.  Values that are
-// not range-origin arrays are returned unchanged.
+// implicitIntersect scalarizes an array for legacy implicit intersection and
+// explicit @/SINGLE semantics. Anonymous arrays are left unchanged; explicit
+// @/SINGLE scalarization uses explicitIntersect instead.
 func implicitIntersect(v Value, ctx *EvalContext) Value {
 	if v.Type != ValueArray || ctx == nil || v.RangeOrigin == nil {
 		return v
@@ -1321,6 +1409,19 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 		return ErrorVal(ErrValVALUE)
 	}
 	return ErrorVal(ErrValVALUE)
+}
+
+func explicitIntersect(v Value, ctx *EvalContext) Value {
+	if v.Type != ValueArray {
+		return v
+	}
+	if v.RangeOrigin == nil {
+		if len(v.Array) > 0 && len(v.Array[0]) > 0 {
+			return v.Array[0][0]
+		}
+		return ErrorVal(ErrValVALUE)
+	}
+	return implicitIntersect(v, ctx)
 }
 
 // rangeIntersect computes the rectangular intersection of two range-origin

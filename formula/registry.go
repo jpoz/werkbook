@@ -37,13 +37,14 @@ var (
 // It is safe to call from init(). Duplicate names overwrite silently,
 // allowing external packages (e.g. werkbook-pro) to override or extend.
 func Register(name string, fn Func) {
-	upper := strings.ToUpper(name)
+	upper := normalizeFuncName(name)
 	if _, exists := nameToID[upper]; !exists {
 		id := len(idToName)
 		idToName = append(idToName, upper)
 		nameToID[upper] = id
 	}
 	delete(funcMetaByName, upper)
+	delete(funcSpecByName, upper)
 	registry[upper] = fn
 }
 
@@ -51,7 +52,7 @@ func Register(name string, fn Func) {
 // keyed by the function name.
 func RegisterWithMeta(name string, fn Func, meta FuncMeta) {
 	Register(name, fn)
-	funcMetaByName[strings.ToUpper(name)] = cloneFuncMeta(meta)
+	funcMetaByName[normalizeFuncName(name)] = cloneFuncMeta(meta)
 }
 
 // RegisterScalarLifted registers a scalar function that should inherit array
@@ -67,7 +68,7 @@ func RegisterScalarLifted(name string, fn Func) {
 // LookupFunc returns the function ID for use by the compiler.
 // Returns -1 if the function is not registered.
 func LookupFunc(name string) int {
-	id, ok := nameToID[strings.ToUpper(name)]
+	id, ok := nameToID[normalizeFuncName(name)]
 	if !ok {
 		return -1
 	}
@@ -83,6 +84,9 @@ func CallFunc(funcID int, args []Value, ctx *EvalContext) (Value, error) {
 	fn := registry[name]
 	if fn == nil {
 		return Value{}, fmt.Errorf("unimplemented function: %s", name)
+	}
+	if spec, ok := funcSpecForName(name); ok {
+		return callFuncWithSpec(name, fn, spec, args, ctx)
 	}
 	if elementWiseCallFuncs[name] && hasArrayArg(args) {
 		return callElementWise(args, ctx, fn)
@@ -110,7 +114,7 @@ func cloneFuncMeta(meta FuncMeta) FuncMeta {
 }
 
 func funcMetaForName(name string) (FuncMeta, bool) {
-	meta, ok := funcMetaByName[strings.ToUpper(name)]
+	meta, ok := funcMetaByName[normalizeFuncName(name)]
 	if !ok {
 		return FuncMeta{}, false
 	}
@@ -132,17 +136,10 @@ var elementWiseCallFuncs = map[string]bool{
 	"ERROR.TYPE": true,
 	"IFERROR":    true,
 	"IFNA":       true,
-	"ISBLANK":    true,
-	"ISERR":      true,
-	"ISERROR":    true,
 	"ISEVEN":     true,
 	"ISLOGICAL":  true,
-	"ISNA":       true,
 	"ISNONTEXT":  true,
-	"ISNUMBER":   true,
 	"ISODD":      true,
-	"ISTEXT":     true,
-	"N":          true,
 	"NOT":        true,
 
 	// Text.
@@ -541,15 +538,8 @@ var inheritedArrayArgFuncs = map[string]map[int]bool{
 	"DATEVALUE": {0: true},
 
 	// Info functions that also lift to arrays.
-	"ISNUMBER": {0: true},
-	"ISTEXT":   {0: true},
-	"ISBLANK":  {0: true},
-	"ISERROR":  {0: true},
-	"ISERR":    {0: true},
-	"ISNA":     {0: true},
-	"NOT":      {0: true},
-	"N":        {0: true},
-	"TYPE":     {0: true},
+	"NOT":  {0: true},
+	"TYPE": {0: true},
 }
 
 // arrayFirstArgFuncs evaluate the first argument in array context because it is
@@ -560,7 +550,9 @@ var arrayFirstArgFuncs = map[string]bool{
 	"CHOOSEROWS":  true,
 	"DROP":        true,
 	"EXPAND":      true,
+	"INDEX":       true,
 	"SORT":        true,
+	"SINGLE":      true,
 	"TAKE":        true,
 	"TOCOL":       true,
 	"TOROW":       true,

@@ -28,14 +28,7 @@ func TestInheritedArrayMetadataParity(t *testing.T) {
 		{name: "COSH", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
 		{name: "TANH", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
 		{name: "DATEVALUE", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISNUMBER", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISTEXT", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISBLANK", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISERROR", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISERR", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "ISNA", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
 		{name: "NOT", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
-		{name: "N", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
 		{name: "TYPE", kind: FnKindScalarLifted, inherited: map[int]bool{0: true}},
 	}
 
@@ -110,5 +103,32 @@ func TestRegisterClearsStaleMetadataOnOverride(t *testing.T) {
 	}
 	if got := inheritedArrayEvalForFuncArg(name, 0); got {
 		t.Fatalf("inheritedArrayEvalForFuncArg(%q, 0) = true, want false after override", name)
+	}
+}
+
+func TestRegisterClearsStaleFuncSpecOnOverride(t *testing.T) {
+	const name = "TEST.REGISTER.CLEAR.SPEC"
+
+	RegisterWithSpec(name, NoCtx(func(args []Value) (Value, error) {
+		return NumberVal(1), nil
+	}), FuncSpec{
+		Kind: FnKindScalarLifted,
+		Args: []ArgSpec{{
+			Load:  ArgLoadPassthrough,
+			Adapt: ArgAdaptLegacyIntersectRef,
+		}},
+		Return: ReturnModePassThrough,
+	})
+
+	if _, ok := funcSpecForName(name); !ok {
+		t.Fatalf("expected FuncSpec for %s before override", name)
+	}
+
+	Register(name, NoCtx(func(args []Value) (Value, error) {
+		return NumberVal(2), nil
+	}))
+
+	if _, ok := funcSpecForName(name); ok {
+		t.Fatalf("expected FuncSpec for %s to be cleared after plain Register override", name)
 	}
 }

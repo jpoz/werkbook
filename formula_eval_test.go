@@ -431,8 +431,8 @@ func TestRANDARRAYSpillCellsRemainConsistentWithinCalculation(t *testing.T) {
 	}
 }
 
-// TestINDEX_RowZero_ReturnsValueError verifies that INDEX(range,0) returns
-// #VALUE! in a non-array cell, matching expected behaviour.
+// TestINDEX_RowZero_ReturnsValueError verifies that direct-range INDEX(range,0)
+// still returns #VALUE! in a non-array cell.
 func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
@@ -441,8 +441,7 @@ func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 	s.SetValue("A2", 20)
 	s.SetValue("A3", 30)
 
-	// INDEX with row_num=0 on a column vector should return #VALUE!
-	// in a regular (non-array) cell.
+	// Direct-range INDEX with row_num=0 remains non-spilling in a regular cell.
 	s.SetFormula("B1", "INDEX(A1:A3,0)")
 	val, err := s.GetValue("B1")
 	if err != nil {

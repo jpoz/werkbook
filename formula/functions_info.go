@@ -14,18 +14,18 @@ func init() {
 		Kind:               FnKindScalarLifted,
 		InheritedArrayArgs: map[int]bool{0: true, 1: true},
 	})
-	RegisterScalarLifted("ISBLANK", NoCtx(fnISBLANK))
-	RegisterScalarLifted("ISERR", NoCtx(fnISERR))
-	RegisterScalarLifted("ISERROR", NoCtx(fnISERROR))
+	RegisterScalarLiftedUnarySpec("ISBLANK", NoCtx(fnISBLANK))
+	RegisterScalarLiftedUnarySpec("ISERR", NoCtx(fnISERR))
+	RegisterScalarLiftedUnarySpec("ISERROR", NoCtx(fnISERROR))
 	Register("ISEVEN", NoCtx(fnISEVEN))
 	Register("ISLOGICAL", NoCtx(fnISLOGICAL))
-	RegisterScalarLifted("ISNA", NoCtx(fnISNA))
+	RegisterScalarLiftedUnarySpec("ISNA", NoCtx(fnISNA))
 	Register("ISNONTEXT", NoCtx(fnISNONTEXT))
-	RegisterScalarLifted("ISNUMBER", NoCtx(fnISNUMBER))
+	RegisterScalarLiftedUnarySpec("ISNUMBER", NoCtx(fnISNUMBER))
 	Register("ISODD", NoCtx(fnISODD))
 	Register("ISREF", NoCtx(fnISREF))
-	RegisterScalarLifted("ISTEXT", NoCtx(fnISTEXT))
-	RegisterScalarLifted("N", NoCtx(fnN))
+	RegisterScalarLiftedUnarySpec("ISTEXT", NoCtx(fnISTEXT))
+	RegisterScalarLiftedUnarySpec("N", NoCtx(fnN))
 	Register("NA", NoCtx(fnNA))
 	Register("ROW", fnROW)
 	Register("ROWS", NoCtx(fnROWS))
@@ -278,6 +278,9 @@ func fnCOLUMNS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	if args[0].Type == ValueError {
+		if args[0].Err == ErrValCALC {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		return args[0], nil
 	}
 	if args[0].Type == ValueArray {
@@ -294,6 +297,9 @@ func fnROWS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	if args[0].Type == ValueError {
+		if args[0].Err == ErrValCALC {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		return args[0], nil
 	}
 	if args[0].Type == ValueArray {

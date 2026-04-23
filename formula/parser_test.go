@@ -27,6 +27,7 @@ func TestParseLiterals(t *testing.T) {
 		{"#NULL!", "#NULL!"},
 		{"#SPILL!", "#SPILL!"},
 		{"#CALC!", "#CALC!"},
+		{"@A1", "(@ A1)"},
 	}
 
 	for _, tt := range tests {

@@ -557,6 +557,59 @@ func TestEvalSUMPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalAVERAGEPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 5}: NumberVal(30),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "AVERAGE(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Errorf("AVERAGE(A:A) = %v (%g), want 20", got.Type, got.Num)
+	}
+}
+
+func TestEvalCOUNTPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 5}: NumberVal(10),
+			{Col: 3, Row: 5}: BoolVal(true),
+			{Col: 4, Row: 5}: StringVal("9"),
+			{Col: 5, Row: 5}: NumberVal(7),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "COUNT(5:5)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("COUNT(5:5) = %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
 func TestEvalCOUNTAPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{

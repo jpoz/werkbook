@@ -8,12 +8,12 @@ import (
 )
 
 func init() {
-	Register("AVERAGE", NoCtx(fnAVERAGE))
+	RegisterWithSpec("AVERAGE", NoCtx(fnAVERAGE), directRangeReducerFuncSpec(evalAVERAGEDirectRange))
 	Register("AVERAGEA", NoCtx(fnAVERAGEA))
 	Register("AVEDEV", NoCtx(fnAVEDEV))
 	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
 	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
-	Register("COUNT", NoCtx(fnCOUNT))
+	RegisterWithSpec("COUNT", NoCtx(fnCOUNT), directRangeReducerFuncSpec(evalCOUNTDirectRange))
 	Register("COUNTA", NoCtx(fnCOUNTA))
 	Register("CORREL", NoCtx(fnCORREL))
 	Register("CONFIDENCE.NORM", NoCtx(fnConfidenceNorm))
@@ -72,7 +72,7 @@ func init() {
 	Register("STDEVPA", NoCtx(fnSTDEVPA))
 	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
 	Register("STEYX", NoCtx(fnSTEYX))
-	Register("SUM", NoCtx(fnSUM))
+	RegisterWithSpec("SUM", NoCtx(fnSUM), directRangeReducerFuncSpec(evalSUMDirectRange))
 	Register("SUMIF", NoCtx(fnSUMIF))
 	Register("SUMIFS", NoCtx(fnSUMIFS))
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
@@ -844,6 +844,9 @@ func fnSUMIF(args []Value) (Value, error) {
 	if len(args) == 3 {
 		sumRange = args[2]
 	}
+	if criteria.Type == ValueArray {
+		return sumIFArray(rangeArg, criteria, sumRange), nil
+	}
 
 	if rangeArg.Type != ValueArray {
 		if MatchesCriteria(rangeArg, criteria) {
@@ -879,6 +882,23 @@ func fnSUMIF(args []Value) (Value, error) {
 		}
 	}
 	return NumberVal(sum), nil
+}
+
+func sumIFArray(rangeArg, criteria, sumRange Value) Value {
+	rows, cols := effectiveArrayBounds(criteria)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		row := make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			v, _ := fnSUMIF([]Value{rangeArg, ArrayElement(criteria, i, j), sumRange})
+			row[j] = v
+		}
+		result[i] = row
+	}
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0]
+	}
+	return Value{Type: ValueArray, Array: result}
 }
 
 func fnSUMIFS(args []Value) (Value, error) {
@@ -972,6 +992,9 @@ func fnCOUNTIF(args []Value) (Value, error) {
 		return rangeArg, nil
 	}
 	criteria := args[1]
+	if criteria.Type == ValueArray {
+		return countIFArray(rangeArg, criteria), nil
+	}
 	count := 0
 	if rangeArg.Type == ValueArray {
 		for _, row := range rangeArg.Array {
@@ -985,6 +1008,23 @@ func fnCOUNTIF(args []Value) (Value, error) {
 		count = 1
 	}
 	return NumberVal(float64(count)), nil
+}
+
+func countIFArray(rangeArg, criteria Value) Value {
+	rows, cols := effectiveArrayBounds(criteria)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		row := make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			v, _ := fnCOUNTIF([]Value{rangeArg, ArrayElement(criteria, i, j)})
+			row[j] = v
+		}
+		result[i] = row
+	}
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0]
+	}
+	return Value{Type: ValueArray, Array: result}
 }
 
 func fnCOUNTIFS(args []Value) (Value, error) {

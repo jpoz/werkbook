@@ -68,10 +68,39 @@ type compiler struct {
 	// under legacy array-forcing like SUMPRODUCT), IFERROR/IFNA follow Excel's
 	// scalar implicit-intersection semantics.
 	dynamicArrayDepth int
+
+	// legacyArrayDepth tracks compile-time nesting inside any array-forcing
+	// caller (SUMPRODUCT, SUMIF family, INDEX, array-evaluated arg slots,
+	// CSE probes, DynamicRangeRef). It is incremented only at "real" array
+	// ctx entries — NOT at the suspend-for-IF pair that emits a
+	// Leave/Enter pair around a scalar caller's arguments. OpCall uses this
+	// counter to set the inheritedArrayCtx flag so element-wise functions
+	// keep broadcasting when they appear inside SUMPRODUCT(IF(…), …) even
+	// though runtime arrayCtxDepth drops to 0 inside IF's arms.
+	legacyArrayDepth int
 }
 
 func (c *compiler) emit(op OpCode, operand uint32) {
 	c.code = append(c.code, Instruction{Op: op, Operand: operand})
+}
+
+// enterLegacyArrayCtx emits OpEnterArrayCtx and bumps the compile-time
+// legacyArrayDepth counter. Use this for "real" array-forcing entries
+// (SUMPRODUCT and friends, array-consuming arg slots, CSE probes) so nested
+// OpCall instructions know they're inside a legacy array context even when a
+// sibling IF suspends the runtime array-ctx counter for its own arm.
+func (c *compiler) enterLegacyArrayCtx() {
+	c.emit(OpEnterArrayCtx, 0)
+	c.legacyArrayDepth++
+}
+
+// leaveLegacyArrayCtx emits OpLeaveArrayCtx and decrements the counter.
+// Must be paired one-to-one with enterLegacyArrayCtx — raw Leave/Enter pairs
+// used only for the IF-suspend dance stay off this accounting because they
+// cancel at the outer level.
+func (c *compiler) leaveLegacyArrayCtx() {
+	c.emit(OpLeaveArrayCtx, 0)
+	c.legacyArrayDepth--
 }
 
 // addConst returns the index for a constant, deduplicating numbers and strings.
@@ -253,6 +282,8 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpNeg, 0)
 		case "+":
 			// no-op
+		case "@":
+			c.emit(OpImplicitIntersect, 0)
 		default:
 			return fmt.Errorf("unknown unary operator %q", n.Op)
 		}
@@ -541,7 +572,10 @@ func functionCanReturnArrayFromArrayArgs(name string) bool {
 	if name == "IF" {
 		return true
 	}
-	if elementWiseCallFuncs[name] {
+	if name == "INDEX" {
+		return true
+	}
+	if functionUsesElementwiseContract(name) {
 		return true
 	}
 	if meta, ok := funcMetaForName(name); ok && meta.Kind == FnKindScalarLifted {
@@ -620,8 +654,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			if wasArrayCtx {
 				c.emit(OpEnterArrayCtx, 0)
 			}
-			operand := uint32(funcID)<<8 | uint32(argc)
-			c.emit(OpCall, operand)
+			c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || wasArrayCtx))
 			return nil
 		}
 		// Fall through to the element-wise lifting path for dynamic-array
@@ -640,7 +673,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// Without this, expressions like ROUND(G*scalar, 0) inside FILTER
 	// conditions lose array context, causing G to be implicitly intersected
 	// to a single cell.
-	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name) && !elementWiseCallFuncs[name]
+	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name) && !functionUsesElementwiseContract(name)
 	if suspendInheritedArrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
 		// The deferred restore intentionally covers the early-return paths
@@ -664,7 +697,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" && cr.Col <= maxCols {
 			idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 			c.emit(OpLoadCellRef, idx)
-			c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+			c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 			return nil
 		}
 		// For ISREF, range references are also references.
@@ -672,7 +705,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			if rr, ok := n.Args[0].(*RangeRef); ok && rr.From.Col >= 1 && rr.From.Col <= maxCols && rr.To.Col >= 1 && rr.To.Col <= maxCols {
 				idx := c.addRef(CellAddr{Sheet: rr.From.Sheet, Col: rr.From.Col, Row: rr.From.Row})
 				c.emit(OpLoadCellRef, idx)
-				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+				c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 				return nil
 			}
 			// INDIRECT (and OFFSET) are ref-returning functions.
@@ -718,14 +751,13 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 				return err
 			}
 		}
-		operand := uint32(funcID)<<8 | uint32(argc)
-		c.emit(OpCall, operand)
+		c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 		return nil
 	}
 
 	arrayCtx := IsArrayFunc(name)
 	if arrayCtx {
-		c.emit(OpEnterArrayCtx, 0)
+		c.enterLegacyArrayCtx()
 	}
 	if IsDynamicArrayFunc(name) {
 		c.dynamicArrayDepth++
@@ -736,28 +768,28 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		if !arrayCtx {
 			switch ArgEvalModeForFuncArg(name, i) {
 			case FuncArgEvalArray:
-				c.emit(OpEnterArrayCtx, 0)
+				c.enterLegacyArrayCtx()
 				if err := c.compileNodeCtx(arg, true); err != nil {
 					return err
 				}
-				c.emit(OpLeaveArrayCtx, 0)
+				c.leaveLegacyArrayCtx()
 				continue
 			case FuncArgEvalDirectRange:
 				if isDirectRangeRefNode(arg) {
-					c.emit(OpEnterArrayCtx, 0)
+					c.enterLegacyArrayCtx()
 					if err := c.compileNodeCtx(arg, true); err != nil {
 						return err
 					}
-					c.emit(OpLeaveArrayCtx, 0)
+					c.leaveLegacyArrayCtx()
 					continue
 				}
 			}
 			if forceInheritedArrayArg {
-				c.emit(OpEnterArrayCtx, 0)
+				c.enterLegacyArrayCtx()
 				if err := c.compileNodeCtx(arg, true); err != nil {
 					return err
 				}
-				c.emit(OpLeaveArrayCtx, 0)
+				c.leaveLegacyArrayCtx()
 				continue
 			}
 		}
@@ -766,11 +798,22 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		}
 	}
 	if arrayCtx {
-		c.emit(OpLeaveArrayCtx, 0)
+		c.leaveLegacyArrayCtx()
 	}
-	operand := uint32(funcID)<<8 | uint32(argc)
-	c.emit(OpCall, operand)
+	c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx || arrayCtx))
 	return nil
+}
+
+// callOperand packs funcID, argc, and the inheritedArrayCtx flag into a single
+// OpCall operand. The flag tells the runtime to skip the legacy
+// implicit-intersection gate: set it whenever this call site was compiled
+// inside a (possibly suspended) array-forcing context.
+func callOperand(funcID, argc int, inheritedArrayCtx bool) uint32 {
+	operand := uint32(funcID)<<8 | uint32(argc)
+	if inheritedArrayCtx {
+		operand |= callFlagInheritedArrayCtx
+	}
+	return operand
 }
 
 func binaryOpCode(op string) (OpCode, error) {

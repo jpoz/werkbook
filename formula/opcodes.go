@@ -102,6 +102,19 @@ type Instruction struct {
 	Operand uint32
 }
 
+// OpCall operand layout:
+//
+//	bits  0–7   argc (0–255)
+//	bits  8–22  funcID (0–32767)
+//	bit   23    inheritedArrayCtx flag — true when the call site was
+//	            compiled inside an array-forcing caller. Used at runtime
+//	            to suppress the legacy implicit-intersection gate that
+//	            applies in true scalar contexts.
+const (
+	funcIDMask                uint32 = 0x7FFF
+	callFlagInheritedArrayCtx uint32 = 1 << 23
+)
+
 func (inst Instruction) String() string {
 	return fmt.Sprintf("%s %d", inst.Op, inst.Operand)
 }

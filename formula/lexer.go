@@ -139,6 +139,11 @@ func (l *Lexer) nextRaw() (Token, error) {
 		l.pos++
 		return tok, nil
 	}
+	if ch == '@' {
+		tok := Token{Type: TokAt, Value: "@", Pos: l.pos}
+		l.pos++
+		return tok, nil
+	}
 
 	// Multi-char comparison operators.
 	if ch == '<' {

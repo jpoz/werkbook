@@ -514,8 +514,8 @@ func TestDynamicArrayFormulaSerializationIncludesMetadataXML(t *testing.T) {
 		t.Fatalf("A2 cached value = %#v, want #CALC!", val)
 	}
 	val, _ = s.GetValue("D2")
-	if val.Type != werkbook.TypeError || val.String != "#NAME?" {
-		t.Fatalf("D2 cached value = %#v, want #NAME?", val)
+	if val.Type != werkbook.TypeString || val.String != "Outflow" {
+		t.Fatalf("D2 cached value = %#v, want string Outflow", val)
 	}
 
 	dir := t.TempDir()
@@ -528,7 +528,7 @@ func TestDynamicArrayFormulaSerializationIncludesMetadataXML(t *testing.T) {
 	if !strings.Contains(sheetXML, `r="A2"`) || !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `ref="A2" ca="1">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(`) {
 		t.Fatalf("expected A2 to be written with dynamic-array metadata, XML: %s", sheetXML)
 	}
-	if !strings.Contains(sheetXML, `r="D2" t="e" cm="1"`) || !strings.Contains(sheetXML, `ref="D2" ca="1">_xlfn.SINGLE(`) {
+	if !strings.Contains(sheetXML, `r="D2"`) || !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `ref="D2" ca="1">_xlfn.SINGLE(`) {
 		t.Fatalf("expected D2 SINGLE formula to carry dynamic-array metadata, XML: %s", sheetXML)
 	}
 	if !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `<f t="array"`) {

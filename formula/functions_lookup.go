@@ -19,6 +19,7 @@ func init() {
 	Register("LOOKUP", NoCtx(fnLOOKUP))
 	Register("MATCH", NoCtx(fnMATCH))
 	Register("OFFSET", fnOFFSET)
+	Register("SINGLE", fnSINGLE)
 	Register("VLOOKUP", NoCtx(fnVLOOKUP))
 	Register("TAKE", NoCtx(fnTAKE))
 	Register("DROP", NoCtx(fnDROP))
@@ -36,6 +37,13 @@ func init() {
 	Register("HYPERLINK", NoCtx(fnHyperlink))
 	Register("XLOOKUP", NoCtx(fnXLOOKUP))
 	Register("XMATCH", NoCtx(fnXMATCH))
+}
+
+func fnSINGLE(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return explicitIntersect(args[0], ctx), nil
 }
 
 // fnANCHORARRAY implements ANCHORARRAY(ref). It returns the full dynamic
@@ -429,107 +437,236 @@ func fnINDEX(args []Value) (Value, error) {
 		return arr, nil
 	}
 	rows, cols := effectiveArrayBounds(arr)
-	rowNum, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	ri := int(rowNum)
-
-	// Default col_num: if not provided, default to 1 (first column).
-	colNum := 1
+	rowSelector := args[1]
+	colSelector := NumberVal(1)
 	if len(args) == 3 {
-		cn, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		colNum = int(cn)
+		colSelector = args[2]
 	} else if rows == 1 {
 		// INDEX(single_row_array, n) is treated as INDEX(array, 1, n).
 		// This also preserves the row/column zero semantics in the special
 		// handling below: INDEX(single_row_array, 0) returns the full row.
-		ri = 1
-		colNum = int(rowNum)
+		rowSelector = NumberVal(1)
+		colSelector = args[1]
 	}
 
-	// Negative indices are invalid and return #VALUE!.
-	if ri < 0 || colNum < 0 {
-		return ErrorVal(ErrValVALUE), nil
+	rowVals, rowShapeRows, rowShapeCols, e := indexSelectorValues(rowSelector, rows)
+	if e != nil {
+		return *e, nil
+	}
+	colVals, colShapeRows, colShapeCols, e := indexSelectorValues(colSelector, cols)
+	if e != nil {
+		return *e, nil
 	}
 
-	// row_num=0 means return the entire column (or array if col_num=0 too).
-	// The result is an array marked NoSpill; in a single-cell (non-array)
-	// context the caller converts this to #VALUE!. Functions like SUM that
-	// consume the array directly still work because they read Array elements
-	// before the final scalar reduction.
-	if ri == 0 && colNum == 0 {
-		v := arr
-		v.NoSpill = true
-		return v, nil
-	}
-	if ri == 0 {
-		// Return entire column as a single-column array.
-		ci := colNum - 1
-		if ci < 0 || ci >= cols {
-			return ErrorVal(ErrValREF), nil
-		}
-		col := make([][]Value, len(arr.Array))
-		for i, row := range arr.Array {
-			cell := EmptyVal()
-			if ci < len(row) {
-				cell = row[ci]
+	if len(rowVals) > 1 {
+		for _, v := range rowVals {
+			if v == 0 {
+				return ErrorVal(ErrValVALUE), nil
 			}
-			col[i] = []Value{cell}
 		}
-		out := Value{Type: ValueArray, Array: col, NoSpill: true}
+	}
+	if len(colVals) > 1 {
+		for _, v := range colVals {
+			if v == 0 {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		}
+	}
+
+	rowScalar := len(rowVals) == 1
+	colScalar := len(colVals) == 1
+
+	if rowScalar && colScalar {
+		return indexScalarSelection(arr, rows, cols, rowVals[0], colVals[0]), nil
+	}
+
+	if !rowScalar && colScalar {
+		if colVals[0] == 0 {
+			return indexSelectedRows(arr, rows, cols, rowVals), nil
+		}
+		return indexSelectedCellsByRowShape(arr, cols, rowVals, rowShapeRows, rowShapeCols, colVals[0]), nil
+	}
+
+	if rowScalar && !colScalar {
+		if rowVals[0] == 0 {
+			return indexSelectedCols(arr, rows, cols, colVals), nil
+		}
+		return indexSelectedCellsByColShape(arr, rows, colVals, colShapeRows, colShapeCols, rowVals[0]), nil
+	}
+
+	result := make([][]Value, len(rowVals))
+	for i, rowNum := range rowVals {
+		result[i] = make([]Value, len(colVals))
+		for j, colNum := range colVals {
+			result[i][j] = indexScalarSelection(arr, rows, cols, rowNum, colNum)
+		}
+	}
+	return compressIndexResult(Value{Type: ValueArray, Array: result}), nil
+}
+
+func indexSelectorValues(selector Value, max int) ([]int, int, int, *Value) {
+	if selector.Type == ValueError {
+		return nil, 0, 0, &selector
+	}
+	if selector.Type != ValueArray {
+		n, e := CoerceNum(selector)
+		if e != nil {
+			return nil, 0, 0, e
+		}
+		idx, errVal := normalizeIndexSelector(int(n), max)
+		if errVal != nil {
+			return nil, 0, 0, errVal
+		}
+		return []int{idx}, 1, 1, nil
+	}
+
+	rows, cols := effectiveArrayBounds(selector)
+	if rows == 0 || cols == 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return nil, 0, 0, &errVal
+	}
+	out := make([]int, 0, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			n, e := CoerceNum(ArrayElement(selector, i, j))
+			if e != nil {
+				return nil, 0, 0, e
+			}
+			idx, errVal := normalizeIndexSelector(int(n), max)
+			if errVal != nil {
+				return nil, 0, 0, errVal
+			}
+			out = append(out, idx)
+		}
+	}
+	return out, rows, cols, nil
+}
+
+func normalizeIndexSelector(idx, max int) (int, *Value) {
+	if idx < 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return 0, &errVal
+	}
+	if idx > max {
+		errVal := ErrorVal(ErrValREF)
+		return 0, &errVal
+	}
+	return idx, nil
+}
+
+func indexScalarSelection(arr Value, rows, cols, rowNum, colNum int) Value {
+	if rowNum == 0 && colNum == 0 {
+		out := arr
+		out.NoSpill = indexSelectionNeedsNoSpill(arr, true, true)
+		return compressIndexResult(out)
+	}
+	if rowNum == 0 {
+		ci := colNum - 1
+		col := make([][]Value, rows)
+		for i := 0; i < rows; i++ {
+			col[i] = []Value{indexArrayValue(arr, i, ci)}
+		}
+		out := Value{Type: ValueArray, Array: col}
 		if arr.RangeOrigin != nil {
 			origin := *arr.RangeOrigin
 			origin.FromCol += ci
 			origin.ToCol = origin.FromCol
 			out.RangeOrigin = &origin
 		}
-		return out, nil
+		out.NoSpill = indexSelectionNeedsNoSpill(arr, true, false)
+		return compressIndexResult(out)
 	}
 	if colNum == 0 {
-		// Return entire row as a single-row array.
-		ri--
-		if ri < 0 || ri >= rows {
-			return ErrorVal(ErrValREF), nil
+		ri := rowNum - 1
+		row := make([]Value, cols)
+		for i := 0; i < cols; i++ {
+			row[i] = indexArrayValue(arr, ri, i)
 		}
-		width := materializedArrayCols(arr.Array)
-		if width == 0 {
-			width = 1
-		}
-		row := make([]Value, width)
-		if ri < len(arr.Array) {
-			copy(row, arr.Array[ri])
-		}
-		out := Value{Type: ValueArray, Array: [][]Value{row}, NoSpill: true}
+		out := Value{Type: ValueArray, Array: [][]Value{row}}
 		if arr.RangeOrigin != nil {
 			origin := *arr.RangeOrigin
 			origin.FromRow += ri
 			origin.ToRow = origin.FromRow
 			out.RangeOrigin = &origin
 		}
-		return out, nil
+		out.NoSpill = indexSelectionNeedsNoSpill(arr, false, true)
+		return compressIndexResult(out)
 	}
 
-	ri--
-	colNum--
-	if ri < 0 || ri >= rows {
-		return ErrorVal(ErrValREF), nil
-	}
-	if colNum < 0 || colNum >= cols {
-		return ErrorVal(ErrValREF), nil
-	}
-	v := indexArrayValue(arr, ri, colNum)
+	ri := rowNum - 1
+	ci := colNum - 1
+	v := indexArrayValue(arr, ri, ci)
 	if arr.RangeOrigin != nil {
 		v.CellOrigin = &CellAddr{
 			Sheet: arr.RangeOrigin.Sheet,
-			Col:   arr.RangeOrigin.FromCol + colNum,
+			Col:   arr.RangeOrigin.FromCol + ci,
 			Row:   arr.RangeOrigin.FromRow + ri,
 		}
 	}
-	return v, nil
+	return v
+}
+
+func indexSelectedRows(arr Value, rows, cols int, rowVals []int) Value {
+	result := make([][]Value, len(rowVals))
+	for i, rowNum := range rowVals {
+		ri := rowNum - 1
+		row := make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			row[j] = indexArrayValue(arr, ri, j)
+		}
+		result[i] = row
+	}
+	return compressIndexResult(Value{Type: ValueArray, Array: result})
+}
+
+func indexSelectedCols(arr Value, rows, cols int, colVals []int) Value {
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		row := make([]Value, len(colVals))
+		for j, colNum := range colVals {
+			row[j] = indexArrayValue(arr, i, colNum-1)
+		}
+		result[i] = row
+	}
+	return compressIndexResult(Value{Type: ValueArray, Array: result})
+}
+
+func indexSelectedCellsByRowShape(arr Value, cols int, rowVals []int, outRows, outCols, colNum int) Value {
+	result := make([][]Value, outRows)
+	for i := 0; i < outRows; i++ {
+		row := make([]Value, outCols)
+		for j := 0; j < outCols; j++ {
+			row[j] = indexArrayValue(arr, rowVals[i*outCols+j]-1, colNum-1)
+		}
+		result[i] = row
+	}
+	return compressIndexResult(Value{Type: ValueArray, Array: result})
+}
+
+func indexSelectedCellsByColShape(arr Value, rows int, colVals []int, outRows, outCols, rowNum int) Value {
+	result := make([][]Value, outRows)
+	for i := 0; i < outRows; i++ {
+		row := make([]Value, outCols)
+		for j := 0; j < outCols; j++ {
+			row[j] = indexArrayValue(arr, rowNum-1, colVals[i*outCols+j]-1)
+		}
+		result[i] = row
+	}
+	return compressIndexResult(Value{Type: ValueArray, Array: result})
+}
+
+func compressIndexResult(v Value) Value {
+	if v.Type != ValueArray {
+		return v
+	}
+	if len(v.Array) == 1 && len(v.Array[0]) == 1 {
+		return v.Array[0][0]
+	}
+	return v
+}
+
+func indexSelectionNeedsNoSpill(arr Value, allRows, allCols bool) bool {
+	return arr.RangeOrigin != nil && (allRows || allCols)
 }
 
 func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
@@ -1277,7 +1414,7 @@ func r1c1ToA1(ref string) (string, error) {
 // splitSheetPrefix separates a reference string like "Sheet1!A1" or
 // "'Sheet Name'!A1" into its sheet-qualifier prefix (including the
 // trailing '!') and the cell portion. When the sheet name is quoted,
-// embedded '!' characters (and escaped '' quotes) inside the quotes
+// embedded '!' characters (and escaped ” quotes) inside the quotes
 // are preserved and do not split the reference. If no sheet qualifier
 // is present, prefix is empty and rest is the whole input.
 func splitSheetPrefix(ref string) (prefix, rest string) {
