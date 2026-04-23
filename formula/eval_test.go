@@ -690,6 +690,85 @@ func TestEvalDEVSQPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalAVEDEVPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 5}: NumberVal(4),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "AVEDEV(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("AVEDEV(A:A) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
+func TestEvalSTDEVPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 5}: NumberVal(4),
+			{Col: 1, Row: 7}: NumberVal(6),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     4,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "STDEV(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Errorf("STDEV(A:A) = %v (%g), want 2", got.Type, got.Num)
+	}
+}
+
+func TestEvalVARPPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 5}: NumberVal(2),
+			{Col: 3, Row: 5}: BoolVal(true),
+			{Col: 4, Row: 5}: NumberVal(4),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "VAR.P(5:5)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("VAR.P(5:5) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
 func TestEvalXLOOKUPPreservesFullColumnArgsInScalarFormula(t *testing.T) {
 	resolver := &sparseResolver{
 		cells: map[CellAddr]Value{

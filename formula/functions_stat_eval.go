@@ -1,6 +1,9 @@
 package formula
 
-import "strconv"
+import (
+	"math"
+	"strconv"
+)
 
 func directRangeReducerFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
@@ -267,6 +270,90 @@ func evalDEVSQDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 		ssq += d * d
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(ssq)}, nil
+}
+
+func evalAVEDEVDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	nums, mean, _, errVal := meanAndSumSqReducerEvalArgs(args, true)
+	if errVal != nil {
+		return ValueToEvalValue(*errVal), nil
+	}
+	if len(nums) == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValNUM)), nil
+	}
+	absDevSum := 0.0
+	for _, n := range nums {
+		absDevSum += math.Abs(n - mean)
+	}
+	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(absDevSum / float64(len(nums)))}, nil
+}
+
+func evalSTDEVDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, true, true), nil
+}
+
+func evalSTDEVPDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, false, true), nil
+}
+
+func evalVARDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, true, false), nil
+}
+
+func evalVARPDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, false, false), nil
+}
+
+func evalReducerVarianceLikeDirectRange(args []EvalValue, sample bool, sqrtResult bool) EvalValue {
+	if len(args) == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE))
+	}
+	nums, _, ssq, errVal := meanAndSumSqReducerEvalArgs(args, true)
+	if errVal != nil {
+		return ValueToEvalValue(*errVal)
+	}
+	minCount := 1
+	denom := float64(len(nums))
+	if sample {
+		minCount = 2
+		denom = float64(len(nums) - 1)
+	}
+	if len(nums) < minCount {
+		return ValueToEvalValue(ErrorVal(ErrValDIV0))
+	}
+	result := ssq / denom
+	if sqrtResult {
+		result = math.Sqrt(result)
+	}
+	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(result)}
+}
+
+func meanAndSumSqReducerEvalArgs(args []EvalValue, ignoreNonNumericDirectCell bool) ([]float64, float64, float64, *Value) {
+	nums, errVal := collectReducerNumericEvalArgs(args, ignoreNonNumericDirectCell)
+	if errVal != nil {
+		return nil, 0, 0, errVal
+	}
+	mean, ssq := meanAndSumSqReducerNumbers(nums)
+	return nums, mean, ssq, nil
+}
+
+func meanAndSumSqReducerNumbers(nums []float64) (float64, float64) {
+	if len(nums) == 0 {
+		return 0, 0
+	}
+	sum := 0.0
+	for _, n := range nums {
+		sum += n
+	}
+	mean := sum / float64(len(nums))
+	ssq := 0.0
+	for _, n := range nums {
+		d := n - mean
+		ssq += d * d
+	}
+	return mean, ssq
 }
 
 func collectReducerNumericEvalArgs(args []EvalValue, ignoreNonNumericDirectCell bool) ([]float64, *Value) {

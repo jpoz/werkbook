@@ -55,14 +55,23 @@ func TestUnaryInfoFuncSpecs(t *testing.T) {
 
 func TestDirectRangeReducerFuncSpecs(t *testing.T) {
 	names := []string{
+		"AVEDEV",
 		"SUM",
 		"AVERAGE",
 		"COUNT",
 		"COUNTA",
 		"MAX",
 		"MIN",
+		"STDEV",
+		"STDEV.S",
+		"STDEVP",
+		"STDEV.P",
 		"SUMSQ",
 		"DEVSQ",
+		"VAR",
+		"VAR.S",
+		"VARP",
+		"VAR.P",
 	}
 
 	for _, name := range names {
@@ -200,6 +209,36 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			ToRow:   5,
 		},
 	}
+	statsFullColumnRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(2)},
+			{BoolVal(true)},
+			{NumberVal(4)},
+			{EmptyVal()},
+			{NumberVal(6)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 6,
+			FromRow: 1,
+			ToCol:   6,
+			ToRow:   maxRows,
+		},
+	}
+	statsFullRowRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(2), BoolVal(true), NumberVal(4)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 8,
+			ToCol:   maxCols,
+			ToRow:   8,
+		},
+	}
 	boundedRange := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -219,6 +258,12 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 		Type: ValueArray,
 		Array: [][]Value{
 			{NumberVal(5), StringVal("x")},
+		},
+	}
+	statsAnonArray := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(4), StringVal("x"), NumberVal(6)},
 		},
 	}
 	countaRange := Value{
@@ -249,6 +294,20 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			FromCol: 5,
 			FromRow: 1,
 			ToCol:   5,
+			ToRow:   3,
+		},
+	}
+	textOnlyRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("x")},
+			{EmptyVal()},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 7,
+			FromRow: 2,
+			ToCol:   7,
 			ToRow:   3,
 		},
 	}
@@ -343,6 +402,72 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			name:     "DEVSQ",
 			args:     []Value{directCellText, NumberVal(4)},
 			want:     NumberVal(0),
+		},
+		{
+			caseName: "avedev_bounded_range",
+			name:     "AVEDEV",
+			args:     []Value{boundedRange},
+			want:     NumberVal(1),
+		},
+		{
+			caseName: "avedev_full_column_trimmed_ref",
+			name:     "AVEDEV",
+			args:     []Value{statsFullColumnRange},
+			want:     NumberVal(4.0 / 3.0),
+		},
+		{
+			caseName: "avedev_empty_range_returns_num",
+			name:     "AVEDEV",
+			args:     []Value{textOnlyRange},
+			want:     ErrorVal(ErrValNUM),
+		},
+		{
+			caseName: "stdev_full_column_trimmed_ref",
+			name:     "STDEV",
+			args:     []Value{statsFullColumnRange},
+			want:     NumberVal(2),
+		},
+		{
+			caseName: "stdev_low_cardinality_div0",
+			name:     "STDEV.S",
+			args:     []Value{NumberVal(5)},
+			want:     ErrorVal(ErrValDIV0),
+		},
+		{
+			caseName: "stdev_error_propagation",
+			name:     "STDEV",
+			args:     []Value{errorRange},
+			want:     ErrorVal(ErrValNA),
+		},
+		{
+			caseName: "stdevp_full_row_trimmed_ref",
+			name:     "STDEV.P",
+			args:     []Value{statsFullRowRange},
+			want:     NumberVal(1),
+		},
+		{
+			caseName: "var_scalar_and_array_inputs",
+			name:     "VAR.S",
+			args:     []Value{NumberVal(2), statsAnonArray},
+			want:     NumberVal(4),
+		},
+		{
+			caseName: "var_error_propagation",
+			name:     "VAR",
+			args:     []Value{errorRange},
+			want:     ErrorVal(ErrValNA),
+		},
+		{
+			caseName: "varp_single_value_returns_zero",
+			name:     "VARP",
+			args:     []Value{NumberVal(5)},
+			want:     NumberVal(0),
+		},
+		{
+			caseName: "varp_full_row_trimmed_ref",
+			name:     "VAR.P",
+			args:     []Value{statsFullRowRange},
+			want:     NumberVal(1),
 		},
 	}
 
