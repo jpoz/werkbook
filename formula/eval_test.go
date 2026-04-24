@@ -2,12 +2,14 @@ package formula
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
 // mockResolver implements CellResolver for testing.
 type mockResolver struct {
-	cells map[CellAddr]Value
+	cells        map[CellAddr]Value
+	definedNames map[string]Value
 }
 
 // sparseResolver mimics the workbook resolver's behavior for full-row and
@@ -40,6 +42,17 @@ func (m *mockResolver) GetRangeValues(addr RangeAddr) [][]Value {
 		rows[r-addr.FromRow] = row
 	}
 	return rows
+}
+
+func (m *mockResolver) ResolveDefinedNameValue(name, scopeSheet string) (Value, bool) {
+	if m.definedNames == nil {
+		return Value{}, false
+	}
+	if v, ok := m.definedNames[strings.ToLower(scopeSheet)+"\x00"+strings.ToLower(name)]; ok {
+		return v, true
+	}
+	v, ok := m.definedNames["\x00"+strings.ToLower(name)]
+	return v, ok
 }
 
 func (m *sparseResolver) GetCellValue(addr CellAddr) Value {
@@ -2719,6 +2732,46 @@ func TestEvalIFERRORImplicitIntersection(t *testing.T) {
 	}
 	if got2.Type != ValueNumber || got2.Num != -1 {
 		t.Errorf("SUM(IFERROR(A1:A5, -1)) at row 2 = %v (%g), want -1", got2.Type, got2.Num)
+	}
+}
+
+func TestEvalIFERROROFFSETScalarizesAnonymousArrayOffsets(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 6}: NumberVal(50),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	got, err := Eval(evalCompile(t, `IFERROR(OFFSET(data!A2,{0;2;4},0),"err")`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Fatalf("IFERROR(OFFSET(data!A2,{0;2;4},0),\"err\") = %#v, want 10", got)
+	}
+}
+
+func TestEvalSUMPRODUCTWholeColumnINDIRECTUsesLiveRefInComparison(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: NumberVal(1),
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(2),
+			{Sheet: "data", Col: 1, Row: 3}: NumberVal(3),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(4),
+			{Sheet: "data", Col: 1, Row: 5}: NumberVal(5),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 6}
+
+	got, err := Eval(evalCompile(t, `SUMPRODUCT((INDIRECT("data!A:A")>2)*1)`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Fatalf(`SUMPRODUCT((INDIRECT("data!A:A")>2)*1) = %#v, want 3`, got)
 	}
 }
 

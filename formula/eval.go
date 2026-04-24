@@ -18,6 +18,12 @@ type CellResolver interface {
 	GetRangeValues(addr RangeAddr) [][]Value
 }
 
+// DefinedNameResolver is an optional CellResolver extension used by
+// ref-producing functions like INDIRECT to resolve runtime named ranges.
+type DefinedNameResolver interface {
+	ResolveDefinedNameValue(name, scopeSheet string) (Value, bool)
+}
+
 // EvalContext provides context about the current evaluation environment.
 type EvalContext struct {
 	CurrentCol     int

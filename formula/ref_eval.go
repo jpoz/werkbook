@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+var offsetScalarArgSpec = ArgSpec{Adapt: ArgAdaptScalarizeAny}
+var offsetRefOnlyArgSpec = ArgSpec{Adapt: ArgAdaptLegacyIntersectRef}
+
 func refProducerFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind: FnKindLookup,
@@ -120,12 +123,21 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	}
 
 	col, row, err := indirectParseCell(cellPart)
-	if err != nil {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	if err == nil {
+		addr := CellAddr{Sheet: sheet, Col: col, Row: row}
+		val := ctx.Resolver.GetCellValue(addr)
+		return newEvalSingleCellRef(addr, val), nil
 	}
-	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
-	val := ctx.Resolver.GetCellValue(addr)
-	return newEvalSingleCellRef(addr, val), nil
+	if nameResolver, ok := ctx.Resolver.(DefinedNameResolver); ok {
+		scopeSheet := ctx.CurrentSheet
+		if sheet != "" {
+			scopeSheet = sheet
+		}
+		if named, ok := nameResolver.ResolveDefinedNameValue(cellPart, scopeSheet); ok {
+			return valueToIndirectEvalValue(named, ctx.Resolver), nil
+		}
+	}
+	return ValueToEvalValue(ErrorVal(ErrValREF)), nil
 }
 
 func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
@@ -149,25 +161,44 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	toRow := ref.ToRow
 	toCol := ref.ToCol
 
-	rowsN, errV := CoerceNum(EvalValueToValue(args[1]))
-	if errV != nil {
-		return ValueToEvalValue(*errV), nil
-	}
-	rowsOff := int(math.Trunc(rowsN))
-
-	colsN, errV := CoerceNum(EvalValueToValue(args[2]))
-	if errV != nil {
-		return ValueToEvalValue(*errV), nil
-	}
-	colsOff := int(math.Trunc(colsN))
-
 	refHeight := toRow - fromRow + 1
 	refWidth := toCol - fromCol + 1
 	height := refHeight
 	width := refWidth
+	candidateHeight := refHeight
+	candidateWidth := refWidth
 
 	if len(args) >= 4 {
-		heightArg := EvalValueToValue(args[3])
+		heightArg := adaptFuncArg(offsetScalarArgSpec, EvalValueToValue(args[3]), ctx)
+		if heightArg.Type != ValueEmpty {
+			hN, errV := CoerceNum(heightArg)
+			if errV != nil {
+				return ValueToEvalValue(*errV), nil
+			}
+			candidateHeight = int(math.Trunc(hN))
+		}
+	}
+	if len(args) >= 5 {
+		widthArg := adaptFuncArg(offsetScalarArgSpec, EvalValueToValue(args[4]), ctx)
+		if widthArg.Type != ValueEmpty {
+			wN, errV := CoerceNum(widthArg)
+			if errV != nil {
+				return ValueToEvalValue(*errV), nil
+			}
+			candidateWidth = int(math.Trunc(wN))
+		}
+	}
+	sizeSpec := offsetRefOnlyArgSpec
+	rowsSpec := offsetRefOnlyArgSpec
+	colsSpec := offsetRefOnlyArgSpec
+	if candidateHeight == 1 && candidateWidth == 1 {
+		sizeSpec = offsetScalarArgSpec
+		rowsSpec = offsetScalarArgSpec
+		colsSpec = offsetScalarArgSpec
+	}
+
+	if len(args) >= 4 {
+		heightArg := adaptFuncArg(sizeSpec, EvalValueToValue(args[3]), ctx)
 		if heightArg.Type != ValueEmpty {
 			hN, errV := CoerceNum(heightArg)
 			if errV != nil {
@@ -177,7 +208,7 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 		}
 	}
 	if len(args) >= 5 {
-		widthArg := EvalValueToValue(args[4])
+		widthArg := adaptFuncArg(sizeSpec, EvalValueToValue(args[4]), ctx)
 		if widthArg.Type != ValueEmpty {
 			wN, errV := CoerceNum(widthArg)
 			if errV != nil {
@@ -186,6 +217,20 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 			width = int(math.Trunc(wN))
 		}
 	}
+
+	// Legacy OFFSET scalarizes anonymous row/col arrays only when the result
+	// remains a single cell; multi-cell refs must reject them instead.
+	rowsN, errV := CoerceNum(adaptFuncArg(rowsSpec, EvalValueToValue(args[1]), ctx))
+	if errV != nil {
+		return ValueToEvalValue(*errV), nil
+	}
+	rowsOff := int(math.Trunc(rowsN))
+
+	colsN, errV := CoerceNum(adaptFuncArg(colsSpec, EvalValueToValue(args[2]), ctx))
+	if errV != nil {
+		return ValueToEvalValue(*errV), nil
+	}
+	colsOff := int(math.Trunc(colsN))
 	if height == 0 || width == 0 {
 		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
 	}
@@ -232,6 +277,30 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
 	}
 	return newEvalRangeRef(addr, rows, ctx.Resolver, nil), nil
+}
+
+func valueToIndirectEvalValue(v Value, resolver CellResolver) EvalValue {
+	ev := valueToEvalValueWithResolver(v, resolver)
+	if ev.Kind != EvalRef || ev.Ref == nil || ev.Ref.Legacy != nil {
+		return ev
+	}
+	rows := ev.Ref.ToRow - ev.Ref.FromRow + 1
+	cols := ev.Ref.ToCol - ev.Ref.FromCol + 1
+	switch {
+	case ev.Ref.FromCol == 1 && ev.Ref.ToCol >= maxCols:
+		ev.Ref.Legacy = &RefLegacyBoundary{
+			PlaceholderRows: rows,
+			PlaceholderCols: 1,
+			UseEmptyArray:   true,
+		}
+	case ev.Ref.FromRow == 1 && ev.Ref.ToRow >= maxRows:
+		ev.Ref.Legacy = &RefLegacyBoundary{
+			PlaceholderRows: 1,
+			PlaceholderCols: cols,
+			UseEmptyArray:   true,
+		}
+	}
+	return ev
 }
 
 func newEvalRangeRef(addr RangeAddr, rows [][]Value, resolver CellResolver, legacy *RefLegacyBoundary) EvalValue {

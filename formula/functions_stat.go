@@ -1185,21 +1185,12 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 		promoted[i] = Value{Type: ValueArray, Array: [][]Value{{arg}}}
 	}
 	args = promoted
-	firstArr := args[0].Array
-	rows := len(firstArr)
-	cols := 0
-	if rows > 0 {
-		cols = len(firstArr[0])
-	}
+	rows, cols := arrayOpBounds(args[0])
 
 	for _, arg := range args[1:] {
-		if len(arg.Array) != rows {
+		argRows, argCols := arrayOpBounds(arg)
+		if argRows != rows || argCols != cols {
 			return ErrorVal(ErrValVALUE), nil
-		}
-		for _, row := range arg.Array {
-			if len(row) != cols {
-				return ErrorVal(ErrValVALUE), nil
-			}
 		}
 	}
 
@@ -1208,7 +1199,7 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 		for c := 0; c < cols; c++ {
 			product := 1.0
 			for _, arg := range args {
-				cell := arg.Array[r][c]
+				cell := arrayElementDirect(arg, rows, cols, r, c)
 				if cell.Type == ValueError {
 					return cell, nil
 				}

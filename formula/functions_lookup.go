@@ -503,6 +503,9 @@ func fnMATCH(args []Value) (Value, error) {
 	if lookup.Type == ValueError {
 		return lookup, nil
 	}
+	if arr.Type == ValueError {
+		return arr, nil
+	}
 	matchType := 1
 	if len(args) == 3 {
 		mt, e := CoerceNum(args[2])
@@ -514,8 +517,13 @@ func fnMATCH(args []Value) (Value, error) {
 
 	var values []Value
 	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			values = append(values, row...)
+		grid, errVal := normalizeToArrayGrid(arr)
+		if errVal != nil {
+			return *errVal, nil
+		}
+		values = make([]Value, 0, grid.rowCount*grid.colCount)
+		for r := 0; r < grid.rowCount; r++ {
+			values = append(values, grid.row(r)...)
 		}
 	} else {
 		values = []Value{arr}

@@ -10,10 +10,27 @@ type arrayGrid struct {
 	rangeOrigin *RangeAddr
 }
 
+func liveRefGrid(v Value) (Grid, bool) {
+	if v.evalRef == nil {
+		return nil, false
+	}
+	grid := v.evalRef.Materialized
+	if grid == nil {
+		grid = emptyRefGrid{
+			rows: v.evalRef.ToRow - v.evalRef.FromRow + 1,
+			cols: v.evalRef.ToCol - v.evalRef.FromCol + 1,
+		}
+	}
+	return grid, true
+}
+
 // effectiveArrayBounds returns the logical size of an array value, preferring
 // RangeOrigin when present so trimmed worksheet ranges still report their full
 // extent.
 func effectiveArrayBounds(v Value) (rows, cols int) {
+	if grid, ok := liveRefGrid(v); ok {
+		return grid.Rows(), grid.Cols()
+	}
 	rows = len(v.Array)
 	cols = materializedArrayCols(v.Array)
 	if v.RangeOrigin == nil {
@@ -45,6 +62,12 @@ func materializedArrayCols(rows [][]Value) int {
 func arrayElementDirect(v Value, rows, cols, i, j int) Value {
 	if v.Type != ValueArray {
 		return v
+	}
+	if grid, ok := liveRefGrid(v); ok {
+		if i < 0 || j < 0 || i >= rows || j >= cols {
+			return ErrorVal(ErrValNA)
+		}
+		return EvalValueToValue(grid.Cell(i, j))
 	}
 	if i < 0 || j < 0 || i >= rows || j >= cols {
 		return ErrorVal(ErrValNA)
@@ -101,6 +124,9 @@ func arrayOpBounds(v Value) (rows, cols int) {
 	if v.Type != ValueArray {
 		return 1, 1
 	}
+	if grid, ok := liveRefGrid(v); ok {
+		return grid.Rows(), grid.Cols()
+	}
 	rows = len(v.Array)
 	cols = materializedArrayCols(v.Array)
 	if v.RangeOrigin == nil || usesFullSheetAxisRange(v) {
@@ -142,6 +168,19 @@ func combinedArrayOpRangeOrigin(rows, cols int, values ...Value) *RangeAddr {
 func normalizeToArrayGrid(v Value) (arrayGrid, *Value) {
 	switch v.Type {
 	case ValueArray:
+		if grid, ok := liveRefGrid(v); ok {
+			rows, cols := grid.Rows(), grid.Cols()
+			if rows == 0 || cols == 0 {
+				errVal := ErrorVal(ErrValVALUE)
+				return arrayGrid{}, &errVal
+			}
+			return arrayGrid{
+				cells:       materializeGridBounds(grid, rows, cols),
+				rowCount:    rows,
+				colCount:    cols,
+				rangeOrigin: v.RangeOrigin,
+			}, nil
+		}
 		rows, cols := effectiveArrayBounds(v)
 		if rows == 0 || cols == 0 {
 			errVal := ErrorVal(ErrValVALUE)

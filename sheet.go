@@ -1054,6 +1054,57 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	return res.cells
 }
 
+func (fr *fileResolver) ResolveDefinedNameValue(name, scopeSheet string) (formula.Value, bool) {
+	sheetIdx := -1
+	if scopeSheet != "" {
+		sheetIdx = fr.file.SheetIndex(scopeSheet)
+	}
+	ref, err := fr.file.lookupDefinedName(name, sheetIdx)
+	if err != nil {
+		return formula.Value{}, false
+	}
+
+	sheetName, cellRef, err := parseDefinedNameRef(ref)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	area, err := parseDefinedNameArea(sheetName, cellRef)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	if area.isRange {
+		rows, err := fr.file.resolveDefinedNameRange(area.rangeAddr)
+		if err != nil {
+			return formula.ErrorVal(formula.ErrValREF), true
+		}
+		formulaRows := make([][]formula.Value, len(rows))
+		for i, row := range rows {
+			formulaRows[i] = make([]formula.Value, len(row))
+			for j, cell := range row {
+				formulaRows[i][j] = valueToFormulaValue(cell)
+			}
+		}
+		origin := area.rangeAddr
+		return formula.Value{Type: formula.ValueArray, Array: formulaRows, RangeOrigin: &origin}, true
+	}
+
+	s := fr.file.Sheet(sheetName)
+	if s == nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	cellRefText, err := CoordinatesToCellName(area.cellCol, area.cellRow)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	v, err := s.GetValue(cellRefText)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	out := valueToFormulaValue(v)
+	out.CellOrigin = &formula.CellAddr{Sheet: sheetName, Col: area.cellCol, Row: area.cellRow}
+	return out, true
+}
+
 func (fr *fileResolver) appendMaterializedDeps(ranges []formula.RangeAddr) {
 	if !fr.trackDynamicDeps || len(ranges) == 0 {
 		return

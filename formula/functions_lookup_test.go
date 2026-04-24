@@ -4059,6 +4059,75 @@ func TestINDIRECTDynamic(t *testing.T) {
 	}
 }
 
+func TestINDIRECTDefinedNames(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}:    NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 2}:    NumberVal(20),
+			{Sheet: "data", Col: 1, Row: 3}:    NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 4}:    NumberVal(40),
+			{Sheet: "data", Col: 1, Row: 5}:    NumberVal(50),
+			{Sheet: "data", Col: 3, Row: 1}:    StringVal("my_range"),
+			{Col: 2, Row: 2}:                   StringVal("my_range"),
+			{Sheet: "results", Col: 2, Row: 2}: StringVal("my_range"),
+		},
+		definedNames: map[string]Value{
+			"\x00my_range": {
+				Type: ValueArray,
+				Array: [][]Value{
+					{NumberVal(10)},
+					{NumberVal(20)},
+					{NumberVal(30)},
+					{NumberVal(40)},
+					{NumberVal(50)},
+				},
+				RangeOrigin: &RangeAddr{Sheet: "data", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 5},
+			},
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{name: "literal", formula: `SUM(INDIRECT("my_range"))`, want: NumberVal(150)},
+		{name: "cell_text", formula: `SUM(INDIRECT(B2))`, want: NumberVal(150)},
+		{name: "nested", formula: `SUM(INDIRECT(INDIRECT("data!C1")))`, want: NumberVal(150)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestMATCHWithWholeColumnINDIRECTUsesLiveRef(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: StringVal("x"),
+			{Sheet: "data", Col: 1, Row: 2}: StringVal("a"),
+			{Sheet: "data", Col: 1, Row: 3}: StringVal("b"),
+			{Sheet: "data", Col: 1, Row: 4}: StringVal("c"),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	got, err := Eval(evalCompile(t, `MATCH("c",INDIRECT("data!A:A"),0)`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Fatalf(`MATCH("c",INDIRECT("data!A:A"),0) = %#v, want 4`, got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // INDIRECT R1C1-style tests
 // ---------------------------------------------------------------------------
@@ -15505,6 +15574,90 @@ func TestOFFSETBooleanCoercionForCols(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 20 {
 		t.Errorf("OFFSET(A1,0,TRUE): got %v, want 20", got)
+	}
+}
+
+func TestOFFSETScalarContextScalarizesAnonymousArrayOffsetArgs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 6}: NumberVal(50),
+			{Sheet: "data", Col: 2, Row: 2}: NumberVal(99),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	t.Run("rows", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,{0;2;4},0)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,{0;2;4},0) = %#v, want 10", got)
+		}
+	})
+
+	t.Run("cols", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,0,{0,1})`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,0,{0,1}) = %#v, want 10", got)
+		}
+	})
+
+	t.Run("width", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,0,0,1,{1;2})`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,0,0,1,{1;2}) = %#v, want 10", got)
+		}
+	})
+}
+
+func TestOFFSETScalarContextRejectsAnonymousArrayArgsForMultiCellRanges(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(20),
+			{Sheet: "data", Col: 1, Row: 3}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(40),
+			{Sheet: "data", Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{
+			name:    "rows_array_with_height",
+			formula: `IFERROR(SUM(OFFSET(data!A1,{1;3},0,2,1)),"arr_rows_err")`,
+			want:    "arr_rows_err",
+		},
+		{
+			name:    "height_array",
+			formula: `IFERROR(SUM(OFFSET(data!A1,0,0,{2;3},1)),"arr_height_err")`,
+			want:    "arr_height_err",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Fatalf("%s = %#v, want %q", tt.formula, got, tt.want)
+			}
+		})
 	}
 }
 
