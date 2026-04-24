@@ -64,6 +64,16 @@ type RefValue struct {
 	ToCol        int
 	ToRow        int
 	Materialized Grid
+	Legacy       *RefLegacyBoundary
+}
+
+// RefLegacyBoundary controls how a ref-backed EvalValue is exposed when it
+// must cross the legacy Value boundary.
+type RefLegacyBoundary struct {
+	SingleCellValue Value
+	PlaceholderRows int
+	PlaceholderCols int
+	UseEmptyArray   bool
 }
 
 func (r *RefValue) Bounds() RangeAddr {
@@ -100,6 +110,9 @@ func ValueToEvalValue(v Value) EvalValue {
 }
 
 func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
+	if v.evalRef != nil {
+		return EvalValue{Kind: EvalRef, Ref: cloneRefValue(v.evalRef)}
+	}
 	switch v.Type {
 	case ValueError:
 		return EvalValue{Kind: EvalKindError, Err: v.Err}
@@ -145,6 +158,23 @@ func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
 			},
 		}
 	default:
+		if v.CellOrigin != nil {
+			cell := *v.CellOrigin
+			return EvalValue{
+				Kind: EvalRef,
+				Ref: &RefValue{
+					Sheet:        cell.Sheet,
+					FromCol:      cell.Col,
+					FromRow:      cell.Row,
+					ToCol:        cell.Col,
+					ToRow:        cell.Row,
+					Materialized: newLegacyValueGrid([][]Value{{stripRefMetadata(v)}}),
+					Legacy: &RefLegacyBoundary{
+						SingleCellValue: v,
+					},
+				},
+			}
+		}
 		return EvalValue{Kind: EvalScalar, Scalar: v}
 	}
 }
@@ -162,23 +192,45 @@ func EvalValueToValue(v EvalValue) Value {
 			return EmptyVal()
 		}
 		if v.Ref.FromCol == v.Ref.ToCol && v.Ref.FromRow == v.Ref.ToRow {
-			return Value{
+			if v.Ref.Legacy != nil && v.Ref.Legacy.SingleCellValue.CellOrigin != nil {
+				out := v.Ref.Legacy.SingleCellValue
+				out.evalRef = cloneRefValue(v.Ref)
+				return out
+			}
+			out := Value{
 				Type: ValueRef,
 				Num:  float64(v.Ref.FromCol + v.Ref.FromRow*100_000),
 				Str:  v.Ref.Sheet,
 			}
+			out.evalRef = cloneRefValue(v.Ref)
+			return out
 		}
 		rows := v.Ref.ToRow - v.Ref.FromRow + 1
 		cols := v.Ref.ToCol - v.Ref.FromCol + 1
-		grid := v.Ref.Materialized
-		if grid == nil {
-			grid = emptyRefGrid{rows: rows, cols: cols}
+		useEmptyPlaceholder := false
+		if v.Ref.Legacy != nil {
+			if v.Ref.Legacy.PlaceholderRows > 0 {
+				rows = v.Ref.Legacy.PlaceholderRows
+			}
+			if v.Ref.Legacy.PlaceholderCols > 0 {
+				cols = v.Ref.Legacy.PlaceholderCols
+			}
+			useEmptyPlaceholder = v.Ref.Legacy.UseEmptyArray
 		}
 		out := Value{
 			Type:        ValueArray,
-			Array:       materializeGrid(grid),
 			RangeOrigin: ptrRange(v.Ref.Bounds()),
 		}
+		if useEmptyPlaceholder {
+			out.Array = newValueMatrix(rows, cols)
+		} else {
+			grid := v.Ref.Materialized
+			if grid == nil {
+				grid = emptyRefGrid{rows: rows, cols: cols}
+			}
+			out.Array = materializeGridBounds(grid, rows, cols)
+		}
+		out.evalRef = cloneRefValue(v.Ref)
 		return out
 	case EvalArray:
 		if v.Array == nil {
@@ -390,15 +442,22 @@ func materializeGrid(grid Grid) [][]Value {
 	if grid == nil || grid.Rows() == 0 || grid.Cols() == 0 {
 		return nil
 	}
-	rows := make([][]Value, grid.Rows())
-	for r := 0; r < grid.Rows(); r++ {
-		row := make([]Value, grid.Cols())
-		for c := 0; c < grid.Cols(); c++ {
+	return materializeGridBounds(grid, grid.Rows(), grid.Cols())
+}
+
+func materializeGridBounds(grid Grid, rows, cols int) [][]Value {
+	if grid == nil || rows == 0 || cols == 0 {
+		return nil
+	}
+	out := make([][]Value, rows)
+	for r := 0; r < rows; r++ {
+		row := make([]Value, cols)
+		for c := 0; c < cols; c++ {
 			row[c] = EvalValueToValue(grid.Cell(r, c))
 		}
-		rows[r] = row
+		out[r] = row
 	}
-	return rows
+	return out
 }
 
 func ptrRange(v RangeAddr) *RangeAddr {
@@ -409,4 +468,25 @@ func ptrRange(v RangeAddr) *RangeAddr {
 func ptrCell(v CellAddr) *CellAddr {
 	cp := v
 	return &cp
+}
+
+func cloneRefValue(r *RefValue) *RefValue {
+	if r == nil {
+		return nil
+	}
+	cp := *r
+	if r.Legacy != nil {
+		legacy := *r.Legacy
+		cp.Legacy = &legacy
+	}
+	return &cp
+}
+
+func stripRefMetadata(v Value) Value {
+	out := v
+	out.RangeOrigin = nil
+	out.CellOrigin = nil
+	out.FromCell = false
+	out.evalRef = nil
+	return out
 }

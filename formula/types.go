@@ -157,6 +157,7 @@ type Value struct {
 	FromCell      bool       // true when loaded from a cell reference (OpLoadCell)
 	NoSpill       bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
 	RangeOverflow bool       // true for synthetic #REF! cells used to signal that a range was too large to materialize
+	evalRef       *RefValue  // internal bridge so ref-backed EvalValue survives legacy Value boundaries
 }
 
 // NumberVal creates a Value holding a float64.

@@ -792,8 +792,16 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			}
 		default:
 			// Range references already produce ValueArray with RangeOrigin.
-			if err := c.compileNodeCtx(first, inArrayCtx); err != nil {
-				return err
+			if isDirectRangeRefNode(first) {
+				c.enterLegacyArrayCtx()
+				if err := c.compileNodeCtx(first, true); err != nil {
+					return err
+				}
+				c.leaveLegacyArrayCtx()
+			} else {
+				if err := c.compileNodeCtx(first, inArrayCtx); err != nil {
+					return err
+				}
 			}
 		}
 		for _, arg := range n.Args[1:] {

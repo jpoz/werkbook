@@ -1257,6 +1257,73 @@ func TestLiftUnaryTrimmedRangeOriginUsesLogicalBounds(t *testing.T) {
 	}
 }
 
+func TestEvalRefBoundarySingleCellRoundTripsThroughLegacyValue(t *testing.T) {
+	addr := CellAddr{Sheet: "Sheet1", Col: 2, Row: 7}
+	got := EvalValueToValue(newEvalSingleCellRef(addr, StringVal("hello")))
+
+	if got.Type != ValueString || got.Str != "hello" {
+		t.Fatalf("EvalValueToValue(single ref) = %#v, want string hello", got)
+	}
+	if got.CellOrigin == nil || *got.CellOrigin != addr {
+		t.Fatalf("CellOrigin = %+v, want %+v", got.CellOrigin, addr)
+	}
+	if got.evalRef == nil {
+		t.Fatal("expected legacy boundary value to retain evalRef")
+	}
+
+	roundTrip := ValueToEvalValue(got)
+	if roundTrip.Kind != EvalRef || roundTrip.Ref == nil {
+		t.Fatalf("ValueToEvalValue(roundTrip) = %#v, want EvalRef", roundTrip)
+	}
+	if bounds := roundTrip.Ref.Bounds(); bounds != (RangeAddr{Sheet: "Sheet1", FromCol: 2, FromRow: 7, ToCol: 2, ToRow: 7}) {
+		t.Fatalf("Bounds = %+v, want Sheet1!B7", bounds)
+	}
+	cell := EvalValueToValue(roundTrip.Ref.Materialized.Cell(0, 0))
+	if cell.Type != ValueString || cell.Str != "hello" {
+		t.Fatalf("Materialized cell = %#v, want string hello", cell)
+	}
+}
+
+func TestEvalRefBoundaryPlaceholderKeepsInternalFullAxisRef(t *testing.T) {
+	addr := RangeAddr{Sheet: "Sheet1", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: maxRows}
+	got := EvalValueToValue(newEvalRangeRef(addr, [][]Value{
+		{NumberVal(10)},
+		{NumberVal(20)},
+	}, nil, &RefLegacyBoundary{
+		PlaceholderRows: 1,
+		PlaceholderCols: 1,
+		UseEmptyArray:   true,
+	}))
+
+	if got.Type != ValueArray {
+		t.Fatalf("EvalValueToValue(full-axis ref) type = %v, want ValueArray", got.Type)
+	}
+	if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+		t.Fatalf("legacy placeholder dims = %dx%d, want 1x1", len(got.Array), len(got.Array[0]))
+	}
+	if got.Array[0][0].Type != ValueEmpty {
+		t.Fatalf("legacy placeholder cell = %#v, want empty", got.Array[0][0])
+	}
+	if got.evalRef == nil {
+		t.Fatal("expected legacy placeholder value to retain evalRef")
+	}
+
+	roundTrip := ValueToEvalValue(got)
+	if roundTrip.Kind != EvalRef || roundTrip.Ref == nil {
+		t.Fatalf("ValueToEvalValue(roundTrip) = %#v, want EvalRef", roundTrip)
+	}
+	if bounds := roundTrip.Ref.Bounds(); bounds != addr {
+		t.Fatalf("Bounds = %+v, want %+v", bounds, addr)
+	}
+	if rows := roundTrip.Ref.Materialized.Rows(); rows != 2 {
+		t.Fatalf("Materialized.Rows = %d, want 2", rows)
+	}
+	cell := EvalValueToValue(roundTrip.Ref.Materialized.Cell(1, 0))
+	if cell.Type != ValueNumber || cell.Num != 20 {
+		t.Fatalf("Materialized cell = %#v, want 20", cell)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // isTruthy — exercised through IF
 // ---------------------------------------------------------------------------

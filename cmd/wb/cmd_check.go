@@ -576,8 +576,6 @@ var volatileFuncs = []string{
 	"RANDBETWEEN",
 	"NOW",
 	"TODAY",
-	"OFFSET",
-	"INDIRECT",
 }
 
 func valuesEqual(a, b werkbook.Value, tolerance float64) bool {

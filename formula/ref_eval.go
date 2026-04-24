@@ -1,0 +1,268 @@
+package formula
+
+import (
+	"math"
+	"strings"
+)
+
+func refProducerFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind: FnKindLookup,
+		Args: []ArgSpec{{
+			Load:  ArgLoadPassthrough,
+			Adapt: ArgAdaptPassThrough,
+		}},
+		VarArg: func(_ int) ArgSpec {
+			return ArgSpec{
+				Load:  ArgLoadPassthrough,
+				Adapt: ArgAdaptPassThrough,
+			}
+		},
+		Return: ReturnModeRef,
+		Eval:   eval,
+	}
+}
+
+func callLegacyRefEval(eval EvalFunc, args []Value, ctx *EvalContext) (Value, error) {
+	evalArgs := make([]EvalValue, len(args))
+	var resolver CellResolver
+	if ctx != nil {
+		resolver = ctx.Resolver
+	}
+	for i, arg := range args {
+		evalArgs[i] = valueToEvalValueWithResolver(arg, resolver)
+	}
+	got, err := eval(evalArgs, ctx)
+	if err != nil {
+		return Value{}, err
+	}
+	return EvalValueToValue(got), nil
+}
+
+func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+	if ctx == nil || ctx.Resolver == nil {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+
+	refText := ValueToString(EvalValueToValue(args[0]))
+	if refText == "" {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+
+	a1Style := true
+	if len(args) == 2 {
+		a1Style = IsTruthy(EvalValueToValue(args[1]))
+	}
+	if !a1Style {
+		converted, err := r1c1ToA1(refText)
+		if err != nil {
+			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		}
+		refText = converted
+	}
+
+	cleaned := strings.ReplaceAll(refText, "$", "")
+	sheet := ""
+	prefix, cellPart := splitSheetPrefix(cleaned)
+	if prefix != "" {
+		sheetPart := prefix[:len(prefix)-1]
+		if len(sheetPart) >= 2 && sheetPart[0] == '\'' && sheetPart[len(sheetPart)-1] == '\'' {
+			sheetPart = strings.ReplaceAll(sheetPart[1:len(sheetPart)-1], "''", "'")
+		}
+		sheet = sheetPart
+	}
+
+	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
+		left := cellPart[:colonIdx]
+		right := cellPart[colonIdx+1:]
+		addr, err := indirectParseRange(left, right, sheet)
+		if err != nil {
+			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		}
+		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
+		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
+		checkRows := addr.ToRow - addr.FromRow + 1
+		checkCols := addr.ToCol - addr.FromCol + 1
+		var legacy *RefLegacyBoundary
+		if isFullRow {
+			checkCols = 1
+			legacy = &RefLegacyBoundary{
+				PlaceholderRows: checkRows,
+				PlaceholderCols: 1,
+				UseEmptyArray:   true,
+			}
+		} else if isFullCol {
+			checkRows = 1
+			legacy = &RefLegacyBoundary{
+				PlaceholderRows: 1,
+				PlaceholderCols: checkCols,
+				UseEmptyArray:   true,
+			}
+		}
+		if RangeCellCountExceedsLimit(checkRows, checkCols) {
+			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		}
+
+		var rows [][]Value
+		if !isFullCol && !isFullRow {
+			rows = ctx.Resolver.GetRangeValues(addr)
+			if isRangeOverflowMatrix(rows) {
+				return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+			}
+		}
+		return newEvalRangeRef(addr, rows, ctx.Resolver, legacy), nil
+	}
+
+	col, row, err := indirectParseCell(cellPart)
+	if err != nil {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
+	val := ctx.Resolver.GetCellValue(addr)
+	return newEvalSingleCellRef(addr, val), nil
+}
+
+func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
+	if len(args) < 3 || len(args) > 5 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if ctx == nil || ctx.Resolver == nil {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+	if args[0].Kind != EvalRef || args[0].Ref == nil {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+
+	ref := args[0].Ref
+	sheet := ref.Sheet
+	fromRow := ref.FromRow
+	fromCol := ref.FromCol
+	toRow := ref.ToRow
+	toCol := ref.ToCol
+
+	rowsN, errV := CoerceNum(EvalValueToValue(args[1]))
+	if errV != nil {
+		return ValueToEvalValue(*errV), nil
+	}
+	rowsOff := int(math.Trunc(rowsN))
+
+	colsN, errV := CoerceNum(EvalValueToValue(args[2]))
+	if errV != nil {
+		return ValueToEvalValue(*errV), nil
+	}
+	colsOff := int(math.Trunc(colsN))
+
+	refHeight := toRow - fromRow + 1
+	refWidth := toCol - fromCol + 1
+	height := refHeight
+	width := refWidth
+
+	if len(args) >= 4 {
+		heightArg := EvalValueToValue(args[3])
+		if heightArg.Type != ValueEmpty {
+			hN, errV := CoerceNum(heightArg)
+			if errV != nil {
+				return ValueToEvalValue(*errV), nil
+			}
+			height = int(math.Trunc(hN))
+		}
+	}
+	if len(args) >= 5 {
+		widthArg := EvalValueToValue(args[4])
+		if widthArg.Type != ValueEmpty {
+			wN, errV := CoerceNum(widthArg)
+			if errV != nil {
+				return ValueToEvalValue(*errV), nil
+			}
+			width = int(math.Trunc(wN))
+		}
+	}
+	if height == 0 || width == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+
+	newFromRow := fromRow + rowsOff
+	newFromCol := fromCol + colsOff
+	newToRow := newFromRow
+	newToCol := newFromCol
+	if height > 0 {
+		newToRow = newFromRow + height - 1
+	} else {
+		newToRow = newFromRow
+		newFromRow = newFromRow + height + 1
+		height = -height
+	}
+	if width > 0 {
+		newToCol = newFromCol + width - 1
+	} else {
+		newToCol = newFromCol
+		newFromCol = newFromCol + width + 1
+		width = -width
+	}
+
+	if newFromRow < 1 || newFromCol < 1 || newToRow > maxRows || newToCol > maxCols {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+
+	if height == 1 && width == 1 {
+		addr := CellAddr{Sheet: sheet, Col: newFromCol, Row: newFromRow}
+		val := ctx.Resolver.GetCellValue(addr)
+		val.FromCell = true
+		return newEvalSingleCellRef(addr, val), nil
+	}
+
+	addr := RangeAddr{
+		Sheet:   sheet,
+		FromCol: newFromCol,
+		FromRow: newFromRow,
+		ToCol:   newToCol,
+		ToRow:   newToRow,
+	}
+	rows := ctx.Resolver.GetRangeValues(addr)
+	if isRangeOverflowMatrix(rows) {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+	return newEvalRangeRef(addr, rows, ctx.Resolver, nil), nil
+}
+
+func newEvalRangeRef(addr RangeAddr, rows [][]Value, resolver CellResolver, legacy *RefLegacyBoundary) EvalValue {
+	return EvalValue{
+		Kind: EvalRef,
+		Ref: &RefValue{
+			Sheet:        addr.Sheet,
+			FromCol:      addr.FromCol,
+			FromRow:      addr.FromRow,
+			ToCol:        addr.ToCol,
+			ToRow:        addr.ToRow,
+			Materialized: newResolverRangeGrid(addr, rows, resolver),
+			Legacy:       legacy,
+		},
+	}
+}
+
+func newEvalSingleCellRef(addr CellAddr, value Value) EvalValue {
+	value.CellOrigin = ptrCell(addr)
+	return EvalValue{
+		Kind: EvalRef,
+		Ref: &RefValue{
+			Sheet:        addr.Sheet,
+			FromCol:      addr.Col,
+			FromRow:      addr.Row,
+			ToCol:        addr.Col,
+			ToRow:        addr.Row,
+			Materialized: newLegacyValueGrid([][]Value{{stripRefMetadata(value)}}),
+			Legacy: &RefLegacyBoundary{
+				SingleCellValue: value,
+			},
+		},
+	}
+}

@@ -3876,6 +3876,124 @@ func TestINDIRECTRowRangeWithROW(t *testing.T) {
 	}
 }
 
+func TestINDIRECTFullAxisLegacyBoundaryShape(t *testing.T) {
+	t.Run("full column stays 1x1 at legacy boundary", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+		}}
+		ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+		got, err := Eval(evalCompile(t, `INDIRECT("A:A")`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("INDIRECT(A:A): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+			t.Fatalf("INDIRECT(A:A): legacy boundary dims = %dx%d, want 1x1", len(got.Array), len(got.Array[0]))
+		}
+		if got.RangeOrigin == nil || got.RangeOrigin.FromCol != 1 || got.RangeOrigin.ToCol != 1 ||
+			got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != maxRows {
+			t.Fatalf("INDIRECT(A:A): RangeOrigin = %+v, want full column A:A", got.RangeOrigin)
+		}
+	})
+
+	t.Run("full row keeps row count but placeholder width", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+		got, err := Eval(evalCompile(t, `INDIRECT("1:3")`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("INDIRECT(1:3): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 3 || len(got.Array[0]) != 1 {
+			t.Fatalf("INDIRECT(1:3): legacy boundary dims = %dx%d, want 3x1", len(got.Array), len(got.Array[0]))
+		}
+	})
+}
+
+func TestINDIRECTNestedINDEXUsesInternalRef(t *testing.T) {
+	t.Run("rectangular ref", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("A1:B2"),2,2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Fatalf("INDEX(INDIRECT(A1:B2),2,2) = %#v, want 4", got)
+		}
+	})
+
+	t.Run("full column ref", func(t *testing.T) {
+		resolver := &sparseResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("A:A"),2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Fatalf("INDEX(INDIRECT(A:A),2) = %#v, want 20", got)
+		}
+	})
+
+	t.Run("full row ref", func(t *testing.T) {
+		resolver := &sparseResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("1:1"),1,2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Fatalf("INDEX(INDIRECT(1:1),1,2) = %#v, want 20", got)
+		}
+	})
+}
+
+func TestINDIRECTSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 2, Row: 7}: NumberVal(99),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `COLUMN(INDIRECT("B7"))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("COLUMN(INDIRECT(B7)) = %#v, want #VALUE!", got)
+	}
+
+	got, err = Eval(evalCompile(t, `ISREF(INDIRECT("B7"))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Fatalf("ISREF(INDIRECT(B7)) = %#v, want TRUE", got)
+	}
+}
+
 func TestINDIRECTEmptyString(t *testing.T) {
 	resolver := &mockResolver{}
 	ctx := &EvalContext{Resolver: resolver}
@@ -15305,6 +15423,48 @@ func TestOFFSETRangeResultHasRangeOrigin(t *testing.T) {
 	ro := got.RangeOrigin
 	if ro.FromCol != 2 || ro.FromRow != 2 || ro.ToCol != 3 || ro.ToRow != 3 {
 		t.Errorf("RangeOrigin: got %+v, want B2:C3", ro)
+	}
+}
+
+func TestOFFSETNestedINDEXUsesInternalRef(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 2, Row: 2}: NumberVal(1),
+		{Col: 3, Row: 2}: NumberVal(2),
+		{Col: 2, Row: 3}: NumberVal(3),
+		{Col: 3, Row: 3}: NumberVal(4),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `INDEX(OFFSET(A1,1,1,2,2),2,2)`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Fatalf("INDEX(OFFSET(A1,1,1,2,2),2,2) = %#v, want 4", got)
+	}
+}
+
+func TestOFFSETSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 1, Row: 1}: NumberVal(10),
+		{Col: 2, Row: 1}: NumberVal(20),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `COLUMN(OFFSET(A1,0,1))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("COLUMN(OFFSET(A1,0,1)) = %#v, want #VALUE!", got)
+	}
+
+	got, err = Eval(evalCompile(t, `ISREF(OFFSET(A1,0,1))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Fatalf("ISREF(OFFSET(A1,0,1)) = %#v, want TRUE", got)
 	}
 }
 
