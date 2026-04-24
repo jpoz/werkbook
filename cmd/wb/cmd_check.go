@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	werkbook "github.com/jpoz/werkbook"
 )
@@ -111,6 +112,7 @@ func cmdCheck(args []string, globals globalFlags) int {
 	var toleranceFlag float64
 	var toleranceSet bool
 	var configPath string
+	var verbose bool
 
 	i := 0
 	var paths []string
@@ -143,6 +145,9 @@ func cmdCheck(args []string, globals globalFlags) int {
 			}
 			configPath = args[i+1]
 			i += 2
+		case "--verbose", "-v":
+			verbose = true
+			i++
 		default:
 			if len(args[i]) > 0 && args[i][0] != '-' {
 				paths = append(paths, args[i])
@@ -188,25 +193,39 @@ func cmdCheck(args []string, globals globalFlags) int {
 
 	// Single file: use the original single-file output for backward compatibility.
 	if len(filePaths) == 1 {
-		return cmdCheckSingle(filePaths[0], sheetFlag, &cfg, cmd, globals)
+		return cmdCheckSingle(filePaths[0], sheetFlag, &cfg, cmd, globals, verbose)
 	}
 
 	// Multiple files: aggregate results.
 	multi := checkMultiData{}
 	for _, fp := range filePaths {
 		if cfg.shouldIgnoreFile(fp) {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s — ignored\n", fp)
+			}
 			continue
 		}
+		start := time.Now()
 		result, skipped, ferr := checkFile(fp, sheetFlag, &cfg)
+		elapsed := time.Since(start)
 		if ferr != "" {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s — error: %s\n", fp, ferr)
+			}
 			multi.Errors++
 			multi.FileErrors = append(multi.FileErrors, fileError{File: fp, Error: ferr})
 			continue
 		}
 		if skipped {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s — skipped (uncached) in %s\n", fp, formatCheckDuration(elapsed))
+			}
 			multi.Skipped++
 			multi.SkippedFiles = append(multi.SkippedFiles, fp)
 			continue
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s — %d formulas in %s\n", fp, result.Formulas, formatCheckDuration(elapsed))
 		}
 		multi.Files++
 		multi.Formulas += result.Formulas
@@ -250,19 +269,47 @@ func expandXLSXPaths(paths []string) ([]string, error) {
 	return result, nil
 }
 
-func cmdCheckSingle(filePath, sheetFlag string, cfg *checkConfig, cmd string, globals globalFlags) int {
+func cmdCheckSingle(filePath, sheetFlag string, cfg *checkConfig, cmd string, globals globalFlags, verbose bool) int {
 	if cfg.shouldIgnoreFile(filePath) {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s — ignored\n", filePath)
+		}
 		writeSuccess(cmd, checkData{File: filePath}, globals)
 		return ExitSuccess
 	}
-	result, _, ferr := checkFile(filePath, sheetFlag, cfg)
+	start := time.Now()
+	result, skipped, ferr := checkFile(filePath, sheetFlag, cfg)
+	elapsed := time.Since(start)
 	if ferr != "" {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s — error: %s\n", filePath, ferr)
+		}
 		writeError(cmd, &ErrorInfo{Code: ErrCodeFileOpenFailed, Message: ferr}, globals)
 		return ExitFileIO
+	}
+	if verbose {
+		if skipped {
+			fmt.Fprintf(os.Stderr, "%s — skipped (uncached) in %s\n", filePath, formatCheckDuration(elapsed))
+		} else {
+			fmt.Fprintf(os.Stderr, "%s — %d formulas in %s\n", filePath, result.Formulas, formatCheckDuration(elapsed))
+		}
 	}
 
 	writeSuccess(cmd, result, globals)
 	return ExitSuccess
+}
+
+// formatCheckDuration renders an elapsed duration in a compact, stable form
+// suitable for per-file verbose progress output.
+func formatCheckDuration(d time.Duration) string {
+	switch {
+	case d >= time.Second:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	case d >= time.Millisecond:
+		return fmt.Sprintf("%.1fms", float64(d)/float64(time.Millisecond))
+	default:
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	}
 }
 
 func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, skipped bool, errMsg string) {
