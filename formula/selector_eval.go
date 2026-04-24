@@ -15,6 +15,10 @@ func indexFuncSpec(eval EvalFunc) FuncSpec {
 	}
 }
 
+func selectorFuncSpec(eval EvalFunc) FuncSpec {
+	return indexFuncSpec(eval)
+}
+
 type selectorSource struct {
 	grid        Grid
 	rows        int
@@ -66,6 +70,15 @@ func newSelectorSource(v EvalValue) selectorSource {
 			src.matCols = src.grid.Cols()
 		}
 		return src
+	case EvalScalar:
+		grid := newLegacyValueGrid([][]Value{{v.Scalar}})
+		return selectorSource{
+			grid:    grid,
+			rows:    1,
+			cols:    1,
+			matRows: 1,
+			matCols: 1,
+		}
 	default:
 		return selectorSource{}
 	}
@@ -98,6 +111,335 @@ func (s selectorSource) selectorDims() (rows, cols int) {
 
 func rangeAddrUsesFullSheetAxis(addr RangeAddr) bool {
 	return addr.ToRow >= maxRows || addr.ToCol >= maxCols
+}
+
+func selectorScalarInt(arg EvalValue) (int, *Value) {
+	switch arg.Kind {
+	case EvalKindError:
+		errVal := ErrorVal(arg.Err)
+		return 0, &errVal
+	case EvalScalar:
+		n, e := CoerceNum(arg.Scalar)
+		if e != nil {
+			return 0, e
+		}
+		return int(n), nil
+	default:
+		errVal := ErrorVal(ErrValVALUE)
+		return 0, &errVal
+	}
+}
+
+func selectorTakeBounds(count, max int) (start, length int, errVal *Value) {
+	if count == 0 {
+		err := ErrorVal(ErrValVALUE)
+		return 0, 0, &err
+	}
+	if count > 0 {
+		if count > max {
+			err := ErrorVal(ErrValVALUE)
+			return 0, 0, &err
+		}
+		return 0, count, nil
+	}
+	if -count > max {
+		err := ErrorVal(ErrValVALUE)
+		return 0, 0, &err
+	}
+	return max + count, -count, nil
+}
+
+func selectorDropBounds(count, max int) (start, length int, errVal *Value) {
+	if count >= 0 {
+		start = count
+		length = max - count
+	} else {
+		start = 0
+		length = max + count
+	}
+	if length <= 0 {
+		err := ErrorVal(ErrValVALUE)
+		return 0, 0, &err
+	}
+	return start, length, nil
+}
+
+func normalizeChooserSelector(idx, max int) (int, *Value) {
+	if idx == 0 || idx > max || idx < -max {
+		errVal := ErrorVal(ErrValVALUE)
+		return 0, &errVal
+	}
+	if idx < 0 {
+		idx = max + idx + 1
+	}
+	return idx - 1, nil
+}
+
+func chooserSelectorEvalValues(selector EvalValue, max int) ([]int, *Value) {
+	switch selector.Kind {
+	case EvalKindError:
+		errVal := ErrorVal(selector.Err)
+		return nil, &errVal
+	case EvalScalar:
+		n, e := CoerceNum(selector.Scalar)
+		if e != nil {
+			return nil, e
+		}
+		idx, errVal := normalizeChooserSelector(int(n), max)
+		if errVal != nil {
+			return nil, errVal
+		}
+		return []int{idx}, nil
+	}
+
+	src := newSelectorSource(selector)
+	rows, cols := src.selectorDims()
+	if rows == 0 || cols == 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return nil, &errVal
+	}
+
+	out := make([]int, 0, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			cell := src.cell(i, j)
+			if cell.Type == ValueError {
+				return nil, &cell
+			}
+			n, e := CoerceNum(cell)
+			if e != nil {
+				return nil, e
+			}
+			idx, errVal := normalizeChooserSelector(int(n), max)
+			if errVal != nil {
+				return nil, errVal
+			}
+			out = append(out, idx)
+		}
+	}
+	if len(out) == 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return nil, &errVal
+	}
+	return out, nil
+}
+
+func selectorContiguousRun(indices []int) (start int, ok bool) {
+	if len(indices) == 0 {
+		return 0, false
+	}
+	start = indices[0]
+	for i := 1; i < len(indices); i++ {
+		if indices[i] != start+i {
+			return 0, false
+		}
+	}
+	return start, true
+}
+
+func selectorWindowOrigin(src selectorSource, rowStart, logicalRows, colStart, logicalCols int) *RangeAddr {
+	if src.rangeOrigin == nil {
+		return nil
+	}
+	return ptrRange(RangeAddr{
+		Sheet:   src.rangeOrigin.Sheet,
+		FromCol: src.rangeOrigin.FromCol + colStart,
+		FromRow: src.rangeOrigin.FromRow + rowStart,
+		ToCol:   src.rangeOrigin.FromCol + colStart + logicalCols - 1,
+		ToRow:   src.rangeOrigin.FromRow + rowStart + logicalRows - 1,
+	})
+}
+
+func selectorWindowSpillClass(origin *RangeAddr, preserveRef bool) SpillClass {
+	if preserveRef {
+		return SpillScalarOnly
+	}
+	if origin != nil && rangeAddrUsesFullSheetAxis(*origin) {
+		return SpillUnbounded
+	}
+	return SpillBounded
+}
+
+func selectorWindowEval(src selectorSource, rowStart, logicalRows, colStart, logicalCols int, preserveRef bool) EvalValue {
+	if logicalRows == 1 && logicalCols == 1 {
+		return ValueToEvalValue(indexScalarCellValue(src, rowStart, colStart))
+	}
+
+	origin := selectorWindowOrigin(src, rowStart, logicalRows, colStart, logicalCols)
+	matrix := selectorWindowMatrix(src, rowStart, logicalRows, colStart, logicalCols, preserveRef)
+	out := EvalValue{
+		Kind: EvalArray,
+		Array: &ArrayValue{
+			Rows:       logicalRows,
+			Cols:       logicalCols,
+			Grid:       newLegacyValueGrid(matrix),
+			SpillClass: selectorWindowSpillClass(origin, preserveRef),
+		},
+	}
+	if origin != nil {
+		out.Array.Origin = &ArrayOrigin{Range: origin}
+	}
+	return out
+}
+
+func selectorWindowMatrix(src selectorSource, rowStart, logicalRows, colStart, logicalCols int, preserveRef bool) [][]Value {
+	if preserveRef {
+		return indexMaterializedWindow(src, rowStart, logicalRows, colStart, logicalCols)
+	}
+	rows := newValueMatrix(logicalRows, logicalCols)
+	for r := 0; r < logicalRows; r++ {
+		for c := 0; c < logicalCols; c++ {
+			rows[r][c] = src.cell(rowStart+r, colStart+c)
+		}
+	}
+	return rows
+}
+
+func selectorSliceEval(src selectorSource, rowStart, logicalRows, colStart, logicalCols int) EvalValue {
+	if src.rangeOrigin != nil {
+		return selectorWindowEval(src, rowStart, logicalRows, colStart, logicalCols, false)
+	}
+	return indexMaterializedSelectionEval(src, logicalRows, logicalCols, func(r, c int) Value {
+		return src.cell(rowStart+r, colStart+c)
+	})
+}
+
+func evalTAKESelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+
+	src := newSelectorSource(args[0])
+	if src.rows == 0 || src.cols == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+
+	rowStart, outRows, errVal := func() (int, int, *Value) {
+		count, errVal := selectorScalarInt(args[1])
+		if errVal != nil {
+			return 0, 0, errVal
+		}
+		return selectorTakeBounds(count, src.rows)
+	}()
+	if errVal != nil {
+		return ValueToEvalValue(*errVal), nil
+	}
+
+	colStart, outCols := 0, src.cols
+	if len(args) == 3 {
+		count, errVal := selectorScalarInt(args[2])
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		colStart, outCols, errVal = selectorTakeBounds(count, src.cols)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+	}
+
+	return selectorSliceEval(src, rowStart, outRows, colStart, outCols), nil
+}
+
+func evalDROPSelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+
+	src := newSelectorSource(args[0])
+	if src.rows == 0 || src.cols == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+
+	rowStart, outRows, errVal := func() (int, int, *Value) {
+		count, errVal := selectorScalarInt(args[1])
+		if errVal != nil {
+			return 0, 0, errVal
+		}
+		return selectorDropBounds(count, src.rows)
+	}()
+	if errVal != nil {
+		return ValueToEvalValue(*errVal), nil
+	}
+
+	colStart, outCols := 0, src.cols
+	if len(args) == 3 {
+		count, errVal := selectorScalarInt(args[2])
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		colStart, outCols, errVal = selectorDropBounds(count, src.cols)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+	}
+
+	return selectorSliceEval(src, rowStart, outRows, colStart, outCols), nil
+}
+
+func evalCHOOSECOLSSelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) < 2 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+
+	src := newSelectorSource(args[0])
+	if src.rows == 0 || src.cols == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+
+	selectCols := make([]int, 0, len(args)-1)
+	for _, arg := range args[1:] {
+		cols, errVal := chooserSelectorEvalValues(arg, src.cols)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		selectCols = append(selectCols, cols...)
+	}
+
+	if start, ok := selectorContiguousRun(selectCols); ok && src.rangeOrigin != nil {
+		return selectorWindowEval(src, 0, src.rows, start, len(selectCols), false), nil
+	}
+	return indexMaterializedSelectionEval(src, src.rows, len(selectCols), func(r, c int) Value {
+		return src.cell(r, selectCols[c])
+	}), nil
+}
+
+func evalCHOOSEROWSSelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) < 2 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+	if args[0].Kind == EvalKindError {
+		return args[0], nil
+	}
+
+	src := newSelectorSource(args[0])
+	if src.rows == 0 || src.cols == 0 {
+		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+	}
+
+	selectRows := make([]int, 0, len(args)-1)
+	for _, arg := range args[1:] {
+		rows, errVal := chooserSelectorEvalValues(arg, src.rows)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		selectRows = append(selectRows, rows...)
+	}
+
+	if start, ok := selectorContiguousRun(selectRows); ok && src.rangeOrigin != nil {
+		return selectorWindowEval(src, start, len(selectRows), 0, src.cols, false), nil
+	}
+	return indexMaterializedSelectionEval(src, len(selectRows), src.cols, func(r, c int) Value {
+		return src.cell(selectRows[r], c)
+	}), nil
 }
 
 func evalINDEXSelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
@@ -264,28 +606,7 @@ func indexScalarCellValue(src selectorSource, rowIdx, colIdx int) Value {
 }
 
 func indexDirectRefArrayResult(src selectorSource, rowStart, logicalRows, colStart, logicalCols int) EvalValue {
-	if logicalRows == 1 && logicalCols == 1 {
-		return ValueToEvalValue(indexScalarCellValue(src, rowStart, colStart))
-	}
-	matrix := indexMaterializedWindow(src, rowStart, logicalRows, colStart, logicalCols)
-	return EvalValue{
-		Kind: EvalArray,
-		Array: &ArrayValue{
-			Rows: logicalRows,
-			Cols: logicalCols,
-			Grid: newLegacyValueGrid(matrix),
-			Origin: &ArrayOrigin{
-				Range: ptrRange(RangeAddr{
-					Sheet:   src.rangeOrigin.Sheet,
-					FromCol: src.rangeOrigin.FromCol + colStart,
-					FromRow: src.rangeOrigin.FromRow + rowStart,
-					ToCol:   src.rangeOrigin.FromCol + colStart + logicalCols - 1,
-					ToRow:   src.rangeOrigin.FromRow + rowStart + logicalRows - 1,
-				}),
-			},
-			SpillClass: SpillScalarOnly,
-		},
-	}
+	return selectorWindowEval(src, rowStart, logicalRows, colStart, logicalCols, true)
 }
 
 func indexMaterializedWindow(src selectorSource, rowStart, logicalRows, colStart, logicalCols int) [][]Value {

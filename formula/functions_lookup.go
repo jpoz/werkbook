@@ -12,7 +12,7 @@ import (
 func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("ANCHORARRAY", fnANCHORARRAY)
-	Register("FILTER", NoCtx(fnFILTER))
+	RegisterWithSpec("FILTER", NoCtx(fnFILTER), gridShapeFuncSpec(evalFILTER))
 	RegisterWithSpec("HLOOKUP", NoCtx(fnHLOOKUP), hlookupFuncSpec())
 	RegisterWithSpec("INDEX", NoCtx(fnINDEX), indexFuncSpec(evalINDEXSelector))
 	Register("INDIRECT", fnINDIRECT)
@@ -21,15 +21,15 @@ func init() {
 	Register("OFFSET", fnOFFSET)
 	Register("SINGLE", fnSINGLE)
 	RegisterWithSpec("VLOOKUP", NoCtx(fnVLOOKUP), vlookupFuncSpec())
-	Register("TAKE", NoCtx(fnTAKE))
-	Register("DROP", NoCtx(fnDROP))
+	RegisterWithSpec("TAKE", NoCtx(fnTAKE), selectorFuncSpec(evalTAKESelector))
+	RegisterWithSpec("DROP", NoCtx(fnDROP), selectorFuncSpec(evalDROPSelector))
 	Register("EXPAND", NoCtx(fnEXPAND))
-	Register("CHOOSECOLS", NoCtx(fnCHOOSECOLS))
-	Register("CHOOSEROWS", NoCtx(fnCHOOSEROWS))
+	RegisterWithSpec("CHOOSECOLS", NoCtx(fnCHOOSECOLS), selectorFuncSpec(evalCHOOSECOLSSelector))
+	RegisterWithSpec("CHOOSEROWS", NoCtx(fnCHOOSEROWS), selectorFuncSpec(evalCHOOSEROWSSelector))
 	Register("TOCOL", NoCtx(fnTOCOL))
 	Register("TOROW", NoCtx(fnTOROW))
 	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
-	Register("UNIQUE", NoCtx(fnUNIQUE))
+	RegisterWithSpec("UNIQUE", NoCtx(fnUNIQUE), gridShapeFuncSpec(evalUNIQUE))
 	Register("WRAPCOLS", NoCtx(fnWRAPCOLS))
 	Register("WRAPROWS", NoCtx(fnWRAPROWS))
 	Register("HSTACK", NoCtx(fnHSTACK))
@@ -153,89 +153,57 @@ func fnANCHORARRAY(args []Value, ctx *EvalContext) (Value, error) {
 // fnFILTER implements FILTER(array, include, [if_empty]).
 // It filters rows or columns of an array based on a Boolean array.
 func fnFILTER(args []Value) (Value, error) {
+	return filterCore(args, nil)
+}
+
+func evalFILTER(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return ValueToEvalValue(filterCoreEval(args, nil)), nil
+}
+
+func filterCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Normalize array to 2D grid.
-	arr := args[0]
-	var grid [][]Value
-	switch arr.Type {
-	case ValueArray:
-		grid = arr.Array
-	case ValueError:
-		return arr, nil
-	default:
-		grid = [][]Value{{arr}}
+	arrSource, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
+	if errVal != nil {
+		if errVal.Err == ErrValVALUE {
+			return ErrorVal(ErrValCALC), nil
+		}
+		return *errVal, nil
 	}
-	if len(grid) == 0 {
+	numRows, numCols := arrSource.dims()
+	if numRows == 0 || numCols == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
 
-	// Normalize include to 2D grid.
-	inc := args[1]
-	var incGrid [][]Value
-	switch inc.Type {
-	case ValueArray:
-		incGrid = inc.Array
-	case ValueError:
-		return inc, nil
-	default:
-		incGrid = [][]Value{{inc}}
+	incSource, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
-
-	// Determine filtering direction: row filtering vs column filtering.
-	// Row filtering: include has same number of rows as array (column vector).
-	// Column filtering: include has same number of columns as array (row vector).
-	numRows := len(grid)
-	numCols := 0
-	for _, row := range grid {
-		if len(row) > numCols {
-			numCols = len(row)
-		}
-	}
-
-	incRows := len(incGrid)
-	incCols := 0
-	for _, row := range incGrid {
-		if len(row) > incCols {
-			incCols = len(row)
-		}
-	}
+	incRows, incCols := incSource.dims()
 
 	// Flatten include to a single list of values.
 	filterByCol := false
 	var includeVals []Value
 	if incRows == numRows && (incCols == 1 || incRows == 1 && incCols == 1) {
 		// Row filtering: include is a column vector with same row count.
-		for _, row := range incGrid {
-			if len(row) > 0 {
-				includeVals = append(includeVals, row[0])
-			} else {
-				includeVals = append(includeVals, EmptyVal())
-			}
+		includeVals = make([]Value, numRows)
+		for row := 0; row < numRows; row++ {
+			includeVals[row] = incSource.cell(row, 0)
 		}
 	} else if incRows == 1 && incCols == numCols {
 		// Column filtering: include is a row vector with same column count.
 		filterByCol = true
-		includeVals = make([]Value, incCols)
-		if len(incGrid) > 0 {
-			for i := 0; i < incCols; i++ {
-				if i < len(incGrid[0]) {
-					includeVals[i] = incGrid[0][i]
-				} else {
-					includeVals[i] = EmptyVal()
-				}
-			}
+		includeVals = make([]Value, numCols)
+		for col := 0; col < numCols; col++ {
+			includeVals[col] = incSource.cell(0, col)
 		}
 	} else if incRows == numRows {
 		// Multi-column include with same rows — flatten first column.
-		for _, row := range incGrid {
-			if len(row) > 0 {
-				includeVals = append(includeVals, row[0])
-			} else {
-				includeVals = append(includeVals, EmptyVal())
-			}
+		includeVals = make([]Value, numRows)
+		for row := 0; row < numRows; row++ {
+			includeVals[row] = incSource.cell(row, 0)
 		}
 	} else {
 		return ErrorVal(ErrValVALUE), nil
@@ -253,31 +221,26 @@ func fnFILTER(args []Value) (Value, error) {
 		// the first error into a grid the size of the value argument.
 		for _, iv := range includeVals {
 			if iv.Type == ValueError {
-				return spilledErrorMatchingGrid(grid, iv), nil
+				return arrSource.spilledError(iv), nil
 			}
 		}
-		var result [][]Value
+		var keepRows []int
 		for i, iv := range includeVals {
 			n, e := CoerceNum(iv)
 			if e != nil {
 				return *e, nil
 			}
 			if n != 0 {
-				row := make([]Value, len(grid[i]))
-				copy(row, grid[i])
-				result = append(result, row)
+				keepRows = append(keepRows, i)
 			}
 		}
-		if len(result) == 0 {
+		if len(keepRows) == 0 {
 			if len(args) == 3 {
-				return args[2], nil
+				return legacyArgValue(args[2], evalArgAt(evalArgs, 2)), nil
 			}
 			return ErrorVal(ErrValCALC), nil
 		}
-		if len(result) == 1 && len(result[0]) == 1 {
-			return result[0][0], nil
-		}
-		return Value{Type: ValueArray, Array: result}, nil
+		return collapseArrayResult(arrSource.materializeRows(keepRows)), nil
 	}
 
 	// Column filtering.
@@ -286,42 +249,26 @@ func fnFILTER(args []Value) (Value, error) {
 	}
 	for _, iv := range includeVals {
 		if iv.Type == ValueError {
-			return spilledErrorMatchingGrid(grid, iv), nil
+			return arrSource.spilledError(iv), nil
 		}
 	}
-	// Determine which columns to keep.
 	var keepCols []int
-	for i, iv := range includeVals {
+	for col, iv := range includeVals {
 		n, e := CoerceNum(iv)
 		if e != nil {
 			return *e, nil
 		}
 		if n != 0 {
-			keepCols = append(keepCols, i)
+			keepCols = append(keepCols, col)
 		}
 	}
 	if len(keepCols) == 0 {
 		if len(args) == 3 {
-			return args[2], nil
+			return legacyArgValue(args[2], evalArgAt(evalArgs, 2)), nil
 		}
 		return ErrorVal(ErrValCALC), nil
 	}
-	var result [][]Value
-	for _, row := range grid {
-		newRow := make([]Value, len(keepCols))
-		for j, ci := range keepCols {
-			if ci < len(row) {
-				newRow[j] = row[ci]
-			} else {
-				newRow[j] = EmptyVal()
-			}
-		}
-		result = append(result, newRow)
-	}
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return collapseArrayResult(arrSource.materializeCols(keepCols)), nil
 }
 
 func fnVLOOKUP(args []Value) (Value, error) {
@@ -513,11 +460,15 @@ func fnHLOOKUP(args []Value) (Value, error) {
 }
 
 func fnINDEX(args []Value) (Value, error) {
+	return callSelectorEval(evalINDEXSelector, args)
+}
+
+func callSelectorEval(eval EvalFunc, args []Value) (Value, error) {
 	evalArgs := make([]EvalValue, len(args))
 	for i, arg := range args {
 		evalArgs[i] = ValueToEvalValue(arg)
 	}
-	result, err := evalINDEXSelector(evalArgs, nil)
+	result, err := eval(evalArgs, nil)
 	if err != nil {
 		return Value{}, err
 	}
@@ -1364,13 +1315,19 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 
 // fnUNIQUE implements UNIQUE(array, [by_col], [exactly_once]).
 func fnUNIQUE(args []Value) (Value, error) {
+	return uniqueCore(args, nil)
+}
+
+func evalUNIQUE(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return ValueToEvalValue(uniqueCoreEval(args, nil)), nil
+}
+
+func uniqueCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Extract the 2D grid from the first argument.
-	arr := args[0]
-	grid, errVal := normalizeToArrayGrid(arr)
+	src, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		if errVal.Err == ErrValVALUE {
 			return ErrorVal(ErrValCALC), nil
@@ -1381,7 +1338,7 @@ func fnUNIQUE(args []Value) (Value, error) {
 	// by_col: default FALSE.
 	byCol := false
 	if len(args) >= 2 {
-		bc, e := CoerceNum(args[1])
+		bc, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 		if e != nil {
 			return *e, nil
 		}
@@ -1391,17 +1348,11 @@ func fnUNIQUE(args []Value) (Value, error) {
 	// exactly_once: default FALSE.
 	exactlyOnce := false
 	if len(args) >= 3 {
-		eo, e := CoerceNum(args[2])
+		eo, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 		if e != nil {
 			return *e, nil
 		}
 		exactlyOnce = eo != 0
-	}
-
-	// If by_col, transpose so we always work with rows.
-	fullGrid := grid.matrix()
-	if byCol {
-		fullGrid = transposeGrid(fullGrid)
 	}
 
 	// Build a key for each row and track counts / first-seen order.
@@ -1411,8 +1362,9 @@ func fnUNIQUE(args []Value) (Value, error) {
 	}
 	seen := make(map[string]int) // key → count
 	var order []rowEntry
-	for i, row := range fullGrid {
-		k := rowKey(row)
+	itemCount := uniqueAxisCount(src, byCol)
+	for i := 0; i < itemCount; i++ {
+		k := uniqueAxisKey(src, i, byCol)
 		seen[k]++
 		if seen[k] == 1 {
 			order = append(order, rowEntry{index: i, key: k})
@@ -1425,38 +1377,23 @@ func fnUNIQUE(args []Value) (Value, error) {
 	// (COUNT still ignores them, since they aren't numeric). Mirror that
 	// by normalising ValueEmpty to StringVal("") in output while keeping
 	// the row keyed distinctly via rowKey's "E:" prefix.
-	var result [][]Value
+	var keep []int
 	for _, entry := range order {
 		if exactlyOnce && seen[entry.key] != 1 {
 			continue
 		}
-		row := fullGrid[entry.index]
-		cp := make([]Value, len(row))
-		for i, cell := range row {
-			if cell.Type == ValueEmpty {
-				cp[i] = StringVal("")
-			} else {
-				cp[i] = cell
-			}
-		}
-		result = append(result, cp)
+		keep = append(keep, entry.index)
 	}
 
 	// If exactly_once filtered everything out, return #CALC!.
-	if len(result) == 0 {
+	if len(keep) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
 
-	// If by_col, transpose back.
-	if byCol {
-		result = transposeGrid(result)
-	}
+	result := uniqueMaterialize(src, keep, byCol)
 
 	// Return: single value, 1D column array, or 2D array.
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return collapseArrayResult(result), nil
 }
 
 // rowKey produces a string key for a row of Values, encoding type and value
@@ -1554,147 +1491,13 @@ func gridDims(grid [][]Value) (int, int) {
 // fnTAKE implements TAKE(array, rows, [columns]).
 // Returns a specified number of contiguous rows or columns from the start or end of an array.
 func fnTAKE(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows, numCols := grid.rowCount, grid.colCount
-
-	// Parse rows parameter.
-	rowsArg, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	takeRows := int(rowsArg)
-	if takeRows == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Parse optional columns parameter.
-	takeCols := 0 // 0 means "all columns"
-	if len(args) == 3 {
-		colsArg, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		takeCols = int(colsArg)
-		if takeCols == 0 {
-			return ErrorVal(ErrValVALUE), nil
-		}
-	}
-
-	// Determine row slice.
-	var rowStart, rowEnd int
-	if takeRows > 0 {
-		if takeRows > numRows {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		rowStart = 0
-		rowEnd = takeRows
-	} else {
-		if -takeRows > numRows {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		rowStart = numRows + takeRows
-		rowEnd = numRows
-	}
-
-	// Determine column slice.
-	colStart := 0
-	colEnd := numCols
-	if takeCols != 0 {
-		if takeCols > 0 {
-			if takeCols > numCols {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			colStart = 0
-			colEnd = takeCols
-		} else {
-			if -takeCols > numCols {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			colStart = numCols + takeCols
-			colEnd = numCols
-		}
-	}
-
-	// Build the result grid.
-	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalTAKESelector, args)
 }
 
 // fnDROP implements DROP(array, rows, [columns]).
 // Excludes a specified number of rows or columns from the start or end of an array.
 func fnDROP(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows, numCols := grid.rowCount, grid.colCount
-
-	// Parse rows parameter.
-	rowsArg, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	dropRows := int(rowsArg)
-
-	// Parse optional columns parameter.
-	dropCols := 0
-	if len(args) == 3 {
-		colsArg, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		dropCols = int(colsArg)
-	}
-
-	// Determine row slice after dropping.
-	var rowStart, rowEnd int
-	if dropRows >= 0 {
-		rowStart = dropRows
-		rowEnd = numRows
-	} else {
-		rowStart = 0
-		rowEnd = numRows + dropRows
-	}
-	if rowStart >= rowEnd {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Determine column slice after dropping.
-	colStart := 0
-	colEnd := numCols
-	if dropCols > 0 {
-		colStart = dropCols
-	} else if dropCols < 0 {
-		colEnd = numCols + dropCols
-	}
-	if colStart >= colEnd {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Build the result grid.
-	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalDROPSelector, args)
 }
 
 // fnEXPAND implements EXPAND(array, rows, [columns], [pad_with]).
@@ -1769,121 +1572,14 @@ func fnEXPAND(args []Value) (Value, error) {
 	return Value{Type: ValueArray, Array: result}, nil
 }
 
-// normalizeChooserIndex converts a CHOOSECOLS/CHOOSEROWS selector to a
-// zero-based index, supporting negative indexes from the end.
-func normalizeChooserIndex(arg Value, max int) (int, *Value) {
-	idxNum, e := CoerceNum(arg)
-	if e != nil {
-		return 0, e
-	}
-
-	idx := int(idxNum)
-	if idx == 0 || idx > max || idx < -max {
-		errVal := ErrorVal(ErrValVALUE)
-		return 0, &errVal
-	}
-	if idx < 0 {
-		idx = max + idx + 1
-	}
-	return idx - 1, nil
-}
-
-// expandChooserIndices normalizes one CHOOSECOLS/CHOOSEROWS selector argument
-// into a flat slice of zero-based indices. Scalar args produce a single-element
-// slice; array args (e.g. SEQUENCE(10) or an inline {1,2,3}) are flattened cell
-// by cell. Each element is validated via normalizeChooserIndex, and the first
-// error short-circuits the whole list.
-func expandChooserIndices(arg Value, max int) ([]int, *Value) {
-	if arg.Type == ValueArray {
-		out := make([]int, 0, len(arg.Array))
-		for _, row := range arg.Array {
-			for _, cell := range row {
-				idx, e := normalizeChooserIndex(cell, max)
-				if e != nil {
-					return nil, e
-				}
-				out = append(out, idx)
-			}
-		}
-		if len(out) == 0 {
-			errVal := ErrorVal(ErrValVALUE)
-			return nil, &errVal
-		}
-		return out, nil
-	}
-	idx, e := normalizeChooserIndex(arg, max)
-	if e != nil {
-		return nil, e
-	}
-	return []int{idx}, nil
-}
-
 // fnCHOOSECOLS implements CHOOSECOLS(array, col_num1, [col_num2], ...).
 func fnCHOOSECOLS(args []Value) (Value, error) {
-	if len(args) < 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numCols := grid.colCount
-	var selectCols []int
-	for _, arg := range args[1:] {
-		cols, e := expandChooserIndices(arg, numCols)
-		if e != nil {
-			return *e, nil
-		}
-		selectCols = append(selectCols, cols...)
-	}
-
-	result := make([][]Value, grid.rowCount)
-	for r := 0; r < grid.rowCount; r++ {
-		row := make([]Value, len(selectCols))
-		for c, srcCol := range selectCols {
-			row[c] = grid.cell(r, srcCol)
-		}
-		result[r] = row
-	}
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalCHOOSECOLSSelector, args)
 }
 
 // fnCHOOSEROWS implements CHOOSEROWS(array, row_num1, [row_num2], ...).
 func fnCHOOSEROWS(args []Value) (Value, error) {
-	if len(args) < 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows := grid.rowCount
-	var selectRows []int
-	for _, arg := range args[1:] {
-		rows, e := expandChooserIndices(arg, numRows)
-		if e != nil {
-			return *e, nil
-		}
-		selectRows = append(selectRows, rows...)
-	}
-
-	result := make([][]Value, len(selectRows))
-	for i, srcRow := range selectRows {
-		result[i] = grid.row(srcRow)
-	}
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalCHOOSEROWSSelector, args)
 }
 
 // fnTOCOL implements TOCOL(array, [ignore], [scan_by_column]).

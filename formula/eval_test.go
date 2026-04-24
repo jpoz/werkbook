@@ -934,6 +934,64 @@ func TestEvalFILTERPreservesFullColumnArgsInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalSORTBYPreservesFullColumnArgsInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(300),
+			{Col: 2, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(100),
+			{Col: 2, Row: 2}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(200),
+			{Col: 2, Row: 3}: NumberVal(2),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     3,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "SORTBY(A:A,B:B)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(100)},
+		{NumberVal(200)},
+		{NumberVal(300)},
+	}})
+}
+
+func TestEvalUNIQUEPreservesFullColumnArgsInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("alpha"),
+			{Col: 1, Row: 2}: StringVal("beta"),
+			{Col: 1, Row: 3}: StringVal("alpha"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "UNIQUE(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("alpha")},
+		{StringVal("beta")},
+	}})
+}
+
 func TestEvalPERCENTRANKPreservesFullColumnArgInScalarFormula(t *testing.T) {
 	resolver := &sparseResolver{
 		cells: map[CellAddr]Value{

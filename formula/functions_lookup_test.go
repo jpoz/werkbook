@@ -4025,7 +4025,7 @@ func TestINDIRECT_R1C1_CaseInsensitive(t *testing.T) {
 
 // TestSplitSheetPrefix locks down the quote-aware sheet-prefix split used
 // by r1c1ToA1. Naive strings.LastIndex(ref, "!") breaks whenever a sheet
-// name is quoted and contains its own '!' or escaped '' character.
+// name is quoted and contains its own '!' or escaped ” character.
 func TestSplitSheetPrefix(t *testing.T) {
 	cases := []struct {
 		in         string
@@ -5918,6 +5918,55 @@ func TestUNIQUE_FromRange(t *testing.T) {
 	}
 }
 
+func TestUNIQUE_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnUNIQUE([]Value{
+		trimmedRangeValue([][]Value{
+			{StringVal("alpha")},
+			{StringVal("beta")},
+			{StringVal("alpha")},
+		}, 1, 1, 1, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnUNIQUE: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("alpha")},
+		{StringVal("beta")},
+	}})
+}
+
+func TestUNIQUE_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 1, Row: 4}: EmptyVal(),
+			{Col: 1, Row: 5}: EmptyVal(),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: "INDEX(UNIQUE(A1:A5),3,1)", want: StringVal("")},
+		{formula: "ROWS(UNIQUE(A1:A5))", want: NumberVal(3)},
+		{formula: "COLUMNS(UNIQUE(A1:A5))", want: NumberVal(1)},
+		{formula: "COUNTA(UNIQUE(A1:A5))", want: NumberVal(3)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 // ── FILTER tests ──────────────────────────────────────────────────────
 
 func TestFILTER_BasicBoolean(t *testing.T) {
@@ -6335,6 +6384,28 @@ func TestFILTER_ErrorInIncludeArg(t *testing.T) {
 	}
 }
 
+func TestFILTER_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnFILTER([]Value{
+		trimmedRangeValue([][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+			{NumberVal(30)},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{BoolVal(false)},
+			{BoolVal(true)},
+			{BoolVal(true)},
+		}, 2, 1, 2, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(20)},
+		{NumberVal(30)},
+	}})
+}
+
 func TestFILTER_ViaEval(t *testing.T) {
 	// Test through the formula evaluator.
 	resolver := &mockResolver{}
@@ -6363,6 +6434,41 @@ func TestFILTER_ViaEvalIfEmpty(t *testing.T) {
 	}
 	if got.Type != ValueString || got.Str != "none" {
 		t.Errorf("got %v, want string 'none'", got)
+	}
+}
+
+func TestFILTER_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			{Col: 2, Row: 1}: StringVal("drop"),
+			{Col: 2, Row: 2}: StringVal("keep"),
+			{Col: 2, Row: 3}: StringVal("drop"),
+			{Col: 2, Row: 4}: StringVal("keep"),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: `INDEX(FILTER(A1:A4,B1:B4="keep"),2,1)`, want: NumberVal(400)},
+		{formula: `ROWS(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(2)},
+		{formula: `COLUMNS(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(1)},
+		{formula: `COUNTA(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(2)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
 	}
 }
 
@@ -6417,10 +6523,10 @@ func TestFILTER_ViaEvalStringComparison(t *testing.T) {
 	// FILTER(A1:A4, B1:B4="Yes")
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
-			{Col: 1, Row: 1}: StringVal("Apple"),  {Col: 2, Row: 1}: StringVal("Yes"),
+			{Col: 1, Row: 1}: StringVal("Apple"), {Col: 2, Row: 1}: StringVal("Yes"),
 			{Col: 1, Row: 2}: StringVal("Banana"), {Col: 2, Row: 2}: StringVal("No"),
 			{Col: 1, Row: 3}: StringVal("Cherry"), {Col: 2, Row: 3}: StringVal("Yes"),
-			{Col: 1, Row: 4}: StringVal("Date"),   {Col: 2, Row: 4}: StringVal("No"),
+			{Col: 1, Row: 4}: StringVal("Date"), {Col: 2, Row: 4}: StringVal("No"),
 		},
 	}
 	cf := evalCompile(t, `FILTER(A1:A4, B1:B4="Yes")`)
@@ -15613,7 +15719,7 @@ func TestMATCH_AdditionalComprehensive(t *testing.T) {
 		{"asc_exact", "MATCH(20,A1:A5,1)", NumberVal(3)},
 
 		// -- approximate ascending: between values → last <= --
-		{"asc_between", "MATCH(25,A1:A5,1)", NumberVal(3)},   // 20 is last <=25
+		{"asc_between", "MATCH(25,A1:A5,1)", NumberVal(3)},    // 20 is last <=25
 		{"asc_between_low", "MATCH(7,A1:A5,1)", NumberVal(1)}, // 5 is last <=7
 
 		// -- approximate ascending: below minimum → #N/A --
@@ -15859,8 +15965,8 @@ func TestINDEX_BooleanRowCol(t *testing.T) {
 	// TRUE coerces to 1 via CoerceNum.
 	got, err := fnINDEX([]Value{
 		Value{Type: ValueArray, Array: [][]Value{{NumberVal(10), NumberVal(20)}, {NumberVal(30), NumberVal(40)}}},
-		BoolVal(true),  // row = TRUE → 1
-		BoolVal(true),  // col = TRUE → 1
+		BoolVal(true), // row = TRUE → 1
+		BoolVal(true), // col = TRUE → 1
 	})
 	if err != nil {
 		t.Fatalf("fnINDEX: %v", err)

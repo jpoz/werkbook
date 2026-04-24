@@ -14,7 +14,7 @@ func init() {
 	RegisterScalarLifted("NOT", NoCtx(fnNOT))
 	Register("OR", NoCtx(fnOR))
 	Register("SORT", NoCtx(fnSORT))
-	Register("SORTBY", NoCtx(fnSORTBY))
+	RegisterWithSpec("SORTBY", NoCtx(fnSORTBY), gridShapeFuncSpec(evalSORTBY))
 	Register("SWITCH", NoCtx(fnSWITCH))
 	Register("TRUE", NoCtx(fnTRUE))
 	Register("XOR", NoCtx(fnXOR))
@@ -309,71 +309,63 @@ func fnSORT(args []Value) (Value, error) {
 }
 
 func fnSORTBY(args []Value) (Value, error) {
+	return sortbyCore(args, nil)
+}
+
+func evalSORTBY(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return ValueToEvalValue(sortbyCoreEval(args, nil)), nil
+}
+
+func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Normalize array argument to a 2D grid.
-	arr := args[0]
-	grid, errVal := normalizeToArrayGrid(arr)
+	arrSource, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	numRows := grid.rowCount
+	numRows, _ := arrSource.dims()
 
 	// Parse (by_array, sort_order) pairs from remaining args.
 	// After args[0], remaining args are grouped in pairs of 2: (by_array, sort_order).
 	// If the last group has only 1 element, sort_order defaults to 1.
 	remaining := args[1:]
 	type sortKey struct {
-		values []Value
-		order  int // 1 = ascending, -1 = descending
+		valueAt func(int) Value
+		order   int // 1 = ascending, -1 = descending
 	}
 	var keys []sortKey
 
 	for i := 0; i < len(remaining); i += 2 {
-		byArg := remaining[i]
-
-		// Propagate errors from by_array.
-		if byArg.Type == ValueError {
-			return byArg, nil
-		}
-
-		// Normalize by_array to a 2D grid, then flatten to a 1D vector.
-		byGrid, errVal := normalizeToArrayGrid(byArg)
+		bySource, errVal := normalizeGridShapeArg(remaining[i], evalArgAt(evalArgs, i+1))
 		if errVal != nil {
 			return *errVal, nil
 		}
 
 		// Validate: by_array must be a vector (single row or single column).
-		byRows := byGrid.rowCount
-		byCols := byGrid.colCount
+		byRows, byCols := bySource.dims()
 		if byRows > 1 && byCols > 1 {
 			return ErrorVal(ErrValVALUE), nil
 		}
 
-		// Flatten to 1D.
-		var flat []Value
+		var valueAt func(int) Value
+		keyLen := byRows
 		if byCols <= 1 {
-			// Column vector or single cell: one value per row.
-			for row := 0; row < byRows; row++ {
-				flat = append(flat, byGrid.cell(row, 0))
-			}
+			valueAt = func(row int) Value { return bySource.cell(row, 0) }
 		} else {
-			// Row vector: one value per column.
-			flat = make([]Value, byCols)
-			for col := 0; col < byCols; col++ {
-				flat[col] = byGrid.cell(0, col)
-			}
+			keyLen = byCols
+			valueAt = func(row int) Value { return bySource.cell(0, row) }
 		}
 
 		// Validate: by_array length must match number of rows in array.
-		if len(flat) != numRows {
+		if keyLen != numRows {
 			return ErrorVal(ErrValVALUE), nil
 		}
 
 		// Check for errors in the by_array values.
-		for _, v := range flat {
+		for row := 0; row < keyLen; row++ {
+			v := valueAt(row)
 			if v.Type == ValueError {
 				return v, nil
 			}
@@ -382,7 +374,7 @@ func fnSORTBY(args []Value) (Value, error) {
 		// Parse sort_order (defaults to 1 if not provided).
 		order := 1
 		if i+1 < len(remaining) {
-			so, e := CoerceNum(remaining[i+1])
+			so, e := CoerceNum(legacyArgValue(remaining[i+1], evalArgAt(evalArgs, i+2)))
 			if e != nil {
 				return *e, nil
 			}
@@ -392,7 +384,7 @@ func fnSORTBY(args []Value) (Value, error) {
 			}
 		}
 
-		keys = append(keys, sortKey{values: flat, order: order})
+		keys = append(keys, sortKey{valueAt: valueAt, order: order})
 	}
 
 	if len(keys) == 0 {
@@ -407,7 +399,7 @@ func fnSORTBY(args []Value) (Value, error) {
 
 	sort.SliceStable(indices, func(a, b int) bool {
 		for _, k := range keys {
-			cmp := CompareValues(k.values[indices[a]], k.values[indices[b]])
+			cmp := CompareValues(k.valueAt(indices[a]), k.valueAt(indices[b]))
 			if cmp != 0 {
 				if k.order < 0 {
 					return cmp > 0
@@ -419,10 +411,5 @@ func fnSORTBY(args []Value) (Value, error) {
 	})
 
 	// Build result array by reordering rows.
-	result := make([][]Value, numRows)
-	for i, idx := range indices {
-		result[i] = grid.row(idx)
-	}
-
-	return Value{Type: ValueArray, Array: result}, nil
+	return Value{Type: ValueArray, Array: arrSource.materializeRows(indices)}, nil
 }

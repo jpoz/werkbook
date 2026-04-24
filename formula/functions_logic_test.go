@@ -46,6 +46,64 @@ func TestSORTBY_TrimmedRangeOrigin(t *testing.T) {
 	}})
 }
 
+func TestSORTBY_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnSORTBY([]Value{
+		trimmedRangeValue([][]Value{
+			{StringVal("b")},
+			{StringVal("a")},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+		}, 2, 1, 2, maxRows),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnSORTBY: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a")},
+		{StringVal("b")},
+	}})
+}
+
+func TestSORTBY_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(1),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(2),
+			{Col: 2, Row: 1}: NumberVal(50),
+			{Col: 2, Row: 2}: NumberVal(30),
+			{Col: 2, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(20),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: "INDEX(SORTBY(A1:A5,B1:B5),4,1)", want: NumberVal(4)},
+		{formula: "ROWS(SORTBY(A1:A5,B1:B5))", want: NumberVal(5)},
+		{formula: "COLUMNS(SORTBY(A1:A5,B1:B5))", want: NumberVal(1)},
+		{formula: "COUNTA(SORTBY(A1:A5,B1:B5))", want: NumberVal(5)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 func TestTRUE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -941,8 +999,8 @@ func TestNOTComprehensive(t *testing.T) {
 
 	t.Run("error propagation", func(t *testing.T) {
 		tests := []struct {
-			formula  string
-			wantErr  ErrorValue
+			formula string
+			wantErr ErrorValue
 		}{
 			// #N/A propagation
 			{"NOT(NA())", ErrValNA},
