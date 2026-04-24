@@ -769,6 +769,76 @@ func TestEvalVARPPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
 	}
 }
 
+func TestEvalVARAPreservesDirectFullColumnArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 3}: BoolVal(true),
+			{Col: 1, Row: 5}: StringVal("x"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "VARA(A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 1 {
+		t.Errorf("VARA(A:A) = %v (%g), want 1", got.Type, got.Num)
+	}
+}
+
+func TestEvalSTDEVPAPreservesDirectFullRowArgInScalarFormula(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 2, Row: 5}: NumberVal(2),
+			{Col: 4, Row: 5}: BoolVal(true),
+			{Col: 6, Row: 5}: StringVal("x"),
+		},
+	}
+
+	ctx := &EvalContext{
+		CurrentCol:     1,
+		CurrentRow:     1,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+
+	cf := evalCompile(t, "STDEVPA(5:5)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	want := math.Sqrt(2.0 / 3.0)
+	if got.Type != ValueNumber || got.Num != want {
+		t.Errorf("STDEVPA(5:5) = %v (%g), want %g", got.Type, got.Num, want)
+	}
+}
+
+func TestEvalVARADirectCellTextStillErrors(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("x"),
+		},
+	}
+
+	cf := evalCompile(t, "VARA(A1,2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Errorf("VARA(A1,2) = %v, want #VALUE!", got)
+	}
+}
+
 func TestEvalXLOOKUPPreservesFullColumnArgsInScalarFormula(t *testing.T) {
 	resolver := &sparseResolver{
 		cells: map[CellAddr]Value{

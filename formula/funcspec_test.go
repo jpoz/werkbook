@@ -64,14 +64,18 @@ func TestDirectRangeReducerFuncSpecs(t *testing.T) {
 		"MIN",
 		"STDEV",
 		"STDEV.S",
+		"STDEVA",
 		"STDEVP",
 		"STDEV.P",
+		"STDEVPA",
 		"SUMSQ",
 		"DEVSQ",
 		"VAR",
 		"VAR.S",
+		"VARA",
 		"VARP",
 		"VAR.P",
+		"VARPA",
 	}
 
 	for _, name := range names {
@@ -239,6 +243,36 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			ToRow:   8,
 		},
 	}
+	aStatsFullColumnRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(2)},
+			{EmptyVal()},
+			{BoolVal(true)},
+			{EmptyVal()},
+			{StringVal("x")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 8,
+			FromRow: 1,
+			ToCol:   8,
+			ToRow:   maxRows,
+		},
+	}
+	aStatsFullRowRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(2), EmptyVal(), BoolVal(true), EmptyVal(), StringVal("x")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 9,
+			ToCol:   maxCols,
+			ToRow:   9,
+		},
+	}
 	boundedRange := Value{
 		Type: ValueArray,
 		Array: [][]Value{
@@ -264,6 +298,12 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 		Type: ValueArray,
 		Array: [][]Value{
 			{NumberVal(4), StringVal("x"), NumberVal(6)},
+		},
+	}
+	aStatsAnonArray := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{BoolVal(true), StringVal("x")},
 		},
 	}
 	countaRange := Value{
@@ -468,6 +508,42 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 			name:     "VAR.P",
 			args:     []Value{statsFullRowRange},
 			want:     NumberVal(1),
+		},
+		{
+			caseName: "vara_full_column_trimmed_ref",
+			name:     "VARA",
+			args:     []Value{aStatsFullColumnRange},
+			want:     NumberVal(1),
+		},
+		{
+			caseName: "vara_direct_cell_text_errors",
+			name:     "VARA",
+			args:     []Value{directCellText, NumberVal(2)},
+			want:     ErrorVal(ErrValVALUE),
+		},
+		{
+			caseName: "varpa_full_row_trimmed_ref",
+			name:     "VARPA",
+			args:     []Value{aStatsFullRowRange},
+			want:     NumberVal(2.0 / 3.0),
+		},
+		{
+			caseName: "stdeva_scalar_and_array_inputs",
+			name:     "STDEVA",
+			args:     []Value{NumberVal(2), aStatsAnonArray},
+			want:     NumberVal(1),
+		},
+		{
+			caseName: "stdeva_text_only_range_low_cardinality",
+			name:     "STDEVA",
+			args:     []Value{textOnlyRange},
+			want:     ErrorVal(ErrValDIV0),
+		},
+		{
+			caseName: "stdevpa_error_propagation",
+			name:     "STDEVPA",
+			args:     []Value{errorRange},
+			want:     ErrorVal(ErrValNA),
 		},
 	}
 

@@ -291,26 +291,47 @@ func evalAVEDEVDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) 
 }
 
 func evalSTDEVDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
-	return evalReducerVarianceLikeDirectRange(args, true, true), nil
+	return evalReducerVarianceLikeDirectRange(args, true, true, meanAndSumSqReducerDirectArgs), nil
 }
 
 func evalSTDEVPDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
-	return evalReducerVarianceLikeDirectRange(args, false, true), nil
+	return evalReducerVarianceLikeDirectRange(args, false, true, meanAndSumSqReducerDirectArgs), nil
+}
+
+func evalSTDEVADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, true, true, meanAndSumSqReducerAEvalArgs), nil
+}
+
+func evalSTDEVPADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, false, true, meanAndSumSqReducerAEvalArgs), nil
 }
 
 func evalVARDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
-	return evalReducerVarianceLikeDirectRange(args, true, false), nil
+	return evalReducerVarianceLikeDirectRange(args, true, false, meanAndSumSqReducerDirectArgs), nil
 }
 
 func evalVARPDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
-	return evalReducerVarianceLikeDirectRange(args, false, false), nil
+	return evalReducerVarianceLikeDirectRange(args, false, false, meanAndSumSqReducerDirectArgs), nil
 }
 
-func evalReducerVarianceLikeDirectRange(args []EvalValue, sample bool, sqrtResult bool) EvalValue {
+func evalVARADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, true, false, meanAndSumSqReducerAEvalArgs), nil
+}
+
+func evalVARPADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalReducerVarianceLikeDirectRange(args, false, false, meanAndSumSqReducerAEvalArgs), nil
+}
+
+func evalReducerVarianceLikeDirectRange(
+	args []EvalValue,
+	sample bool,
+	sqrtResult bool,
+	meanAndSumSq func([]EvalValue) ([]float64, float64, float64, *Value),
+) EvalValue {
 	if len(args) == 0 {
 		return ValueToEvalValue(ErrorVal(ErrValVALUE))
 	}
-	nums, _, ssq, errVal := meanAndSumSqReducerEvalArgs(args, true)
+	nums, _, ssq, errVal := meanAndSumSq(args)
 	if errVal != nil {
 		return ValueToEvalValue(*errVal)
 	}
@@ -330,8 +351,21 @@ func evalReducerVarianceLikeDirectRange(args []EvalValue, sample bool, sqrtResul
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(result)}
 }
 
+func meanAndSumSqReducerDirectArgs(args []EvalValue) ([]float64, float64, float64, *Value) {
+	return meanAndSumSqReducerEvalArgs(args, true)
+}
+
 func meanAndSumSqReducerEvalArgs(args []EvalValue, ignoreNonNumericDirectCell bool) ([]float64, float64, float64, *Value) {
 	nums, errVal := collectReducerNumericEvalArgs(args, ignoreNonNumericDirectCell)
+	if errVal != nil {
+		return nil, 0, 0, errVal
+	}
+	mean, ssq := meanAndSumSqReducerNumbers(nums)
+	return nums, mean, ssq, nil
+}
+
+func meanAndSumSqReducerAEvalArgs(args []EvalValue) ([]float64, float64, float64, *Value) {
+	nums, errVal := collectReducerNumericAEvalArgs(args)
 	if errVal != nil {
 		return nil, 0, 0, errVal
 	}
@@ -381,6 +415,49 @@ func collectReducerNumericEvalArgs(args []EvalValue, ignoreNonNumericDirectCell 
 			}
 			if v.Type == ValueNumber {
 				nums = append(nums, v.Num)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return nums, nil
+}
+
+func collectReducerNumericAEvalArgs(args []EvalValue) ([]float64, *Value) {
+	var nums []float64
+	err := iterateReducerEvalArgs(
+		args,
+		func(v Value) *Value {
+			if v.Type == ValueError {
+				return &v
+			}
+			if v.Type == ValueEmpty {
+				return nil
+			}
+			n, e := CoerceNum(v)
+			if e != nil {
+				return e
+			}
+			nums = append(nums, n)
+			return nil
+		},
+		func(v Value) *Value {
+			if v.Type == ValueError {
+				return &v
+			}
+			switch v.Type {
+			case ValueNumber:
+				nums = append(nums, v.Num)
+			case ValueBool:
+				if v.Bool {
+					nums = append(nums, 1)
+				} else {
+					nums = append(nums, 0)
+				}
+			case ValueString:
+				nums = append(nums, 0)
 			}
 			return nil
 		},
