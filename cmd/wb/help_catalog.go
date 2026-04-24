@@ -247,6 +247,7 @@ func wbToolSpec() toolSpec {
 					{Name: "--tolerance", ValueName: "N", Description: "Numeric tolerance for floating-point comparison.", Default: "0 (exact)"},
 					{Name: "--config", ValueName: "path", Description: "JSON config file with tolerance, ignore_formulas, and ignore_files.", Default: "none"},
 					{Name: "--verbose", Description: "Print a per-file progress line (formulas, timing) to stderr. Also -v.", Default: "off"},
+					{Name: "--jobs", ValueName: "N", Description: "Number of files to check in parallel. Also -j. Use 1 for serial.", Default: "NumCPU"},
 				},
 				Examples: []string{
 					"wb check data.xlsx",
@@ -254,6 +255,7 @@ func wbToolSpec() toolSpec {
 					"wb check --tolerance 0.0001 data.xlsx",
 					"wb check --config check.json ./testdata",
 					"wb check --verbose ./testdata",
+					"wb check --jobs 4 ./testdata",
 					"wb check ./testdata",
 					"wb check file1.xlsx file2.xlsx ./more_files",
 				},
