@@ -549,6 +549,22 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			}
 			push(v)
 
+		case OpImplicitIntersectRefOnly:
+			v, err := pop()
+			if err != nil {
+				return Value{}, err
+			}
+			// Legacy IFERROR/IFNA compatibility: intersect range-backed
+			// arrays so SUMPRODUCT(IFERROR(range, …), …) still collapses
+			// IFERROR to the row-aligned cell, but leave anonymous arrays
+			// (SEQUENCE/FILTER/MAP output used as an IFERROR fallback)
+			// alone so their dynamic-array shape reaches the wrapping
+			// function unchanged.
+			if ctx != nil && !ctx.IsArrayFormula && v.Type == ValueArray && v.RangeOrigin != nil {
+				v = implicitIntersect(v, ctx)
+			}
+			push(v)
+
 		case OpIntersect:
 			b, err := pop()
 			if err != nil {
@@ -1297,14 +1313,15 @@ func CompareValuesExact(a, b Value) int {
 }
 
 func typeRank(t ValueType) int {
+	// Excel sort order: numbers first, then text, then booleans, then errors.
 	switch t {
-	case ValueError:
-		return 0
 	case ValueNumber, ValueEmpty:
-		return 1
+		return 0
 	case ValueString:
-		return 2
+		return 1
 	case ValueBool:
+		return 2
+	case ValueError:
 		return 3
 	default:
 		return 4

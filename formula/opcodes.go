@@ -42,6 +42,7 @@ const (
 	OpByCol                         // operand: subFormulaIdx; pop array, apply lambda to each column, return row vector
 	OpMakeArrayLambda               // operand: subFormulaIdx; pop rows and cols, build array by calling lambda(row, col)
 	OpImplicitIntersect             // operand: unused; pops Value, applies legacy implicit intersection, pushes result
+	OpImplicitIntersectRefOnly      // operand: unused; pops Value, intersects range-backed arrays only (anonymous arrays pass through). Used by the legacy IFERROR/IFNA scalarization path so dynamic-array fallbacks like SEQUENCE(5) retain their shape.
 	OpIntersect                     // operand: unused; pops two range Values, pushes the rectangular intersection (or #NULL!)
 	OpUnion                         // operand: number of areas; pops N Values and pushes a flattened union array
 	OpBuildRange                    // operand: unused; pops two single-cell refs and pushes the rectangular range between them
@@ -83,8 +84,9 @@ var opNames = [...]string{
 	OpByRow:           "ByRow",
 	OpByCol:             "ByCol",
 	OpMakeArrayLambda:   "MakeArrayLambda",
-	OpImplicitIntersect: "ImplicitIntersect",
-	OpIntersect:         "Intersect",
+	OpImplicitIntersect:        "ImplicitIntersect",
+	OpImplicitIntersectRefOnly: "ImplicitIntersectRefOnly",
+	OpIntersect:                "Intersect",
 	OpUnion:             "Union",
 	OpBuildRange:        "BuildRange",
 }

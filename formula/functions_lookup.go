@@ -13,14 +13,14 @@ func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("ANCHORARRAY", fnANCHORARRAY)
 	Register("FILTER", NoCtx(fnFILTER))
-	Register("HLOOKUP", NoCtx(fnHLOOKUP))
-	Register("INDEX", NoCtx(fnINDEX))
+	RegisterWithSpec("HLOOKUP", NoCtx(fnHLOOKUP), hlookupFuncSpec())
+	RegisterWithSpec("INDEX", NoCtx(fnINDEX), indexFuncSpec(evalINDEXSelector))
 	Register("INDIRECT", fnINDIRECT)
-	Register("LOOKUP", NoCtx(fnLOOKUP))
-	Register("MATCH", NoCtx(fnMATCH))
+	RegisterWithSpec("LOOKUP", NoCtx(fnLOOKUP), lookupFuncSpec())
+	RegisterWithSpec("MATCH", NoCtx(fnMATCH), matchFuncSpec())
 	Register("OFFSET", fnOFFSET)
 	Register("SINGLE", fnSINGLE)
-	Register("VLOOKUP", NoCtx(fnVLOOKUP))
+	RegisterWithSpec("VLOOKUP", NoCtx(fnVLOOKUP), vlookupFuncSpec())
 	Register("TAKE", NoCtx(fnTAKE))
 	Register("DROP", NoCtx(fnDROP))
 	Register("EXPAND", NoCtx(fnEXPAND))
@@ -35,8 +35,83 @@ func init() {
 	Register("HSTACK", NoCtx(fnHSTACK))
 	Register("VSTACK", NoCtx(fnVSTACK))
 	Register("HYPERLINK", NoCtx(fnHyperlink))
-	Register("XLOOKUP", NoCtx(fnXLOOKUP))
-	Register("XMATCH", NoCtx(fnXMATCH))
+	RegisterWithSpec("XLOOKUP", NoCtx(fnXLOOKUP), xlookupFuncSpec())
+	RegisterWithSpec("XMATCH", NoCtx(fnXMATCH), xmatchFuncSpec())
+}
+
+// lookupArg0 is the shared ArgSpec for the lookup_value argument: scalar
+// context collapses an array to its top-left (or range-aligned) cell via
+// ArgAdaptScalarizeAny, while array context preserves the array so the
+// FnKindLookupArrayLift dispatch in callFuncWithSpec can fan it out.
+var lookupArg0 = ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny}
+
+// lookupPassRef is the shared ArgSpec for trailing arguments (table/range,
+// column index, match type, etc.). Arrays and ranges pass through unchanged.
+var lookupPassRef = ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough}
+
+// xlookupFuncSpec wires XLOOKUP into the Phase 2 contract system: scalar
+// context scalarizes the first argument via legacy implicit intersection,
+// and array context fans it out element-wise through FnKindLookupArrayLift.
+func xlookupFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
+}
+
+// xmatchFuncSpec mirrors xlookupFuncSpec with two positional args.
+func xmatchFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
+}
+
+// vlookupFuncSpec wires VLOOKUP. Excel fans out the lookup_value array in
+// array context (e.g. inside FILTER's include argument) and collapses it in
+// scalar context (via implicit intersection on range-backed arrays).
+func vlookupFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
+}
+
+// hlookupFuncSpec wires HLOOKUP with the same shape as VLOOKUP.
+func hlookupFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
+}
+
+// matchFuncSpec wires MATCH with two positional args (lookup_value,
+// lookup_array) and optional match_type.
+func matchFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
+}
+
+// lookupFuncSpec wires the legacy LOOKUP function.
+func lookupFuncSpec() FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+	}
 }
 
 func fnSINGLE(args []Value, ctx *EvalContext) (Value, error) {
@@ -171,11 +246,18 @@ func fnFILTER(args []Value) (Value, error) {
 		if len(includeVals) != numRows {
 			return ErrorVal(ErrValVALUE), nil
 		}
+		// Excel's FILTER, when the include argument contains errors, does
+		// not abort to a scalar — the error spills across the whole value
+		// shape, so COUNTA over the result sees one cell per input row and
+		// SUM propagates the error cleanly. Mirror that here by replicating
+		// the first error into a grid the size of the value argument.
+		for _, iv := range includeVals {
+			if iv.Type == ValueError {
+				return spilledErrorMatchingGrid(grid, iv), nil
+			}
+		}
 		var result [][]Value
 		for i, iv := range includeVals {
-			if iv.Type == ValueError {
-				return iv, nil
-			}
 			n, e := CoerceNum(iv)
 			if e != nil {
 				return *e, nil
@@ -202,12 +284,14 @@ func fnFILTER(args []Value) (Value, error) {
 	if len(includeVals) != numCols {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	for _, iv := range includeVals {
+		if iv.Type == ValueError {
+			return spilledErrorMatchingGrid(grid, iv), nil
+		}
+	}
 	// Determine which columns to keep.
 	var keepCols []int
 	for i, iv := range includeVals {
-		if iv.Type == ValueError {
-			return iv, nil
-		}
 		n, e := CoerceNum(iv)
 		if e != nil {
 			return *e, nil
@@ -429,117 +513,15 @@ func fnHLOOKUP(args []Value) (Value, error) {
 }
 
 func fnINDEX(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
+	evalArgs := make([]EvalValue, len(args))
+	for i, arg := range args {
+		evalArgs[i] = ValueToEvalValue(arg)
 	}
-	arr := args[0]
-	if arr.Type != ValueArray {
-		return arr, nil
+	result, err := evalINDEXSelector(evalArgs, nil)
+	if err != nil {
+		return Value{}, err
 	}
-	rows, cols := effectiveArrayBounds(arr)
-	rowSelector := args[1]
-	colSelector := NumberVal(1)
-	if len(args) == 3 {
-		colSelector = args[2]
-	} else if rows == 1 {
-		// INDEX(single_row_array, n) is treated as INDEX(array, 1, n).
-		// This also preserves the row/column zero semantics in the special
-		// handling below: INDEX(single_row_array, 0) returns the full row.
-		rowSelector = NumberVal(1)
-		colSelector = args[1]
-	}
-
-	rowVals, rowShapeRows, rowShapeCols, e := indexSelectorValues(rowSelector, rows)
-	if e != nil {
-		return *e, nil
-	}
-	colVals, colShapeRows, colShapeCols, e := indexSelectorValues(colSelector, cols)
-	if e != nil {
-		return *e, nil
-	}
-
-	if len(rowVals) > 1 {
-		for _, v := range rowVals {
-			if v == 0 {
-				return ErrorVal(ErrValVALUE), nil
-			}
-		}
-	}
-	if len(colVals) > 1 {
-		for _, v := range colVals {
-			if v == 0 {
-				return ErrorVal(ErrValVALUE), nil
-			}
-		}
-	}
-
-	rowScalar := len(rowVals) == 1
-	colScalar := len(colVals) == 1
-
-	if rowScalar && colScalar {
-		return indexScalarSelection(arr, rows, cols, rowVals[0], colVals[0]), nil
-	}
-
-	if !rowScalar && colScalar {
-		if colVals[0] == 0 {
-			return indexSelectedRows(arr, rows, cols, rowVals), nil
-		}
-		return indexSelectedCellsByRowShape(arr, cols, rowVals, rowShapeRows, rowShapeCols, colVals[0]), nil
-	}
-
-	if rowScalar && !colScalar {
-		if rowVals[0] == 0 {
-			return indexSelectedCols(arr, rows, cols, colVals), nil
-		}
-		return indexSelectedCellsByColShape(arr, rows, colVals, colShapeRows, colShapeCols, rowVals[0]), nil
-	}
-
-	result := make([][]Value, len(rowVals))
-	for i, rowNum := range rowVals {
-		result[i] = make([]Value, len(colVals))
-		for j, colNum := range colVals {
-			result[i][j] = indexScalarSelection(arr, rows, cols, rowNum, colNum)
-		}
-	}
-	return compressIndexResult(Value{Type: ValueArray, Array: result}), nil
-}
-
-func indexSelectorValues(selector Value, max int) ([]int, int, int, *Value) {
-	if selector.Type == ValueError {
-		return nil, 0, 0, &selector
-	}
-	if selector.Type != ValueArray {
-		n, e := CoerceNum(selector)
-		if e != nil {
-			return nil, 0, 0, e
-		}
-		idx, errVal := normalizeIndexSelector(int(n), max)
-		if errVal != nil {
-			return nil, 0, 0, errVal
-		}
-		return []int{idx}, 1, 1, nil
-	}
-
-	rows, cols := effectiveArrayBounds(selector)
-	if rows == 0 || cols == 0 {
-		errVal := ErrorVal(ErrValVALUE)
-		return nil, 0, 0, &errVal
-	}
-	out := make([]int, 0, rows*cols)
-	for i := 0; i < rows; i++ {
-		for j := 0; j < cols; j++ {
-			n, e := CoerceNum(ArrayElement(selector, i, j))
-			if e != nil {
-				return nil, 0, 0, e
-			}
-			idx, errVal := normalizeIndexSelector(int(n), max)
-			if errVal != nil {
-				return nil, 0, 0, errVal
-			}
-			out = append(out, idx)
-		}
-	}
-	return out, rows, cols, nil
+	return EvalValueToValue(result), nil
 }
 
 func normalizeIndexSelector(idx, max int) (int, *Value) {
@@ -552,121 +534,6 @@ func normalizeIndexSelector(idx, max int) (int, *Value) {
 		return 0, &errVal
 	}
 	return idx, nil
-}
-
-func indexScalarSelection(arr Value, rows, cols, rowNum, colNum int) Value {
-	if rowNum == 0 && colNum == 0 {
-		out := arr
-		out.NoSpill = indexSelectionNeedsNoSpill(arr, true, true)
-		return compressIndexResult(out)
-	}
-	if rowNum == 0 {
-		ci := colNum - 1
-		col := make([][]Value, rows)
-		for i := 0; i < rows; i++ {
-			col[i] = []Value{indexArrayValue(arr, i, ci)}
-		}
-		out := Value{Type: ValueArray, Array: col}
-		if arr.RangeOrigin != nil {
-			origin := *arr.RangeOrigin
-			origin.FromCol += ci
-			origin.ToCol = origin.FromCol
-			out.RangeOrigin = &origin
-		}
-		out.NoSpill = indexSelectionNeedsNoSpill(arr, true, false)
-		return compressIndexResult(out)
-	}
-	if colNum == 0 {
-		ri := rowNum - 1
-		row := make([]Value, cols)
-		for i := 0; i < cols; i++ {
-			row[i] = indexArrayValue(arr, ri, i)
-		}
-		out := Value{Type: ValueArray, Array: [][]Value{row}}
-		if arr.RangeOrigin != nil {
-			origin := *arr.RangeOrigin
-			origin.FromRow += ri
-			origin.ToRow = origin.FromRow
-			out.RangeOrigin = &origin
-		}
-		out.NoSpill = indexSelectionNeedsNoSpill(arr, false, true)
-		return compressIndexResult(out)
-	}
-
-	ri := rowNum - 1
-	ci := colNum - 1
-	v := indexArrayValue(arr, ri, ci)
-	if arr.RangeOrigin != nil {
-		v.CellOrigin = &CellAddr{
-			Sheet: arr.RangeOrigin.Sheet,
-			Col:   arr.RangeOrigin.FromCol + ci,
-			Row:   arr.RangeOrigin.FromRow + ri,
-		}
-	}
-	return v
-}
-
-func indexSelectedRows(arr Value, rows, cols int, rowVals []int) Value {
-	result := make([][]Value, len(rowVals))
-	for i, rowNum := range rowVals {
-		ri := rowNum - 1
-		row := make([]Value, cols)
-		for j := 0; j < cols; j++ {
-			row[j] = indexArrayValue(arr, ri, j)
-		}
-		result[i] = row
-	}
-	return compressIndexResult(Value{Type: ValueArray, Array: result})
-}
-
-func indexSelectedCols(arr Value, rows, cols int, colVals []int) Value {
-	result := make([][]Value, rows)
-	for i := 0; i < rows; i++ {
-		row := make([]Value, len(colVals))
-		for j, colNum := range colVals {
-			row[j] = indexArrayValue(arr, i, colNum-1)
-		}
-		result[i] = row
-	}
-	return compressIndexResult(Value{Type: ValueArray, Array: result})
-}
-
-func indexSelectedCellsByRowShape(arr Value, cols int, rowVals []int, outRows, outCols, colNum int) Value {
-	result := make([][]Value, outRows)
-	for i := 0; i < outRows; i++ {
-		row := make([]Value, outCols)
-		for j := 0; j < outCols; j++ {
-			row[j] = indexArrayValue(arr, rowVals[i*outCols+j]-1, colNum-1)
-		}
-		result[i] = row
-	}
-	return compressIndexResult(Value{Type: ValueArray, Array: result})
-}
-
-func indexSelectedCellsByColShape(arr Value, rows int, colVals []int, outRows, outCols, rowNum int) Value {
-	result := make([][]Value, outRows)
-	for i := 0; i < outRows; i++ {
-		row := make([]Value, outCols)
-		for j := 0; j < outCols; j++ {
-			row[j] = indexArrayValue(arr, rowNum-1, colVals[i*outCols+j]-1)
-		}
-		result[i] = row
-	}
-	return compressIndexResult(Value{Type: ValueArray, Array: result})
-}
-
-func compressIndexResult(v Value) Value {
-	if v.Type != ValueArray {
-		return v
-	}
-	if len(v.Array) == 1 && len(v.Array[0]) == 1 {
-		return v.Array[0][0]
-	}
-	return v
-}
-
-func indexSelectionNeedsNoSpill(arr Value, allRows, allCols bool) bool {
-	return arr.RangeOrigin != nil && (allRows || allCols)
 }
 
 func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
@@ -1552,7 +1419,12 @@ func fnUNIQUE(args []Value) (Value, error) {
 		}
 	}
 
-	// Collect result rows.
+	// Collect result rows. Anonymous-array output positions don't have the
+	// "truly blank" concept that ranges do — Excel renders blank source
+	// rows as empty strings in UNIQUE's spill so COUNTA counts them
+	// (COUNT still ignores them, since they aren't numeric). Mirror that
+	// by normalising ValueEmpty to StringVal("") in output while keeping
+	// the row keyed distinctly via rowKey's "E:" prefix.
 	var result [][]Value
 	for _, entry := range order {
 		if exactlyOnce && seen[entry.key] != 1 {
@@ -1560,7 +1432,13 @@ func fnUNIQUE(args []Value) (Value, error) {
 		}
 		row := fullGrid[entry.index]
 		cp := make([]Value, len(row))
-		copy(cp, row)
+		for i, cell := range row {
+			if cell.Type == ValueEmpty {
+				cp[i] = StringVal("")
+			} else {
+				cp[i] = cell
+			}
+		}
 		result = append(result, cp)
 	}
 
@@ -1597,8 +1475,9 @@ func rowKey(row []Value) string {
 			b.WriteString("N:")
 			b.WriteString(strconv.FormatFloat(v.Num, 'g', -1, 64))
 		case ValueString:
+			// Excel UNIQUE is case-insensitive: "apple" and "Apple" dedup.
 			b.WriteString("S:")
-			b.WriteString(v.Str)
+			b.WriteString(strings.ToLower(v.Str))
 		case ValueBool:
 			b.WriteString("B:")
 			if v.Bool {
@@ -1631,6 +1510,33 @@ func normalizeToGrid(v Value) ([][]Value, *Value) {
 	default:
 		return [][]Value{{v}}, nil
 	}
+}
+
+// spilledErrorMatchingGrid returns a Value whose shape matches the given
+// grid, with every cell set to err. Used by FILTER when the include argument
+// has errors: Excel propagates one error cell per value-row so that COUNTA
+// counts them and SUM propagates the first error — returning a bare scalar
+// error collapses both downstream consumers to a single cell.
+func spilledErrorMatchingGrid(grid [][]Value, err Value) Value {
+	if len(grid) == 0 {
+		return err
+	}
+	out := make([][]Value, len(grid))
+	for r, row := range grid {
+		cols := len(row)
+		if cols == 0 {
+			cols = 1
+		}
+		cells := make([]Value, cols)
+		for c := range cells {
+			cells[c] = err
+		}
+		out[r] = cells
+	}
+	if len(out) == 1 && len(out[0]) == 1 {
+		return out[0][0]
+	}
+	return Value{Type: ValueArray, Array: out}
 }
 
 // gridDims returns (rows, maxCols) for a 2D grid.
@@ -1882,6 +1788,36 @@ func normalizeChooserIndex(arg Value, max int) (int, *Value) {
 	return idx - 1, nil
 }
 
+// expandChooserIndices normalizes one CHOOSECOLS/CHOOSEROWS selector argument
+// into a flat slice of zero-based indices. Scalar args produce a single-element
+// slice; array args (e.g. SEQUENCE(10) or an inline {1,2,3}) are flattened cell
+// by cell. Each element is validated via normalizeChooserIndex, and the first
+// error short-circuits the whole list.
+func expandChooserIndices(arg Value, max int) ([]int, *Value) {
+	if arg.Type == ValueArray {
+		out := make([]int, 0, len(arg.Array))
+		for _, row := range arg.Array {
+			for _, cell := range row {
+				idx, e := normalizeChooserIndex(cell, max)
+				if e != nil {
+					return nil, e
+				}
+				out = append(out, idx)
+			}
+		}
+		if len(out) == 0 {
+			errVal := ErrorVal(ErrValVALUE)
+			return nil, &errVal
+		}
+		return out, nil
+	}
+	idx, e := normalizeChooserIndex(arg, max)
+	if e != nil {
+		return nil, e
+	}
+	return []int{idx}, nil
+}
+
 // fnCHOOSECOLS implements CHOOSECOLS(array, col_num1, [col_num2], ...).
 func fnCHOOSECOLS(args []Value) (Value, error) {
 	if len(args) < 2 {
@@ -1894,13 +1830,13 @@ func fnCHOOSECOLS(args []Value) (Value, error) {
 	}
 
 	numCols := grid.colCount
-	selectCols := make([]int, len(args)-1)
-	for i, arg := range args[1:] {
-		colIdx, e := normalizeChooserIndex(arg, numCols)
+	var selectCols []int
+	for _, arg := range args[1:] {
+		cols, e := expandChooserIndices(arg, numCols)
 		if e != nil {
 			return *e, nil
 		}
-		selectCols[i] = colIdx
+		selectCols = append(selectCols, cols...)
 	}
 
 	result := make([][]Value, grid.rowCount)
@@ -1930,13 +1866,13 @@ func fnCHOOSEROWS(args []Value) (Value, error) {
 	}
 
 	numRows := grid.rowCount
-	selectRows := make([]int, len(args)-1)
-	for i, arg := range args[1:] {
-		rowIdx, e := normalizeChooserIndex(arg, numRows)
+	var selectRows []int
+	for _, arg := range args[1:] {
+		rows, e := expandChooserIndices(arg, numRows)
 		if e != nil {
 			return *e, nil
 		}
-		selectRows[i] = rowIdx
+		selectRows = append(selectRows, rows...)
 	}
 
 	result := make([][]Value, len(selectRows))

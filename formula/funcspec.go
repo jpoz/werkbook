@@ -24,6 +24,14 @@ const (
 	ArgAdaptBroadcast
 	ArgAdaptPassThrough
 	ArgAdaptRequireScalar
+	// ArgAdaptScalarizeAny combines LegacyIntersectRef (for range-backed
+	// arrays) with TopLeftAnonymousArray (for anonymous arrays). Used by
+	// lookup functions whose first argument is semantically a scalar but
+	// which currently accept arrays from either provenance — XLOOKUP and
+	// XMATCH in non-array context match Excel by intersecting the direct
+	// range (row/col-aligned cell) or collapsing the inline array to its
+	// top-left element.
+	ArgAdaptScalarizeAny
 )
 
 // ReturnMode classifies the runtime result family a function can produce.
@@ -136,8 +144,45 @@ func callFuncWithSpec(name string, fn Func, spec FuncSpec, args []Value, ctx *Ev
 		if hasArrayArg(adapted) {
 			return callElementWise(adapted, ctx, fn)
 		}
+	case FnKindLookupArrayLift:
+		// In array context, ArgAdaptScalarizeAny is a no-op on arg 0 so
+		// the lookup_value array still needs to be fanned out per-element.
+		// In scalar context it already collapsed, so this branch is skipped.
+		if len(adapted) > 0 && adapted[0].Type == ValueArray {
+			return liftLookupArg0(fn, adapted, ctx)
+		}
 	}
 	return fn(adapted, ctx)
+}
+
+// liftLookupArg0 broadcasts the lookup_value argument over its elements,
+// calling the underlying lookup function once per element and assembling an
+// anonymous ValueArray of the results. Used for VLOOKUP/HLOOKUP/MATCH/LOOKUP/
+// XLOOKUP/XMATCH when the first argument arrives as an array in array context.
+func liftLookupArg0(fn Func, args []Value, ctx *EvalContext) (Value, error) {
+	lookup := args[0]
+	rows, cols := arrayOpBounds(lookup)
+	if rows == 0 || cols == 0 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	result := make([][]Value, rows)
+	scalarArgs := make([]Value, len(args))
+	copy(scalarArgs, args)
+	for i := 0; i < rows; i++ {
+		result[i] = make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			scalarArgs[0] = arrayElementDirect(lookup, rows, cols, i, j)
+			cell, err := fn(scalarArgs, ctx)
+			if err != nil {
+				return Value{}, err
+			}
+			result[i][j] = cell
+		}
+	}
+	if rows == 1 && cols == 1 {
+		return result[0][0], nil
+	}
+	return Value{Type: ValueArray, Array: result}, nil
 }
 
 func adaptFuncArgs(spec FuncSpec, args []Value, ctx *EvalContext) []Value {
@@ -210,6 +255,14 @@ func adaptFuncArg(spec ArgSpec, arg Value, ctx *EvalContext) Value {
 	case ArgAdaptRequireScalar:
 		if arg.Type == ValueArray {
 			return ErrorVal(ErrValVALUE)
+		}
+	case ArgAdaptScalarizeAny:
+		if ctx != nil && !ctx.IsArrayFormula && !ctx.InheritedArray &&
+			arg.Type == ValueArray {
+			if arg.RangeOrigin != nil {
+				return implicitIntersect(arg, ctx)
+			}
+			return topLeftAnonymousArray(arg)
 		}
 	}
 	return arg

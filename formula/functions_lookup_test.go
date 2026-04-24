@@ -49,6 +49,88 @@ func TestVLOOKUP(t *testing.T) {
 	}
 }
 
+func TestVLOOKUP_ArrayLookupValueInArrayCtx(t *testing.T) {
+	// When lookup_value is an array and the caller is in array context
+	// (e.g. inside FILTER's include argument), VLOOKUP must fan out per
+	// element and return an array of results — not collapse to a single
+	// lookup. Mixed hits and misses produce values + #N/A per row.
+	lookupValue := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A")},
+			{StringVal("X")},
+			{StringVal("B")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 4,
+		},
+	}
+	lookupTable := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A"), StringVal("east")},
+			{StringVal("B"), StringVal("west")},
+		},
+	}
+	ctx := &EvalContext{CurrentCol: 2, CurrentRow: 2, CurrentSheet: "Sheet1", InheritedArray: true}
+
+	fn := registry[normalizeFuncName("VLOOKUP")]
+	spec, _ := funcSpecForName("VLOOKUP")
+	got, err := callFuncWithSpec("VLOOKUP", fn, spec, []Value{lookupValue, lookupTable, NumberVal(2), BoolVal(false)}, ctx)
+	if err != nil {
+		t.Fatalf("callFuncWithSpec: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got %v", got)
+	}
+	if got.Array[0][0].Type != ValueString || got.Array[0][0].Str != "east" {
+		t.Errorf("[0]: got %v, want east", got.Array[0][0])
+	}
+	if got.Array[1][0].Type != ValueError || got.Array[1][0].Err != ErrValNA {
+		t.Errorf("[1]: got %v, want #N/A", got.Array[1][0])
+	}
+	if got.Array[2][0].Type != ValueString || got.Array[2][0].Str != "west" {
+		t.Errorf("[2]: got %v, want west", got.Array[2][0])
+	}
+}
+
+func TestVLOOKUP_ArrayLookupValueInScalarCtxCollapses(t *testing.T) {
+	// In scalar context (no InheritedArray, no IsArrayFormula), VLOOKUP's
+	// lookup_value array should be intersected to a scalar via
+	// ArgAdaptScalarizeAny — lifting is only active in array context.
+	lookupValue := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A")},
+			{StringVal("B")},
+			{StringVal("C")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 4,
+		},
+	}
+	lookupTable := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A"), StringVal("east")},
+			{StringVal("B"), StringVal("west")},
+			{StringVal("C"), StringVal("north")},
+		},
+	}
+	// Formula at Sheet1!B3 (row 3): implicit intersection of A2:A4 → A3 = "B".
+	ctx := &EvalContext{CurrentCol: 2, CurrentRow: 3, CurrentSheet: "Sheet1"}
+
+	fn := registry[normalizeFuncName("VLOOKUP")]
+	spec, _ := funcSpecForName("VLOOKUP")
+	got, err := callFuncWithSpec("VLOOKUP", fn, spec, []Value{lookupValue, lookupTable, NumberVal(2), BoolVal(false)}, ctx)
+	if err != nil {
+		t.Fatalf("callFuncWithSpec: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "west" {
+		t.Errorf("expected scalar 'west', got %v", got)
+	}
+}
+
 func TestHLOOKUP(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
@@ -3136,8 +3218,10 @@ func TestTrimmedRangeOriginShapeFunctions(t *testing.T) {
 			got: func() (Value, error) {
 				return fnUNIQUE([]Value{trimmedRow})
 			},
+			// UNIQUE normalises anonymous-array blanks to empty strings so
+			// downstream COUNTA/COUNT match Excel's spill semantics.
 			want: Value{Type: ValueArray, Array: [][]Value{{
-				NumberVal(7), EmptyVal(), EmptyVal(),
+				NumberVal(7), StringVal(""), StringVal(""),
 			}}},
 		},
 		{
@@ -5530,7 +5614,9 @@ func TestUNIQUE_Booleans(t *testing.T) {
 }
 
 func TestUNIQUE_EmptyHandling(t *testing.T) {
-	// UNIQUE with empty values — empties are equal to each other
+	// UNIQUE with empty values — empties dedup together and render as
+	// empty strings in the spill output, matching Excel's behavior where
+	// COUNTA counts them but COUNT does not.
 	got, err := fnUNIQUE([]Value{{
 		Type:  ValueArray,
 		Array: [][]Value{{EmptyVal()}, {NumberVal(1)}, {EmptyVal()}, {NumberVal(2)}},
@@ -5541,8 +5627,8 @@ func TestUNIQUE_EmptyHandling(t *testing.T) {
 	if got.Type != ValueArray || len(got.Array) != 3 {
 		t.Fatalf("expected 3 rows, got %v (rows=%d)", got.Type, len(got.Array))
 	}
-	if got.Array[0][0].Type != ValueEmpty {
-		t.Errorf("[0]: got type %v, want empty", got.Array[0][0].Type)
+	if got.Array[0][0].Type != ValueString || got.Array[0][0].Str != "" {
+		t.Errorf("[0]: got %v, want empty string", got.Array[0][0])
 	}
 	if got.Array[1][0].Num != 1 {
 		t.Errorf("[1]: got %v, want 1", got.Array[1][0])
@@ -5922,6 +6008,34 @@ func TestFILTER_NoneMatchWithIfEmpty(t *testing.T) {
 	}
 }
 
+func TestFILTER_ErrorInCriterionSpillsErrorGrid(t *testing.T) {
+	// FILTER({1;2;3}, {TRUE;#N/A;TRUE}) should NOT short-circuit to a
+	// scalar error — Excel spills the error across the value shape so
+	// COUNTA sees 3 cells and SUM propagates.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {ErrorVal(ErrValNA)}, {BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected ValueArray, got %v", got.Type)
+	}
+	if len(got.Array) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(got.Array))
+	}
+	for i, row := range got.Array {
+		if len(row) != 1 || row[0].Type != ValueError || row[0].Err != ErrValNA {
+			t.Errorf("row %d: want #N/A, got %v", i, row[0])
+		}
+	}
+}
+
 func TestFILTER_NoneMatchWithoutIfEmpty(t *testing.T) {
 	// FILTER({1;2;3}, {0;0;0}) = #CALC!
 	got, err := fnFILTER([]Value{
@@ -6006,7 +6120,9 @@ func TestFILTER_StringValues(t *testing.T) {
 }
 
 func TestFILTER_ErrorInInclude(t *testing.T) {
-	// Error in include array propagates immediately.
+	// Excel spills the first error across the value shape instead of
+	// collapsing to a scalar — so COUNTA sees one cell per value-row and
+	// SUM propagates.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
@@ -6018,8 +6134,13 @@ func TestFILTER_ErrorInInclude(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fnFILTER: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValDIV0 {
-		t.Errorf("got %v, want #DIV/0!", got)
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("want 3-row error spill, got %v", got)
+	}
+	for i, row := range got.Array {
+		if len(row) != 1 || row[0].Type != ValueError || row[0].Err != ErrValDIV0 {
+			t.Errorf("row %d: want #DIV/0!, got %v", i, row[0])
+		}
 	}
 }
 
@@ -6565,7 +6686,9 @@ func TestFILTER_ColumnFilterIfEmpty(t *testing.T) {
 }
 
 func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
-	// Error in column include array propagates
+	// Excel spills the first error across the value shape in column-filter
+	// mode too, so downstream aggregators see per-cell errors rather than
+	// a collapsed scalar.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1), NumberVal(2), NumberVal(3)},
@@ -6577,8 +6700,13 @@ func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fnFILTER: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValNUM {
-		t.Errorf("got %v, want #NUM!", got)
+	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("want 1x3 error spill, got %v", got)
+	}
+	for i, cell := range got.Array[0] {
+		if cell.Type != ValueError || cell.Err != ErrValNUM {
+			t.Errorf("col %d: want #NUM!, got %v", i, cell)
+		}
 	}
 }
 

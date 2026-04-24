@@ -24,6 +24,8 @@ type criteriaEvalRequest struct {
 type criteriaValueSource struct {
 	scalar *Value
 	grid   Grid
+	rows   int
+	cols   int
 }
 
 type criteriaPreparedPair struct {
@@ -277,9 +279,10 @@ func evalCriteriaScalar(
 ) Value {
 	rows, cols := scanSource.dims()
 	acc := criteriaAccumulator{reduce: reduce}
+	iterRows, iterCols := criteriaMaterializedBounds(rows, cols, scanSource, resultSource, pairs)
 
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
+	for r := 0; r < iterRows; r++ {
+		for c := 0; c < iterCols; c++ {
 			if !criteriaMatchesAll(pairs, r, c, criteriaRow, criteriaCol) {
 				continue
 			}
@@ -289,7 +292,44 @@ func evalCriteriaScalar(
 		}
 	}
 
+	if tailCells := rows*cols - iterRows*iterCols; tailCells > 0 &&
+		criteriaMatchesAllEmpty(pairs, criteriaRow, criteriaCol) {
+		if errVal := acc.includeRepeated(resultSource.tailCell(), tailCells); errVal != nil {
+			return *errVal
+		}
+	}
+
 	return acc.result()
+}
+
+func criteriaMaterializedBounds(
+	logicalRows int,
+	logicalCols int,
+	scanSource criteriaValueSource,
+	resultSource criteriaValueSource,
+	pairs []criteriaPreparedPair,
+) (rows, cols int) {
+	rows, cols = scanSource.materializedDims()
+	expand := func(source criteriaValueSource) {
+		r, c := source.materializedDims()
+		if r > rows {
+			rows = r
+		}
+		if c > cols {
+			cols = c
+		}
+	}
+	expand(resultSource)
+	for _, pair := range pairs {
+		expand(pair.rangeSource)
+	}
+	if rows > logicalRows {
+		rows = logicalRows
+	}
+	if cols > logicalCols {
+		cols = logicalCols
+	}
+	return rows, cols
 }
 
 func criteriaMatchesAll(
@@ -304,6 +344,19 @@ func criteriaMatchesAll(
 			pair.rangeSource.alignedCell(rangeRow, rangeCol),
 			pair.criteriaSource.broadcastCell(criteriaRow, criteriaCol),
 		) {
+			return false
+		}
+	}
+	return true
+}
+
+func criteriaMatchesAllEmpty(
+	pairs []criteriaPreparedPair,
+	criteriaRow int,
+	criteriaCol int,
+) bool {
+	for _, pair := range pairs {
+		if !MatchesCriteria(EmptyVal(), pair.criteriaSource.broadcastCell(criteriaRow, criteriaCol)) {
 			return false
 		}
 	}
@@ -325,9 +378,41 @@ func (a *criteriaAccumulator) include(v Value) *Value {
 		if v.Type == ValueError {
 			return &v
 		}
+		if v.Type == ValueEmpty {
+			return nil
+		}
 		if n, err := CoerceNum(v); err == nil {
 			a.sum += n
 			a.count++
+		}
+	}
+	return nil
+}
+
+func (a *criteriaAccumulator) includeRepeated(v Value, n int) *Value {
+	if n <= 0 {
+		return nil
+	}
+	switch a.reduce {
+	case criteriaReduceCount:
+		a.count += n
+	case criteriaReduceSum:
+		if v.Type == ValueError {
+			return &v
+		}
+		if num, err := CoerceNum(v); err == nil {
+			a.sum += num * float64(n)
+		}
+	case criteriaReduceAverage:
+		if v.Type == ValueError {
+			return &v
+		}
+		if v.Type == ValueEmpty {
+			return nil
+		}
+		if num, err := CoerceNum(v); err == nil {
+			a.sum += num * float64(n)
+			a.count += n
 		}
 	}
 	return nil
@@ -359,11 +444,24 @@ func newCriteriaValueSource(v EvalValue) criteriaValueSource {
 		return criteriaValueSource{scalar: &scalar}
 	case EvalArray:
 		if v.Array == nil {
-			return criteriaValueSource{grid: newLegacyValueGrid(nil)}
+			return criteriaValueSource{}
 		}
-		return criteriaValueSource{grid: v.Array.Grid}
+		return criteriaValueSource{
+			grid: v.Array.Grid,
+			rows: v.Array.Rows,
+			cols: v.Array.Cols,
+		}
 	case EvalRef:
-		return criteriaValueSource{grid: criteriaRefGrid(v.Ref)}
+		rows, cols := 0, 0
+		if v.Ref != nil {
+			rows = v.Ref.ToRow - v.Ref.FromRow + 1
+			cols = v.Ref.ToCol - v.Ref.FromCol + 1
+		}
+		return criteriaValueSource{
+			grid: criteriaRefGrid(v.Ref),
+			rows: rows,
+			cols: cols,
+		}
 	default:
 		scalar := EmptyVal()
 		return criteriaValueSource{scalar: &scalar}
@@ -391,6 +489,19 @@ func (s criteriaValueSource) dims() (rows, cols int) {
 	if s.scalar != nil {
 		return 1, 1
 	}
+	if s.rows != 0 || s.cols != 0 {
+		return s.rows, s.cols
+	}
+	if s.grid == nil {
+		return 0, 0
+	}
+	return s.grid.Rows(), s.grid.Cols()
+}
+
+func (s criteriaValueSource) materializedDims() (rows, cols int) {
+	if s.scalar != nil {
+		return 1, 1
+	}
 	if s.grid == nil {
 		return 0, 0
 	}
@@ -405,7 +516,7 @@ func (s criteriaValueSource) alignedCell(row, col int) Value {
 	if row < 0 || col < 0 || row >= rows || col >= cols {
 		return EmptyVal()
 	}
-	return EvalValueToValue(s.grid.Cell(row, col))
+	return s.materializedCell(row, col, EmptyVal())
 }
 
 func (s criteriaValueSource) broadcastCell(row, col int) Value {
@@ -415,6 +526,23 @@ func (s criteriaValueSource) broadcastCell(row, col int) Value {
 	rows, cols := s.dims()
 	if row < 0 || col < 0 || row >= rows || col >= cols {
 		return ErrorVal(ErrValNA)
+	}
+	return s.materializedCell(row, col, EmptyVal())
+}
+
+func (s criteriaValueSource) tailCell() Value {
+	if s.scalar != nil {
+		return *s.scalar
+	}
+	return EmptyVal()
+}
+
+func (s criteriaValueSource) materializedCell(row, col int, fallback Value) Value {
+	if s.grid == nil {
+		return fallback
+	}
+	if row >= s.grid.Rows() || col >= s.grid.Cols() {
+		return fallback
 	}
 	return EvalValueToValue(s.grid.Cell(row, col))
 }

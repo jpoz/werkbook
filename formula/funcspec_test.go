@@ -107,6 +107,96 @@ func TestDirectRangeReducerFuncSpecs(t *testing.T) {
 	}
 }
 
+func TestCriteriaFuncSpecs(t *testing.T) {
+	tests := []struct {
+		name string
+		want []ArgSpec
+	}{
+		{
+			name: "COUNTIF",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "SUMIF",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "AVERAGEIF",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "COUNTIFS",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "SUMIFS",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "AVERAGEIFS",
+			want: []ArgSpec{
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, ok := funcSpecForName(tt.name)
+			if !ok {
+				t.Fatalf("FuncSpec missing for %s", tt.name)
+			}
+			if spec.Kind != FnKindReduction {
+				t.Fatalf("Kind = %v, want %v", spec.Kind, FnKindReduction)
+			}
+			if spec.Return != ReturnModePassThrough {
+				t.Fatalf("Return = %v, want %v", spec.Return, ReturnModePassThrough)
+			}
+			if spec.Eval == nil {
+				t.Fatalf("Eval = nil for %s", tt.name)
+			}
+			if !functionCanReturnArrayFromArrayArgs(tt.name) {
+				t.Fatalf("functionCanReturnArrayFromArrayArgs(%q) = false, want true", tt.name)
+			}
+			for i, want := range tt.want {
+				got, ok := funcArgSpec(spec, i)
+				if !ok {
+					t.Fatalf("missing arg contract for %s arg %d", tt.name, i)
+				}
+				if got != want {
+					t.Fatalf("arg %d = %+v, want %+v", i, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestUnaryInfoFuncSpecParity(t *testing.T) {
 	scalarCtx := &EvalContext{
 		CurrentCol:     5,
@@ -577,6 +667,543 @@ func TestDirectRangeReducerFuncSpecParity(t *testing.T) {
 						t.Fatalf("loaded arg %d = %#v, want EvalRef", i, loaded)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestCriteriaFuncSpecParity(t *testing.T) {
+	boundedTextRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("apple")},
+			{StringVal("pear")},
+			{StringVal("apple")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 1,
+			ToCol:   1,
+			ToRow:   3,
+		},
+	}
+	boundedValueRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+			{NumberVal(30)},
+			{NumberVal(40)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 2,
+			FromRow: 1,
+			ToCol:   2,
+			ToRow:   4,
+		},
+	}
+	fullColumnCriteriaRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("East")},
+			{StringVal("West")},
+			{StringVal("East")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 3,
+			FromRow: 1,
+			ToCol:   3,
+			ToRow:   maxRows,
+		},
+	}
+	fullColumnSumRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+			{NumberVal(30)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 4,
+			FromRow: 1,
+			ToCol:   4,
+			ToRow:   maxRows,
+		},
+	}
+	boundedRegionRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("East")},
+			{StringVal("West")},
+			{StringVal("East")},
+			{StringVal("West")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 5,
+			FromRow: 1,
+			ToCol:   5,
+			ToRow:   4,
+		},
+	}
+	boundedStatusRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("Open")},
+			{StringVal("Open")},
+			{StringVal("Closed")},
+			{StringVal("Open")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 6,
+			FromRow: 1,
+			ToCol:   6,
+			ToRow:   4,
+		},
+	}
+	fullRowAverageRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(10), NumberVal(20), ErrorVal(ErrValDIV0)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 9,
+			ToCol:   maxCols,
+			ToRow:   9,
+		},
+	}
+	fullRowRegionRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("East"), StringVal("East"), StringVal("East")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 10,
+			ToCol:   maxCols,
+			ToRow:   10,
+		},
+	}
+	fullRowStatusRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("Open"), StringVal("Open"), StringVal("Closed")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 11,
+			ToCol:   maxCols,
+			ToRow:   11,
+		},
+	}
+
+	tests := []struct {
+		caseName string
+		name     string
+		args     []Value
+		want     Value
+	}{
+		{
+			caseName: "bounded_range_scalar_criteria",
+			name:     "COUNTIF",
+			args:     []Value{boundedTextRange, StringVal("apple")},
+			want:     NumberVal(2),
+		},
+		{
+			caseName: "array_criteria_broadcast",
+			name:     "COUNTIF",
+			args: []Value{
+				boundedTextRange,
+				{Type: ValueArray, Array: [][]Value{{StringVal("apple"), StringVal("pear")}}},
+			},
+			want: Value{Type: ValueArray, Array: [][]Value{{NumberVal(2), NumberVal(1)}}},
+		},
+		{
+			caseName: "full_column_trimmed_ref",
+			name:     "SUMIF",
+			args:     []Value{fullColumnCriteriaRange, StringVal("East"), fullColumnSumRange},
+			want:     NumberVal(40),
+		},
+		{
+			caseName: "array_criteria_broadcast",
+			name:     "SUMIF",
+			args: []Value{
+				fullColumnCriteriaRange,
+				{Type: ValueArray, Array: [][]Value{{StringVal("East"), StringVal("West")}}},
+				fullColumnSumRange,
+			},
+			want: Value{Type: ValueArray, Array: [][]Value{{NumberVal(40), NumberVal(20)}}},
+		},
+		{
+			caseName: "bounded_range_with_sum_range",
+			name:     "AVERAGEIF",
+			args: []Value{
+				boundedRegionRange,
+				StringVal("East"),
+				boundedValueRange,
+			},
+			want: NumberVal(20),
+		},
+		{
+			caseName: "mixed_scalar_and_array_criteria",
+			name:     "COUNTIFS",
+			args: []Value{
+				boundedRegionRange,
+				{Type: ValueArray, Array: [][]Value{{StringVal("East"), StringVal("West")}}},
+				boundedStatusRange,
+				StringVal("Open"),
+			},
+			want: Value{Type: ValueArray, Array: [][]Value{{NumberVal(1), NumberVal(2)}}},
+		},
+		{
+			caseName: "mixed_scalar_and_array_criteria",
+			name:     "SUMIFS",
+			args: []Value{
+				boundedValueRange,
+				boundedRegionRange,
+				{Type: ValueArray, Array: [][]Value{{StringVal("East"), StringVal("West")}}},
+				boundedStatusRange,
+				StringVal("Open"),
+			},
+			want: Value{Type: ValueArray, Array: [][]Value{{NumberVal(10), NumberVal(60)}}},
+		},
+		{
+			caseName: "full_row_trimmed_ref_matched_error",
+			name:     "AVERAGEIFS",
+			args: []Value{
+				fullRowAverageRange,
+				fullRowRegionRange,
+				StringVal("East"),
+				fullRowStatusRange,
+				StringVal("Closed"),
+			},
+			want: ErrorVal(ErrValDIV0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+"_"+tt.caseName, func(t *testing.T) {
+			fn := registry[normalizeFuncName(tt.name)]
+			if fn == nil {
+				t.Fatalf("function %s not registered", tt.name)
+			}
+			spec, ok := funcSpecForName(tt.name)
+			if !ok {
+				t.Fatalf("FuncSpec missing for %s", tt.name)
+			}
+
+			legacy, err := fn(tt.args, nil)
+			if err != nil {
+				t.Fatalf("legacy call: %v", err)
+			}
+			got, err := callFuncWithSpec(tt.name, fn, spec, tt.args, nil)
+			if err != nil {
+				t.Fatalf("contract call: %v", err)
+			}
+
+			assertLookupValueEqual(t, got, legacy)
+			assertLookupValueEqual(t, got, tt.want)
+
+			for i, arg := range tt.args {
+				argSpec, ok := funcArgSpec(spec, i)
+				if !ok {
+					continue
+				}
+				if argSpec.Load != ArgLoadDirectRange || arg.Type != ValueArray || arg.RangeOrigin == nil {
+					continue
+				}
+				loaded := loadEvalFuncArg(argSpec, arg, nil)
+				if loaded.Kind != EvalRef || loaded.Ref == nil {
+					t.Fatalf("loaded arg %d = %#v, want EvalRef", i, loaded)
+				}
+			}
+		})
+	}
+}
+
+func TestLookupFamilyFuncSpecs(t *testing.T) {
+	tests := []struct {
+		name     string
+		wantArgs []ArgSpec
+	}{
+		{
+			name: "XLOOKUP",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "XMATCH",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, ok := funcSpecForName(tt.name)
+			if !ok {
+				t.Fatalf("FuncSpec missing for %s", tt.name)
+			}
+			if spec.Kind != FnKindLookupArrayLift {
+				t.Fatalf("Kind = %v, want %v", spec.Kind, FnKindLookupArrayLift)
+			}
+			if spec.Return != ReturnModePassThrough {
+				t.Fatalf("Return = %v, want %v", spec.Return, ReturnModePassThrough)
+			}
+			if spec.Eval != nil {
+				t.Fatalf("Eval should be nil (shadow mode) for %s", tt.name)
+			}
+			for i, want := range tt.wantArgs {
+				got, ok := funcArgSpec(spec, i)
+				if !ok {
+					t.Fatalf("missing arg contract for %s arg %d", tt.name, i)
+				}
+				if got != want {
+					t.Fatalf("%s arg %d = %+v, want %+v", tt.name, i, got, want)
+				}
+			}
+			// Trailing varargs should also pass through so optional
+			// match_mode/search_mode/if_not_found scalars are not intersected.
+			extra, ok := funcArgSpec(spec, len(tt.wantArgs))
+			if !ok {
+				t.Fatalf("missing VarArg contract for %s", tt.name)
+			}
+			if extra.Load != ArgLoadPassthrough || extra.Adapt != ArgAdaptPassThrough {
+				t.Fatalf("VarArg for %s = %+v, want passthrough/passthrough", tt.name, extra)
+			}
+			// The legacy pre-intersect gate must skip spec-registered callees.
+			if functionNeedsLegacyElementwisePreIntersect(tt.name) {
+				t.Fatalf("functionNeedsLegacyElementwisePreIntersect(%q) = true, want false", tt.name)
+			}
+		})
+	}
+}
+
+func TestLookupFamilyFuncSpecParity(t *testing.T) {
+	// Test context simulates a formula at Sheet1!B2 in a non-array cell.
+	scalarCtxB2 := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+	// Test context simulates a formula at Sheet1!B7 (for the SUM(XMATCH(...))
+	// divergence where the anchor is on row 7).
+	scalarCtxB7 := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     7,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: false,
+	}
+	// Array-formula / CSE context: LegacyIntersectRef must NOT intersect.
+	arrayCtxB2 := &EvalContext{
+		CurrentCol:     2,
+		CurrentRow:     2,
+		CurrentSheet:   "Sheet1",
+		IsArrayFormula: true,
+	}
+
+	// Shared lookup table: keys {A, B, C, D, E} → labels.
+	lookupKeys := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A")},
+			{StringVal("B")},
+			{StringVal("C")},
+			{StringVal("D")},
+			{StringVal("E")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 10, FromRow: 2, ToCol: 10, ToRow: 6,
+		},
+	}
+	lookupLabels := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A-label")},
+			{StringVal("B-label")},
+			{StringVal("C-label")},
+			{StringVal("D-label")},
+			{StringVal("E-label")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 11, FromRow: 2, ToCol: 11, ToRow: 6,
+		},
+	}
+
+	// 10-row range-backed array mimicking a full column of categories in the
+	// spill_functions_10k fixture — periodic A,B,C,D,E starting at row 2.
+	catRows := make([][]Value, 10)
+	cats := []string{"A", "B", "C", "D", "E"}
+	for i := 0; i < 10; i++ {
+		catRows[i] = []Value{StringVal(cats[i%5])}
+	}
+	categoryColumn := Value{
+		Type:  ValueArray,
+		Array: catRows,
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 3, FromRow: 2, ToCol: 3, ToRow: 11,
+		},
+	}
+
+	// Anonymous (non-range) array: LegacyIntersectRef should pass through.
+	anonArrayArg0 := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("C")},
+		},
+	}
+
+	type scenario struct {
+		name      string
+		ctx       *EvalContext
+		fnName    string
+		args      []Value
+		want      Value
+		wantMatch string // describes what we expect re: legacy-vs-contract behaviour
+	}
+
+	scenarios := []scenario{
+		{
+			// Covers spill_functions_10k/05_xlookup_xmatch_10k.xlsx B2.
+			// Non-array context with a range-backed array arg 0; the adapter
+			// intersects to the current-row cell (B2 → row 2 → "A") and
+			// XLOOKUP returns the scalar "A-label".
+			name:      "xlookup_range_arg0_intersects_at_row_2",
+			ctx:       scalarCtxB2,
+			fnName:    "XLOOKUP",
+			args:      []Value{categoryColumn, lookupKeys, lookupLabels},
+			want:      StringVal("A-label"),
+			wantMatch: "differs_from_legacy",
+		},
+		{
+			// Same column, different evaluation row — row 7 intersects to the
+			// 6th element in catRows (i=5) which is "A" again (periodic mod 5).
+			name:      "xlookup_range_arg0_intersects_at_row_7",
+			ctx:       scalarCtxB7,
+			fnName:    "XLOOKUP",
+			args:      []Value{categoryColumn, lookupKeys, lookupLabels},
+			want:      StringVal("A-label"),
+			wantMatch: "differs_from_legacy",
+		},
+		{
+			// Covers spill_functions_10k/05_xlookup_xmatch_10k.xlsx B7.
+			// Outer SUM wraps the XMATCH in the fixture, but at the XMATCH call
+			// site the relevant ctx is still scalar (B7) — the adapter
+			// intersects "A" out of the category column and XMATCH returns 1.
+			name:      "xmatch_range_arg0_intersects_to_position_1",
+			ctx:       scalarCtxB7,
+			fnName:    "XMATCH",
+			args:      []Value{categoryColumn, lookupKeys},
+			want:      NumberVal(1),
+			wantMatch: "differs_from_legacy",
+		},
+		{
+			name:      "xlookup_scalar_arg0_no_intersection_needed",
+			ctx:       scalarCtxB2,
+			fnName:    "XLOOKUP",
+			args:      []Value{StringVal("C"), lookupKeys, lookupLabels},
+			want:      StringVal("C-label"),
+			wantMatch: "same_as_legacy",
+		},
+		{
+			name:      "xmatch_scalar_arg0_no_intersection_needed",
+			ctx:       scalarCtxB2,
+			fnName:    "XMATCH",
+			args:      []Value{StringVal("D"), lookupKeys},
+			want:      NumberVal(4),
+			wantMatch: "same_as_legacy",
+		},
+		{
+			// Anonymous arrays (no RangeOrigin) are now scalarized to their
+			// top-left cell via ArgAdaptScalarizeAny — matching Excel's
+			// legacy implicit intersection for the inline-array case. The
+			// single-cell {{"C"}} collapses to "C" and XLOOKUP finds it.
+			name:      "xlookup_anonymous_array_arg0_scalarizes_top_left",
+			ctx:       scalarCtxB2,
+			fnName:    "XLOOKUP",
+			args:      []Value{anonArrayArg0, lookupKeys, lookupLabels},
+			want:      StringVal("C-label"),
+			wantMatch: "differs_from_legacy",
+		},
+		{
+			// Inside an explicit array formula (CSE) LegacyIntersectRef does
+			// not intersect, so the whole lookup_value array reaches the
+			// FnKindLookupArrayLift dispatch, which fans it out per-element
+			// and assembles an array of results — one label per category.
+			name:   "xlookup_array_formula_ctx_fans_out_per_element",
+			ctx:    arrayCtxB2,
+			fnName: "XLOOKUP",
+			args:   []Value{categoryColumn, lookupKeys, lookupLabels},
+			want: Value{
+				Type: ValueArray,
+				Array: [][]Value{
+					{StringVal("A-label")},
+					{StringVal("B-label")},
+					{StringVal("C-label")},
+					{StringVal("D-label")},
+					{StringVal("E-label")},
+					{StringVal("A-label")},
+					{StringVal("B-label")},
+					{StringVal("C-label")},
+					{StringVal("D-label")},
+					{StringVal("E-label")},
+				},
+			},
+			wantMatch: "differs_from_legacy",
+		},
+	}
+
+	for _, tt := range scenarios {
+		t.Run(tt.name, func(t *testing.T) {
+			fn := registry[normalizeFuncName(tt.fnName)]
+			if fn == nil {
+				t.Fatalf("function %s not registered", tt.fnName)
+			}
+			spec, ok := funcSpecForName(tt.fnName)
+			if !ok {
+				t.Fatalf("FuncSpec missing for %s", tt.fnName)
+			}
+
+			legacyArgs := make([]Value, len(tt.args))
+			copy(legacyArgs, tt.args)
+			legacy, err := fn(legacyArgs, tt.ctx)
+			if err != nil {
+				t.Fatalf("legacy call: %v", err)
+			}
+
+			gotArgs := make([]Value, len(tt.args))
+			copy(gotArgs, tt.args)
+			got, err := callFuncWithSpec(tt.fnName, fn, spec, gotArgs, tt.ctx)
+			if err != nil {
+				t.Fatalf("contract call: %v", err)
+			}
+
+			assertLookupValueEqual(t, got, tt.want)
+
+			switch tt.wantMatch {
+			case "same_as_legacy":
+				assertLookupValueEqual(t, got, legacy)
+			case "differs_from_legacy":
+				if legacy.Type == got.Type && legacy.Type == ValueError && legacy.Err == got.Err {
+					t.Fatalf("expected contract to fix divergence but legacy=%v matched contract=%v", legacy, got)
+				}
+			default:
+				t.Fatalf("unknown wantMatch %q", tt.wantMatch)
 			}
 		})
 	}

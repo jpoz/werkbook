@@ -11,8 +11,8 @@ func init() {
 	RegisterWithSpec("AVERAGE", NoCtx(fnAVERAGE), directRangeReducerFuncSpec(evalAVERAGEDirectRange))
 	Register("AVERAGEA", NoCtx(fnAVERAGEA))
 	RegisterWithSpec("AVEDEV", NoCtx(fnAVEDEV), directRangeReducerFuncSpec(evalAVEDEVDirectRange))
-	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
-	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
+	RegisterWithSpec("AVERAGEIF", NoCtx(fnAVERAGEIF), criteriaSingleIfAggregateFuncSpec(evalAVERAGEIFCriteria))
+	RegisterWithSpec("AVERAGEIFS", NoCtx(fnAVERAGEIFS), criteriaPairsAggregateFuncSpec(evalAVERAGEIFSCriteria))
 	RegisterWithSpec("COUNT", NoCtx(fnCOUNT), directRangeReducerFuncSpec(evalCOUNTDirectRange))
 	RegisterWithSpec("COUNTA", NoCtx(fnCOUNTA), directRangeReducerFuncSpec(evalCOUNTADirectRange))
 	Register("CORREL", NoCtx(fnCORREL))
@@ -23,8 +23,8 @@ func init() {
 	Register("COVARIANCE.S", NoCtx(fnCOVARIANCES))
 	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
-	Register("COUNTIF", NoCtx(fnCOUNTIF))
-	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
+	RegisterWithSpec("COUNTIF", NoCtx(fnCOUNTIF), criteriaSingleIfFuncSpec(evalCOUNTIFCriteria))
+	RegisterWithSpec("COUNTIFS", NoCtx(fnCOUNTIFS), criteriaPairsFuncSpec(evalCOUNTIFSCriteria))
 	RegisterWithSpec("DEVSQ", NoCtx(fnDEVSQ), directRangeReducerFuncSpec(evalDEVSQDirectRange))
 	Register("FISHER", NoCtx(fnFISHER))
 	Register("FREQUENCY", NoCtx(fnFREQUENCY))
@@ -73,8 +73,8 @@ func init() {
 	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
 	Register("STEYX", NoCtx(fnSTEYX))
 	RegisterWithSpec("SUM", NoCtx(fnSUM), directRangeReducerFuncSpec(evalSUMDirectRange))
-	Register("SUMIF", NoCtx(fnSUMIF))
-	Register("SUMIFS", NoCtx(fnSUMIFS))
+	RegisterWithSpec("SUMIF", NoCtx(fnSUMIF), criteriaSingleIfAggregateFuncSpec(evalSUMIFCriteria))
+	RegisterWithSpec("SUMIFS", NoCtx(fnSUMIFS), criteriaPairsAggregateFuncSpec(evalSUMIFSCriteria))
 	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
 	RegisterWithSpec("SUMSQ", NoCtx(fnSUMSQ), directRangeReducerFuncSpec(evalSUMSQDirectRange))
 	RegisterWithSpec("VAR", NoCtx(fnVAR), directRangeReducerFuncSpec(evalVARDirectRange))
@@ -537,8 +537,10 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 	arg := args[0]
 	switch arg.Type {
 	case ValueArray:
-		for _, row := range arg.Array {
-			for _, cell := range row {
+		rows, cols := effectiveArrayBounds(arg)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				cell := arrayElementDirect(arg, rows, cols, r, c)
 				if cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "") {
 					count++
 				}
@@ -612,6 +614,12 @@ func MatchesCriteria(v Value, criteria Value) bool {
 			if n, err := strconv.ParseFloat(v.Str, 64); err == nil {
 				return n == criteria.Num
 			}
+			// Excel coerces date-like text to its serial when matching a
+			// numeric (date) criterion: DATE(2024,1,1) matches the text
+			// cell "2024-01-01" as well as the numeric serial 45292.
+			if serial, _, ok := parseDateTimeString(v.Str); ok {
+				return serial == criteria.Num
+			}
 		}
 		return false
 	}
@@ -625,6 +633,20 @@ func MatchesCriteria(v Value, criteria Value) bool {
 	}
 	if upper == "FALSE" {
 		return v.Type == ValueBool && !v.Bool
+	}
+
+	// Date-text criterion: if the criterion parses as a date, allow
+	// cross-type matching so "2024-01-01" matches the numeric serial
+	// 45292 and vice versa.
+	if serial, _, ok := parseDateTimeString(critStr); ok {
+		if v.Type == ValueNumber && serial == v.Num {
+			return true
+		}
+		if v.Type == ValueString {
+			if vSerial, _, ok := parseDateTimeString(v.Str); ok && serial == vSerial {
+				return true
+			}
+		}
 	}
 
 	// Other string criteria: use case-insensitive comparison.

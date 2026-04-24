@@ -2052,6 +2052,45 @@ func TestEvalCOUNTBLANKPadding(t *testing.T) {
 	}
 }
 
+func TestEvalCOUNTBLANKFullColumnCountsLogicalBlanks(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 3}: NumberVal(2),
+		},
+	}
+
+	cf := evalCompile(t, "COUNTBLANK(A:A)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval(COUNTBLANK(A:A)): %v", err)
+	}
+	want := float64(maxRows - 2)
+	if got.Type != ValueNumber || got.Num != want {
+		t.Errorf("COUNTBLANK(A:A) = %v (%g), want %g", got.Type, got.Num, want)
+	}
+}
+
+func TestEvalCOUNTIFFullColumnCountsLogicalBlanksForNotEqualZero(t *testing.T) {
+	resolver := &sparseResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(0),
+			{Col: 1, Row: 3}: NumberVal(0),
+		},
+	}
+
+	cf := evalCompile(t, `COUNTIF(A:A,"<>0")`)
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf(`Eval(COUNTIF(A:A,"<>0")): %v`, err)
+	}
+	want := float64(maxRows - 2)
+	if got.Type != ValueNumber || got.Num != want {
+		t.Errorf(`COUNTIF(A:A,"<>0") = %v (%g), want %g`, got.Type, got.Num, want)
+	}
+}
+
 func TestEvalOversizedBoundedRangeReturnsREF(t *testing.T) {
 	resolver := &panicRangeResolver{}
 
@@ -2555,6 +2594,59 @@ func TestEvalIFERRORImplicitIntersection(t *testing.T) {
 	}
 	if got2.Type != ValueNumber || got2.Num != -1 {
 		t.Errorf("SUM(IFERROR(A1:A5, -1)) at row 2 = %v (%g), want -1", got2.Type, got2.Num)
+	}
+}
+
+// TestEvalIFErrorAndIFNARetainAnonymousArrayFallbacks guards the
+// OpImplicitIntersectRefOnly path: in a normal scalar formula cell, IFERROR
+// / IFNA should still leave anonymous fallback arrays intact so wrappers like
+// ROWS/SUM see the full SEQUENCE(5), not just its top-left cell.
+func TestEvalIFErrorAndIFNARetainAnonymousArrayFallbacks(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: NumberVal(3),
+		},
+	}
+	ctx := &EvalContext{CurrentCol: 4, CurrentRow: 2, CurrentSheet: "Sheet1"}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{
+			name:    "rows_iferror_filter_empty_fallback_sequence",
+			formula: `ROWS(IFERROR(FILTER(A1:A3,A1:A3=0),SEQUENCE(5)))`,
+			want:    NumberVal(5),
+		},
+		{
+			name:    "sum_iferror_filter_empty_fallback_sequence",
+			formula: `SUM(IFERROR(FILTER(A1:A3,A1:A3=0),SEQUENCE(5)))`,
+			want:    NumberVal(15),
+		},
+		{
+			name:    "rows_ifna_fallback_sequence",
+			formula: `ROWS(IFNA(#N/A,SEQUENCE(5)))`,
+			want:    NumberVal(5),
+		},
+		{
+			name:    "sum_ifna_fallback_sequence",
+			formula: `SUM(IFNA(#N/A,SEQUENCE(5)))`,
+			want:    NumberVal(15),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
 	}
 }
 

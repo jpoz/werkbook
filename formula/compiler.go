@@ -557,6 +557,14 @@ func funcCallNeedsSpillProbe(call *FuncCall) bool {
 	if _, ok := dynamicArrayFunctions[name]; ok {
 		return true
 	}
+	if indices, ok := criteriaSpillProbeArgIndexes(name, len(call.Args)); ok {
+		for _, idx := range indices {
+			if formulaNeedsSpillProbe(call.Args[idx]) {
+				return true
+			}
+		}
+		return false
+	}
 	if !functionCanReturnArrayFromArrayArgs(name) {
 		return false
 	}
@@ -568,11 +576,39 @@ func funcCallNeedsSpillProbe(call *FuncCall) bool {
 	return false
 }
 
+func criteriaSpillProbeArgIndexes(name string, argc int) ([]int, bool) {
+	switch name {
+	case "COUNTIF", "SUMIF", "AVERAGEIF":
+		if argc >= 2 {
+			return []int{1}, true
+		}
+		return nil, true
+	case "COUNTIFS":
+		idxs := make([]int, 0, argc/2)
+		for i := 1; i < argc; i += 2 {
+			idxs = append(idxs, i)
+		}
+		return idxs, true
+	case "SUMIFS", "AVERAGEIFS":
+		idxs := make([]int, 0, argc/2)
+		for i := 2; i < argc; i += 2 {
+			idxs = append(idxs, i)
+		}
+		return idxs, true
+	default:
+		return nil, false
+	}
+}
+
 func functionCanReturnArrayFromArrayArgs(name string) bool {
 	if name == "IF" {
 		return true
 	}
 	if name == "INDEX" {
+		return true
+	}
+	switch name {
+	case "COUNTIF", "SUMIF", "AVERAGEIF", "COUNTIFS", "SUMIFS", "AVERAGEIFS":
 		return true
 	}
 	if functionUsesElementwiseContract(name) {
@@ -645,11 +681,25 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			if wasArrayCtx {
 				c.emit(OpLeaveArrayCtx, 0)
 			}
-			for _, arg := range n.Args {
+			for i, arg := range n.Args {
 				if err := c.compileNodeCtx(arg, false); err != nil {
 					return err
 				}
-				c.emit(OpImplicitIntersect, 0)
+				// Arg 0 collapses fully (legacy implicit intersection over
+				// range-backed and anonymous arrays alike) because Excel's
+				// IFERROR oracle for patterns like
+				//   SUM(IFERROR(MAP(...with-errors...), 0))
+				// shows MAP's anonymous output collapsed to its top-left
+				// cell. Arg 1 only intersects range-backed arrays so that
+				// anonymous fallbacks like SEQUENCE(5) keep their shape in
+				//   ROWS(IFERROR(FILTER(...empty...), SEQUENCE(5)))
+				// — otherwise the fallback array would collapse to its
+				// anchor scalar before reaching ROWS/SUM/etc.
+				if i == 0 {
+					c.emit(OpImplicitIntersect, 0)
+				} else {
+					c.emit(OpImplicitIntersectRefOnly, 0)
+				}
 			}
 			if wasArrayCtx {
 				c.emit(OpEnterArrayCtx, 0)

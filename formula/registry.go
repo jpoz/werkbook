@@ -18,6 +18,12 @@ const (
 	FnKindArrayNative
 	FnKindLookup
 	FnKindStateful
+	// FnKindLookupArrayLift is for lookup functions (VLOOKUP, HLOOKUP,
+	// MATCH, LOOKUP, XLOOKUP, XMATCH) where arg 0 is a semantically scalar
+	// "lookup_value" but Excel evaluates per-element when called in array
+	// context. The FuncSpec dispatch fans out arg 0 and invokes the function
+	// once per element, assembling an anonymous array of results.
+	FnKindLookupArrayLift
 )
 
 // FuncMeta stores registration-time metadata for a formula function.

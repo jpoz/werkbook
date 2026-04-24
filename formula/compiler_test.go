@@ -165,6 +165,7 @@ func TestCompileNeedsSpillProbe(t *testing.T) {
 		{"SUM(A:A)", false},
 		{"COUNT(A:A)", false},
 		{"SUMIF(A:A,\">0\")", false},
+		{"SUMIF(A:A,UNIQUE(B1:B3))", true},
 		{"MATCH(1,A:A,0)", false},
 		{"SUMPRODUCT(A1:A3*B1:B3)", false},
 	}
