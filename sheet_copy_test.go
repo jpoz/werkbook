@@ -1,9 +1,12 @@
 package werkbook
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/jpoz/werkbook/ooxml"
 )
 
 func TestCopySheetPreservesCellsAndMetadata(t *testing.T) {
@@ -288,6 +291,207 @@ func TestCloneSheetFromAnotherWorkbook(t *testing.T) {
 	}
 	if v.Type != TypeNumber || v.Number != 4 {
 		t.Fatalf("source B1 after destination edit = %#v, want 4", v)
+	}
+}
+
+func TestCopySheetPreservesPassthrough(t *testing.T) {
+	f := New(FirstSheet("Source"))
+	src := f.Sheet("Source")
+
+	// Simulate a sheet with passthrough metadata (as if read from a real xlsx).
+	src.rootAttrs = []ooxml.RawAttr{
+		{Name: "xmlns", Value: ooxml.NSSpreadsheetML},
+		{Name: "xmlns:r", Value: "http://schemas.openxmlformats.org/officeDocument/2006/relationships"},
+		{Name: "xmlns:mc", Value: "http://schemas.openxmlformats.org/markup-compatibility/2006"},
+		{Name: "mc:Ignorable", Value: "x14ac"},
+	}
+	src.extraElements = []ooxml.RawElement{
+		{Name: "conditionalFormatting", XML: `<conditionalFormatting sqref="B2"/>`, OrderKey: 32, Seq: 0},
+		{Name: "drawing", XML: `<drawing r:id="rId2"/>`, OrderKey: 58, Seq: 1},
+	}
+	src.extraRels = []ooxml.OpaqueRel{
+		{ID: "rId2", Type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing", Target: "../drawings/drawing1.xml"},
+		{ID: "rId3", Type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", Target: "https://example.com/", TargetMode: "External"},
+	}
+
+	// Add the opaque entry the drawing rel points to.
+	f.opaqueEntries = append(f.opaqueEntries, ooxml.OpaqueEntry{
+		Path:        "xl/drawings/drawing1.xml",
+		ContentType: "application/vnd.openxmlformats-officedocument.drawing+xml",
+		Data:        []byte("<drawing/>"),
+	})
+
+	copied, err := f.CopySheet("Source", "Copy")
+	if err != nil {
+		t.Fatalf("CopySheet: %v", err)
+	}
+
+	// Verify rootAttrs copied.
+	if len(copied.rootAttrs) != len(src.rootAttrs) {
+		t.Fatalf("rootAttrs len = %d, want %d", len(copied.rootAttrs), len(src.rootAttrs))
+	}
+	for i, want := range src.rootAttrs {
+		if copied.rootAttrs[i] != want {
+			t.Fatalf("rootAttrs[%d] = %+v, want %+v", i, copied.rootAttrs[i], want)
+		}
+	}
+
+	// Verify extraElements copied.
+	if len(copied.extraElements) != len(src.extraElements) {
+		t.Fatalf("extraElements len = %d, want %d", len(copied.extraElements), len(src.extraElements))
+	}
+	for i, want := range src.extraElements {
+		if copied.extraElements[i] != want {
+			t.Fatalf("extraElements[%d] = %+v, want %+v", i, copied.extraElements[i], want)
+		}
+	}
+
+	// Verify extraRels copied.
+	if len(copied.extraRels) != len(src.extraRels) {
+		t.Fatalf("extraRels len = %d, want %d", len(copied.extraRels), len(src.extraRels))
+	}
+	for i, want := range src.extraRels {
+		if copied.extraRels[i] != want {
+			t.Fatalf("extraRels[%d] = %+v, want %+v", i, copied.extraRels[i], want)
+		}
+	}
+
+	// Same-workbook clone should not duplicate opaque entries.
+	drawingCount := 0
+	for _, e := range f.opaqueEntries {
+		if e.Path == "xl/drawings/drawing1.xml" {
+			drawingCount++
+		}
+	}
+	if drawingCount != 1 {
+		t.Fatalf("expected 1 drawing entry, got %d (same-workbook clone should share)", drawingCount)
+	}
+
+	// Verify independence: mutating copied fields doesn't affect source.
+	copied.rootAttrs[0] = ooxml.RawAttr{Name: "mutated", Value: "yes"}
+	if src.rootAttrs[0].Name == "mutated" {
+		t.Fatal("mutating copied rootAttrs should not affect source")
+	}
+}
+
+func TestCloneSheetFromCrossWorkbookOpaqueEntries(t *testing.T) {
+	srcFile := New(FirstSheet("Source"))
+	src := srcFile.Sheet("Source")
+	if err := src.SetValue("A1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	src.rootAttrs = []ooxml.RawAttr{
+		{Name: "xmlns", Value: ooxml.NSSpreadsheetML},
+		{Name: "xmlns:mc", Value: "http://schemas.openxmlformats.org/markup-compatibility/2006"},
+	}
+	src.extraElements = []ooxml.RawElement{
+		{Name: "drawing", XML: `<drawing r:id="rId1"/>`, OrderKey: 58, Seq: 0},
+	}
+	src.extraRels = []ooxml.OpaqueRel{
+		{ID: "rId1", Type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing", Target: "../drawings/drawing1.xml"},
+		{ID: "rId2", Type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", Target: "https://example.com/", TargetMode: "External"},
+	}
+	srcFile.opaqueEntries = []ooxml.OpaqueEntry{
+		{Path: "xl/drawings/drawing1.xml", ContentType: "application/vnd.openxmlformats-officedocument.drawing+xml", Data: []byte("<srcDrawing/>")},
+		{Path: "xl/drawings/_rels/drawing1.xml.rels", ContentType: "", Data: []byte("<rels/>")},
+	}
+	srcFile.opaqueDefaults = []ooxml.OpaqueDefault{
+		{Extension: "png", ContentType: "image/png"},
+	}
+
+	dstFile := New(FirstSheet("Existing"))
+
+	cloned, err := dstFile.CloneSheetFrom(src, "Imported")
+	if err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	// Verify passthrough fields were copied.
+	if len(cloned.rootAttrs) != 2 {
+		t.Fatalf("rootAttrs len = %d, want 2", len(cloned.rootAttrs))
+	}
+	if len(cloned.extraElements) != 1 {
+		t.Fatalf("extraElements len = %d, want 1", len(cloned.extraElements))
+	}
+	if len(cloned.extraRels) != 2 {
+		t.Fatalf("extraRels len = %d, want 2", len(cloned.extraRels))
+	}
+
+	// Verify the drawing opaque entry was imported into dstFile.
+	found := false
+	for _, e := range dstFile.opaqueEntries {
+		if e.Path == "xl/drawings/drawing1.xml" {
+			found = true
+			if !bytes.Equal(e.Data, []byte("<srcDrawing/>")) {
+				t.Fatalf("imported drawing data = %q, want <srcDrawing/>", e.Data)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("drawing entry was not imported into destination workbook")
+	}
+
+	// Verify the external rel was preserved as-is (no opaque entry for it).
+	if cloned.extraRels[1].TargetMode != "External" {
+		t.Fatalf("expected external rel, got %+v", cloned.extraRels[1])
+	}
+
+	// Verify opaqueDefaults were imported.
+	foundPNG := false
+	for _, d := range dstFile.opaqueDefaults {
+		if d.Extension == "png" {
+			foundPNG = true
+		}
+	}
+	if !foundPNG {
+		t.Fatal("png opaqueDefault was not imported")
+	}
+}
+
+func TestCloneSheetFromCrossWorkbookPathCollision(t *testing.T) {
+	srcFile := New(FirstSheet("Source"))
+	src := srcFile.Sheet("Source")
+	src.extraRels = []ooxml.OpaqueRel{
+		{ID: "rId1", Type: "drawing", Target: "../drawings/drawing1.xml"},
+	}
+	srcFile.opaqueEntries = []ooxml.OpaqueEntry{
+		{Path: "xl/drawings/drawing1.xml", ContentType: "drawing+xml", Data: []byte("src-drawing")},
+	}
+
+	dstFile := New(FirstSheet("Existing"))
+	// Pre-populate destination with a different entry at the same path.
+	dstFile.opaqueEntries = []ooxml.OpaqueEntry{
+		{Path: "xl/drawings/drawing1.xml", ContentType: "drawing+xml", Data: []byte("existing-drawing")},
+	}
+
+	cloned, err := dstFile.CloneSheetFrom(src, "Imported")
+	if err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	// The cloned rel should have been remapped to a unique path.
+	if cloned.extraRels[0].Target == "../drawings/drawing1.xml" {
+		t.Fatal("expected target to be remapped due to collision")
+	}
+	if cloned.extraRels[0].Target != "../drawings/drawing1_2.xml" {
+		t.Fatalf("remapped target = %q, want ../drawings/drawing1_2.xml", cloned.extraRels[0].Target)
+	}
+
+	// Both entries should exist in destination.
+	if len(dstFile.opaqueEntries) != 2 {
+		t.Fatalf("expected 2 opaque entries, got %d", len(dstFile.opaqueEntries))
+	}
+	original := dstFile.opaqueEntries[0]
+	remapped := dstFile.opaqueEntries[1]
+	if !bytes.Equal(original.Data, []byte("existing-drawing")) {
+		t.Fatalf("original entry data = %q, want existing-drawing", original.Data)
+	}
+	if remapped.Path != "xl/drawings/drawing1_2.xml" {
+		t.Fatalf("remapped entry path = %q, want xl/drawings/drawing1_2.xml", remapped.Path)
+	}
+	if !bytes.Equal(remapped.Data, []byte("src-drawing")) {
+		t.Fatalf("remapped entry data = %q, want src-drawing", remapped.Data)
 	}
 }
 

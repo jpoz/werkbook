@@ -13,19 +13,25 @@ import (
 
 // File represents an XLSX workbook.
 type File struct {
-	sheets         []*Sheet
-	sheetNames     []string
-	date1904       bool // true if the workbook uses the 1904 date system
-	calcProps      CalcProperties
-	coreProps      CoreProperties
-	corePropsRaw   []byte
-	corePropsDirty bool
-	calcGen        uint64            // incremented on any cell mutation; starts at 1
-	evaluating     map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
-	deps           *formula.DepGraph // cell dependency graph for incremental recalculation
-	tableDefs      []Table
-	tables         []formula.TableInfo       // table definitions for structured reference expansion
-	definedNames   []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
+	sheets                []*Sheet
+	sheetNames            []string
+	date1904              bool // true if the workbook uses the 1904 date system
+	calcProps             CalcProperties
+	coreProps             CoreProperties
+	corePropsRaw          []byte
+	workbookRootAttrs     []ooxml.RawAttr
+	workbookExtraElements []ooxml.RawElement
+	opaqueEntries         []ooxml.OpaqueEntry
+	extraWorkbookRels     []ooxml.OpaqueRel
+	extraRootRels         []ooxml.OpaqueRel
+	opaqueDefaults        []ooxml.OpaqueDefault
+	corePropsDirty        bool
+	calcGen               uint64            // incremented on any cell mutation; starts at 1
+	evaluating            map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
+	deps                  *formula.DepGraph // cell dependency graph for incremental recalculation
+	tableDefs             []Table
+	tables                []formula.TableInfo       // table definitions for structured reference expansion
+	definedNames          []formula.DefinedNameInfo // defined names (named ranges) for formula expansion
 }
 
 // cellKey identifies a cell across the entire workbook for circular ref detection.
@@ -356,12 +362,18 @@ func OpenReaderAt(r io.ReaderAt, size int64, opts ...OpenOption) (*File, error) 
 
 func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 	f := &File{
-		calcGen:      1,
-		date1904:     data.Date1904,
-		calcProps:    calcPropsFromData(data.CalcProps),
-		coreProps:    corePropsFromData(data.CoreProps),
-		corePropsRaw: append([]byte(nil), data.CorePropsRaw...),
-		deps:         formula.NewDepGraph(),
+		calcGen:               1,
+		date1904:              data.Date1904,
+		calcProps:             calcPropsFromData(data.CalcProps),
+		coreProps:             corePropsFromData(data.CoreProps),
+		corePropsRaw:          append([]byte(nil), data.CorePropsRaw...),
+		workbookRootAttrs:     cloneRawAttrs(data.RootAttrs),
+		workbookExtraElements: cloneRawElements(data.ExtraElements),
+		opaqueEntries:         cloneOpaqueEntries(data.OpaqueEntries),
+		extraWorkbookRels:     cloneOpaqueRels(data.ExtraRels),
+		extraRootRels:         cloneOpaqueRels(data.ExtraRootRels),
+		opaqueDefaults:        cloneOpaqueDefaults(data.OpaqueDefaults),
+		deps:                  formula.NewDepGraph(),
 	}
 
 	// Convert StyleData slice to *Style slice for assignment.
@@ -376,6 +388,9 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 	for _, sd := range data.Sheets {
 		s := f.addSheet(sd.Name)
 		s.visible = sd.State != "hidden" && sd.State != "veryHidden"
+		s.rootAttrs = cloneRawAttrs(sd.RootAttrs)
+		s.extraElements = cloneRawElements(sd.ExtraElements)
+		s.extraRels = cloneOpaqueRels(sd.ExtraRels)
 
 		// Restore column widths.
 		for _, cw := range sd.ColWidths {
@@ -560,9 +575,15 @@ func isFormulaErrorString(v string) bool {
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 	data := &ooxml.WorkbookData{
-		Date1904:  f.date1904,
-		CalcProps: f.calcProps.toData(),
-		CoreProps: f.coreProps.toData(),
+		Date1904:       f.date1904,
+		CalcProps:      f.calcProps.toData(),
+		CoreProps:      f.coreProps.toData(),
+		RootAttrs:      cloneRawAttrs(f.workbookRootAttrs),
+		ExtraElements:  cloneRawElements(f.workbookExtraElements),
+		OpaqueEntries:  cloneOpaqueEntries(f.opaqueEntries),
+		ExtraRels:      cloneOpaqueRels(f.extraWorkbookRels),
+		ExtraRootRels:  cloneOpaqueRels(f.extraRootRels),
+		OpaqueDefaults: cloneOpaqueDefaults(f.opaqueDefaults),
 	}
 	if !f.corePropsDirty && len(f.corePropsRaw) > 0 {
 		data.CorePropsRaw = append([]byte(nil), f.corePropsRaw...)
@@ -594,6 +615,57 @@ func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 	}
 
 	return data
+}
+
+func cloneRawAttrs(in []ooxml.RawAttr) []ooxml.RawAttr {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ooxml.RawAttr, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneRawElements(in []ooxml.RawElement) []ooxml.RawElement {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ooxml.RawElement, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneOpaqueRels(in []ooxml.OpaqueRel) []ooxml.OpaqueRel {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ooxml.OpaqueRel, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneOpaqueDefaults(in []ooxml.OpaqueDefault) []ooxml.OpaqueDefault {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ooxml.OpaqueDefault, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneOpaqueEntries(in []ooxml.OpaqueEntry) []ooxml.OpaqueEntry {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ooxml.OpaqueEntry, len(in))
+	for i, entry := range in {
+		out[i] = ooxml.OpaqueEntry{
+			Path:        entry.Path,
+			ContentType: entry.ContentType,
+			Data:        append([]byte(nil), entry.Data...),
+		}
+	}
+	return out
 }
 
 // registerAllFormulas iterates all cells and registers compiled formulas in

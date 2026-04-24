@@ -14,13 +14,16 @@ import (
 
 // Sheet represents a single worksheet in the workbook.
 type Sheet struct {
-	file      *File
-	name      string
-	visible   bool
-	rows      map[int]*Row
-	colWidths map[int]float64
-	merges    []MergeRange
-	spill     spillOverlay
+	file          *File
+	name          string
+	visible       bool
+	rows          map[int]*Row
+	colWidths     map[int]float64
+	merges        []MergeRange
+	rootAttrs     []ooxml.RawAttr
+	extraElements []ooxml.RawElement
+	extraRels     []ooxml.OpaqueRel
+	spill         spillOverlay
 }
 
 func newSheet(name string, file *File) *Sheet {
@@ -546,7 +549,12 @@ func (s *Sheet) PrintTo(w io.Writer) {
 // styleMap maps style keys to indices in the WorkbookData.Styles slice.
 // styles collects all unique StyleData values; both are mutated in place.
 func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) ooxml.SheetData {
-	sd := ooxml.SheetData{Name: s.name}
+	sd := ooxml.SheetData{
+		Name:          s.name,
+		RootAttrs:     cloneRawAttrs(s.rootAttrs),
+		ExtraElements: cloneRawElements(s.extraElements),
+		ExtraRels:     cloneOpaqueRels(s.extraRels),
+	}
 	if !s.visible {
 		sd.State = "hidden"
 	}

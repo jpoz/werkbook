@@ -1,9 +1,12 @@
 package werkbook
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/jpoz/werkbook/formula"
+	"github.com/jpoz/werkbook/ooxml"
 )
 
 // CopySheet duplicates the named sheet within the workbook under a new name.
@@ -59,6 +62,15 @@ func (f *File) CloneSheetFrom(src *Sheet, dstName string) (*Sheet, error) {
 			dst.spill.anchors[copiedKey] = &copiedState
 		}
 		dst.invalidateSpillOverlay()
+	}
+
+	// Copy passthrough sheet metadata (drawings, conditional formatting, etc.).
+	dst.rootAttrs = cloneRawAttrs(src.rootAttrs)
+	dst.extraElements = cloneRawElements(src.extraElements)
+	if src.file == f || src.file == nil {
+		dst.extraRels = cloneOpaqueRels(src.extraRels)
+	} else {
+		dst.extraRels = f.importOpaqueEntries(src.file, src.extraRels)
 	}
 
 	_ = f.registerSheetFormulas(dst, false)
@@ -120,4 +132,124 @@ func formulaExpansionError(sheet string, col, row int, err error) error {
 		cell = ref
 	}
 	return fmt.Errorf("sheet %q cell %s: %w", sheet, cell, err)
+}
+
+// resolveRelTarget resolves a relative rel target from the standard sheet
+// directory (xl/worksheets) to an absolute zip path.
+func resolveRelTarget(target string) string {
+	base := "xl/worksheets"
+	for strings.HasPrefix(target, "../") {
+		target = target[3:]
+		if idx := strings.LastIndex(base, "/"); idx >= 0 {
+			base = base[:idx]
+		} else {
+			base = ""
+		}
+	}
+	if base == "" {
+		return target
+	}
+	return base + "/" + target
+}
+
+// absoluteToRelTarget converts an absolute zip path back to a relative target
+// from the xl/worksheets directory.
+func absoluteToRelTarget(absPath string) string {
+	if strings.HasPrefix(absPath, "xl/") {
+		return "../" + absPath[len("xl/"):]
+	}
+	return "../../" + absPath
+}
+
+// uniqueOpaqueEntryPath returns path if no entry in entries has that path;
+// otherwise it appends _2, _3, etc. before the extension.
+func uniqueOpaqueEntryPath(entries []ooxml.OpaqueEntry, path string) string {
+	taken := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		taken[e.Path] = struct{}{}
+	}
+	if _, ok := taken[path]; !ok {
+		return path
+	}
+	ext := ""
+	base := path
+	if dot := strings.LastIndex(path, "."); dot >= 0 {
+		ext = path[dot:]
+		base = path[:dot]
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s_%d%s", base, n, ext)
+		if _, ok := taken[candidate]; !ok {
+			return candidate
+		}
+	}
+}
+
+// importOpaqueEntries copies opaque entries referenced by srcRels from srcFile
+// into f, returning updated rels for the destination sheet. Internal targets
+// are resolved, matched to OpaqueEntries in srcFile, and imported (with path
+// deconfliction if needed). External rels are copied as-is.
+func (f *File) importOpaqueEntries(srcFile *File, srcRels []ooxml.OpaqueRel) []ooxml.OpaqueRel {
+	if len(srcRels) == 0 {
+		return nil
+	}
+
+	srcByPath := make(map[string]*ooxml.OpaqueEntry, len(srcFile.opaqueEntries))
+	for i := range srcFile.opaqueEntries {
+		srcByPath[srcFile.opaqueEntries[i].Path] = &srcFile.opaqueEntries[i]
+	}
+
+	dstByPath := make(map[string][]byte, len(f.opaqueEntries))
+	for _, e := range f.opaqueEntries {
+		dstByPath[e.Path] = e.Data
+	}
+
+	dstRels := make([]ooxml.OpaqueRel, len(srcRels))
+	for i, rel := range srcRels {
+		dstRels[i] = rel
+		if rel.TargetMode == "External" {
+			continue
+		}
+		absPath := resolveRelTarget(rel.Target)
+		srcEntry, ok := srcByPath[absPath]
+		if !ok {
+			continue
+		}
+		if existing, found := dstByPath[absPath]; found {
+			if bytes.Equal(existing, srcEntry.Data) {
+				continue
+			}
+			newPath := uniqueOpaqueEntryPath(f.opaqueEntries, absPath)
+			f.opaqueEntries = append(f.opaqueEntries, ooxml.OpaqueEntry{
+				Path:        newPath,
+				ContentType: srcEntry.ContentType,
+				Data:        append([]byte(nil), srcEntry.Data...),
+			})
+			dstByPath[newPath] = f.opaqueEntries[len(f.opaqueEntries)-1].Data
+			dstRels[i].Target = absoluteToRelTarget(newPath)
+		} else {
+			f.opaqueEntries = append(f.opaqueEntries, ooxml.OpaqueEntry{
+				Path:        absPath,
+				ContentType: srcEntry.ContentType,
+				Data:        append([]byte(nil), srcEntry.Data...),
+			})
+			dstByPath[absPath] = f.opaqueEntries[len(f.opaqueEntries)-1].Data
+		}
+	}
+
+	// Import opaque content-type defaults (e.g., .png, .vml extensions).
+	if len(srcFile.opaqueDefaults) > 0 {
+		existing := make(map[string]struct{}, len(f.opaqueDefaults))
+		for _, d := range f.opaqueDefaults {
+			existing[strings.ToLower(d.Extension)] = struct{}{}
+		}
+		for _, d := range srcFile.opaqueDefaults {
+			if _, ok := existing[strings.ToLower(d.Extension)]; !ok {
+				f.opaqueDefaults = append(f.opaqueDefaults, d)
+				existing[strings.ToLower(d.Extension)] = struct{}{}
+			}
+		}
+	}
+
+	return dstRels
 }
