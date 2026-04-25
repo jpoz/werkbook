@@ -123,12 +123,11 @@ func (inst Instruction) String() string {
 
 // CompiledFormula is the output of the compiler: bytecode ready for the VM.
 type CompiledFormula struct {
-	Source          string             // original formula text
-	Code            []Instruction      // bytecode instructions
-	Consts          []Value            // constant pool (numbers and strings)
-	Refs            []CellAddr         // cell reference table
-	Ranges          []RangeAddr        // range reference table
-	SubFormulas     []*CompiledFormula // lambda bodies for MAP/REDUCE/SCAN/BYROW/BYCOL
-	NeedsSpillProbe bool               // true when top-level dynamic-array probing may change the result shape
-	TopLevelArray   *CompiledFormula   // alternate bytecode for top-level array evaluation
+	Source        string             // original formula text
+	Code          []Instruction      // bytecode instructions
+	Consts        []Value            // constant pool (numbers and strings)
+	Refs          []CellAddr         // cell reference table
+	Ranges        []RangeAddr        // range reference table
+	SubFormulas   []*CompiledFormula // lambda bodies for MAP/REDUCE/SCAN/BYROW/BYCOL
+	TopLevelArray *CompiledFormula   // alternate bytecode for top-level array evaluation when spill shape differs from scalar display
 }

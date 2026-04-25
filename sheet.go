@@ -119,7 +119,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 		cf, compErr := formula.Compile(src, node)
 		if compErr == nil {
 			c.compiled = cf
-			c.dynamicArraySpill = formulaShouldProbeForSpill(c.formula, cf)
+			c.dynamicArraySpill = formulaNeedsSpillAnchor(c.formula, cf)
 			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
 		}
 	}
@@ -715,8 +715,8 @@ func (s *Sheet) resolveCell(c *Cell, col, row int) {
 	}
 }
 
-func formulaShouldProbeForSpill(f string, cf *formula.CompiledFormula) bool {
-	return formula.IsDynamicArrayFormula(f) || (cf != nil && cf.NeedsSpillProbe)
+func formulaNeedsSpillAnchor(f string, cf *formula.CompiledFormula) bool {
+	return formula.IsDynamicArrayFormula(f) || (cf != nil && cf.TopLevelArray != nil)
 }
 
 func (s *Sheet) compileCellFormula(c *Cell, col, row int) (*formula.CompiledFormula, error) {

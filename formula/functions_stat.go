@@ -471,49 +471,33 @@ func fnLARGE(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	var nums []float64
-	arr := args[0]
-	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			for _, cell := range row {
-				if cell.Type == ValueError {
-					return cell, nil
-				}
-				if cell.Type == ValueNumber {
-					nums = append(nums, cell.Num)
-				}
-			}
-		}
-	} else {
-		n, e := CoerceNum(arr)
-		if e != nil {
-			return *e, nil
-		}
-		nums = append(nums, n)
+	nums, errVal := collectLargeSmallNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
 	}
-	k, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	ki := int(k)
-	if ki < 1 || ki > len(nums) {
-		return ErrorVal(ErrValNUM), nil
-	}
-	sort.Float64s(nums)
-	return NumberVal(nums[len(nums)-ki]), nil
+	return evalLargeSmallK(nums, args[1], true), nil
 }
 
 func fnSMALL(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	nums, errVal := collectLargeSmallNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	return evalLargeSmallK(nums, args[1], false), nil
+}
+
+func collectLargeSmallNums(arr Value) ([]float64, *Value) {
 	var nums []float64
-	arr := args[0]
 	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			for _, cell := range row {
+		rows, cols := effectiveArrayBounds(arr)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				cell := arrayElementDirect(arr, rows, cols, r, c)
 				if cell.Type == ValueError {
-					return cell, nil
+					return nil, &cell
 				}
 				if cell.Type == ValueNumber {
 					nums = append(nums, cell.Num)
@@ -523,20 +507,45 @@ func fnSMALL(args []Value) (Value, error) {
 	} else {
 		n, e := CoerceNum(arr)
 		if e != nil {
-			return *e, nil
+			return nil, e
 		}
 		nums = append(nums, n)
 	}
-	k, e := CoerceNum(args[1])
+	return nums, nil
+}
+
+func evalLargeSmallK(nums []float64, kArg Value, large bool) Value {
+	if kArg.Type == ValueArray {
+		rows, cols := arrayOpBounds(kArg)
+		result := newValueMatrix(rows, cols)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				result[r][c] = evalLargeSmallScalar(nums, arrayElementDirect(kArg, rows, cols, r, c), large)
+			}
+		}
+		if rows == 1 && cols == 1 {
+			return result[0][0]
+		}
+		return Value{Type: ValueArray, Array: result}
+	}
+	return evalLargeSmallScalar(nums, kArg, large)
+}
+
+func evalLargeSmallScalar(nums []float64, kArg Value, large bool) Value {
+	k, e := CoerceNum(kArg)
 	if e != nil {
-		return *e, nil
+		return *e
 	}
 	ki := int(k)
 	if ki < 1 || ki > len(nums) {
-		return ErrorVal(ErrValNUM), nil
+		return ErrorVal(ErrValNUM)
 	}
-	sort.Float64s(nums)
-	return NumberVal(nums[ki-1]), nil
+	sorted := append([]float64(nil), nums...)
+	sort.Float64s(sorted)
+	if large {
+		return NumberVal(sorted[len(sorted)-ki])
+	}
+	return NumberVal(sorted[ki-1])
 }
 
 func fnCOUNTBLANK(args []Value) (Value, error) {

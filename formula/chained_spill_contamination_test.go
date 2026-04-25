@@ -114,12 +114,15 @@ func evalFormula(t *testing.T, resolver *contaminationResolver, sheet, atCell, e
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", expr, err)
 	}
-	// Use the spill-probe compiler so top-level dynamic arrays flow through
-	// rather than implicit-intersecting (mirrors what the workbook does at
-	// anchor cells).
-	cf, err := CompileSpillProbe(expr, node)
+	// Prefer the alternate top-level-array bytecode when present so dynamic
+	// arrays flow through rather than implicit-intersecting, but fall back to
+	// the regular program for formulas whose top-level shape does not change.
+	cf, err := Compile(expr, node)
 	if err != nil {
-		t.Fatalf("CompileSpillProbe(%q): %v", expr, err)
+		t.Fatalf("Compile(%q): %v", expr, err)
+	}
+	if cf.TopLevelArray != nil {
+		cf = cf.TopLevelArray
 	}
 	ctx := &EvalContext{CurrentSheet: sheet, CurrentCol: col, CurrentRow: row}
 	v, err := Eval(cf, resolver, ctx)

@@ -15,7 +15,7 @@ func Compile(source string, node Node) (*CompiledFormula, error) {
 	if err != nil {
 		return nil, err
 	}
-	if compiled.NeedsSpillProbe {
+	if formulaNeedsTopLevelArray(node) {
 		topLevelArray, err := compileWithMode(source, node, true)
 		if err != nil {
 			return nil, err
@@ -23,13 +23,6 @@ func Compile(source string, node Node) (*CompiledFormula, error) {
 		compiled.TopLevelArray = topLevelArray
 	}
 	return compiled, nil
-}
-
-// CompileSpillProbe compiles a formula for top-level dynamic-array probing.
-// It suppresses implicit intersection for the outer expression while preserving
-// the compiler's nested-function array-context suspension rules.
-func CompileSpillProbe(source string, node Node) (*CompiledFormula, error) {
-	return compileWithMode(source, node, true)
 }
 
 func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*CompiledFormula, error) {
@@ -52,13 +45,12 @@ func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*Compiled
 		}
 	}
 	return &CompiledFormula{
-		Source:          source,
-		Code:            c.code,
-		Consts:          c.consts,
-		Refs:            c.refs,
-		Ranges:          c.ranges,
-		SubFormulas:     c.subFormulas,
-		NeedsSpillProbe: formulaNeedsSpillProbe(node),
+		Source:      source,
+		Code:        c.code,
+		Consts:      c.consts,
+		Refs:        c.refs,
+		Ranges:      c.ranges,
+		SubFormulas: c.subFormulas,
 	}, nil
 }
 
@@ -538,18 +530,18 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 	return nil
 }
 
-func formulaNeedsSpillProbe(node Node) bool {
+func formulaNeedsTopLevelArray(node Node) bool {
 	switch n := node.(type) {
 	case *RangeRef:
 		return true
 	case *ArrayLit:
 		return true
 	case *UnaryExpr:
-		return formulaNeedsSpillProbe(n.Operand)
+		return formulaNeedsTopLevelArray(n.Operand)
 	case *BinaryExpr:
-		return formulaNeedsSpillProbe(n.Left) || formulaNeedsSpillProbe(n.Right)
+		return formulaNeedsTopLevelArray(n.Left) || formulaNeedsTopLevelArray(n.Right)
 	case *FuncCall:
-		return funcCallNeedsSpillProbe(n)
+		return funcCallNeedsTopLevelArray(n)
 	case *MapExpr:
 		return true
 	case *ScanExpr:
@@ -564,7 +556,7 @@ func formulaNeedsSpillProbe(node Node) bool {
 	return false
 }
 
-func funcCallNeedsSpillProbe(call *FuncCall) bool {
+func funcCallNeedsTopLevelArray(call *FuncCall) bool {
 	name := normalizeFuncName(call.Name)
 	switch name {
 	case "OFFSET", "INDIRECT":
@@ -573,9 +565,9 @@ func funcCallNeedsSpillProbe(call *FuncCall) bool {
 	if _, ok := dynamicArrayFunctions[name]; ok {
 		return true
 	}
-	if indices, ok := criteriaSpillProbeArgIndexes(name, len(call.Args)); ok {
+	if indices, ok := criteriaTopLevelArrayArgIndexes(name, len(call.Args)); ok {
 		for _, idx := range indices {
-			if formulaNeedsSpillProbe(call.Args[idx]) {
+			if formulaNeedsTopLevelArray(call.Args[idx]) {
 				return true
 			}
 		}
@@ -585,14 +577,14 @@ func funcCallNeedsSpillProbe(call *FuncCall) bool {
 		return false
 	}
 	for _, arg := range call.Args {
-		if formulaNeedsSpillProbe(arg) {
+		if formulaNeedsTopLevelArray(arg) {
 			return true
 		}
 	}
 	return false
 }
 
-func criteriaSpillProbeArgIndexes(name string, argc int) ([]int, bool) {
+func criteriaTopLevelArrayArgIndexes(name string, argc int) ([]int, bool) {
 	switch name {
 	case "COUNTIF", "SUMIF", "AVERAGEIF":
 		if argc >= 2 {

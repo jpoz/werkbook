@@ -5075,8 +5075,8 @@ func TestROW(t *testing.T) {
 	})
 
 	t.Run("row_with_indirect_cell", func(t *testing.T) {
-		// INDIRECT("B7") for a single cell resolves the cell value (not a ref),
-		// so ROW(INDIRECT("B7")) receives a non-ref and returns #VALUE!.
+		// INDIRECT("B7") preserves single-cell reference metadata, so ROW
+		// can still report the referenced row number.
 		ctx := &EvalContext{
 			CurrentCol:   1,
 			CurrentRow:   1,
@@ -5088,8 +5088,8 @@ func TestROW(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf("ROW(INDIRECT(\"B7\")) = %v, want #VALUE!", got)
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("ROW(INDIRECT(\"B7\")) = %v, want 7", got)
 		}
 	})
 

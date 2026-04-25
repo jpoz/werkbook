@@ -243,6 +243,9 @@ func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
 		col := int(args[0].Num) % 100_000
 		return NumberVal(float64(col)), nil
 	}
+	if len(args) == 1 && args[0].CellOrigin != nil {
+		return NumberVal(float64(args[0].CellOrigin.Col)), nil
+	}
 	return ErrorVal(ErrValVALUE), nil
 }
 
@@ -260,7 +263,7 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
 		row := int(args[0].Num) / 100_000
 		return NumberVal(float64(row)), nil
 	}
-	if len(args) == 1 && args[0].FromCell && args[0].CellOrigin != nil {
+	if len(args) == 1 && args[0].CellOrigin != nil {
 		return NumberVal(float64(args[0].CellOrigin.Row)), nil
 	}
 	// Handle array with RangeOrigin (e.g. from INDIRECT): return column of row numbers.

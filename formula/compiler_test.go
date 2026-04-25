@@ -150,7 +150,7 @@ func TestCompileRangeRef(t *testing.T) {
 	}
 }
 
-func TestCompileNeedsSpillProbe(t *testing.T) {
+func TestCompileTopLevelArrayCompanion(t *testing.T) {
 	tests := []struct {
 		input string
 		want  bool
@@ -173,8 +173,8 @@ func TestCompileNeedsSpillProbe(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			cf := compileFormula(t, tt.input)
-			if cf.NeedsSpillProbe != tt.want {
-				t.Fatalf("NeedsSpillProbe = %v, want %v", cf.NeedsSpillProbe, tt.want)
+			if got := cf.TopLevelArray != nil; got != tt.want {
+				t.Fatalf("TopLevelArray != nil = %v, want %v", got, tt.want)
 			}
 		})
 	}

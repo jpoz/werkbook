@@ -3971,7 +3971,7 @@ func TestINDIRECTNestedINDEXUsesInternalRef(t *testing.T) {
 	})
 }
 
-func TestINDIRECTSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.T) {
+func TestINDIRECTSingleCellBoundaryPreservesCOLUMNAndISREFBehavior(t *testing.T) {
 	resolver := &mockResolver{cells: map[CellAddr]Value{
 		{Col: 2, Row: 7}: NumberVal(99),
 	}}
@@ -3981,8 +3981,8 @@ func TestINDIRECTSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValVALUE {
-		t.Fatalf("COLUMN(INDIRECT(B7)) = %#v, want #VALUE!", got)
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Fatalf("COLUMN(INDIRECT(B7)) = %#v, want 2", got)
 	}
 
 	got, err = Eval(evalCompile(t, `ISREF(INDIRECT("B7"))`), resolver, ctx)
@@ -15513,7 +15513,7 @@ func TestOFFSETNestedINDEXUsesInternalRef(t *testing.T) {
 	}
 }
 
-func TestOFFSETSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.T) {
+func TestOFFSETSingleCellBoundaryPreservesCOLUMNAndISREFBehavior(t *testing.T) {
 	resolver := &mockResolver{cells: map[CellAddr]Value{
 		{Col: 1, Row: 1}: NumberVal(10),
 		{Col: 2, Row: 1}: NumberVal(20),
@@ -15524,8 +15524,8 @@ func TestOFFSETSingleCellBoundaryKeepsLegacyCOLUMNAndISREFBehavior(t *testing.T)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
-	if got.Type != ValueError || got.Err != ErrValVALUE {
-		t.Fatalf("COLUMN(OFFSET(A1,0,1)) = %#v, want #VALUE!", got)
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Fatalf("COLUMN(OFFSET(A1,0,1)) = %#v, want 2", got)
 	}
 
 	got, err = Eval(evalCompile(t, `ISREF(OFFSET(A1,0,1))`), resolver, ctx)
