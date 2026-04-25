@@ -325,7 +325,7 @@ func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if errVal != nil {
 		return *errVal, nil
 	}
-	numRows, _ := arrSource.dims()
+	numRows, numCols := arrSource.dims()
 
 	// Parse (by_array, sort_order) pairs from remaining args.
 	// After args[0], remaining args are grouped in pairs of 2: (by_array, sort_order).
@@ -336,6 +336,8 @@ func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		order   int // 1 = ascending, -1 = descending
 	}
 	var keys []sortKey
+	sortByCols := false
+	sortByColsSet := false
 
 	for i := 0; i < len(remaining); i += 2 {
 		bySource, errVal := normalizeGridShapeArg(remaining[i], evalArgAt(evalArgs, i+1))
@@ -349,26 +351,28 @@ func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 			return ErrorVal(ErrValVALUE), nil
 		}
 
-		var valueAt func(int) Value
-		keyLen := byRows
-		if byCols <= 1 {
-			valueAt = func(row int) Value { return bySource.cell(row, 0) }
-		} else {
-			keyLen = byCols
-			valueAt = func(row int) Value { return bySource.cell(0, row) }
-		}
-
-		// Validate: by_array length must match number of rows in array.
-		if keyLen != numRows {
+		keySortByCols := byRows == 1 && byCols > 1
+		if !sortByColsSet {
+			sortByCols = keySortByCols
+			sortByColsSet = true
+		} else if sortByCols != keySortByCols {
 			return ErrorVal(ErrValVALUE), nil
 		}
 
-		// Check for errors in the by_array values.
-		for row := 0; row < keyLen; row++ {
-			v := valueAt(row)
-			if v.Type == ValueError {
-				return v, nil
-			}
+		var valueAt func(int) Value
+		keyLen := byRows
+		expectedLen := numRows
+		if sortByCols {
+			keyLen = byCols
+			expectedLen = numCols
+			valueAt = func(col int) Value { return bySource.cell(0, col) }
+		} else {
+			valueAt = func(row int) Value { return bySource.cell(row, 0) }
+		}
+
+		// Validate: by_array length must match the sorted axis.
+		if keyLen != expectedLen {
+			return ErrorVal(ErrValVALUE), nil
 		}
 
 		// Parse sort_order (defaults to 1 if not provided).
@@ -392,7 +396,11 @@ func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	}
 
 	// Build index slice and sort using stable sort.
-	indices := make([]int, numRows)
+	count := numRows
+	if sortByCols {
+		count = numCols
+	}
+	indices := make([]int, count)
 	for i := range indices {
 		indices[i] = i
 	}
@@ -410,6 +418,9 @@ func sortbyCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return false
 	})
 
-	// Build result array by reordering rows.
+	// Build result array by reordering the selected axis.
+	if sortByCols {
+		return Value{Type: ValueArray, Array: arrSource.materializeCols(indices)}, nil
+	}
 	return Value{Type: ValueArray, Array: arrSource.materializeRows(indices)}, nil
 }

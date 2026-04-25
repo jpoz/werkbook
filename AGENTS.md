@@ -21,6 +21,32 @@ No external dependencies beyond the Go standard library. Module: `github.com/jpo
 exceldoc SUM
 ```
 
+## Engineering Approach
+
+- Prefer stewardship over speed. Make changes that improve the long-term shape of the library, not just the local diff.
+- Prefer small, surgical patches. Keep slices narrow, reviewable, and easy to validate.
+- Preserve existing public behavior unless the task explicitly calls for a semantic change. For formula behavior, Excel parity and workbook corpus parity are the source of truth.
+- When touching compatibility scaffolding, move toward a clearer architecture with fewer semantic centers. Do not silently add new bridging layers when the real fix is to tighten the core model.
+- Fix root causes when they are reasonably bounded. Avoid papering over architectural problems with one-off conditionals unless the file already establishes that pattern and the broader cleanup is out of scope.
+- Treat edge cases as first-class work, not cleanup. When changing formula, spill, range, coercion, or serialization behavior, actively look for nearby cases involving empty values, errors, full-row/full-column refs, trimmed ranges, single-cell refs, implicit intersection, and blocked spills.
+- Add targeted regression coverage with each semantic fix. Prefer tests that encode the user-visible behavior and the tricky neighboring cases that are easy to break next.
+- Leave clear notes in code only when they help the next maintainer understand an invariant, compatibility constraint, or architectural direction.
+
+## Change Strategy
+
+- Start by identifying the architectural seam being modified and the narrowest viable slice.
+- Prefer extending existing helpers and shared paths over duplicating logic in individual functions.
+- Keep boundary concerns separate from runtime semantics when working across the public API, formula engine, and OOXML layers.
+- Avoid broad refactors unless they are explicitly requested or already called for by the active plan.
+- If the worktree is already dirty, do not overwrite adjacent work. Adapt to it and keep your change isolated.
+- Use calm, precise language in plans, comments, and delegated work. Favor words like `implement`, `tighten`, `validate`, `advance`, or `finish` over aggressive framing.
+
+## Verification Expectations
+
+- Run the smallest relevant targeted tests first, then widen scope as confidence grows.
+- For changes in the formula engine or spill behavior, add or update focused tests near the affected behavior before relying only on full-suite coverage.
+- If a plan document defines an exit gate or corpus command, treat that as part of done, not as optional follow-up.
+
 ## Architecture
 
 Werkbook is a Go library for reading and writing XLSX spreadsheet files with a built-in formula engine supporting ~170 functions.

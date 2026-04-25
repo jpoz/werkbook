@@ -7,6 +7,8 @@ import (
 
 var offsetScalarArgSpec = ArgSpec{Adapt: ArgAdaptScalarizeAny}
 var offsetRefOnlyArgSpec = ArgSpec{Adapt: ArgAdaptLegacyIntersectRef}
+var indirectRefProducerSpec = refProducerFuncSpec(evalINDIRECT)
+var offsetRefProducerSpec = refProducerFuncSpec(evalOFFSET)
 
 func refProducerFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
@@ -26,16 +28,8 @@ func refProducerFuncSpec(eval EvalFunc) FuncSpec {
 	}
 }
 
-func callLegacyRefEval(eval EvalFunc, args []Value, ctx *EvalContext) (Value, error) {
-	evalArgs := make([]EvalValue, len(args))
-	var resolver CellResolver
-	if ctx != nil {
-		resolver = ctx.Resolver
-	}
-	for i, arg := range args {
-		evalArgs[i] = valueToEvalValueWithResolver(arg, resolver)
-	}
-	got, err := eval(evalArgs, ctx)
+func callRefProducerWithSpec(spec FuncSpec, args []Value, ctx *EvalContext) (Value, error) {
+	got, err := spec.Eval(loadEvalFuncArgs(spec, args, ctx), ctx)
 	if err != nil {
 		return Value{}, err
 	}

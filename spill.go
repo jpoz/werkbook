@@ -7,9 +7,11 @@ import (
 )
 
 type spillOverlay struct {
-	gen     uint64
-	anchors map[cellKey]*spillAnchorState
-	index   spillLookupIndex
+	gen         uint64
+	pendingGen  uint64
+	anchors     map[cellKey]*spillAnchorState
+	pendingRows map[int][]pendingSpillAnchor
+	index       spillLookupIndex
 }
 
 type spillAnchorState struct {
@@ -21,6 +23,12 @@ type spillAnchorState struct {
 	// Imported or last-known OOXML formula ref. The raw array value remains
 	// formula-cache state on Cell; the overlay owns bounds and writer fallback.
 	formulaRef string
+}
+
+type pendingSpillAnchor struct {
+	col  int
+	row  int
+	cell *Cell
 }
 
 func isDynamicArrayAnchor(c *Cell) bool {
@@ -52,6 +60,7 @@ func spillArrayRect(raw formula.Value, anchorCol, anchorRow int) (toCol, toRow i
 
 func (s *Sheet) invalidateSpillOverlay() {
 	s.spill.gen = 0
+	s.spill.pendingGen = 0
 }
 
 func (s *Sheet) ensureSpillOverlay() *spillOverlay {
@@ -60,6 +69,61 @@ func (s *Sheet) ensureSpillOverlay() *spillOverlay {
 	}
 	s.rebuildSpillOverlay()
 	return &s.spill
+}
+
+func (s *Sheet) ensurePendingSpillAnchors() {
+	if s.spill.pendingGen == s.file.calcGen {
+		return
+	}
+
+	pendingRows := make(map[int][]pendingSpillAnchor)
+	for anchorRow, sheetRow := range s.rows {
+		for anchorCol, cell := range sheetRow.cells {
+			if !isDynamicArrayAnchor(cell) {
+				continue
+			}
+			if state, ok := s.spillState(anchorCol, anchorRow); ok && state.gen == s.file.calcGen {
+				continue
+			}
+			pendingRows[anchorRow] = append(pendingRows[anchorRow], pendingSpillAnchor{
+				col:  anchorCol,
+				row:  anchorRow,
+				cell: cell,
+			})
+		}
+	}
+	for row := range pendingRows {
+		anchors := pendingRows[row]
+		sort.Slice(anchors, func(i, j int) bool {
+			return anchors[i].col < anchors[j].col
+		})
+		pendingRows[row] = anchors
+	}
+	s.spill.pendingRows = pendingRows
+	s.spill.pendingGen = s.file.calcGen
+}
+
+func (s *Sheet) markSpillAnchorResolved(col, row int) {
+	if s.spill.pendingGen != s.file.calcGen {
+		return
+	}
+	anchors := s.spill.pendingRows[row]
+	if len(anchors) == 0 {
+		return
+	}
+	idx := sort.Search(len(anchors), func(i int) bool {
+		return anchors[i].col >= col
+	})
+	if idx >= len(anchors) || anchors[idx].col != col {
+		return
+	}
+	copy(anchors[idx:], anchors[idx+1:])
+	anchors = anchors[:len(anchors)-1]
+	if len(anchors) == 0 {
+		delete(s.spill.pendingRows, row)
+		return
+	}
+	s.spill.pendingRows[row] = anchors
 }
 
 func (s *Sheet) rebuildSpillOverlay() {
@@ -175,6 +239,7 @@ func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 		outcome, err := s.evalCellOutcome(c, col, row)
 		if err != nil {
 			s.publishSpillState(col, row, nil)
+			s.markSpillAnchorResolved(col, row)
 			return
 		}
 		savedValue := c.value
@@ -194,29 +259,21 @@ func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 		}
 	}
 	s.publishSpillState(col, row, plan)
+	s.markSpillAnchorResolved(col, row)
 }
 
 func (s *Sheet) refreshSpillAnchorsForPoint(col, row int) bool {
+	s.ensurePendingSpillAnchors()
 	refreshed := false
-	for anchorRow, sheetRow := range s.rows {
+	for anchorRow, anchors := range s.spill.pendingRows {
 		if anchorRow > row {
 			continue
 		}
-		for anchorCol, cell := range sheetRow.cells {
-			if anchorCol > col || !isDynamicArrayAnchor(cell) {
-				continue
-			}
-			if state, ok := s.spillState(anchorCol, anchorRow); ok {
-				if spillStateHasPublishedSpill(state, anchorCol, anchorRow, s.file.calcGen) &&
-					row <= state.publishedToRow && col <= state.publishedToCol {
-					continue
-				}
-				if toCol, toRow, ok := s.spillAttemptedRect(anchorCol, anchorRow); ok &&
-					(row > toRow || col > toCol) {
-					continue
-				}
-			}
-			s.refreshSpillState(cell, anchorCol, anchorRow)
+		limit := sort.Search(len(anchors), func(i int) bool {
+			return anchors[i].col > col
+		})
+		for _, anchor := range anchors[:limit] {
+			s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
 			refreshed = true
 		}
 	}
@@ -224,28 +281,17 @@ func (s *Sheet) refreshSpillAnchorsForPoint(col, row int) bool {
 }
 
 func (s *Sheet) refreshSpillAnchorsForRange(req rangeMaterializationRequest, logicalToCol int) bool {
+	s.ensurePendingSpillAnchors()
 	refreshed := false
-	for anchorRow, sheetRow := range s.rows {
+	for anchorRow, anchors := range s.spill.pendingRows {
 		if anchorRow > req.toRow {
 			continue
 		}
-		for anchorCol, cell := range sheetRow.cells {
-			if anchorCol > logicalToCol || !isDynamicArrayAnchor(cell) {
-				continue
-			}
-			if state, ok := s.spillState(anchorCol, anchorRow); ok {
-				if spillStateHasPublishedSpill(state, anchorCol, anchorRow, s.file.calcGen) {
-					if state.publishedToRow < req.fromRow || state.publishedToCol < req.fromCol {
-						continue
-					}
-					continue
-				}
-				if toCol, toRow, ok := s.spillAttemptedRect(anchorCol, anchorRow); ok &&
-					(toRow < req.fromRow || toCol < req.fromCol) {
-					continue
-				}
-			}
-			s.refreshSpillState(cell, anchorCol, anchorRow)
+		limit := sort.Search(len(anchors), func(i int) bool {
+			return anchors[i].col > logicalToCol
+		})
+		for _, anchor := range anchors[:limit] {
+			s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
 			refreshed = true
 		}
 	}
@@ -295,6 +341,7 @@ func (s *Sheet) clearSpillState(col, row int) {
 		formula.DynamicRangeKindSpillBlocker,
 		nil,
 	)
+	s.markSpillAnchorResolved(col, row)
 	s.invalidateSpillOverlay()
 }
 

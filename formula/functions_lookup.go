@@ -972,7 +972,7 @@ func xlookupBinarySearch(lookupValues []Value, lookup Value, matchMode int, asce
 // fnINDIRECT implements INDIRECT(ref_text, [a1]).
 // It converts a text string into a cell or range reference and resolves it.
 func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
-	return callLegacyRefEval(evalINDIRECT, args, ctx)
+	return callRefProducerWithSpec(indirectRefProducerSpec, args, ctx)
 }
 
 // indirectParseCell parses a cell reference like "A1" or "B3" into (col, row).
@@ -2246,5 +2246,5 @@ func fnHyperlink(args []Value) (Value, error) {
 // fnOFFSET implements OFFSET(reference, rows, cols, [height], [width]).
 // It returns a reference to a range offset from the given reference.
 func fnOFFSET(args []Value, ctx *EvalContext) (Value, error) {
-	return callLegacyRefEval(evalOFFSET, args, ctx)
+	return callRefProducerWithSpec(offsetRefProducerSpec, args, ctx)
 }
