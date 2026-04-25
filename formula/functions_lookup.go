@@ -1065,9 +1065,13 @@ func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
 	}, nil
 }
 
-// parseR1C1Cell parses a single R1C1-style cell reference like "R1C1" or "R5C3"
-// and returns (col, row). The input is case-insensitive.
+// parseR1C1Cell parses a single absolute R1C1-style cell reference like
+// "R1C1" or "R5C3" and returns (col, row). The input is case-insensitive.
 func parseR1C1Cell(s string) (col, row int, err error) {
+	return parseR1C1CellAt(s, 0, 0)
+}
+
+func parseR1C1CellAt(s string, currentRow, currentCol int) (col, row int, err error) {
 	s = strings.ToUpper(s)
 	if len(s) < 4 || s[0] != 'R' {
 		return 0, 0, fmt.Errorf("invalid R1C1 reference %q", s)
@@ -1079,23 +1083,49 @@ func parseR1C1Cell(s string) (col, row int, err error) {
 	cIdx++ // adjust for the slice offset
 	rowStr := s[1:cIdx]
 	colStr := s[cIdx+1:]
-	if rowStr == "" || colStr == "" {
-		return 0, 0, fmt.Errorf("invalid R1C1 reference %q: empty row or col", s)
-	}
-	row, err = strconv.Atoi(rowStr)
-	if err != nil || row < 1 || row > maxRows {
+	row, err = parseR1C1Component(rowStr, currentRow, maxRows)
+	if err != nil {
 		return 0, 0, fmt.Errorf("invalid row in R1C1 reference %q", s)
 	}
-	col, err = strconv.Atoi(colStr)
-	if err != nil || col < 1 || col > maxCols {
+	col, err = parseR1C1Component(colStr, currentCol, maxCols)
+	if err != nil {
 		return 0, 0, fmt.Errorf("invalid col in R1C1 reference %q", s)
 	}
 	return col, row, nil
 }
 
+func parseR1C1Component(part string, current, max int) (int, error) {
+	switch {
+	case part == "":
+		if current < 1 || current > max {
+			return 0, fmt.Errorf("relative R1C1 reference missing current position")
+		}
+		return current, nil
+	case strings.HasPrefix(part, "[") && strings.HasSuffix(part, "]"):
+		if current < 1 || current > max {
+			return 0, fmt.Errorf("relative R1C1 reference missing current position")
+		}
+		delta, err := strconv.Atoi(part[1 : len(part)-1])
+		if err != nil {
+			return 0, err
+		}
+		value := current + delta
+		if value < 1 || value > max {
+			return 0, fmt.Errorf("relative R1C1 component out of bounds")
+		}
+		return value, nil
+	default:
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 1 || value > max {
+			return 0, fmt.Errorf("absolute R1C1 component out of bounds")
+		}
+		return value, nil
+	}
+}
+
 // r1c1ToA1 converts an R1C1-style reference string to A1-style.
 // Supports single cell (R1C1), ranges (R1C1:R5C3), and optional sheet prefixes.
-func r1c1ToA1(ref string) (string, error) {
+func r1c1ToA1At(ref string, currentRow, currentCol int) (string, error) {
 	// Preserve sheet prefix. splitSheetPrefix is quote-aware so a sheet
 	// name quoted like 'Bob's-Sheet' (with an escaped '') does not get
 	// mis-split at an embedded '!'.
@@ -1105,11 +1135,11 @@ func r1c1ToA1(ref string) (string, error) {
 	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
 		left := cellPart[:colonIdx]
 		right := cellPart[colonIdx+1:]
-		c1, r1, err := parseR1C1Cell(left)
+		c1, r1, err := parseR1C1CellAt(left, currentRow, currentCol)
 		if err != nil {
 			return "", err
 		}
-		c2, r2, err := parseR1C1Cell(right)
+		c2, r2, err := parseR1C1CellAt(right, currentRow, currentCol)
 		if err != nil {
 			return "", err
 		}
@@ -1117,7 +1147,7 @@ func r1c1ToA1(ref string) (string, error) {
 	}
 
 	// Single cell.
-	c, r, err := parseR1C1Cell(cellPart)
+	c, r, err := parseR1C1CellAt(cellPart, currentRow, currentCol)
 	if err != nil {
 		return "", err
 	}

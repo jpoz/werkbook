@@ -131,6 +131,16 @@ func init() {
 	Register("LOGEST", NoCtx(fnLOGEST))
 }
 
+func valueHasRefMetadata(v Value) bool {
+	return v.evalRef != nil
+}
+
+func anonymousRefDerivedArrayCell(container Value, cell Value) bool {
+	return container.Type == ValueArray &&
+		container.RangeOrigin == nil &&
+		valueHasRefMetadata(cell)
+}
+
 func fnSUM(args []Value) (Value, error) {
 	sum := 0.0
 	if e := IterateNumeric(args, func(n float64) { sum += n }); e != nil {
@@ -222,7 +232,7 @@ func fnCOUNT(args []Value) (Value, error) {
 		case ValueArray:
 			for _, row := range arg.Array {
 				for _, cell := range row {
-					if cell.Type == ValueNumber {
+					if cell.Type == ValueNumber && !anonymousRefDerivedArrayCell(arg, cell) {
 						count++
 					}
 				}
@@ -1202,6 +1212,10 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 				cell := arrayElementDirect(arg, rows, cols, r, c)
 				if cell.Type == ValueError {
 					return cell, nil
+				}
+				if anonymousRefDerivedArrayCell(arg, cell) {
+					product = 0
+					continue
 				}
 				// Excel treats text and boolean cell values as 0 in
 				// SUMPRODUCT.  Computed booleans (e.g. from A1:A5>3)

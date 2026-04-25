@@ -87,31 +87,45 @@ func evalAVERAGEDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error)
 
 func evalCOUNTDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	count := 0
-	if err := iterateReducerEvalArgs(
-		args,
-		func(v Value) *Value {
-			switch v.Type {
+	for _, arg := range args {
+		switch arg.Kind {
+		case EvalKindError:
+			continue
+		case EvalScalar:
+			switch arg.Scalar.Type {
 			case ValueNumber:
 				count++
 			case ValueBool:
-				if !v.FromCell {
+				if !arg.Scalar.FromCell {
 					count++
 				}
 			case ValueString:
-				if _, err := strconv.ParseFloat(v.Str, 64); err == nil {
+				if _, err := strconv.ParseFloat(arg.Scalar.Str, 64); err == nil {
 					count++
 				}
 			}
-			return nil
-		},
-		func(v Value) *Value {
-			if v.Type == ValueNumber {
-				count++
+		case EvalArray:
+			if arg.Array == nil || arg.Array.Grid == nil {
+				continue
 			}
-			return nil
-		},
-	); err != nil {
-		return ValueToEvalValue(*err), nil
+			ignoreRefDerived := arg.Array.Origin == nil
+			arg.Array.Grid.Iterate(func(r, c int, cell EvalValue) bool {
+				v := EvalValueToValue(cell)
+				if v.Type == ValueNumber && !(ignoreRefDerived && valueHasRefMetadata(v)) {
+					count++
+				}
+				return true
+			})
+		case EvalRef:
+			if err := iterateReducerGrid(reducerRefGrid(arg.Ref), func(v Value) *Value {
+				if v.Type == ValueNumber {
+					count++
+				}
+				return nil
+			}); err != nil {
+				return ValueToEvalValue(*err), nil
+			}
+		}
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(float64(count))}, nil
 }

@@ -53,19 +53,64 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
 	}
 
-	refText := ValueToString(EvalValueToValue(args[0]))
-	if refText == "" {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
-	}
-
 	a1Style := true
 	if len(args) == 2 {
 		a1Style = IsTruthy(EvalValueToValue(args[1]))
 	}
+	legacyArg := EvalValueToValue(args[0])
+	if legacyArg.Type == ValueArray {
+		return evalIndirectLegacyArray(legacyArg, a1Style, ctx), nil
+	}
+	refText := ValueToString(legacyArg)
+	if refText == "" {
+		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	}
+	return evalIndirectText(refText, a1Style, ctx), nil
+}
+
+func evalIndirectLegacyArray(arg Value, a1Style bool, ctx *EvalContext) EvalValue {
+	rows := make([][]Value, len(arg.Array))
+	for r, srcRow := range arg.Array {
+		row := make([]Value, len(srcRow))
+		for c, cell := range srcRow {
+			got := evalIndirectText(ValueToString(cell), a1Style, ctx)
+			row[c] = indirectElementValue(got, ctx)
+		}
+		rows[r] = row
+	}
+	return ValueToEvalValue(Value{Type: ValueArray, Array: rows})
+}
+
+func indirectElementValue(v EvalValue, ctx *EvalContext) Value {
+	if v.Kind == EvalRef && v.Ref != nil {
+		if v.Ref.FromCol == v.Ref.ToCol && v.Ref.FromRow == v.Ref.ToRow {
+			if v.Ref.Legacy != nil && v.Ref.Legacy.SingleCellValue.Type != ValueEmpty {
+				out := v.Ref.Legacy.SingleCellValue
+				out.evalRef = cloneRefValue(v.Ref)
+				return out
+			}
+			if v.Ref.Materialized != nil {
+				out := EvalValueToValue(v.Ref.Materialized.Cell(0, 0))
+				out.evalRef = cloneRefValue(v.Ref)
+				return out
+			}
+		}
+	}
+	legacy := EvalValueToValue(v)
+	if legacy.Type == ValueArray {
+		return explicitIntersect(legacy, ctx)
+	}
+	return legacy
+}
+
+func evalIndirectText(refText string, a1Style bool, ctx *EvalContext) EvalValue {
+	if refText == "" {
+		return ValueToEvalValue(ErrorVal(ErrValREF))
+	}
 	if !a1Style {
-		converted, err := r1c1ToA1(refText)
+		converted, err := r1c1ToA1At(refText, ctx.CurrentRow, ctx.CurrentCol)
 		if err != nil {
-			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+			return ValueToEvalValue(ErrorVal(ErrValREF))
 		}
 		refText = converted
 	}
@@ -86,7 +131,7 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 		right := cellPart[colonIdx+1:]
 		addr, err := indirectParseRange(left, right, sheet)
 		if err != nil {
-			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+			return ValueToEvalValue(ErrorVal(ErrValREF))
 		}
 		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
 		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
@@ -109,24 +154,24 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 			}
 		}
 		if RangeCellCountExceedsLimit(checkRows, checkCols) {
-			return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+			return ValueToEvalValue(ErrorVal(ErrValREF))
 		}
 
 		var rows [][]Value
 		if !isFullCol && !isFullRow {
 			rows = ctx.Resolver.GetRangeValues(addr)
 			if isRangeOverflowMatrix(rows) {
-				return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+				return ValueToEvalValue(ErrorVal(ErrValREF))
 			}
 		}
-		return newEvalRangeRef(addr, rows, ctx.Resolver, legacy), nil
+		return newEvalRangeRef(addr, rows, ctx.Resolver, legacy)
 	}
 
 	col, row, err := indirectParseCell(cellPart)
 	if err == nil {
 		addr := CellAddr{Sheet: sheet, Col: col, Row: row}
 		val := ctx.Resolver.GetCellValue(addr)
-		return newEvalSingleCellRef(addr, val), nil
+		return newEvalSingleCellRef(addr, val)
 	}
 	if nameResolver, ok := ctx.Resolver.(DefinedNameResolver); ok {
 		scopeSheet := ctx.CurrentSheet
@@ -134,10 +179,10 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 			scopeSheet = sheet
 		}
 		if named, ok := nameResolver.ResolveDefinedNameValue(cellPart, scopeSheet); ok {
-			return valueToIndirectEvalValue(named, ctx.Resolver), nil
+			return valueToIndirectEvalValue(named, ctx.Resolver)
 		}
 	}
-	return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+	return ValueToEvalValue(ErrorVal(ErrValREF))
 }
 
 func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {

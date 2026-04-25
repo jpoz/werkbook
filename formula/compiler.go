@@ -11,7 +11,18 @@ import (
 
 // Compile walks the AST rooted at node and emits bytecode.
 func Compile(source string, node Node) (*CompiledFormula, error) {
-	return compileWithMode(source, node, false)
+	compiled, err := compileWithMode(source, node, false)
+	if err != nil {
+		return nil, err
+	}
+	if compiled.NeedsSpillProbe {
+		topLevelArray, err := compileWithMode(source, node, true)
+		if err != nil {
+			return nil, err
+		}
+		compiled.TopLevelArray = topLevelArray
+	}
+	return compiled, nil
 }
 
 // CompileSpillProbe compiles a formula for top-level dynamic-array probing.
@@ -29,6 +40,7 @@ func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*Compiled
 		rngIdx: make(map[RangeAddr]uint32),
 	}
 	if topLevelArrayCtx {
+		c.dynamicArrayDepth = 1
 		c.emit(OpEnterArrayCtx, 0)
 		if err := c.compileNodeCtx(node, true); err != nil {
 			return nil, err
@@ -554,6 +566,10 @@ func formulaNeedsSpillProbe(node Node) bool {
 
 func funcCallNeedsSpillProbe(call *FuncCall) bool {
 	name := normalizeFuncName(call.Name)
+	switch name {
+	case "OFFSET", "INDIRECT":
+		return true
+	}
 	if _, ok := dynamicArrayFunctions[name]; ok {
 		return true
 	}

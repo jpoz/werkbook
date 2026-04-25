@@ -2775,6 +2775,44 @@ func TestEvalSUMPRODUCTWholeColumnINDIRECTUsesLiveRefInComparison(t *testing.T) 
 	}
 }
 
+func TestEvalCOUNTIndirectArrayArgIgnoresRefDerivedAnonymousArrayValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 3}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 5}
+
+	got, err := Eval(evalCompile(t, `COUNT(INDIRECT({"data!A1";"data!A3";"data!A5"}))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Fatalf(`COUNT(INDIRECT({"data!A1";"data!A3";"data!A5"})) = %#v, want 0`, got)
+	}
+}
+
+func TestEvalSUMPRODUCTIndirectArrayArgIgnoresRefDerivedAnonymousArrayValues(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 3}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	got, err := Eval(evalCompile(t, `SUMPRODUCT(INDIRECT({"data!A1";"data!A3";"data!A5"}))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 0 {
+		t.Fatalf(`SUMPRODUCT(INDIRECT({"data!A1";"data!A3";"data!A5"})) = %#v, want 0`, got)
+	}
+}
+
 // TestEvalIFErrorAndIFNARetainAnonymousArrayFallbacks guards the
 // OpImplicitIntersectRefOnly path: in a normal scalar formula cell, IFERROR
 // / IFNA should still leave anonymous fallback arrays intact so wrappers like

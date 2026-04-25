@@ -1,18 +1,15 @@
 package werkbook
 
-import "github.com/jpoz/werkbook/formula"
+import (
+	"sort"
+
+	"github.com/jpoz/werkbook/formula"
+)
 
 type spillOverlay struct {
 	gen     uint64
 	anchors map[cellKey]*spillAnchorState
-	refs    []spillAnchorRef
-}
-
-type spillAnchorRef struct {
-	col   int
-	row   int
-	cell  *Cell
-	state *spillAnchorState
+	index   spillLookupIndex
 }
 
 type spillAnchorState struct {
@@ -66,33 +63,73 @@ func (s *Sheet) ensureSpillOverlay() *spillOverlay {
 }
 
 func (s *Sheet) rebuildSpillOverlay() {
-	next := spillOverlay{
-		gen:     s.file.calcGen,
-		anchors: make(map[cellKey]*spillAnchorState),
+	if s.spill.anchors == nil {
+		s.spill.anchors = make(map[cellKey]*spillAnchorState)
+	}
+	next := spillLookupIndex{
+		rows: make(map[int][]spillLookupSpan),
 	}
 	for anchorRow, sheetRow := range s.rows {
 		for anchorCol, cell := range sheetRow.cells {
 			if isDynamicArrayAnchor(cell) {
-				key := cellKey{sheet: s.name, col: anchorCol, row: anchorRow}
-				var state *spillAnchorState
-				if existing, ok := s.spill.anchors[key]; ok {
-					cp := *existing
-					state = &cp
-					next.anchors[key] = state
-				} else {
-					state = &spillAnchorState{}
-					next.anchors[key] = state
+				state, ok := s.spillState(anchorCol, anchorRow)
+				if !ok || !spillStateHasPublishedSpill(state, anchorCol, anchorRow, s.file.calcGen) {
+					continue
 				}
-				next.refs = append(next.refs, spillAnchorRef{
+				if cell.rawCachedGen != s.file.calcGen {
+					continue
+				}
+				raw := cell.rawValue
+				if raw.Type != formula.ValueArray || raw.NoSpill {
+					continue
+				}
+				anchor := spillLookupAnchor{
 					col:   anchorCol,
 					row:   anchorRow,
 					cell:  cell,
 					state: state,
+				}
+				next.anchors = append(next.anchors, rangeSpillAnchor{
+					col:   anchorCol,
+					row:   anchorRow,
+					toCol: state.publishedToCol,
+					toRow: state.publishedToRow,
+					raw:   raw,
 				})
+				for rowOffset, spillRow := range raw.Array {
+					if len(spillRow) == 0 {
+						continue
+					}
+					rowNum := anchorRow + rowOffset
+					fromCol := anchorCol
+					if rowOffset == 0 {
+						fromCol++
+					}
+					toCol := anchorCol + len(spillRow) - 1
+					if fromCol > toCol {
+						continue
+					}
+					next.rows[rowNum] = append(next.rows[rowNum], spillLookupSpan{
+						fromCol: fromCol,
+						toCol:   toCol,
+						anchor:  anchor,
+					})
+				}
 			}
 		}
 	}
-	s.spill = next
+	for row := range next.rows {
+		spans := next.rows[row]
+		sort.Slice(spans, func(i, j int) bool {
+			if spans[i].fromCol == spans[j].fromCol {
+				return spans[i].toCol < spans[j].toCol
+			}
+			return spans[i].fromCol < spans[j].fromCol
+		})
+		next.rows[row] = spans
+	}
+	s.spill.index = next
+	s.spill.gen = s.file.calcGen
 }
 
 func (s *Sheet) ensureSpillState(col, row int) *spillAnchorState {
@@ -133,34 +170,97 @@ func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 		return
 	}
 	s.resolveCell(c, col, row)
-	raw := c.rawValue
+	var plan *SpillPlan
 	if c.rawCachedGen != s.file.calcGen {
+		outcome, err := s.evalCellOutcome(c, col, row)
+		if err != nil {
+			s.publishSpillState(col, row, nil)
+			return
+		}
 		savedValue := c.value
 		savedCachedGen := c.cachedGen
 		savedDirty := c.dirty
-		raw = s.evaluateFormulaRaw(c, col, row)
+		s.applyCellOutcome(c, col, row, outcome)
+		plan = outcome.Spill
 		c.value = savedValue
 		c.cachedGen = savedCachedGen
 		c.dirty = savedDirty
+	} else {
+		plan = newSpillPlan(c.rawValue, col, row)
+		if c.value.Type == TypeError && c.value.String == "#SPILL!" && plan != nil {
+			plan.Blocked = true
+			plan.PublishedToCol = col
+			plan.PublishedToRow = row
+		}
 	}
-	blocked := c.value.Type == TypeError && c.value.String == "#SPILL!"
-	s.publishSpillState(c, col, row, raw, blocked)
+	s.publishSpillState(col, row, plan)
 }
 
-func (s *Sheet) publishSpillState(c *Cell, col, row int, raw formula.Value, blocked bool) {
-	if c == nil {
-		return
+func (s *Sheet) refreshSpillAnchorsForPoint(col, row int) bool {
+	refreshed := false
+	for anchorRow, sheetRow := range s.rows {
+		if anchorRow > row {
+			continue
+		}
+		for anchorCol, cell := range sheetRow.cells {
+			if anchorCol > col || !isDynamicArrayAnchor(cell) {
+				continue
+			}
+			if state, ok := s.spillState(anchorCol, anchorRow); ok {
+				if spillStateHasPublishedSpill(state, anchorCol, anchorRow, s.file.calcGen) &&
+					row <= state.publishedToRow && col <= state.publishedToCol {
+					continue
+				}
+				if toCol, toRow, ok := s.spillAttemptedRect(anchorCol, anchorRow); ok &&
+					(row > toRow || col > toCol) {
+					continue
+				}
+			}
+			s.refreshSpillState(cell, anchorCol, anchorRow)
+			refreshed = true
+		}
 	}
+	return refreshed
+}
+
+func (s *Sheet) refreshSpillAnchorsForRange(req rangeMaterializationRequest, logicalToCol int) bool {
+	refreshed := false
+	for anchorRow, sheetRow := range s.rows {
+		if anchorRow > req.toRow {
+			continue
+		}
+		for anchorCol, cell := range sheetRow.cells {
+			if anchorCol > logicalToCol || !isDynamicArrayAnchor(cell) {
+				continue
+			}
+			if state, ok := s.spillState(anchorCol, anchorRow); ok {
+				if spillStateHasPublishedSpill(state, anchorCol, anchorRow, s.file.calcGen) {
+					if state.publishedToRow < req.fromRow || state.publishedToCol < req.fromCol {
+						continue
+					}
+					continue
+				}
+				if toCol, toRow, ok := s.spillAttemptedRect(anchorCol, anchorRow); ok &&
+					(toRow < req.fromRow || toCol < req.fromCol) {
+					continue
+				}
+			}
+			s.refreshSpillState(cell, anchorCol, anchorRow)
+			refreshed = true
+		}
+	}
+	return refreshed
+}
+
+func (s *Sheet) publishSpillState(col, row int, plan *SpillPlan) {
 	state := s.ensureSpillState(col, row)
 	attemptedToCol, attemptedToRow := col, row
-	if toCol, toRow, ok := spillArrayRect(raw, col, row); ok {
-		attemptedToCol, attemptedToRow = toCol, toRow
-	}
 	publishedToCol, publishedToRow := col, row
-	if !blocked {
-		if toCol, toRow, ok := spillArrayRect(raw, col, row); ok {
-			publishedToCol, publishedToRow = toCol, toRow
-		}
+	blocked := false
+	if plan != nil {
+		attemptedToCol, attemptedToRow = plan.AttemptedToCol, plan.AttemptedToRow
+		publishedToCol, publishedToRow = plan.PublishedToCol, plan.PublishedToRow
+		blocked = plan.Blocked
 	}
 	if state.gen == s.file.calcGen &&
 		state.attemptedToCol == attemptedToCol &&
@@ -183,6 +283,9 @@ func (s *Sheet) publishSpillState(c *Cell, col, row int, raw formula.Value, bloc
 
 func (s *Sheet) clearSpillState(col, row int) {
 	key := cellKey{sheet: s.name, col: col, row: row}
+	if s.spill.anchors == nil {
+		return
+	}
 	if _, ok := s.spill.anchors[key]; !ok {
 		return
 	}
