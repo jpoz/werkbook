@@ -280,8 +280,9 @@ func fnVLOOKUP(args []Value) (Value, error) {
 	if table.Type == ValueError {
 		return table, nil
 	}
-	if table.Type != ValueArray {
-		return ErrorVal(ErrValVALUE), nil
+	grid, errVal := normalizeToArrayGrid(table)
+	if errVal != nil {
+		return *errVal, nil
 	}
 	colIdx, e := CoerceNum(args[2])
 	if e != nil {
@@ -300,17 +301,11 @@ func fnVLOOKUP(args []Value) (Value, error) {
 	if rangeLookup {
 		// Excel uses binary search for approximate match. This matters
 		// on unsorted data where a linear scan and binary search diverge.
-		lo, hi := 0, len(table.Array)-1
+		lo, hi := 0, grid.rowCount-1
 		result := -1
 		for lo <= hi {
 			mid := (lo + hi) / 2
-			row := table.Array[mid]
-			if len(row) == 0 {
-				// Skip empty rows by shrinking the window.
-				hi = mid - 1
-				continue
-			}
-			cmp := CompareValues(row[0], lookup)
+			cmp := CompareValues(grid.cell(mid, 0), lookup)
 			if cmp == 0 {
 				result = mid
 				break
@@ -324,10 +319,10 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if ci > len(table.Array[result]) {
+		if ci > grid.colCount {
 			return ErrorVal(ErrValREF), nil
 		}
-		return table.Array[result][ci-1], nil
+		return grid.cell(result, ci-1), nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -343,11 +338,8 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for _, row := range table.Array {
-		if len(row) == 0 {
-			continue
-		}
-		cell := row[0]
+	for row := 0; row < grid.rowCount; row++ {
+		cell := grid.cell(row, 0)
 		// In Excel, VLOOKUP exact match skips truly empty cells.
 		if cell.Type == ValueEmpty {
 			continue
@@ -361,10 +353,10 @@ func fnVLOOKUP(args []Value) (Value, error) {
 			matched = CompareValuesExact(cell, lookup) == 0
 		}
 		if matched {
-			if ci > len(row) {
+			if ci > grid.colCount {
 				return ErrorVal(ErrValREF), nil
 			}
-			return row[ci-1], nil
+			return grid.cell(row, ci-1), nil
 		}
 	}
 	return ErrorVal(ErrValNA), nil
@@ -376,8 +368,9 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	}
 	lookup := args[0]
 	table := args[1]
-	if table.Type != ValueArray || len(table.Array) == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	grid, errVal := normalizeToArrayGrid(table)
+	if errVal != nil {
+		return *errVal, nil
 	}
 	rowIdx, e := CoerceNum(args[2])
 	if e != nil {
@@ -387,7 +380,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	if ri < 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	if ri > len(table.Array) {
+	if ri > grid.rowCount {
 		return ErrorVal(ErrValREF), nil
 	}
 
@@ -396,15 +389,13 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		rangeLookup = IsTruthy(args[3])
 	}
 
-	firstRow := table.Array[0]
-
 	if rangeLookup {
 		// Excel uses binary search for approximate match.
-		lo, hi := 0, len(firstRow)-1
+		lo, hi := 0, grid.colCount-1
 		result := -1
 		for lo <= hi {
 			mid := (lo + hi) / 2
-			cmp := CompareValues(firstRow[mid], lookup)
+			cmp := CompareValues(grid.cell(0, mid), lookup)
 			if cmp == 0 {
 				result = mid
 				break
@@ -418,10 +409,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if result >= len(table.Array[ri-1]) {
-			return ErrorVal(ErrValREF), nil
-		}
-		return table.Array[ri-1][result], nil
+		return grid.cell(ri-1, result), nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -437,7 +425,8 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for i, cell := range firstRow {
+	for i := 0; i < grid.colCount; i++ {
+		cell := grid.cell(0, i)
 		if cell.Type == ValueEmpty {
 			continue
 		}
@@ -450,10 +439,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 			matched = CompareValuesExact(cell, lookup) == 0
 		}
 		if matched {
-			if i >= len(table.Array[ri-1]) {
-				return ErrorVal(ErrValREF), nil
-			}
-			return table.Array[ri-1][i], nil
+			return grid.cell(ri-1, i), nil
 		}
 	}
 	return ErrorVal(ErrValNA), nil
@@ -712,23 +698,17 @@ func fnLOOKUP(args []Value) (Value, error) {
 		resultArr = args[2]
 	}
 
-	var lookupValues []Value
-	if lookupArr.Type == ValueArray {
-		for _, row := range lookupArr.Array {
-			lookupValues = append(lookupValues, row...)
-		}
-	} else {
-		lookupValues = []Value{lookupArr}
+	lookupGrid, errVal := normalizeToArrayGrid(lookupArr)
+	if errVal != nil {
+		return *errVal, nil
 	}
+	lookupValues := lookupGrid.flattenRowMajor()
 
-	var resultValues []Value
-	if resultArr.Type == ValueArray {
-		for _, row := range resultArr.Array {
-			resultValues = append(resultValues, row...)
-		}
-	} else {
-		resultValues = []Value{resultArr}
+	resultGrid, errVal := normalizeToArrayGrid(resultArr)
+	if errVal != nil {
+		return *errVal, nil
 	}
+	resultValues := resultGrid.flattenRowMajor()
 
 	lastMatch := -1
 	for i, v := range lookupValues {
@@ -778,62 +758,46 @@ func fnXLOOKUP(args []Value) (Value, error) {
 		searchMode = int(sm)
 	}
 
-	var lookupValues []Value
-	if lookupArr.Type == ValueArray {
-		for _, row := range lookupArr.Array {
-			lookupValues = append(lookupValues, row...)
-		}
-	} else {
-		lookupValues = []Value{lookupArr}
+	lookupGrid, errVal := normalizeToArrayGrid(lookupArr)
+	if errVal != nil {
+		return *errVal, nil
 	}
+	lookupValues := lookupGrid.flattenRowMajor()
 
 	// Determine lookup orientation: row-oriented if the lookup array is a
 	// single row with multiple columns; column-oriented otherwise.
 	isRowOriented := lookupArr.Type == ValueArray &&
-		len(lookupArr.Array) == 1 && len(lookupArr.Array[0]) > 1
+		lookupGrid.rowCount == 1 && lookupGrid.colCount > 1
+
+	var returnGrid arrayGrid
+	hasReturnGrid := returnArr.Type == ValueArray
+	if hasReturnGrid {
+		returnGrid, errVal = normalizeToArrayGrid(returnArr)
+		if errVal != nil {
+			return *errVal, nil
+		}
+	}
 
 	n := len(lookupValues)
 
 	xlookupReturn := func(i int) (Value, error) {
-		if returnArr.Type != ValueArray {
+		if !hasReturnGrid {
 			if i == 0 {
 				return returnArr, nil
 			}
 			return ErrorVal(ErrValNA), nil
 		}
 		if isRowOriented {
-			// Row-oriented lookup: index i is a column index in the
-			// return array. Extract column i across all rows.
-			rows := returnArr.Array
-			if len(rows) == 1 {
-				// Single-row return → scalar
-				if i >= 0 && i < len(rows[0]) {
-					return rows[0][i], nil
-				}
+			if i < 0 || i >= returnGrid.colCount {
 				return ErrorVal(ErrValNA), nil
 			}
-			col := make([][]Value, len(rows))
-			for r, row := range rows {
-				if i >= 0 && i < len(row) {
-					col[r] = []Value{row[i]}
-				} else {
-					col[r] = []Value{EmptyVal()}
-				}
-			}
-			return Value{Type: ValueArray, Array: col}, nil
+			return returnGrid.projectCol(i), nil
 		}
 		// Column-oriented lookup: index i is a row index.
-		if i < 0 || i >= len(returnArr.Array) {
+		if i < 0 || i >= returnGrid.rowCount {
 			return ErrorVal(ErrValNA), nil
 		}
-		row := returnArr.Array[i]
-		if len(row) <= 1 {
-			if len(row) == 1 {
-				return row[0], nil
-			}
-			return EmptyVal(), nil
-		}
-		return Value{Type: ValueArray, Array: [][]Value{row}}, nil
+		return returnGrid.projectRow(i), nil
 	}
 
 	// --- Binary search modes (search_mode 2 or -2) ---

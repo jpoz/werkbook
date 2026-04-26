@@ -67,43 +67,82 @@ func formulaDisplayValueAt(
 	intersectRangeOrigin bool,
 	currentCol, currentRow int,
 ) formula.Value {
-	if !intersectRangeOrigin || isArrayFormula || fv.Type != formula.ValueArray || fv.RangeOrigin == nil {
+	if fv.Type == formula.ValueArray && fv.NoSpill && !isArrayFormula {
+		return formula.ErrorVal(formula.ErrValVALUE)
+	}
+	if !intersectRangeOrigin || isArrayFormula {
 		return formulaDisplayValue(fv, isArrayFormula)
 	}
-	ro := fv.RangeOrigin
-	if ro.FromCol == ro.ToCol && ro.FromRow == ro.ToRow {
-		if len(fv.Array) > 0 && len(fv.Array[0]) > 0 {
-			return formulaDisplayValue(fv.Array[0][0], isArrayFormula)
+
+	ev := formula.ValueToEvalValue(fv)
+	if ev.Kind != formula.EvalRef || ev.Ref == nil {
+		return formulaDisplayValue(fv, isArrayFormula)
+	}
+
+	ref := ev.Ref
+	if ref.FromCol == ref.ToCol && ref.FromRow == ref.ToRow {
+		return formulaDisplayRefValueAt(ref, 0, 0, isArrayFormula)
+	}
+	if currentCol >= ref.FromCol && currentCol <= ref.ToCol &&
+		currentRow >= ref.FromRow && currentRow <= ref.ToRow {
+		return formulaDisplayRefValueAt(
+			ref,
+			currentRow-ref.FromRow,
+			currentCol-ref.FromCol,
+			isArrayFormula,
+		)
+	}
+	if ref.FromCol == ref.ToCol {
+		if currentRow >= ref.FromRow && currentRow <= ref.ToRow {
+			return formulaDisplayRefValueAt(ref, currentRow-ref.FromRow, 0, isArrayFormula)
 		}
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}
-	if currentCol >= ro.FromCol && currentCol <= ro.ToCol &&
-		currentRow >= ro.FromRow && currentRow <= ro.ToRow {
-		rowIdx := currentRow - ro.FromRow
-		colIdx := currentCol - ro.FromCol
-		if rowIdx >= 0 && rowIdx < len(fv.Array) &&
-			colIdx >= 0 && colIdx < len(fv.Array[rowIdx]) {
-			return formulaDisplayValue(fv.Array[rowIdx][colIdx], isArrayFormula)
-		}
-		return formula.ErrorVal(formula.ErrValVALUE)
-	}
-	if ro.FromCol == ro.ToCol {
-		if currentRow >= ro.FromRow && currentRow <= ro.ToRow {
-			rowIdx := currentRow - ro.FromRow
-			if rowIdx >= 0 && rowIdx < len(fv.Array) && len(fv.Array[rowIdx]) > 0 {
-				return formulaDisplayValue(fv.Array[rowIdx][0], isArrayFormula)
-			}
-		}
-		return formula.ErrorVal(formula.ErrValVALUE)
-	}
-	if ro.FromRow == ro.ToRow {
-		if currentCol >= ro.FromCol && currentCol <= ro.ToCol && len(fv.Array) > 0 {
-			colIdx := currentCol - ro.FromCol
-			if colIdx >= 0 && colIdx < len(fv.Array[0]) {
-				return formulaDisplayValue(fv.Array[0][colIdx], isArrayFormula)
-			}
+	if ref.FromRow == ref.ToRow {
+		if currentCol >= ref.FromCol && currentCol <= ref.ToCol {
+			return formulaDisplayRefValueAt(ref, 0, currentCol-ref.FromCol, isArrayFormula)
 		}
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}
 	return formula.ErrorVal(formula.ErrValVALUE)
+}
+
+func formulaDisplayRefValueAt(ref *formula.RefValue, rowOffset, colOffset int, isArrayFormula bool) formula.Value {
+	if ref == nil || rowOffset < 0 || colOffset < 0 {
+		return formula.ErrorVal(formula.ErrValVALUE)
+	}
+	if ref.Materialized != nil {
+		if rowOffset >= ref.Materialized.Rows() || colOffset >= ref.Materialized.Cols() {
+			return formula.ErrorVal(formula.ErrValVALUE)
+		}
+		return formulaDisplayEvalValue(ref.Materialized.Cell(rowOffset, colOffset), isArrayFormula)
+	}
+	if rowOffset == 0 && colOffset == 0 && ref.Legacy != nil {
+		return formulaDisplayValue(ref.Legacy.SingleCellValue, isArrayFormula)
+	}
+	return formula.ErrorVal(formula.ErrValVALUE)
+}
+
+func formulaDisplayEvalValue(ev formula.EvalValue, isArrayFormula bool) formula.Value {
+	switch ev.Kind {
+	case formula.EvalKindError:
+		return formula.ErrorVal(ev.Err)
+	case formula.EvalScalar:
+		return formulaDisplayValue(ev.Scalar, isArrayFormula)
+	case formula.EvalArray:
+		if ev.Array == nil {
+			return formula.NumberVal(0)
+		}
+		if ev.Array.SpillClass == formula.SpillScalarOnly && !isArrayFormula {
+			return formula.ErrorVal(formula.ErrValVALUE)
+		}
+		if ev.Array.Rows == 0 || ev.Array.Cols == 0 || ev.Array.Grid == nil {
+			return formula.NumberVal(0)
+		}
+		return formulaDisplayEvalValue(ev.Array.Grid.Cell(0, 0), isArrayFormula)
+	case formula.EvalRef:
+		return formulaDisplayRefValueAt(ev.Ref, 0, 0, isArrayFormula)
+	default:
+		return formula.NumberVal(0)
+	}
 }

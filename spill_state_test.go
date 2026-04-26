@@ -520,6 +520,57 @@ func TestSpillOverlayIndexLookup(t *testing.T) {
 	}
 }
 
+func TestSpillOverlayIndexLookupSkipsJaggedHole(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+	f.calcGen = 1
+
+	raw1 := formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{
+		{formula.NumberVal(1), formula.NumberVal(2), formula.NumberVal(3)},
+		{formula.NumberVal(4)},
+	}}
+	raw2 := formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{{
+		formula.NumberVal(10),
+		formula.NumberVal(11),
+	}}}
+
+	if s.rows[2] == nil {
+		s.rows[2] = &Row{num: 2, cells: make(map[int]*Cell)}
+	}
+	s.rows[2].cells[2] = &Cell{
+		col:               2,
+		formula:           "JAGGED()",
+		dynamicArraySpill: true,
+		rawValue:          raw1,
+		rawCachedGen:      f.calcGen,
+	}
+	if s.rows[3] == nil {
+		s.rows[3] = &Row{num: 3, cells: make(map[int]*Cell)}
+	}
+	s.rows[3].cells[3] = &Cell{
+		col:               3,
+		formula:           "ROWPAIR()",
+		dynamicArraySpill: true,
+		rawValue:          raw2,
+		rawCachedGen:      f.calcGen,
+	}
+
+	s.publishSpillState(2, 2, newSpillPlan(raw1, 2, 2))
+	s.publishSpillState(3, 3, newSpillPlan(raw2, 3, 3))
+
+	overlay := s.ensureSpillOverlay()
+	if got := overlay.index.lookup(4, 3); got == nil {
+		t.Fatalf("lookup(D3) = nil, want spill span from C3")
+	}
+	got, ok := s.spillFormulaValueAt(4, 3)
+	if !ok {
+		t.Fatalf("spillFormulaValueAt(D3) = missing")
+	}
+	if got.Type != formula.ValueNumber || got.Num != 11 {
+		t.Fatalf("spillFormulaValueAt(D3) = %#v, want 11", got)
+	}
+}
+
 func TestSpillBoundsTrackRecalculation(t *testing.T) {
 	f := New(FirstSheet("Data"))
 	data := f.Sheet("Data")

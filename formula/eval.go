@@ -1405,29 +1405,29 @@ func IsTruthy(v Value) bool {
 // explicit @/SINGLE semantics. Anonymous arrays are left unchanged; explicit
 // @/SINGLE scalarization uses explicitIntersect instead.
 func implicitIntersect(v Value, ctx *EvalContext) Value {
-	if v.Type != ValueArray || ctx == nil || v.RangeOrigin == nil {
+	if v.Type != ValueArray || ctx == nil {
 		return v
 	}
-	ro := v.RangeOrigin
+	ref := legacyIntersectRefValue(v)
+	if ref == nil {
+		return v
+	}
+	ro := ref.Bounds()
 	isSingleCol := ro.FromCol == ro.ToCol
 	isSingleRow := ro.FromRow == ro.ToRow
 	if isSingleCol {
 		r := ctx.CurrentRow
-		if r >= ro.FromRow && r <= ro.ToRow && len(v.Array) > 0 {
+		if r >= ro.FromRow && r <= ro.ToRow {
 			idx := r - ro.FromRow
-			if idx < len(v.Array) {
-				return v.Array[idx][0]
-			}
+			return legacyIntersectRefCell(ref, idx, 0)
 		}
 		return ErrorVal(ErrValVALUE)
 	}
 	if isSingleRow {
 		c := ctx.CurrentCol
-		if c >= ro.FromCol && c <= ro.ToCol && len(v.Array) > 0 {
+		if c >= ro.FromCol && c <= ro.ToCol {
 			idx := c - ro.FromCol
-			if idx < len(v.Array[0]) {
-				return v.Array[0][idx]
-			}
+			return legacyIntersectRefCell(ref, 0, idx)
 		}
 		return ErrorVal(ErrValVALUE)
 	}
@@ -1438,7 +1438,7 @@ func explicitIntersect(v Value, ctx *EvalContext) Value {
 	if v.Type != ValueArray {
 		return v
 	}
-	if v.RangeOrigin == nil {
+	if legacyIntersectRefValue(v) == nil {
 		if len(v.Array) > 0 && len(v.Array[0]) > 0 {
 			return v.Array[0][0]
 		}
@@ -1576,30 +1576,42 @@ func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Val
 }
 
 func extractRangeOrigin(v Value) *RangeAddr {
-	if v.Type == ValueArray && v.RangeOrigin != nil {
-		return v.RangeOrigin
+	ev := ValueToEvalValue(v)
+	if ev.Kind != EvalRef || ev.Ref == nil {
+		return nil
 	}
-	if v.CellOrigin != nil {
-		// Single-cell ref carried a CellOrigin (including empty-cell results
-		// from INDEX/OFFSET that still represent a worksheet address).
-		c := v.CellOrigin
-		return &RangeAddr{
-			Sheet: c.Sheet, SheetEnd: c.SheetEnd,
-			FromCol: c.Col, FromRow: c.Row,
-			ToCol: c.Col, ToRow: c.Row,
+	out := ev.Ref.Bounds()
+	// RefValue does not carry 3D sheet spans yet, so preserve any SheetEnd
+	// while range/operator semantics continue to cross the legacy Value boundary.
+	if v.RangeOrigin != nil && v.RangeOrigin.SheetEnd != "" {
+		out.Sheet = v.RangeOrigin.Sheet
+		out.SheetEnd = v.RangeOrigin.SheetEnd
+	}
+	return &out
+}
+
+func legacyIntersectRefValue(v Value) *RefValue {
+	ev := ValueToEvalValue(v)
+	if ev.Kind != EvalRef || ev.Ref == nil {
+		return nil
+	}
+	return ev.Ref
+}
+
+func legacyIntersectRefCell(ref *RefValue, rowOffset, colOffset int) Value {
+	if ref == nil || rowOffset < 0 || colOffset < 0 {
+		return ErrorVal(ErrValVALUE)
+	}
+	if ref.Materialized != nil {
+		if rowOffset >= ref.Materialized.Rows() || colOffset >= ref.Materialized.Cols() {
+			return ErrorVal(ErrValVALUE)
 		}
+		return EvalValueToValue(ref.Materialized.Cell(rowOffset, colOffset))
 	}
-	if v.Type == ValueRef {
-		encoded := int(v.Num)
-		col := encoded % 100_000
-		row := encoded / 100_000
-		return &RangeAddr{
-			Sheet:   v.Str,
-			FromCol: col, FromRow: row,
-			ToCol: col, ToRow: row,
-		}
+	if rowOffset == 0 && colOffset == 0 && ref.Legacy != nil {
+		return ref.Legacy.SingleCellValue
 	}
-	return nil
+	return ErrorVal(ErrValVALUE)
 }
 
 // unionAreas flattens a sequence of area Values into a single ValueArray by

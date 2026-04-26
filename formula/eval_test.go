@@ -1337,6 +1337,20 @@ func TestEvalRefBoundaryPlaceholderKeepsInternalFullAxisRef(t *testing.T) {
 	}
 }
 
+func TestImplicitIntersectUsesEvalRefBackedRange(t *testing.T) {
+	addr := RangeAddr{Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 4}
+	v := EvalValueToValue(newEvalRangeRef(addr, [][]Value{
+		{NumberVal(10)},
+		{NumberVal(20)},
+		{NumberVal(30)},
+	}, nil, nil))
+
+	got := implicitIntersect(v, &EvalContext{CurrentCol: 7, CurrentRow: 3})
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Fatalf("implicitIntersect(evalRef-backed A2:A4 at row 3) = %#v, want 20", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // isTruthy — exercised through IF
 // ---------------------------------------------------------------------------

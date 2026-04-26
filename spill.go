@@ -130,9 +130,7 @@ func (s *Sheet) rebuildSpillOverlay() {
 	if s.spill.anchors == nil {
 		s.spill.anchors = make(map[cellKey]*spillAnchorState)
 	}
-	next := spillLookupIndex{
-		rows: make(map[int][]spillLookupSpan),
-	}
+	next := spillLookupIndex{}
 	for anchorRow, sheetRow := range s.rows {
 		for anchorCol, cell := range sheetRow.cells {
 			if isDynamicArrayAnchor(cell) {
@@ -160,38 +158,22 @@ func (s *Sheet) rebuildSpillOverlay() {
 					toRow: state.publishedToRow,
 					raw:   raw,
 				})
-				for rowOffset, spillRow := range raw.Array {
-					if len(spillRow) == 0 {
-						continue
-					}
-					rowNum := anchorRow + rowOffset
-					fromCol := anchorCol
-					if rowOffset == 0 {
-						fromCol++
-					}
-					toCol := anchorCol + len(spillRow) - 1
-					if fromCol > toCol {
-						continue
-					}
-					next.rows[rowNum] = append(next.rows[rowNum], spillLookupSpan{
-						fromCol: fromCol,
-						toCol:   toCol,
-						anchor:  anchor,
-					})
-				}
+				next.spans = append(next.spans, spillLookupSpan{
+					fromCol: anchorCol,
+					fromRow: anchorRow,
+					toCol:   state.publishedToCol,
+					toRow:   state.publishedToRow,
+					anchor:  anchor,
+				})
 			}
 		}
 	}
-	for row := range next.rows {
-		spans := next.rows[row]
-		sort.Slice(spans, func(i, j int) bool {
-			if spans[i].fromCol == spans[j].fromCol {
-				return spans[i].toCol < spans[j].toCol
-			}
-			return spans[i].fromCol < spans[j].fromCol
-		})
-		next.rows[row] = spans
-	}
+	sort.Slice(next.spans, func(i, j int) bool {
+		if next.spans[i].fromRow == next.spans[j].fromRow {
+			return next.spans[i].fromCol < next.spans[j].fromCol
+		}
+		return next.spans[i].fromRow < next.spans[j].fromRow
+	})
 	s.spill.index = next
 	s.spill.gen = s.file.calcGen
 }

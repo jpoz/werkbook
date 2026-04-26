@@ -7352,6 +7352,26 @@ func TestXLOOKUP_WildcardMode(t *testing.T) {
 	}
 }
 
+func TestXLOOKUP_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnXLOOKUP([]Value{
+		StringVal("beta"),
+		trimmedRangeValue([][]Value{
+			{StringVal("alpha")},
+			{StringVal("beta")},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+		}, 2, 1, 2, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnXLOOKUP: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Fatalf("fnXLOOKUP(trimmed full-column) = %#v, want 20", got)
+	}
+}
+
 func TestXLOOKUP_Comprehensive(t *testing.T) {
 	// ---- search_mode tests ----
 

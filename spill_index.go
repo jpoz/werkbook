@@ -1,15 +1,21 @@
 package werkbook
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/jpoz/werkbook/formula"
+)
 
 type spillLookupIndex struct {
 	anchors []rangeSpillAnchor
-	rows    map[int][]spillLookupSpan
+	spans   []spillLookupSpan
 }
 
 type spillLookupSpan struct {
 	fromCol int
+	fromRow int
 	toCol   int
+	toRow   int
 	anchor  spillLookupAnchor
 }
 
@@ -21,22 +27,36 @@ type spillLookupAnchor struct {
 }
 
 func (idx *spillLookupIndex) lookup(col, row int) *spillLookupSpan {
-	if idx == nil || len(idx.rows) == 0 {
+	if idx == nil || len(idx.spans) == 0 {
 		return nil
 	}
-	spans := idx.rows[row]
-	if len(spans) == 0 {
-		return nil
-	}
-	i := sort.Search(len(spans), func(i int) bool {
-		return spans[i].toCol >= col
+	limit := sort.Search(len(idx.spans), func(i int) bool {
+		return idx.spans[i].fromRow > row
 	})
-	if i >= len(spans) {
-		return nil
+	for i := 0; i < limit; i++ {
+		span := &idx.spans[i]
+		if row < span.fromRow || row > span.toRow {
+			continue
+		}
+		if col < span.fromCol || col > span.toCol {
+			continue
+		}
+		if col == span.anchor.col && row == span.anchor.row {
+			continue
+		}
+		raw := span.anchor.cell.rawValue
+		if raw.Type != formula.ValueArray || raw.NoSpill {
+			continue
+		}
+		rowOffset := row - span.anchor.row
+		colOffset := col - span.anchor.col
+		if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
+			continue
+		}
+		if colOffset >= len(raw.Array[rowOffset]) {
+			continue
+		}
+		return span
 	}
-	span := &spans[i]
-	if col < span.fromCol || col > span.toCol {
-		return nil
-	}
-	return span
+	return nil
 }
