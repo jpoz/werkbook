@@ -67,8 +67,11 @@ type RefValue struct {
 	Legacy       *RefLegacyBoundary
 }
 
-// RefLegacyBoundary controls how a ref-backed EvalValue is exposed when it
-// must cross the legacy Value boundary.
+// RefLegacyBoundary controls the two compatibility cases that still matter
+// when a ref-backed EvalValue must cross the legacy Value boundary:
+// preserving single-cell identity for ref-aware scalar consumers, and
+// preserving placeholder shape for full-axis refs that cannot materialize at
+// legacy-array size.
 type RefLegacyBoundary struct {
 	SingleCellValue Value
 	PlaceholderRows int
@@ -223,10 +226,6 @@ func legacyRefCellValue(ref *RefValue, rowOffset, colOffset int) Value {
 		return ref.Legacy.SingleCellValue
 	}
 	return ErrorVal(ErrValVALUE)
-}
-
-func legacyValueSpillClass(v Value) SpillClass {
-	return spillClassFromLegacy(v)
 }
 
 // EvalValueToValue adapts the new internal v2 categories back to the legacy

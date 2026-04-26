@@ -1538,20 +1538,25 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 		if sheet == "" && ctx != nil {
 			sheet = ctx.CurrentSheet
 		}
-
-		// Build a filtered copy of the array, replacing SUBTOTAL cells
-		// and hidden-row cells with empty.
-		var filtered [][]Value
-		initFiltered := func(upTo int) {
-			filtered = make([][]Value, len(arg.Array))
-			for k := 0; k < upTo; k++ {
-				filtered[k] = arg.Array[k]
+		source, errVal := normalizeValueGridSource(arg)
+		if errVal != nil {
+			if out != nil {
+				out[i] = arg
 			}
+			continue
 		}
-		for ri, row := range arg.Array {
+		rows, cols := source.dims()
+		if rows == 0 || cols == 0 {
+			if out != nil {
+				out[i] = arg
+			}
+			continue
+		}
+
+		needsFilter := false
+		for ri := 0; ri < rows && !needsFilter; ri++ {
 			rowNum := origin.FromRow + ri
-			// Determine if this row should be excluded based on hidden state.
-			var rowExcluded bool
+			rowExcluded := false
 			if hiddenChecker != nil {
 				if excludeAllHidden {
 					rowExcluded = hiddenChecker.IsRowHidden(sheet, rowNum)
@@ -1560,44 +1565,69 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 				}
 			}
 			if rowExcluded {
-				if filtered == nil {
-					initFiltered(ri)
-				}
-				filtered[ri] = make([]Value, len(row))
-				continue
+				needsFilter = true
+				break
 			}
-			// Check individual cells for SUBTOTAL formulas.
-			var filteredRow []Value
 			if checker != nil {
-				for ci := range row {
+				for ci := 0; ci < cols; ci++ {
 					colNum := origin.FromCol + ci
 					if checker.IsSubtotalCell(sheet, colNum, rowNum) {
-						if filteredRow == nil {
-							filteredRow = make([]Value, len(row))
-							copy(filteredRow, row)
-						}
-						filteredRow[ci] = EmptyVal()
+						needsFilter = true
+						break
 					}
 				}
 			}
-			if filteredRow != nil {
-				if filtered == nil {
-					initFiltered(ri)
+		}
+		if !needsFilter {
+			if out != nil {
+				out[i] = arg
+			}
+			continue
+		}
+
+		// Materialize through the shared grid seam so placeholder-backed refs
+		// still expose their populated extent before we blank hidden rows and
+		// nested SUBTOTAL cells.
+		filtered := newValueMatrix(rows, cols)
+		for ri := 0; ri < rows; ri++ {
+			for ci := 0; ci < cols; ci++ {
+				filtered[ri][ci] = source.cell(ri, ci)
+			}
+		}
+		for ri := 0; ri < rows; ri++ {
+			rowNum := origin.FromRow + ri
+			rowExcluded := false
+			if hiddenChecker != nil {
+				if excludeAllHidden {
+					rowExcluded = hiddenChecker.IsRowHidden(sheet, rowNum)
+				} else {
+					rowExcluded = hiddenChecker.IsRowFilteredByAutoFilter(sheet, rowNum)
 				}
-				filtered[ri] = filteredRow
-			} else if filtered != nil {
-				filtered[ri] = row
+			}
+			if rowExcluded {
+				for ci := 0; ci < cols; ci++ {
+					filtered[ri][ci] = EmptyVal()
+				}
+				continue
+			}
+			if checker != nil {
+				for ci := 0; ci < cols; ci++ {
+					colNum := origin.FromCol + ci
+					if checker.IsSubtotalCell(sheet, colNum, rowNum) {
+						filtered[ri][ci] = EmptyVal()
+					}
+				}
 			}
 		}
-		if filtered != nil {
-			if out == nil {
-				out = make([]Value, len(args))
-				copy(out[:i], args[:i])
-			}
-			out[i] = Value{Type: ValueArray, Array: filtered}
-		} else if out != nil {
-			out[i] = arg
+		if out == nil {
+			out = make([]Value, len(args))
+			copy(out[:i], args[:i])
 		}
+		next := arg
+		next.Array = filtered
+		next.RangeOrigin = ptrRange(*origin)
+		next.evalRef = nil
+		out[i] = next
 	}
 	if out == nil {
 		return args
@@ -1781,14 +1811,7 @@ func fnSERIESSUM(args []Value) (Value, error) {
 	}
 
 	// Flatten coefficients from arg[3].
-	var coeffs []Value
-	if args[3].Type == ValueArray {
-		for _, row := range args[3].Array {
-			coeffs = append(coeffs, row...)
-		}
-	} else {
-		coeffs = []Value{args[3]}
-	}
+	coeffs := valueFlattenRowMajor(args[3])
 
 	var sum float64
 	for i, cv := range coeffs {

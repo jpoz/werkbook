@@ -222,6 +222,14 @@ func TestBYCOL(t *testing.T) {
 				{ErrorVal(ErrValVALUE), ErrorVal(ErrValVALUE)},
 			}},
 		},
+		// 27. One-cell columns must stay range-like, not direct scalars
+		{
+			name:    "count boolean single cell cols",
+			formula: `BYCOL({TRUE,FALSE}, LAMBDA(c, COUNT(c)))`,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(0), NumberVal(0)},
+			}},
+		},
 	}
 
 	for _, tt := range tests {

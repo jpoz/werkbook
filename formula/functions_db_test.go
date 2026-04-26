@@ -834,6 +834,52 @@ func runDBTests(t *testing.T, funcName string, tests []dbTestCase) {
 	}
 }
 
+func TestDSUM_TrimmedCriteriaLogicalBlankRowMatchesAll(t *testing.T) {
+	db := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("Tree"), StringVal("Profit")},
+			{StringVal("Apple"), NumberVal(10)},
+			{StringVal("Pear"), NumberVal(20)},
+		},
+	}
+	criteria := trimmedRangeValue([][]Value{
+		{StringVal("Tree")},
+		{StringVal("Apple")},
+	}, 7, 1, 7, 3)
+
+	got, err := fnDSum([]Value{db, StringVal("Profit"), criteria})
+	if err != nil {
+		t.Fatalf("fnDSum(trimmed criteria with logical blank row): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 30 {
+		t.Fatalf("fnDSum(trimmed criteria with logical blank row) = %+v, want 30", got)
+	}
+}
+
+func TestDSUM_FullColumnCriteriaIgnoresLogicalBlankTail(t *testing.T) {
+	db := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("Tree"), StringVal("Profit")},
+			{StringVal("Apple"), NumberVal(10)},
+			{StringVal("Pear"), NumberVal(20)},
+		},
+	}
+	criteria := trimmedRangeValue([][]Value{
+		{StringVal("Tree")},
+		{StringVal("Apple")},
+	}, 7, 1, 7, maxRows)
+
+	got, err := fnDSum([]Value{db, StringVal("Profit"), criteria})
+	if err != nil {
+		t.Fatalf("fnDSum(full-column trimmed criteria): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 10 {
+		t.Fatalf("fnDSum(full-column trimmed criteria) = %+v, want 10", got)
+	}
+}
+
 // standardDB is the shared test database used across D-function tests.
 func standardDB() [][]Value {
 	return [][]Value{

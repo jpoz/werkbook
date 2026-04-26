@@ -173,7 +173,7 @@ func TestValueToEvalValueResolverFallbackLoadsRange(t *testing.T) {
 	}
 }
 
-func TestLegacyValueSpillClass(t *testing.T) {
+func TestSpillClassFromLegacy(t *testing.T) {
 	tests := []struct {
 		name string
 		in   Value
@@ -222,8 +222,8 @@ func TestLegacyValueSpillClass(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := legacyValueSpillClass(tt.in); got != tt.want {
-				t.Fatalf("legacyValueSpillClass = %v, want %v", got, tt.want)
+			if got := spillClassFromLegacy(tt.in); got != tt.want {
+				t.Fatalf("spillClassFromLegacy = %v, want %v", got, tt.want)
 			}
 		})
 	}

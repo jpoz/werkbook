@@ -12329,6 +12329,14 @@ func (m *subtotalMockResolver) IsRowFilteredByAutoFilter(sheet string, row int) 
 	return false
 }
 
+type subtotalSparseResolver struct {
+	subtotalMockResolver
+}
+
+func (m *subtotalSparseResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	return (&sparseResolver{cells: m.cells}).GetRangeValues(addr)
+}
+
 func TestSUBTOTALComprehensive(t *testing.T) {
 	// ---------------------------------------------------------------
 	// 1. Multiple ref arguments: SUBTOTAL(9, A1:A3, B1:B3)
@@ -13305,6 +13313,65 @@ func TestSUBTOTALComprehensive(t *testing.T) {
 			t.Errorf("got %v (%g), want %g", got.Type, got.Num, expected)
 		}
 	})
+}
+
+func TestSubtotalFilterArgsPreservesTrimmedRangeOrigin(t *testing.T) {
+	arg := trimmedRangeValue([][]Value{
+		{NumberVal(10)},
+	}, 1, 1, 1, 3)
+	ctx := &EvalContext{
+		Resolver: &subtotalMockResolver{
+			autoFilterRows: map[string]map[int]bool{
+				"": {1: true},
+			},
+		},
+	}
+
+	gotArgs := subtotalFilterArgs([]Value{arg}, ctx, false)
+	if len(gotArgs) != 1 {
+		t.Fatalf("len(filtered) = %d, want 1", len(gotArgs))
+	}
+	got := gotArgs[0]
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+	}
+	rows, cols := arrayOpBounds(got)
+	if rows != 3 || cols != 1 {
+		t.Fatalf("arrayOpBounds(filtered) = %dx%d, want 3x1", rows, cols)
+	}
+	for row := 0; row < rows; row++ {
+		if cell := arrayElementDirect(got, rows, cols, row, 0); cell.Type != ValueEmpty {
+			t.Fatalf("filtered[%d,0] = %#v, want empty", row, cell)
+		}
+	}
+}
+
+func TestSUBTOTALFullColumnSparseRefUsesLiveGrid(t *testing.T) {
+	resolver := &subtotalSparseResolver{
+		subtotalMockResolver: subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 4}: true,
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+	cf := evalCompile(t, "SUBTOTAL(109,A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Fatalf("SUBTOTAL(109,A:A) = %v (%g), want 40", got.Type, got.Num)
+	}
 }
 
 func TestISOCEILING(t *testing.T) {

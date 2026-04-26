@@ -920,25 +920,22 @@ func fnEOMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
 // parseHolidays extracts a set of truncated serial dates from an optional holiday argument.
 func parseHolidays(arg Value) (map[float64]bool, *Value) {
 	holidays := make(map[float64]bool)
-	if arg.Type == ValueArray {
-		for _, row := range arg.Array {
-			for _, cell := range row {
-				if cell.Type == ValueError {
-					return nil, &cell
-				}
-				n, ce := CoerceNum(cell)
-				if ce != nil {
-					return nil, ce
-				}
-				holidays[math.Trunc(n)] = true
-			}
+	if arg.Type == ValueEmpty {
+		return holidays, nil
+	}
+	if errVal := walkFlattenedValueCells(arg, func(cell Value) *Value {
+		if cell.Type == ValueError {
+			cellErr := cell
+			return &cellErr
 		}
-	} else if arg.Type != ValueEmpty {
-		n, ce := CoerceNum(arg)
+		n, ce := CoerceNum(cell)
 		if ce != nil {
-			return nil, ce
+			return ce
 		}
 		holidays[math.Trunc(n)] = true
+		return nil
+	}); errVal != nil {
+		return nil, errVal
 	}
 	return holidays, nil
 }

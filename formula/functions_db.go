@@ -56,12 +56,11 @@ func dFunc(args []Value) ([]Value, *Value) {
 	if dbArg.Type == ValueError {
 		return nil, &dbArg
 	}
-	if dbArg.Type != ValueArray || len(dbArg.Array) < 1 {
-		e := ErrorVal(ErrValVALUE)
-		return nil, &e
+	dbSource, dbRows, dbCols, errVal := dGridSource(dbArg)
+	if errVal != nil {
+		return nil, errVal
 	}
-	headers := dbArg.Array[0]
-	records := dbArg.Array[1:]
+	headers := dbSource.rowValues(0)
 
 	// --- field ---
 	fieldIdx := -1 // 0-based column index into the database
@@ -71,7 +70,7 @@ func dFunc(args []Value) ([]Value, *Value) {
 	case ValueNumber:
 		// 1-based column index
 		idx := int(math.Floor(fieldArg.Num))
-		if idx < 1 || idx > len(headers) {
+		if idx < 1 || idx > dbCols {
 			e := ErrorVal(ErrValVALUE)
 			return nil, &e
 		}
@@ -100,7 +99,7 @@ func dFunc(args []Value) ([]Value, *Value) {
 			return nil, ev
 		}
 		idx := int(math.Floor(n))
-		if idx < 1 || idx > len(headers) {
+		if idx < 1 || idx > dbCols {
 			e := ErrorVal(ErrValVALUE)
 			return nil, &e
 		}
@@ -111,15 +110,14 @@ func dFunc(args []Value) ([]Value, *Value) {
 	if critArg.Type == ValueError {
 		return nil, &critArg
 	}
-	if critArg.Type != ValueArray || len(critArg.Array) < 1 {
-		e := ErrorVal(ErrValVALUE)
-		return nil, &e
+	critSource, critRows, critCols, errVal := dGridSource(critArg)
+	if errVal != nil {
+		return nil, errVal
 	}
-	critHeaders := critArg.Array[0]
-	critRows := critArg.Array[1:]
+	critHeaders := critSource.rowValues(0)
 
 	// Map each criteria column to a database column index.
-	critColMap := make([]int, len(critHeaders))
+	critColMap := make([]int, critCols)
 	for i, ch := range critHeaders {
 		chStr := strings.TrimSpace(ValueToString(ch))
 		critColMap[i] = -1
@@ -134,29 +132,46 @@ func dFunc(args []Value) ([]Value, *Value) {
 	}
 
 	// --- match records ---
-	var result []Value
-	for _, rec := range records {
-		if dbCriteriaMatch(rec, critHeaders, critRows, critColMap) {
-			if fieldIdx < len(rec) {
-				result = append(result, rec[fieldIdx])
-			} else {
-				result = append(result, EmptyVal())
-			}
+	result := make([]Value, 0, max(0, dbRows-1))
+	for row := 1; row < dbRows; row++ {
+		if dbCriteriaMatch(dbSource, row, critSource, critRows, critCols, critColMap) {
+			result = append(result, dbSource.cell(row, fieldIdx))
 		}
 	}
 	return result, nil
 }
 
+func dGridSource(v Value) (gridValueSource, int, int, *Value) {
+	if v.Type != ValueArray {
+		errVal := ErrorVal(ErrValVALUE)
+		return gridValueSource{}, 0, 0, &errVal
+	}
+	source := newGridValueSource(ValueToEvalValue(v))
+	rows, cols := source.dims()
+	if rows < 1 {
+		errVal := ErrorVal(ErrValVALUE)
+		return gridValueSource{}, 0, 0, &errVal
+	}
+	return source, rows, cols, nil
+}
+
 // dbCriteriaMatch checks whether a single database record matches the
 // criteria.  Criteria rows are OR-ed; within each row, conditions are AND-ed.
-func dbCriteriaMatch(record []Value, critHeaders []Value, critRows [][]Value, critColMap []int) bool {
+func dbCriteriaMatch(
+	recordSource gridValueSource,
+	recordRow int,
+	critSource gridValueSource,
+	critRows int,
+	critCols int,
+	critColMap []int,
+) bool {
 	// If there are no criteria rows, treat as "match all".
-	if len(critRows) == 0 {
+	if critRows <= 1 {
 		return true
 	}
 
-	for _, crow := range critRows {
-		if dbRowMatch(record, crow, critHeaders, critColMap) {
+	for critRow := 1; critRow < critRows; critRow++ {
+		if dbRowMatch(recordSource, recordRow, critSource, critRow, critCols, critColMap) {
 			return true // OR: any row matching is sufficient
 		}
 	}
@@ -165,9 +180,16 @@ func dbCriteriaMatch(record []Value, critHeaders []Value, critRows [][]Value, cr
 
 // dbRowMatch checks whether a record matches all conditions in a single
 // criteria row (AND logic).
-func dbRowMatch(record []Value, crow []Value, critHeaders []Value, critColMap []int) bool {
-	for ci := 0; ci < len(crow) && ci < len(critHeaders); ci++ {
-		crit := crow[ci]
+func dbRowMatch(
+	recordSource gridValueSource,
+	recordRow int,
+	critSource gridValueSource,
+	critRow int,
+	critCols int,
+	critColMap []int,
+) bool {
+	for ci := 0; ci < critCols; ci++ {
+		crit := critSource.cell(critRow, ci)
 
 		// Skip blank criteria cells (match all for this column).
 		if isBlankCriterion(crit) {
@@ -181,12 +203,7 @@ func dbRowMatch(record []Value, crow []Value, critHeaders []Value, critColMap []
 			return false
 		}
 
-		var cellVal Value
-		if dbCol < len(record) {
-			cellVal = record[dbCol]
-		}
-
-		if !dbMatchCell(cellVal, crit) {
+		if !dbMatchCell(recordSource.cell(recordRow, dbCol), crit) {
 			return false
 		}
 	}

@@ -112,6 +112,51 @@ func iterateValueElements(v Value, fn func(Value) bool) {
 	}
 }
 
+func valueFlattenRowMajor(v Value) []Value {
+	values := make([]Value, 0, valueCellCount(v))
+	iterateValueElements(v, func(cell Value) bool {
+		values = append(values, cell)
+		return true
+	})
+	return values
+}
+
+func valueProjectRowArray(v Value, row int) Value {
+	if v.Type != ValueArray {
+		if row != 0 {
+			return ErrorVal(ErrValNA)
+		}
+		return Value{Type: ValueArray, Array: [][]Value{{v}}}
+	}
+	rows, cols := arrayOpBounds(v)
+	if row < 0 || row >= rows {
+		return ErrorVal(ErrValNA)
+	}
+	out := make([]Value, cols)
+	for col := 0; col < cols; col++ {
+		out[col] = arrayElementDirect(v, rows, cols, row, col)
+	}
+	return Value{Type: ValueArray, Array: [][]Value{out}}
+}
+
+func valueProjectColArray(v Value, col int) Value {
+	if v.Type != ValueArray {
+		if col != 0 {
+			return ErrorVal(ErrValNA)
+		}
+		return Value{Type: ValueArray, Array: [][]Value{{v}}}
+	}
+	rows, cols := arrayOpBounds(v)
+	if col < 0 || col >= cols {
+		return ErrorVal(ErrValNA)
+	}
+	out := make([][]Value, rows)
+	for row := 0; row < rows; row++ {
+		out[row] = []Value{arrayElementDirect(v, rows, cols, row, col)}
+	}
+	return Value{Type: ValueArray, Array: out}
+}
+
 func iterateAlignedArgs(args []Value, fn func([]Value) bool) *Value {
 	if len(args) == 0 {
 		return nil

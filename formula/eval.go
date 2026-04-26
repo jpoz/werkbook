@@ -619,15 +619,9 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				return Value{}, err
 			}
 
-			// Flatten array to a 1D list (row by row, left to right)
-			var elements []Value
-			if arr.Type == ValueArray {
-				for _, row := range arr.Array {
-					elements = append(elements, row...)
-				}
-			} else {
-				elements = []Value{arr}
-			}
+			// Flatten row-major using shared array-grid semantics so
+			// ref-derived arrays keep their logical shape.
+			elements := valueFlattenRowMajor(arr)
 
 			// Determine starting accumulator
 			acc := initialVal
@@ -685,10 +679,7 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			// Get array dimensions for output shape
 			var scanRows, scanCols int
 			if arr.Type == ValueArray {
-				scanRows = len(arr.Array)
-				if scanRows > 0 {
-					scanCols = len(arr.Array[0])
-				}
+				scanRows, scanCols = arrayOpBounds(arr)
 			} else {
 				scanRows, scanCols = 1, 1
 			}
@@ -711,12 +702,7 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 
 			for i := 0; i < scanRows; i++ {
 				for j := 0; j < scanCols; j++ {
-					var elem Value
-					if arr.Type == ValueArray {
-						elem = arr.Array[i][j]
-					} else {
-						elem = arr
-					}
+					elem := ArrayElement(arr, i, j)
 
 					if acc.Type == ValueEmpty && first {
 						// No initial value: first element becomes accumulator
@@ -817,37 +803,18 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			}
 
 			// Determine dimensions
-			var byrowRows, byrowCols int
+			var byrowRows int
 			if arr.Type == ValueArray {
-				byrowRows = len(arr.Array)
-				if byrowRows > 0 {
-					byrowCols = len(arr.Array[0])
-				}
+				byrowRows, _ = arrayOpBounds(arr)
 			} else {
-				// Scalar treated as 1x1
-				byrowRows, byrowCols = 1, 1
-				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+				byrowRows = 1
 			}
-			_ = byrowCols // cols used only to construct row arrays
 
 			// For each row, create a 1-row array and call lambda
 			byrowResult := make([][]Value, byrowRows)
 			byrowParamVals := make([]Value, 1)
 			for i := 0; i < byrowRows; i++ {
-				// Create a 1-row array from this row
-				var rowValues []Value
-				if i < len(arr.Array) {
-					rowValues = make([]Value, len(arr.Array[i]))
-					copy(rowValues, arr.Array[i])
-				} else {
-					rowValues = make([]Value, byrowCols)
-					for j := range rowValues {
-						rowValues[j] = EmptyVal()
-					}
-				}
-				rowArray := Value{Type: ValueArray, Array: [][]Value{rowValues}}
-
-				byrowParamVals[0] = rowArray
+				byrowParamVals[0] = valueProjectRowArray(arr, i)
 				res, err := evalWithParams(subFormula, resolver, ctx, byrowParamVals)
 				if err != nil {
 					return Value{}, err
@@ -936,16 +903,11 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			}
 
 			// Determine dimensions
-			var bycolRows, bycolCols int
+			var bycolCols int
 			if arr.Type == ValueArray {
-				bycolRows = len(arr.Array)
-				if bycolRows > 0 {
-					bycolCols = len(arr.Array[0])
-				}
+				_, bycolCols = arrayOpBounds(arr)
 			} else {
-				// Scalar treated as 1x1
-				bycolRows, bycolCols = 1, 1
-				arr = Value{Type: ValueArray, Array: [][]Value{{arr}}}
+				bycolCols = 1
 			}
 
 			// For each column, create a column vector (rows x 1) and call lambda
@@ -954,14 +916,7 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			bycolParamVals := make([]Value, 1)
 
 			for j := 0; j < bycolCols; j++ {
-				// Build column vector (rows x 1)
-				colValues := make([][]Value, bycolRows)
-				for i := 0; i < bycolRows; i++ {
-					colValues[i] = []Value{ArrayElement(arr, i, j)}
-				}
-				colArray := Value{Type: ValueArray, Array: colValues}
-
-				bycolParamVals[0] = colArray
+				bycolParamVals[0] = valueProjectColArray(arr, j)
 				res, err := evalWithParams(subFormula, resolver, ctx, bycolParamVals)
 				if err != nil {
 					return Value{}, err
@@ -1431,11 +1386,12 @@ func explicitIntersect(v Value, ctx *EvalContext) Value {
 	return implicitIntersect(v, ctx)
 }
 
-// rangeIntersect computes the rectangular intersection of two range-origin
-// values for Excel's intersection operator (space between references).
-// Returns #VALUE! if either operand is not a proper range reference (must
-// have RangeOrigin) or the sheets differ, and #NULL! if the rectangles
-// don't overlap.
+// rangeIntersect computes the rectangular intersection of two ref-like values
+// for Excel's intersection operator (space between references). The operands
+// may arrive as raw refs, range-backed arrays, or evalRef-backed legacy
+// values. Returns #VALUE! if either operand does not still resolve to live
+// range bounds or the sheets differ, and #NULL! if the rectangles don't
+// overlap.
 func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArrayCtx bool) Value {
 	// Propagate existing errors.
 	if a.Type == ValueError {
@@ -1489,9 +1445,10 @@ func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArray
 
 // buildRangeFromRefs constructs the rectangular range spanning two single-cell
 // references for the dynamic range operator (e.g. A1:INDEX(A:A,n)). Each
-// operand must resolve to a single cell — either a ValueRef, a value carrying
-// a CellOrigin, or a single-cell array carrying a RangeOrigin. Mismatched
-// sheets or unresolvable operands yield #REF!.
+// operand must still resolve to live single-cell bounds after crossing the
+// legacy Value boundary, whether it arrived as a raw ref, a cell-origin
+// scalar, a single-cell range, or an evalRef-backed value. Mismatched sheets
+// or unresolvable operands yield #REF!.
 func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Value {
 	if a.Type == ValueError {
 		return a
@@ -1571,7 +1528,14 @@ func unionAreas(areas []Value) Value {
 			return v
 		}
 		if v.Type == ValueArray {
-			out = append(out, v.Array...)
+			rows, cols := arrayOpBounds(v)
+			for r := 0; r < rows; r++ {
+				row := make([]Value, cols)
+				for c := 0; c < cols; c++ {
+					row[c] = arrayElementDirect(v, rows, cols, r, c)
+				}
+				out = append(out, row)
+			}
 			continue
 		}
 		out = append(out, []Value{v})

@@ -10,6 +10,19 @@ func dateSerial(year int, month time.Month, day int) float64 {
 	return math.Floor(TimeToSerial(time.Date(year, month, day, 0, 0, 0, 0, time.UTC)))
 }
 
+func TestParseHolidays_FullColumnSparseRef(t *testing.T) {
+	holidays, errVal := parseHolidays(sparseFullColumnRefValue(1, map[int]Value{
+		1: NumberVal(45659),
+		3: NumberVal(45661),
+	}))
+	if errVal != nil {
+		t.Fatalf("parseHolidays: %v", *errVal)
+	}
+	if !holidays[45659] || !holidays[45661] {
+		t.Fatalf("holidays = %#v, want entries for 45659 and 45661", holidays)
+	}
+}
+
 func TestDATE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -2024,8 +2037,8 @@ func TestTIME(t *testing.T) {
 			{"hour_32767", "TIME(32767,0,0)", float64(32767%24) * 3600 / 86400},
 
 			// Mixed negative args where total seconds is still positive
-			{"mixed_neg_min", "TIME(1,-30,0)", 1800.0 / 86400.0},  // 0:30
-			{"mixed_neg_sec", "TIME(0,30,-1)", 1799.0 / 86400.0},  // 0:29:59
+			{"mixed_neg_min", "TIME(1,-30,0)", 1800.0 / 86400.0}, // 0:30
+			{"mixed_neg_sec", "TIME(0,30,-1)", 1799.0 / 86400.0}, // 0:29:59
 		}
 
 		for _, tc := range tests {

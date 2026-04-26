@@ -251,6 +251,15 @@ func TestBYROW(t *testing.T) {
 				{ErrorVal(ErrValVALUE)},
 			}},
 		},
+		// 27. One-cell rows must stay range-like, not direct scalars
+		{
+			name:    "count boolean single cell rows",
+			formula: `BYROW({TRUE;FALSE}, LAMBDA(r, COUNT(r)))`,
+			want: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(0)},
+				{NumberVal(0)},
+			}},
+		},
 	}
 
 	for _, tt := range tests {
