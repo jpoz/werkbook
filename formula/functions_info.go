@@ -215,18 +215,11 @@ func fnAREAS(args []Value) (Value, error) {
 }
 
 func infoRefBounds(v Value) (RangeAddr, bool) {
-	ev := ValueToEvalValue(v)
-	if ev.Kind != EvalRef || ev.Ref == nil {
+	ref, ok := legacyValueRef(v)
+	if !ok {
 		return RangeAddr{}, false
 	}
-	bounds := ev.Ref.Bounds()
-	// RefValue does not carry 3D sheet spans yet, so preserve SheetEnd while
-	// these helpers continue to straddle the legacy Value boundary.
-	if v.RangeOrigin != nil && v.RangeOrigin.SheetEnd != "" {
-		bounds.Sheet = v.RangeOrigin.Sheet
-		bounds.SheetEnd = v.RangeOrigin.SheetEnd
-	}
-	return bounds, true
+	return ref.Bounds(), true
 }
 
 func areasCount(v Value) (int, bool) {

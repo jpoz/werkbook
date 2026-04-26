@@ -1400,11 +1400,13 @@ func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArray
 	if b.Type == ValueError {
 		return b
 	}
-	aRo, aOk := legacyValueBounds(a)
-	bRo, bOk := legacyValueBounds(b)
+	aRef, aOk := legacyValueRef(a)
+	bRef, bOk := legacyValueRef(b)
 	if !aOk || !bOk {
 		return ErrorVal(ErrValVALUE)
 	}
+	aRo := aRef.Bounds()
+	bRo := bRef.Bounds()
 	if aRo.Sheet != bRo.Sheet || aRo.SheetEnd != "" || bRo.SheetEnd != "" {
 		return ErrorVal(ErrValVALUE)
 	}
@@ -1456,11 +1458,13 @@ func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Val
 	if b.Type == ValueError {
 		return b
 	}
-	aRo, aOk := legacyValueBounds(a)
-	bRo, bOk := legacyValueBounds(b)
+	aRef, aOk := legacyValueRef(a)
+	bRef, bOk := legacyValueRef(b)
 	if !aOk || !bOk {
 		return ErrorVal(ErrValREF)
 	}
+	aRo := aRef.Bounds()
+	bRo := bRef.Bounds()
 	if aRo.SheetEnd != "" || bRo.SheetEnd != "" {
 		return ErrorVal(ErrValREF)
 	}

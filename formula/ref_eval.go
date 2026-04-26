@@ -347,6 +347,7 @@ func newEvalRangeRef(addr RangeAddr, rows [][]Value, resolver CellResolver, lega
 		Kind: EvalRef,
 		Ref: &RefValue{
 			Sheet:        addr.Sheet,
+			SheetEnd:     addr.SheetEnd,
 			FromCol:      addr.FromCol,
 			FromRow:      addr.FromRow,
 			ToCol:        addr.ToCol,
@@ -363,6 +364,7 @@ func newEvalSingleCellRef(addr CellAddr, value Value) EvalValue {
 		Kind: EvalRef,
 		Ref: &RefValue{
 			Sheet:        addr.Sheet,
+			SheetEnd:     addr.SheetEnd,
 			FromCol:      addr.Col,
 			FromRow:      addr.Row,
 			ToCol:        addr.Col,

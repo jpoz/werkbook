@@ -81,7 +81,7 @@ In practical terms: for one-off recalculation, the current slowdown is usually s
 
    The initial semantic-detection change treated any formula with a range as a dynamic spill candidate. Scalar reducers such as `SUM(Spill!B:B)` and `COUNT(Spill!B:B)` ran a normal eval and then a spill-probe eval, re-materializing the same range a second time.
 
-   Mitigation: added `CompiledFormula.NeedsSpillProbe` and narrowed `formulaShouldProbeForSpill` to formulas whose top-level result shape can actually change under spill probing.
+   Mitigation: added `CompiledFormula.TopLevelArray` companions and narrowed spill-anchor detection to formulas whose top-level result shape can actually change under anchor-style array evaluation.
 
 2. Range materialization added an intermediate snapshot.
 

@@ -59,6 +59,7 @@ type ArrayValue struct {
 // RefValue is the evaluator's first-class worksheet reference representation.
 type RefValue struct {
 	Sheet        string
+	SheetEnd     string
 	FromCol      int
 	FromRow      int
 	ToCol        int
@@ -84,11 +85,12 @@ func (r *RefValue) Bounds() RangeAddr {
 		return RangeAddr{}
 	}
 	return RangeAddr{
-		Sheet:   r.Sheet,
-		FromCol: r.FromCol,
-		FromRow: r.FromRow,
-		ToCol:   r.ToCol,
-		ToRow:   r.ToRow,
+		Sheet:    r.Sheet,
+		SheetEnd: r.SheetEnd,
+		FromCol:  r.FromCol,
+		FromRow:  r.FromRow,
+		ToCol:    r.ToCol,
+		ToRow:    r.ToRow,
 	}
 }
 
@@ -125,11 +127,12 @@ func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
 			return EvalValue{
 				Kind: EvalRef,
 				Ref: &RefValue{
-					Sheet:   ro.Sheet,
-					FromCol: ro.FromCol,
-					FromRow: ro.FromRow,
-					ToCol:   ro.ToCol,
-					ToRow:   ro.ToRow,
+					Sheet:    ro.Sheet,
+					SheetEnd: ro.SheetEnd,
+					FromCol:  ro.FromCol,
+					FromRow:  ro.FromRow,
+					ToCol:    ro.ToCol,
+					ToRow:    ro.ToRow,
 					// Keep direct-range arguments in ref form while allowing
 					// migrated reducers to fall back to the legacy resolver.
 					Materialized: newResolverRangeGrid(*ro, v.Array, resolver),
@@ -167,6 +170,7 @@ func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
 				Kind: EvalRef,
 				Ref: &RefValue{
 					Sheet:        cell.Sheet,
+					SheetEnd:     cell.SheetEnd,
 					FromCol:      cell.Col,
 					FromRow:      cell.Row,
 					ToCol:        cell.Col,
@@ -197,21 +201,6 @@ func legacyArrayRef(v Value) (*RefValue, bool) {
 	return legacyValueRef(v)
 }
 
-func legacyValueBounds(v Value) (*RangeAddr, bool) {
-	ref, ok := legacyValueRef(v)
-	if !ok {
-		return nil, false
-	}
-	out := ref.Bounds()
-	// RefValue does not carry 3D sheet spans yet, so preserve any SheetEnd
-	// while range/operator semantics continue to cross the legacy Value boundary.
-	if v.RangeOrigin != nil && v.RangeOrigin.SheetEnd != "" {
-		out.Sheet = v.RangeOrigin.Sheet
-		out.SheetEnd = v.RangeOrigin.SheetEnd
-	}
-	return &out, true
-}
-
 func legacyRefCellValue(ref *RefValue, rowOffset, colOffset int) Value {
 	if ref == nil || rowOffset < 0 || colOffset < 0 {
 		return ErrorVal(ErrValVALUE)
@@ -240,7 +229,7 @@ func EvalValueToValue(v EvalValue) Value {
 		if v.Ref == nil {
 			return EmptyVal()
 		}
-		if v.Ref.FromCol == v.Ref.ToCol && v.Ref.FromRow == v.Ref.ToRow {
+		if v.Ref.SheetEnd == "" && v.Ref.FromCol == v.Ref.ToCol && v.Ref.FromRow == v.Ref.ToRow {
 			if v.Ref.Legacy != nil && v.Ref.Legacy.SingleCellValue.CellOrigin != nil {
 				out := v.Ref.Legacy.SingleCellValue
 				out.evalRef = cloneRefValue(v.Ref)

@@ -1351,6 +1351,46 @@ func TestImplicitIntersectUsesEvalRefBackedRange(t *testing.T) {
 	}
 }
 
+func TestRangeIntersectRejectsEvalRefBacked3DValue(t *testing.T) {
+	threeD := EvalValueToValue(newEvalRangeRef(
+		RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+		[][]Value{{NumberVal(10)}},
+		nil,
+		nil,
+	))
+	twoD := EvalValueToValue(newEvalRangeRef(
+		RangeAddr{Sheet: "Sheet1", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+		[][]Value{{NumberVal(10)}},
+		nil,
+		nil,
+	))
+
+	got := rangeIntersect(threeD, twoD, &mockResolver{}, &EvalContext{CurrentSheet: "Sheet1"}, false)
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("rangeIntersect(3D ref, 2D ref) = %#v, want #VALUE!", got)
+	}
+}
+
+func TestBuildRangeFromRefsRejectsEvalRefBacked3DValue(t *testing.T) {
+	threeD := EvalValueToValue(newEvalRangeRef(
+		RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+		[][]Value{{NumberVal(10)}},
+		nil,
+		nil,
+	))
+	twoD := EvalValueToValue(newEvalRangeRef(
+		RangeAddr{Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 2},
+		[][]Value{{NumberVal(20)}},
+		nil,
+		nil,
+	))
+
+	got := buildRangeFromRefs(threeD, twoD, &mockResolver{}, &EvalContext{CurrentSheet: "Sheet1"})
+	if got.Type != ValueError || got.Err != ErrValREF {
+		t.Fatalf("buildRangeFromRefs(3D ref, 2D ref) = %#v, want #REF!", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // isTruthy — exercised through IF
 // ---------------------------------------------------------------------------

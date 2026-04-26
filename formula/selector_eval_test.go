@@ -421,6 +421,100 @@ func TestSelectorFuncSpecParity(t *testing.T) {
 	}
 }
 
+func TestSelectorEvalKeepsDirectRefWindowMaterializedBounds(t *testing.T) {
+	fullColumn := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(10)}},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 7,
+			FromRow: 1,
+			ToCol:   7,
+			ToRow:   maxRows,
+		},
+	}
+
+	got, err := evalINDEXSelector([]EvalValue{
+		ValueToEvalValue(fullColumn),
+		ValueToEvalValue(NumberVal(0)),
+		ValueToEvalValue(NumberVal(1)),
+	}, nil)
+	if err != nil {
+		t.Fatalf("evalINDEXSelector: %v", err)
+	}
+	if got.Kind != EvalArray || got.Array == nil {
+		t.Fatalf("got = %#v, want EvalArray", got)
+	}
+	if got.Array.Rows != maxRows || got.Array.Cols != 1 {
+		t.Fatalf("array dims = %dx%d, want %dx1", got.Array.Rows, got.Array.Cols, maxRows)
+	}
+	if got.Array.SpillClass != SpillScalarOnly {
+		t.Fatalf("SpillClass = %v, want %v", got.Array.SpillClass, SpillScalarOnly)
+	}
+	if got.Array.Origin == nil || got.Array.Origin.Range == nil {
+		t.Fatal("Origin.Range = nil, want full-column origin")
+	}
+	wantRange := RangeAddr{
+		Sheet:   "Sheet1",
+		FromCol: 7,
+		FromRow: 1,
+		ToCol:   7,
+		ToRow:   maxRows,
+	}
+	if *got.Array.Origin.Range != wantRange {
+		t.Fatalf("Origin.Range = %+v, want %+v", *got.Array.Origin.Range, wantRange)
+	}
+	if got.Array.Grid == nil {
+		t.Fatal("Grid = nil, want trimmed materialized grid")
+	}
+	if got.Array.Grid.Rows() != 1 || got.Array.Grid.Cols() != 1 {
+		t.Fatalf("grid dims = %dx%d, want 1x1", got.Array.Grid.Rows(), got.Array.Grid.Cols())
+	}
+	assertLookupValueEqual(t, EvalValueToValue(got.Array.Grid.Cell(0, 0)), NumberVal(10))
+}
+
+func TestSelectorEvalIndexScalarPreservesSingleCellOrigin(t *testing.T) {
+	boundedRange := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{NumberVal(10), NumberVal(20)},
+			{NumberVal(30), NumberVal(40)},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet:   "Sheet1",
+			FromCol: 1,
+			FromRow: 1,
+			ToCol:   2,
+			ToRow:   2,
+		},
+	}
+
+	got, err := evalINDEXSelector([]EvalValue{
+		ValueToEvalValue(boundedRange),
+		ValueToEvalValue(NumberVal(2)),
+		ValueToEvalValue(NumberVal(2)),
+	}, nil)
+	if err != nil {
+		t.Fatalf("evalINDEXSelector: %v", err)
+	}
+	if got.Kind != EvalRef || got.Ref == nil {
+		t.Fatalf("got = %#v, want EvalRef", got)
+	}
+	if got.Ref.FromCol != 2 || got.Ref.FromRow != 2 || got.Ref.ToCol != 2 || got.Ref.ToRow != 2 {
+		t.Fatalf("ref bounds = %+v, want single cell B2", got.Ref.Bounds())
+	}
+
+	legacy := EvalValueToValue(got)
+	assertLookupValueEqual(t, legacy, NumberVal(40))
+	if legacy.CellOrigin == nil {
+		t.Fatal("CellOrigin = nil, want Sheet1!B2")
+	}
+	wantCell := CellAddr{Sheet: "Sheet1", Col: 2, Row: 2}
+	if *legacy.CellOrigin != wantCell {
+		t.Fatalf("CellOrigin = %+v, want %+v", *legacy.CellOrigin, wantCell)
+	}
+}
+
 func assertSelectorMetadata(t *testing.T, got Value, wantRange *RangeAddr, wantNoSpill bool) {
 	t.Helper()
 

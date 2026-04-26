@@ -65,7 +65,7 @@ func TestValueToEvalValueRangeBecomesRef(t *testing.T) {
 	}
 }
 
-func TestLegacyValueBoundsPreservesSheetEnd(t *testing.T) {
+func TestValueToEvalValueRangeWithSheetEndPreservesBounds(t *testing.T) {
 	in := Value{
 		Type:  ValueArray,
 		Array: [][]Value{{NumberVal(1)}},
@@ -79,12 +79,39 @@ func TestLegacyValueBoundsPreservesSheetEnd(t *testing.T) {
 		},
 	}
 
-	got, ok := legacyValueBounds(in)
-	if !ok {
-		t.Fatal("legacyValueBounds = !ok, want ok")
+	got := ValueToEvalValue(in)
+	if got.Kind != EvalRef || got.Ref == nil {
+		t.Fatalf("ValueToEvalValue = %#v, want EvalRef", got)
 	}
-	if *got != *in.RangeOrigin {
-		t.Fatalf("legacyValueBounds = %+v, want %+v", *got, *in.RangeOrigin)
+	if bounds := got.Ref.Bounds(); bounds != *in.RangeOrigin {
+		t.Fatalf("Bounds = %+v, want %+v", bounds, *in.RangeOrigin)
+	}
+}
+
+func TestEvalValueToValueSingleCell3DRefPreservesRangeBoundary(t *testing.T) {
+	addr := RangeAddr{
+		Sheet:    "Sheet1",
+		SheetEnd: "Sheet3",
+		FromCol:  2,
+		FromRow:  4,
+		ToCol:    2,
+		ToRow:    4,
+	}
+
+	got := EvalValueToValue(newEvalRangeRef(addr, [][]Value{{NumberVal(9)}}, nil, nil))
+	if got.Type != ValueArray {
+		t.Fatalf("EvalValueToValue(single-cell 3D ref) type = %v, want ValueArray", got.Type)
+	}
+	if got.RangeOrigin == nil || *got.RangeOrigin != addr {
+		t.Fatalf("RangeOrigin = %+v, want %+v", got.RangeOrigin, addr)
+	}
+
+	roundTrip := ValueToEvalValue(got)
+	if roundTrip.Kind != EvalRef || roundTrip.Ref == nil {
+		t.Fatalf("ValueToEvalValue(roundTrip) = %#v, want EvalRef", roundTrip)
+	}
+	if bounds := roundTrip.Ref.Bounds(); bounds != addr {
+		t.Fatalf("Bounds = %+v, want %+v", bounds, addr)
 	}
 }
 
