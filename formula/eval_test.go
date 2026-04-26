@@ -2945,6 +2945,36 @@ func TestEvalRangeIntersectOperator(t *testing.T) {
 	}
 }
 
+func TestEvalBuildRangeFromIndexFullColumn(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "Sheet1", Col: 1, Row: 1}: NumberVal(10),
+			{Sheet: "Sheet1", Col: 1, Row: 2}: NumberVal(20),
+			{Sheet: "Sheet1", Col: 1, Row: 3}: NumberVal(30),
+			{Sheet: "Sheet1", Col: 1, Row: 4}: NumberVal(40),
+		},
+	}
+	ctx := &EvalContext{CurrentCol: 2, CurrentRow: 7, CurrentSheet: "Sheet1"}
+
+	cf := evalCompile(t, `ROWS(A1:INDEX(A:A,3))`)
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval ROWS(A1:INDEX(A:A,3)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 3 {
+		t.Fatalf("ROWS(A1:INDEX(A:A,3)) = %#v, want 3", got)
+	}
+
+	cf = evalCompile(t, `SUM(A1:INDEX(A:A,3))`)
+	got, err = Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval SUM(A1:INDEX(A:A,3)): %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 60 {
+		t.Fatalf("SUM(A1:INDEX(A:A,3)) = %#v, want 60", got)
+	}
+}
+
 // TestEvalUnionReferenceInFunctions verifies that a parenthesized union
 // reference list passed to generic functions flattens into a single array
 // input (matches Excel behaviour for SUM and COUNT).

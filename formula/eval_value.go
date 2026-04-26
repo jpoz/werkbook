@@ -179,6 +179,56 @@ func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
 	}
 }
 
+func legacyValueRef(v Value) (*RefValue, bool) {
+	ev := ValueToEvalValue(v)
+	if ev.Kind != EvalRef || ev.Ref == nil {
+		return nil, false
+	}
+	return ev.Ref, true
+}
+
+func legacyArrayRef(v Value) (*RefValue, bool) {
+	if v.Type != ValueArray {
+		return nil, false
+	}
+	return legacyValueRef(v)
+}
+
+func legacyValueBounds(v Value) (*RangeAddr, bool) {
+	ref, ok := legacyValueRef(v)
+	if !ok {
+		return nil, false
+	}
+	out := ref.Bounds()
+	// RefValue does not carry 3D sheet spans yet, so preserve any SheetEnd
+	// while range/operator semantics continue to cross the legacy Value boundary.
+	if v.RangeOrigin != nil && v.RangeOrigin.SheetEnd != "" {
+		out.Sheet = v.RangeOrigin.Sheet
+		out.SheetEnd = v.RangeOrigin.SheetEnd
+	}
+	return &out, true
+}
+
+func legacyRefCellValue(ref *RefValue, rowOffset, colOffset int) Value {
+	if ref == nil || rowOffset < 0 || colOffset < 0 {
+		return ErrorVal(ErrValVALUE)
+	}
+	if ref.Materialized != nil {
+		if rowOffset >= ref.Materialized.Rows() || colOffset >= ref.Materialized.Cols() {
+			return ErrorVal(ErrValVALUE)
+		}
+		return EvalValueToValue(ref.Materialized.Cell(rowOffset, colOffset))
+	}
+	if rowOffset == 0 && colOffset == 0 && ref.Legacy != nil {
+		return ref.Legacy.SingleCellValue
+	}
+	return ErrorVal(ErrValVALUE)
+}
+
+func legacyValueSpillClass(v Value) SpillClass {
+	return spillClassFromLegacy(v)
+}
+
 // EvalValueToValue adapts the new internal v2 categories back to the legacy
 // Value surface used by today's workbook, tests, and public APIs.
 func EvalValueToValue(v EvalValue) Value {
@@ -386,9 +436,6 @@ func (g *resolverRangeGrid) setRows(rows [][]Value) {
 }
 
 func normalizeResolverRangeRows(bounds RangeAddr, rows [][]Value) [][]Value {
-	if rows == nil {
-		return nil
-	}
 	isFullCol := bounds.FromRow == 1 && bounds.ToRow >= maxRows
 	isFullRow := bounds.FromCol == 1 && bounds.ToCol >= maxCols
 	reachesMaxAxis := bounds.ToRow >= maxRows || bounds.ToCol >= maxCols
@@ -397,6 +444,9 @@ func normalizeResolverRangeRows(bounds RangeAddr, rows [][]Value) [][]Value {
 	}
 	expectedRows := bounds.ToRow - bounds.FromRow + 1
 	cols := bounds.ToCol - bounds.FromCol + 1
+	if rows == nil {
+		rows = make([][]Value, 0, expectedRows)
+	}
 	for len(rows) < expectedRows {
 		emptyRow := make([]Value, cols)
 		for j := range emptyRow {

@@ -81,6 +81,70 @@ func arrayElementDirect(v Value, rows, cols, i, j int) Value {
 	return ErrorVal(ErrValNA)
 }
 
+func arrayTopLeft(v Value) Value {
+	if v.Type != ValueArray {
+		return v
+	}
+	rows, cols := effectiveArrayBounds(v)
+	if rows == 0 || cols == 0 {
+		return ErrorVal(ErrValVALUE)
+	}
+	return arrayElementDirect(v, rows, cols, 0, 0)
+}
+
+func valueCellCount(v Value) int {
+	rows, cols := arrayOpBoundsOrScalar(v)
+	return rows * cols
+}
+
+func iterateValueElements(v Value, fn func(Value) bool) {
+	if v.Type != ValueArray {
+		fn(v)
+		return
+	}
+	rows, cols := arrayOpBounds(v)
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			if !fn(arrayElementDirect(v, rows, cols, row, col)) {
+				return
+			}
+		}
+	}
+}
+
+func iterateAlignedArgs(args []Value, fn func([]Value) bool) *Value {
+	if len(args) == 0 {
+		return nil
+	}
+	type arrayBounds struct {
+		rows int
+		cols int
+	}
+	bounds := make([]arrayBounds, len(args))
+	rows, cols := arrayOpBoundsOrScalar(args[0])
+	bounds[0] = arrayBounds{rows: rows, cols: cols}
+	for i := 1; i < len(args); i++ {
+		argRows, argCols := arrayOpBoundsOrScalar(args[i])
+		if argRows != rows || argCols != cols {
+			err := ErrorVal(ErrValVALUE)
+			return &err
+		}
+		bounds[i] = arrayBounds{rows: argRows, cols: argCols}
+	}
+	cells := make([]Value, len(args))
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			for i, arg := range args {
+				cells[i] = arrayElementDirect(arg, bounds[i].rows, bounds[i].cols, row, col)
+			}
+			if !fn(cells) {
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 func newValueMatrix(rowCount, colCount int) [][]Value {
 	if rowCount <= 0 || colCount <= 0 {
 		return nil

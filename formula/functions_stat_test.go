@@ -12194,6 +12194,125 @@ func TestMAXIFS_NonArrayMaxRange(t *testing.T) {
 	}
 }
 
+func TestCriteriaExtremaIFS_ArrayCriteriaSpill(t *testing.T) {
+	maxRange := Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(10)},
+		{NumberVal(20)},
+		{NumberVal(30)},
+		{NumberVal(40)},
+	}}
+	regionRange := Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("East")},
+		{StringVal("West")},
+		{StringVal("East")},
+		{StringVal("West")},
+	}}
+	criteria := Value{Type: ValueArray, Array: [][]Value{{
+		StringVal("East"), StringVal("West"),
+	}}}
+
+	tests := []struct {
+		name string
+		fn   func([]Value) (Value, error)
+		want Value
+	}{
+		{
+			name: "MAXIFS",
+			fn:   fnMAXIFS,
+			want: Value{Type: ValueArray, Array: [][]Value{{
+				NumberVal(30), NumberVal(40),
+			}}},
+		},
+		{
+			name: "MINIFS",
+			fn:   fnMINIFS,
+			want: Value{Type: ValueArray, Array: [][]Value{{
+				NumberVal(10), NumberVal(20),
+			}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.fn([]Value{maxRange, regionRange, criteria})
+			if err != nil {
+				t.Fatalf("%s: %v", tt.name, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestCriteriaExtremaIFS_TrimmedRangeOriginLogicalTail(t *testing.T) {
+	criteriaRange := trimmedRangeValue([][]Value{{EmptyVal()}}, 2, 1, 2, 3)
+
+	tests := []struct {
+		name     string
+		fn       func([]Value) (Value, error)
+		rangeArg Value
+		want     Value
+	}{
+		{
+			name:     "MAXIFS",
+			fn:       fnMAXIFS,
+			rangeArg: trimmedRangeValue([][]Value{{NumberVal(-5)}}, 1, 1, 1, 3),
+			want:     NumberVal(0),
+		},
+		{
+			name:     "MINIFS",
+			fn:       fnMINIFS,
+			rangeArg: trimmedRangeValue([][]Value{{NumberVal(5)}}, 1, 1, 1, 3),
+			want:     NumberVal(0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.fn([]Value{tt.rangeArg, criteriaRange, StringVal("")})
+			if err != nil {
+				t.Fatalf("%s: %v", tt.name, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestCriteriaExtremaIFS_FullColumnSparseRefLogicalTail(t *testing.T) {
+	tests := []struct {
+		name    string
+		formula string
+		value   Value
+	}{
+		{
+			name:    "MAXIFS",
+			formula: `MAXIFS(A:A,B:B,"")`,
+			value:   NumberVal(-5),
+		},
+		{
+			name:    "MINIFS",
+			formula: `MINIFS(A:A,B:B,"")`,
+			value:   NumberVal(5),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &sparseResolver{
+				cells: map[CellAddr]Value{
+					{Col: 1, Row: 1}: tt.value,
+					{Col: 2, Row: 1}: EmptyVal(),
+				},
+			}
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval: %v", err)
+			}
+			assertLookupValueEqual(t, got, NumberVal(0))
+		})
+	}
+}
+
 func TestMINIFS_SingleCriteria(t *testing.T) {
 	// Doc Example 1: =MINIFS(A2:A7,B2:B7,1) => 88
 	resolver := &mockResolver{

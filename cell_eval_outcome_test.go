@@ -28,6 +28,28 @@ func TestFormulaDisplayValueAtImplicitIntersectionSingleColumnRef(t *testing.T) 
 	}
 }
 
+func TestFormulaDisplayValueAtImplicitIntersectionSingleRowRef(t *testing.T) {
+	origin := formula.RangeAddr{Sheet: "Data", FromCol: 1, FromRow: 5, ToCol: 3, ToRow: 5}
+	got := formulaDisplayValueAt(
+		formula.Value{
+			Type: formula.ValueArray,
+			Array: [][]formula.Value{{
+				formula.NumberVal(10),
+				formula.NumberVal(20),
+				formula.NumberVal(30),
+			}},
+			RangeOrigin: &origin,
+		},
+		false,
+		true,
+		2,
+		9,
+	)
+	if got.Type != formula.ValueNumber || got.Num != 20 {
+		t.Fatalf("formulaDisplayValueAt single-row intersection = %#v, want 20", got)
+	}
+}
+
 func TestFormulaDisplayValueAtNoSpillArrayReturnsValueError(t *testing.T) {
 	got := formulaDisplayValueAt(
 		formula.Value{

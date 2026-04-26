@@ -162,24 +162,7 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				push(ErrorVal(ErrValREF))
 				continue
 			}
-			// Pad trailing blank rows for bounded ranges. GetRangeValues
-			// clamps toRow to MaxRow to avoid huge allocations for
-			// full-column refs, but bounded ranges like A1:A5 need all
-			// requested rows so functions like COUNTBLANK see every blank.
-			// Skip padding for ranges that reach the sheet boundary
-			// (like A2:A1048576) — they behave like full-column refs.
-			reachesMaxAxis := addr.ToRow >= maxRows || addr.ToCol >= maxCols
-			if !isFullCol && !isFullRow && !reachesMaxAxis {
-				expectedRows := addr.ToRow - addr.FromRow + 1
-				cols := addr.ToCol - addr.FromCol + 1
-				for len(rows) < expectedRows {
-					emptyRow := make([]Value, cols)
-					for j := range emptyRow {
-						emptyRow[j] = EmptyVal()
-					}
-					rows = append(rows, emptyRow)
-				}
-			}
+			rows = normalizeResolverRangeRows(addr, rows)
 			origin := addr // capture for the Value
 			push(Value{Type: ValueArray, Array: rows, RangeOrigin: &origin})
 
@@ -235,8 +218,8 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				return Value{}, err
 			}
 			if ctx != nil && !ctx.IsArrayFormula && arrayCtxDepth == 0 {
-				aWasRange := a.Type == ValueArray && a.RangeOrigin != nil
-				bWasRange := b.Type == ValueArray && b.RangeOrigin != nil
+				_, aWasRange := legacyArrayRef(a)
+				_, bWasRange := legacyArrayRef(b)
 				a = implicitIntersect(a, ctx)
 				b = implicitIntersect(b, ctx)
 				// If one side was a range and got intersected to a scalar but
@@ -244,14 +227,14 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				// SCAN/SEQUENCE result), Excel intersects it to its top-left
 				// element so both operands match. Leaving it as an array
 				// would cause lop-sided broadcasts like A1:A8 - {rm}.
-				if aWasRange && a.Type != ValueArray && b.Type == ValueArray && b.RangeOrigin == nil {
-					if len(b.Array) > 0 && len(b.Array[0]) > 0 {
-						b = b.Array[0][0]
+				if aWasRange && a.Type != ValueArray && b.Type == ValueArray {
+					if _, ok := legacyArrayRef(b); !ok {
+						b = arrayTopLeft(b)
 					}
 				}
-				if bWasRange && b.Type != ValueArray && a.Type == ValueArray && a.RangeOrigin == nil {
-					if len(a.Array) > 0 && len(a.Array[0]) > 0 {
-						a = a.Array[0][0]
+				if bWasRange && b.Type != ValueArray && a.Type == ValueArray {
+					if _, ok := legacyArrayRef(a); !ok {
+						a = arrayTopLeft(a)
 					}
 				}
 			}
@@ -478,7 +461,7 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 				funcID >= 0 && funcID < len(idToName) &&
 				functionNeedsLegacyElementwisePreIntersect(idToName[funcID]) {
 				for i := range args {
-					if args[i].Type == ValueArray && args[i].RangeOrigin != nil {
+					if _, ok := legacyArrayRef(args[i]); ok {
 						args[i] = implicitIntersect(args[i], ctx)
 					}
 				}
@@ -566,8 +549,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			// (SEQUENCE/FILTER/MAP output used as an IFERROR fallback)
 			// alone so their dynamic-array shape reaches the wrapping
 			// function unchanged.
-			if ctx != nil && !ctx.IsArrayFormula && v.Type == ValueArray && v.RangeOrigin != nil {
-				v = implicitIntersect(v, ctx)
+			if ctx != nil && !ctx.IsArrayFormula {
+				if _, ok := legacyArrayRef(v); ok {
+					v = implicitIntersect(v, ctx)
+				}
 			}
 			push(v)
 
@@ -583,8 +568,10 @@ func evalWithParams(cf *CompiledFormula, resolver CellResolver, ctx *EvalContext
 			result := rangeIntersect(a, b, resolver, ctx, arrayCtxDepth > 0)
 			// In non-array contexts a multi-cell intersection is subject to
 			// implicit intersection based on the formula position.
-			if arrayCtxDepth == 0 && result.Type == ValueArray && result.RangeOrigin != nil {
-				result = implicitIntersect(result, ctx)
+			if arrayCtxDepth == 0 {
+				if _, ok := legacyArrayRef(result); ok {
+					result = implicitIntersect(result, ctx)
+				}
 			}
 			push(result)
 
@@ -1408,8 +1395,8 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 	if v.Type != ValueArray || ctx == nil {
 		return v
 	}
-	ref := legacyIntersectRefValue(v)
-	if ref == nil {
+	ref, ok := legacyArrayRef(v)
+	if !ok {
 		return v
 	}
 	ro := ref.Bounds()
@@ -1419,7 +1406,7 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 		r := ctx.CurrentRow
 		if r >= ro.FromRow && r <= ro.ToRow {
 			idx := r - ro.FromRow
-			return legacyIntersectRefCell(ref, idx, 0)
+			return legacyRefCellValue(ref, idx, 0)
 		}
 		return ErrorVal(ErrValVALUE)
 	}
@@ -1427,7 +1414,7 @@ func implicitIntersect(v Value, ctx *EvalContext) Value {
 		c := ctx.CurrentCol
 		if c >= ro.FromCol && c <= ro.ToCol {
 			idx := c - ro.FromCol
-			return legacyIntersectRefCell(ref, 0, idx)
+			return legacyRefCellValue(ref, 0, idx)
 		}
 		return ErrorVal(ErrValVALUE)
 	}
@@ -1438,11 +1425,8 @@ func explicitIntersect(v Value, ctx *EvalContext) Value {
 	if v.Type != ValueArray {
 		return v
 	}
-	if legacyIntersectRefValue(v) == nil {
-		if len(v.Array) > 0 && len(v.Array[0]) > 0 {
-			return v.Array[0][0]
-		}
-		return ErrorVal(ErrValVALUE)
+	if _, ok := legacyArrayRef(v); !ok {
+		return arrayTopLeft(v)
 	}
 	return implicitIntersect(v, ctx)
 }
@@ -1460,9 +1444,9 @@ func rangeIntersect(a, b Value, resolver CellResolver, ctx *EvalContext, inArray
 	if b.Type == ValueError {
 		return b
 	}
-	aRo := extractRangeOrigin(a)
-	bRo := extractRangeOrigin(b)
-	if aRo == nil || bRo == nil {
+	aRo, aOk := legacyValueBounds(a)
+	bRo, bOk := legacyValueBounds(b)
+	if !aOk || !bOk {
 		return ErrorVal(ErrValVALUE)
 	}
 	if aRo.Sheet != bRo.Sheet || aRo.SheetEnd != "" || bRo.SheetEnd != "" {
@@ -1515,9 +1499,9 @@ func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Val
 	if b.Type == ValueError {
 		return b
 	}
-	aRo := extractRangeOrigin(a)
-	bRo := extractRangeOrigin(b)
-	if aRo == nil || bRo == nil {
+	aRo, aOk := legacyValueBounds(a)
+	bRo, bOk := legacyValueBounds(b)
+	if !aOk || !bOk {
 		return ErrorVal(ErrValREF)
 	}
 	if aRo.SheetEnd != "" || bRo.SheetEnd != "" {
@@ -1573,45 +1557,6 @@ func buildRangeFromRefs(a, b Value, resolver CellResolver, ctx *EvalContext) Val
 	rows := resolver.GetRangeValues(addr)
 	origin := addr
 	return Value{Type: ValueArray, Array: rows, RangeOrigin: &origin}
-}
-
-func extractRangeOrigin(v Value) *RangeAddr {
-	ev := ValueToEvalValue(v)
-	if ev.Kind != EvalRef || ev.Ref == nil {
-		return nil
-	}
-	out := ev.Ref.Bounds()
-	// RefValue does not carry 3D sheet spans yet, so preserve any SheetEnd
-	// while range/operator semantics continue to cross the legacy Value boundary.
-	if v.RangeOrigin != nil && v.RangeOrigin.SheetEnd != "" {
-		out.Sheet = v.RangeOrigin.Sheet
-		out.SheetEnd = v.RangeOrigin.SheetEnd
-	}
-	return &out
-}
-
-func legacyIntersectRefValue(v Value) *RefValue {
-	ev := ValueToEvalValue(v)
-	if ev.Kind != EvalRef || ev.Ref == nil {
-		return nil
-	}
-	return ev.Ref
-}
-
-func legacyIntersectRefCell(ref *RefValue, rowOffset, colOffset int) Value {
-	if ref == nil || rowOffset < 0 || colOffset < 0 {
-		return ErrorVal(ErrValVALUE)
-	}
-	if ref.Materialized != nil {
-		if rowOffset >= ref.Materialized.Rows() || colOffset >= ref.Materialized.Cols() {
-			return ErrorVal(ErrValVALUE)
-		}
-		return EvalValueToValue(ref.Materialized.Cell(rowOffset, colOffset))
-	}
-	if rowOffset == 0 && colOffset == 0 && ref.Legacy != nil {
-		return ref.Legacy.SingleCellValue
-	}
-	return ErrorVal(ErrValVALUE)
 }
 
 // unionAreas flattens a sequence of area Values into a single ValueArray by
@@ -1758,16 +1703,7 @@ func ArrayElement(v Value, i, j int) Value {
 		return v
 	}
 	rows, cols := effectiveArrayBounds(v)
-	if i < 0 || j < 0 || i >= rows || j >= cols {
-		return ErrorVal(ErrValNA)
-	}
-	if i < len(v.Array) && j < len(v.Array[i]) {
-		return v.Array[i][j]
-	}
-	if v.RangeOrigin != nil {
-		return EmptyVal()
-	}
-	return ErrorVal(ErrValNA)
+	return arrayElementDirect(v, rows, cols, i, j)
 }
 
 // resolveSheetRange returns the slice of sheet names from startSheet to endSheet
@@ -1800,18 +1736,7 @@ func resolveSheetRange(allSheets []string, startSheet, endSheet string) []string
 // Non-numeric values in ranges are skipped; non-numeric scalar args cause #VALUE!.
 func IterateNumeric(args []Value, fn func(float64)) *Value {
 	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return &cell
-					}
-					if cell.Type == ValueNumber {
-						fn(cell.Num)
-					}
-				}
-			}
-		} else {
+		if arg.Type != ValueArray {
 			if arg.Type == ValueError {
 				return &arg
 			}
@@ -1820,6 +1745,22 @@ func IterateNumeric(args []Value, fn func(float64)) *Value {
 				return e
 			}
 			fn(n)
+			continue
+		}
+		var err *Value
+		iterateValueElements(arg, func(cell Value) bool {
+			if cell.Type == ValueError {
+				cellErr := cell
+				err = &cellErr
+				return false
+			}
+			if cell.Type == ValueNumber {
+				fn(cell.Num)
+			}
+			return true
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil

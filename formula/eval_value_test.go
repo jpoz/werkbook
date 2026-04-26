@@ -65,6 +65,29 @@ func TestValueToEvalValueRangeBecomesRef(t *testing.T) {
 	}
 }
 
+func TestLegacyValueBoundsPreservesSheetEnd(t *testing.T) {
+	in := Value{
+		Type:  ValueArray,
+		Array: [][]Value{{NumberVal(1)}},
+		RangeOrigin: &RangeAddr{
+			Sheet:    "Sheet1",
+			SheetEnd: "Sheet3",
+			FromCol:  2,
+			FromRow:  4,
+			ToCol:    5,
+			ToRow:    9,
+		},
+	}
+
+	got, ok := legacyValueBounds(in)
+	if !ok {
+		t.Fatal("legacyValueBounds = !ok, want ok")
+	}
+	if *got != *in.RangeOrigin {
+		t.Fatalf("legacyValueBounds = %+v, want %+v", *got, *in.RangeOrigin)
+	}
+}
+
 func TestValueToEvalValueAnonymousArrayBecomesArray(t *testing.T) {
 	in := Value{Type: ValueArray, Array: [][]Value{
 		{StringVal("a"), StringVal("b")},
@@ -147,5 +170,61 @@ func TestValueToEvalValueResolverFallbackLoadsRange(t *testing.T) {
 	}
 	if cell := EvalValueToValue(got.Ref.Materialized.Cell(1, 0)); cell.Type != ValueNumber || cell.Num != 13 {
 		t.Fatalf("Cell(1,0) = %#v, want 13", cell)
+	}
+}
+
+func TestLegacyValueSpillClass(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Value
+		want SpillClass
+	}{
+		{
+			name: "bounded_trimmed_range",
+			in: Value{
+				Type:  ValueArray,
+				Array: [][]Value{{NumberVal(10)}},
+				RangeOrigin: &RangeAddr{
+					Sheet:   "Sheet1",
+					FromCol: 1,
+					FromRow: 2,
+					ToCol:   1,
+					ToRow:   4,
+				},
+			},
+			want: SpillBounded,
+		},
+		{
+			name: "full_axis_trimmed_range",
+			in: Value{
+				Type:  ValueArray,
+				Array: [][]Value{{NumberVal(10)}},
+				RangeOrigin: &RangeAddr{
+					Sheet:   "Sheet1",
+					FromCol: 1,
+					FromRow: 1,
+					ToCol:   1,
+					ToRow:   maxRows,
+				},
+			},
+			want: SpillUnbounded,
+		},
+		{
+			name: "no_spill_array",
+			in: Value{
+				Type:    ValueArray,
+				Array:   [][]Value{{NumberVal(10)}},
+				NoSpill: true,
+			},
+			want: SpillScalarOnly,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := legacyValueSpillClass(tt.in); got != tt.want {
+				t.Fatalf("legacyValueSpillClass = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

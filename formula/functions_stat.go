@@ -175,27 +175,32 @@ func fnAVERAGEA(args []Value) (Value, error) {
 	for _, arg := range args {
 		switch arg.Type {
 		case ValueArray:
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					switch cell.Type {
-					case ValueError:
-						return cell, nil
-					case ValueNumber:
-						sum += cell.Num
-						count++
-					case ValueBool:
-						if cell.Bool {
-							sum += 1
-						}
-						count++
-					case ValueString:
-						// Text in a range counts as 0.
-						sum += 0
-						count++
-					case ValueEmpty:
-						// Empty cells are ignored.
+			var err Value
+			hasErr := false
+			iterateValueElements(arg, func(cell Value) bool {
+				switch cell.Type {
+				case ValueError:
+					err = cell
+					hasErr = true
+					return false
+				case ValueNumber:
+					sum += cell.Num
+					count++
+				case ValueBool:
+					if cell.Bool {
+						sum += 1
 					}
+					count++
+				case ValueString:
+					// Text in a range counts as 0.
+					count++
+				case ValueEmpty:
+					// Empty cells are ignored.
 				}
+				return true
+			})
+			if hasErr {
+				return err, nil
 			}
 		case ValueError:
 			return arg, nil
@@ -1204,44 +1209,43 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 		promoted[i] = Value{Type: ValueArray, Array: [][]Value{{arg}}}
 	}
 	args = promoted
-	rows, cols := arrayOpBounds(args[0])
-
-	for _, arg := range args[1:] {
-		argRows, argCols := arrayOpBounds(arg)
-		if argRows != rows || argCols != cols {
-			return ErrorVal(ErrValVALUE), nil
-		}
-	}
 
 	sum := 0.0
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
-			product := 1.0
-			for _, arg := range args {
-				cell := arrayElementDirect(arg, rows, cols, r, c)
-				if cell.Type == ValueError {
-					return cell, nil
-				}
-				if anonymousRefDerivedArrayCell(arg, cell) {
-					product = 0
-					continue
-				}
-				// Excel treats text and boolean cell values as 0 in
-				// SUMPRODUCT.  Computed booleans (e.g. from A1:A5>3)
-				// will already have been coerced to numbers by the
-				// arithmetic operators before reaching this function.
-				if cell.Type == ValueString || cell.Type == ValueBool {
-					product = 0
-					continue
-				}
-				n, e := CoerceNum(cell)
-				if e != nil {
-					n = 0
-				}
-				product *= n
+	var iterErr *Value
+	shapeErr := iterateAlignedArgs(args, func(cells []Value) bool {
+		product := 1.0
+		for i, cell := range cells {
+			if cell.Type == ValueError {
+				cellErr := cell
+				iterErr = &cellErr
+				return false
 			}
-			sum += product
+			if anonymousRefDerivedArrayCell(args[i], cell) {
+				product = 0
+				continue
+			}
+			// Excel treats text and boolean cell values as 0 in
+			// SUMPRODUCT. Computed booleans (e.g. from A1:A5>3) will
+			// already have been coerced to numbers by the arithmetic
+			// operators before reaching this function.
+			if cell.Type == ValueString || cell.Type == ValueBool {
+				product = 0
+				continue
+			}
+			n, e := CoerceNum(cell)
+			if e != nil {
+				n = 0
+			}
+			product *= n
 		}
+		sum += product
+		return true
+	})
+	if iterErr != nil {
+		return *iterErr, nil
+	}
+	if shapeErr != nil {
+		return *shapeErr, nil
 	}
 	return NumberVal(sum), nil
 }
@@ -1251,26 +1255,25 @@ func collectNumeric(args []Value) ([]float64, *Value) {
 	// Pre-count capacity to avoid repeated reallocation.
 	cap := 0
 	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				cap += len(row)
-			}
-		} else {
-			cap++
-		}
+		cap += valueCellCount(arg)
 	}
 	nums := make([]float64, 0, cap)
 	for _, arg := range args {
 		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return nil, &cell
-					}
-					if cell.Type == ValueNumber {
-						nums = append(nums, cell.Num)
-					}
+			var err *Value
+			iterateValueElements(arg, func(cell Value) bool {
+				if cell.Type == ValueError {
+					cellErr := cell
+					err = &cellErr
+					return false
 				}
+				if cell.Type == ValueNumber {
+					nums = append(nums, cell.Num)
+				}
+				return true
+			})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			if arg.Type == ValueError {
@@ -1397,6 +1400,134 @@ func fnAVERAGEIFS(args []Value) (Value, error) {
 	return NumberVal(sum / float64(count)), nil
 }
 
+type criteriaExtremaKind uint8
+
+const (
+	criteriaExtremaMax criteriaExtremaKind = iota
+	criteriaExtremaMin
+)
+
+type criteriaExtremaAccumulator struct {
+	kind  criteriaExtremaKind
+	value float64
+	found bool
+}
+
+func legacyCriteriaValueSource(v Value) criteriaValueSource {
+	return newCriteriaValueSource(ValueToEvalValue(v))
+}
+
+func legacyCriteriaCriterionSource(v Value) criteriaValueSource {
+	if v.Type == ValueArray {
+		return legacyCriteriaValueSource(v)
+	}
+	scalar := v
+	return criteriaValueSource{scalar: &scalar}
+}
+
+func evalCriteriaExtrema(kind criteriaExtremaKind, args []Value) Value {
+	scanSource := legacyCriteriaValueSource(args[0])
+	prepared := make([]criteriaPreparedPair, 0, (len(args)-1)/2)
+	broadcastRows := 0
+	broadcastCols := 0
+	hasBroadcast := false
+
+	for k := 1; k < len(args); k += 2 {
+		pair := criteriaPreparedPair{
+			rangeSource:    legacyCriteriaValueSource(args[k]),
+			criteriaSource: legacyCriteriaCriterionSource(args[k+1]),
+		}
+		prepared = append(prepared, pair)
+		if hasBroadcast || pair.criteriaSource.isScalar() {
+			continue
+		}
+		broadcastRows, broadcastCols = pair.criteriaSource.dims()
+		hasBroadcast = true
+	}
+
+	if !hasBroadcast {
+		return evalCriteriaExtremaScalar(kind, scanSource, prepared, 0, 0)
+	}
+
+	rows := make([][]Value, broadcastRows)
+	for r := 0; r < broadcastRows; r++ {
+		row := make([]Value, broadcastCols)
+		for c := 0; c < broadcastCols; c++ {
+			row[c] = evalCriteriaExtremaScalar(kind, scanSource, prepared, r, c)
+		}
+		rows[r] = row
+	}
+	return Value{Type: ValueArray, Array: rows}
+}
+
+func evalCriteriaExtremaScalar(
+	kind criteriaExtremaKind,
+	scanSource criteriaValueSource,
+	pairs []criteriaPreparedPair,
+	criteriaRow int,
+	criteriaCol int,
+) Value {
+	rows, cols := scanSource.dims()
+	acc := criteriaExtremaAccumulator{kind: kind}
+	iterRows, iterCols := criteriaMaterializedBounds(rows, cols, scanSource, scanSource, pairs)
+
+	for r := 0; r < iterRows; r++ {
+		for c := 0; c < iterCols; c++ {
+			if !criteriaMatchesAll(pairs, r, c, criteriaRow, criteriaCol) {
+				continue
+			}
+			if errVal := acc.include(scanSource.alignedCell(r, c)); errVal != nil {
+				return *errVal
+			}
+		}
+	}
+
+	if tailCells := rows*cols - iterRows*iterCols; tailCells > 0 &&
+		criteriaMatchesAllEmpty(pairs, criteriaRow, criteriaCol) {
+		if errVal := acc.includeRepeated(scanSource.tailCell(), tailCells); errVal != nil {
+			return *errVal
+		}
+	}
+
+	return acc.result()
+}
+
+func (a *criteriaExtremaAccumulator) include(v Value) *Value {
+	if v.Type == ValueError {
+		return &v
+	}
+	n, errVal := CoerceNum(v)
+	if errVal != nil {
+		return nil
+	}
+	if !a.found {
+		a.value = n
+		a.found = true
+		return nil
+	}
+	if a.kind == criteriaExtremaMax && n > a.value {
+		a.value = n
+	}
+	if a.kind == criteriaExtremaMin && n < a.value {
+		a.value = n
+	}
+	return nil
+}
+
+func (a *criteriaExtremaAccumulator) includeRepeated(v Value, n int) *Value {
+	if n <= 0 {
+		return nil
+	}
+	return a.include(v)
+}
+
+func (a criteriaExtremaAccumulator) result() Value {
+	if !a.found {
+		return NumberVal(0)
+	}
+	return NumberVal(a.value)
+}
+
 func fnMAXIFS(args []Value) (Value, error) {
 	if len(args) < 3 || (len(args)-1)%2 != 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -1405,42 +1536,7 @@ func fnMAXIFS(args []Value) (Value, error) {
 	if maxRange.Type != ValueArray {
 		return ErrorVal(ErrValVALUE), nil
 	}
-
-	maxVal := -math.MaxFloat64
-	found := false
-	for r, row := range maxRange.Array {
-		for c := range row {
-			allMatch := true
-			for k := 1; k < len(args); k += 2 {
-				critRange := args[k]
-				criteria := args[k+1]
-				var cellVal Value
-				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
-					cellVal = critRange.Array[r][c]
-				}
-				if !MatchesCriteria(cellVal, criteria) {
-					allMatch = false
-					break
-				}
-			}
-			if allMatch {
-				sv := maxRange.Array[r][c]
-				if sv.Type == ValueError {
-					return sv, nil
-				}
-				if n, e := CoerceNum(sv); e == nil {
-					if !found || n > maxVal {
-						maxVal = n
-						found = true
-					}
-				}
-			}
-		}
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(maxVal), nil
+	return evalCriteriaExtrema(criteriaExtremaMax, args), nil
 }
 
 func fnMINIFS(args []Value) (Value, error) {
@@ -1451,42 +1547,7 @@ func fnMINIFS(args []Value) (Value, error) {
 	if minRange.Type != ValueArray {
 		return ErrorVal(ErrValVALUE), nil
 	}
-
-	minVal := math.MaxFloat64
-	found := false
-	for r, row := range minRange.Array {
-		for c := range row {
-			allMatch := true
-			for k := 1; k < len(args); k += 2 {
-				critRange := args[k]
-				criteria := args[k+1]
-				var cellVal Value
-				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
-					cellVal = critRange.Array[r][c]
-				}
-				if !MatchesCriteria(cellVal, criteria) {
-					allMatch = false
-					break
-				}
-			}
-			if allMatch {
-				sv := minRange.Array[r][c]
-				if sv.Type == ValueError {
-					return sv, nil
-				}
-				if n, e := CoerceNum(sv); e == nil {
-					if !found || n < minVal {
-						minVal = n
-						found = true
-					}
-				}
-			}
-		}
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(minVal), nil
+	return evalCriteriaExtrema(criteriaExtremaMin, args), nil
 }
 
 func fnMEDIAN(args []Value) (Value, error) {
@@ -2004,36 +2065,35 @@ func fnVARP(args []Value) (Value, error) {
 func collectNumericA(args []Value) ([]float64, *Value) {
 	cap := 0
 	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				cap += len(row)
-			}
-		} else {
-			cap++
-		}
+		cap += valueCellCount(arg)
 	}
 	nums := make([]float64, 0, cap)
 	for _, arg := range args {
 		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					switch cell.Type {
-					case ValueError:
-						return nil, &cell
-					case ValueNumber:
-						nums = append(nums, cell.Num)
-					case ValueBool:
-						if cell.Bool {
-							nums = append(nums, 1)
-						} else {
-							nums = append(nums, 0)
-						}
-					case ValueString:
+			var err *Value
+			iterateValueElements(arg, func(cell Value) bool {
+				switch cell.Type {
+				case ValueError:
+					cellErr := cell
+					err = &cellErr
+					return false
+				case ValueNumber:
+					nums = append(nums, cell.Num)
+				case ValueBool:
+					if cell.Bool {
+						nums = append(nums, 1)
+					} else {
 						nums = append(nums, 0)
-					case ValueEmpty:
-						// ignored
 					}
+				case ValueString:
+					nums = append(nums, 0)
+				case ValueEmpty:
+					// ignored
 				}
+				return true
+			})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			switch arg.Type {
