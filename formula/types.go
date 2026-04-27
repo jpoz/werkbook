@@ -146,16 +146,22 @@ func errorCodeFromAST(code ErrorCode) ErrorValue {
 
 // Value is a tagged union representing a formula engine value.
 type Value struct {
-	Type          ValueType
-	Num           float64
-	Str           string
-	Bool          bool
-	Err           ErrorValue
-	Array         [][]Value  // used by ValueArray for range results
+	Type  ValueType
+	Num   float64
+	Str   string
+	Bool  bool
+	Err   ErrorValue
+	Array [][]Value // used by ValueArray for range results
+
+	// The remaining metadata fields are legacy-boundary transport for public
+	// Value callers, OOXML/workbook publication, and compatibility helpers.
+	// New evaluator code should carry the same semantics through EvalValue,
+	// ArrayValue, RefValue, and SpillClass instead of adding runtime meaning
+	// here.
 	RangeOrigin   *RangeAddr // set on ValueArray when loaded from a worksheet range
 	CellOrigin    *CellAddr  // set when a single-cell result carries its source address (e.g. OFFSET)
 	FromCell      bool       // true when loaded from a cell reference (OpLoadCell)
-	NoSpill       bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
+	NoSpill       bool       // true for scalar-only legacy arrays; EvalValue uses SpillScalarOnly
 	RangeOverflow bool       // true for synthetic #REF! cells used to signal that a range was too large to materialize
 	evalRef       *RefValue  // retains live ref identity when a legacy Value must round-trip back through ref-aware evaluators/helpers
 }

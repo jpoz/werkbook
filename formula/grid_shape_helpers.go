@@ -142,6 +142,27 @@ func (s gridValueSource) materializedCell(row, col int, fallback Value) Value {
 	return EvalValueToValue(s.grid.Cell(row, col))
 }
 
+func (s gridValueSource) hasMaterializedCell(row, col int) bool {
+	if s.scalar != nil {
+		return row == 0 && col == 0
+	}
+	return s.grid != nil && row >= 0 && col >= 0 && row < s.matRows && col < s.matCols
+}
+
+func (s gridValueSource) matrix() [][]Value {
+	rows, cols := s.dims()
+	if rows == 0 || cols == 0 {
+		return nil
+	}
+	out := newValueMatrix(rows, cols)
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			out[row][col] = s.cell(row, col)
+		}
+	}
+	return out
+}
+
 func (s gridValueSource) rowValues(row int) []Value {
 	_, cols := s.dims()
 	values := make([]Value, cols)
@@ -158,6 +179,32 @@ func (s gridValueSource) columnValues(col int) []Value {
 		values[row] = s.cell(row, col)
 	}
 	return values
+}
+
+func flattenGridValueSource(src gridValueSource, scanByCol bool, ignore int) []Value {
+	numRows, numCols := src.dims()
+
+	var flat []Value
+	if scanByCol {
+		for col := 0; col < numCols; col++ {
+			for row := 0; row < numRows; row++ {
+				v := src.cell(row, col)
+				if shouldInclude(v, ignore) {
+					flat = append(flat, v)
+				}
+			}
+		}
+		return flat
+	}
+	for row := 0; row < numRows; row++ {
+		for col := 0; col < numCols; col++ {
+			v := src.cell(row, col)
+			if shouldInclude(v, ignore) {
+				flat = append(flat, v)
+			}
+		}
+	}
+	return flat
 }
 
 func (s gridValueSource) materializeRows(indices []int) [][]Value {
@@ -244,6 +291,14 @@ func legacyArgValue(legacy Value, evalArg *EvalValue) Value {
 		return legacy
 	}
 	return EvalValueToValue(*evalArg)
+}
+
+func evalGridShapeCore(args []EvalValue, core func([]Value, []EvalValue) (Value, error)) (EvalValue, error) {
+	got, err := core(scalarLegacyArgsFromEval(args), args)
+	if err != nil {
+		return EvalValue{}, err
+	}
+	return ValueToEvalValue(got), nil
 }
 
 func filterCoreEval(args []EvalValue, legacyArgs []Value) Value {

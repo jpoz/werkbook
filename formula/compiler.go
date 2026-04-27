@@ -622,9 +622,6 @@ func functionCanReturnArrayFromArrayArgs(name string) bool {
 	if functionUsesElementwiseContract(name) {
 		return true
 	}
-	if meta, ok := funcMetaForName(name); ok && meta.Kind == FnKindScalarLifted {
-		return true
-	}
 	return false
 }
 

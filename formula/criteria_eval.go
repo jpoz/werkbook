@@ -100,7 +100,7 @@ func criteriaPairsAggregateFuncSpec(eval EvalFunc) FuncSpec {
 
 func evalCOUNTIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) != 2 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	if args[0].Kind == EvalKindError {
 		return args[0], nil
@@ -118,7 +118,7 @@ func evalCOUNTIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalSUMIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) < 2 || len(args) > 3 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	if args[0].Kind == EvalKindError {
 		return args[0], nil
@@ -140,7 +140,7 @@ func evalSUMIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalAVERAGEIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) < 2 || len(args) > 3 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	if args[0].Kind == EvalKindError {
 		return args[0], nil
@@ -162,7 +162,7 @@ func evalAVERAGEIFCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) 
 
 func evalCOUNTIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) < 2 || len(args)%2 != 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	pairs := make([]criteriaEvalPair, 0, len(args)/2)
 	for i := 0; i < len(args); i += 2 {
@@ -180,7 +180,7 @@ func evalCOUNTIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalSUMIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) < 3 || (len(args)-1)%2 != 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	pairs := make([]criteriaEvalPair, 0, (len(args)-1)/2)
 	for i := 1; i < len(args); i += 2 {
@@ -199,7 +199,7 @@ func evalSUMIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalAVERAGEIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) < 3 || (len(args)-1)%2 != 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	pairs := make([]criteriaEvalPair, 0, (len(args)-1)/2)
 	for i := 1; i < len(args); i += 2 {
@@ -218,7 +218,7 @@ func evalAVERAGEIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error)
 
 func evalCriteriaRequest(req criteriaEvalRequest) EvalValue {
 	if len(req.Pairs) == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE))
+		return evalError(ErrValVALUE)
 	}
 
 	scanSource := newCriteriaValueSource(req.ScanRange)
@@ -244,7 +244,7 @@ func evalCriteriaRequest(req criteriaEvalRequest) EvalValue {
 	}
 
 	if !hasBroadcast {
-		return ValueToEvalValue(evalCriteriaScalar(req.Reduce, scanSource, resultSource, prepared, 0, 0))
+		return evalScalar(evalCriteriaScalar(req.Reduce, scanSource, resultSource, prepared, 0, 0))
 	}
 
 	rows := make([][]Value, broadcastRows)
@@ -256,17 +256,9 @@ func evalCriteriaRequest(req criteriaEvalRequest) EvalValue {
 		rows[r] = row
 	}
 	if req.CollapseSingleResult && broadcastRows == 1 && broadcastCols == 1 {
-		return ValueToEvalValue(rows[0][0])
+		return evalScalar(rows[0][0])
 	}
-	return EvalValue{
-		Kind: EvalArray,
-		Array: &ArrayValue{
-			Rows:       broadcastRows,
-			Cols:       broadcastCols,
-			Grid:       newLegacyValueGrid(rows),
-			SpillClass: SpillBounded,
-		},
-	}
+	return evalArray(rows, SpillBounded)
 }
 
 func evalCriteriaScalar(
@@ -538,13 +530,20 @@ func (s criteriaValueSource) tailCell() Value {
 }
 
 func (s criteriaValueSource) materializedCell(row, col int, fallback Value) Value {
+	return EvalValueToValue(s.evalCell(row, col, fallback))
+}
+
+func (s criteriaValueSource) evalCell(row, col int, fallback Value) EvalValue {
 	if s.grid == nil {
-		return fallback
+		if s.scalar != nil && row == 0 && col == 0 {
+			return evalScalar(*s.scalar)
+		}
+		return evalScalar(fallback)
 	}
 	if row >= s.grid.Rows() || col >= s.grid.Cols() {
-		return fallback
+		return evalScalar(fallback)
 	}
-	return EvalValueToValue(s.grid.Cell(row, col))
+	return s.grid.Cell(row, col)
 }
 
 func ptrEvalValue(v EvalValue) *EvalValue {

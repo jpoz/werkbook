@@ -52,19 +52,20 @@ type EvalFunc func(args []EvalValue, ctx *EvalContext) (EvalValue, error)
 
 // ArgSpec defines one positional argument contract.
 type ArgSpec struct {
-	Load  ArgLoadMode
-	Adapt ArgAdaptMode
+	Load         ArgLoadMode
+	Adapt        ArgAdaptMode
+	InheritArray bool
 }
 
 // FuncSpec is the contract-system registration record described in the v2
-// architecture plan. The first migration slice uses it in shadow mode while
-// legacy registry maps remain available as fallback for non-migrated families.
+// architecture plan.
 type FuncSpec struct {
-	Kind   FnKind
-	Args   []ArgSpec
-	VarArg func(i int) ArgSpec
-	Return ReturnMode
-	Eval   EvalFunc
+	Kind      FnKind
+	Args      []ArgSpec
+	VarArg    func(i int) ArgSpec
+	Return    ReturnMode
+	ArrayLift bool
+	Eval      EvalFunc
 }
 
 var funcSpecByName = map[string]FuncSpec{}
@@ -75,27 +76,97 @@ func RegisterWithSpec(name string, fn Func, spec FuncSpec) {
 	funcSpecByName[normalizeFuncName(name)] = cloneFuncSpec(spec)
 }
 
-// RegisterWithMetaAndSpec keeps legacy metadata while also attaching a
-// FuncSpec. This supports shadow-mode migration slices where compiler/eval
-// logic prefers the spec but the old metadata remains available as fallback.
+// RegisterWithMetaAndSpec preserves the older registration API while storing
+// the merged behavior in the function contract.
 func RegisterWithMetaAndSpec(name string, fn Func, meta FuncMeta, spec FuncSpec) {
-	Register(name, fn)
-	funcMetaByName[normalizeFuncName(name)] = cloneFuncMeta(meta)
-	funcSpecByName[normalizeFuncName(name)] = cloneFuncSpec(spec)
+	RegisterWithSpec(name, fn, mergeMetaIntoSpec(meta, spec))
 }
 
 // RegisterScalarLiftedUnarySpec registers a unary scalar-lifted function on
 // the new contract path. Direct references still use legacy implicit
 // intersection in scalar cells; anonymous arrays keep broadcast semantics.
 func RegisterScalarLiftedUnarySpec(name string, fn Func) {
-	RegisterWithSpec(name, fn, FuncSpec{
-		Kind: FnKindScalarLifted,
-		Args: []ArgSpec{{
+	RegisterWithSpec(name, fn, scalarLiftedFuncSpec(1, true))
+}
+
+func scalarLiftedFuncSpec(argCount int, arrayLift bool, inheritedArgs ...int) FuncSpec {
+	if argCount < 0 {
+		argCount = 0
+	}
+	for _, idx := range inheritedArgs {
+		if idx+1 > argCount {
+			argCount = idx + 1
+		}
+	}
+	args := make([]ArgSpec, argCount)
+	adapt := ArgAdaptPassThrough
+	if arrayLift {
+		adapt = ArgAdaptLegacyIntersectRef
+	}
+	for i := range args {
+		args[i] = ArgSpec{
 			Load:  ArgLoadPassthrough,
-			Adapt: ArgAdaptLegacyIntersectRef,
-		}},
+			Adapt: adapt,
+		}
+	}
+	for _, idx := range inheritedArgs {
+		if idx >= 0 && idx < len(args) {
+			args[idx].InheritArray = true
+		}
+	}
+	return FuncSpec{
+		Kind:      FnKindScalarLifted,
+		Args:      args,
+		Return:    ReturnModePassThrough,
+		ArrayLift: arrayLift,
+	}
+}
+
+func funcSpecFromMeta(name string, meta FuncMeta) FuncSpec {
+	argCount := 0
+	inherited := make([]int, 0, len(meta.InheritedArrayArgs))
+	for idx, ok := range meta.InheritedArrayArgs {
+		if idx+1 > argCount {
+			argCount = idx + 1
+		}
+		if ok {
+			inherited = append(inherited, idx)
+		}
+	}
+	if meta.Kind == FnKindScalarLifted {
+		if argCount == 0 {
+			argCount = 1
+		}
+		return scalarLiftedFuncSpec(argCount, elementWiseCallFuncs[normalizeFuncName(name)], inherited...)
+	}
+	args := make([]ArgSpec, argCount)
+	for _, idx := range inherited {
+		args[idx].InheritArray = true
+	}
+	return FuncSpec{
+		Kind:   meta.Kind,
+		Args:   args,
 		Return: ReturnModePassThrough,
-	})
+	}
+}
+
+func mergeMetaIntoSpec(meta FuncMeta, spec FuncSpec) FuncSpec {
+	if spec.Kind == FnKindUnknown {
+		spec.Kind = meta.Kind
+	}
+	for idx, ok := range meta.InheritedArrayArgs {
+		if !ok || idx < 0 {
+			continue
+		}
+		for len(spec.Args) <= idx {
+			spec.Args = append(spec.Args, ArgSpec{
+				Load:  ArgLoadPassthrough,
+				Adapt: ArgAdaptPassThrough,
+			})
+		}
+		spec.Args[idx].InheritArray = true
+	}
+	return spec
 }
 
 func cloneFuncSpec(spec FuncSpec) FuncSpec {
@@ -141,7 +212,7 @@ func callFuncWithSpec(name string, fn Func, spec FuncSpec, args []Value, ctx *Ev
 	adapted := adaptFuncArgs(spec, args, ctx)
 	switch spec.Kind {
 	case FnKindScalarLifted:
-		if hasArrayArg(adapted) {
+		if spec.ArrayLift && hasArrayArg(adapted) {
 			return callElementWise(adapted, ctx, fn)
 		}
 	case FnKindLookupArrayLift:

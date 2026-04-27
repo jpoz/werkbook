@@ -365,16 +365,7 @@ func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
 	raw := span.anchor.cell.rawValue
 	rowOffset := row - span.anchor.row
 	colOffset := col - span.anchor.col
-	if raw.Type != formula.ValueArray || raw.NoSpill {
-		return formula.Value{}, false
-	}
-	if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
-		return formula.Value{}, false
-	}
-	if colOffset >= len(raw.Array[rowOffset]) {
-		return formula.Value{}, false
-	}
-	return raw.Array[rowOffset][colOffset], true
+	return spillArrayCell(raw, rowOffset, colOffset)
 }
 
 // hasSpillConflict checks whether any cell in the proposed spill range
@@ -784,14 +775,13 @@ func (s *Sheet) evalCellOutcome(c *Cell, col, row int) (CellEvalOutcome, error) 
 	raw := displayRaw
 	var spill *SpillPlan
 	if c.dynamicArraySpill && !c.isArrayFormula {
-		if (displayRaw.Type != formula.ValueArray || displayRaw.NoSpill) && c.compiled != nil && c.compiled.TopLevelArray != nil {
-			if probe, probeErr := s.evalCellFormula(c, col, row, true); probeErr == nil &&
-				probe.Type == formula.ValueArray && !probe.NoSpill {
+		if !canPublishSpill(displayRaw) && c.compiled != nil && c.compiled.TopLevelArray != nil {
+			if probe, probeErr := s.evalCellFormula(c, col, row, true); probeErr == nil && canPublishSpill(probe) {
 				raw = probe
 			}
 		}
 		spill = newSpillPlan(raw, col, row)
-		if spill != nil && s.hasSpillConflict(col, row, spill.Raw.Array) {
+		if spillRows, ok := spillArrayRows(raw); spill != nil && ok && s.hasSpillConflict(col, row, spillRows) {
 			spill.Blocked = true
 			spill.PublishedToCol = col
 			spill.PublishedToRow = row
@@ -807,6 +797,11 @@ func (s *Sheet) evalCellOutcome(c *Cell, col, row int) (CellEvalOutcome, error) 
 		formulaDisplayValueAt(displaySource, c.isArrayFormula, !c.dynamicArraySpill, col, row),
 		spill,
 	), nil
+}
+
+func canPublishSpill(raw formula.Value) bool {
+	_, ok := spillArrayRows(raw)
+	return ok
 }
 
 func (s *Sheet) applyCellOutcome(c *Cell, col, row int, outcome CellEvalOutcome) {

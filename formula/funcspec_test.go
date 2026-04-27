@@ -34,9 +34,6 @@ func TestUnaryInfoFuncSpecs(t *testing.T) {
 			if spec.Args[0].Adapt != ArgAdaptLegacyIntersectRef {
 				t.Fatalf("Args[0].Adapt = %v, want %v", spec.Args[0].Adapt, ArgAdaptLegacyIntersectRef)
 			}
-			if _, ok := funcMetaForName(name); ok {
-				t.Fatalf("legacy metadata still registered for %s", name)
-			}
 			if inheritedArrayEvalForFuncArg(name, 0) {
 				t.Fatalf("inheritedArrayEvalForFuncArg(%q, 0) = true, want false", name)
 			}

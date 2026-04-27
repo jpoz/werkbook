@@ -2,6 +2,7 @@ package formula
 
 import (
 	"math"
+	"sort"
 	"strconv"
 )
 
@@ -44,7 +45,7 @@ func evalSUMDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(sum)}, nil
 }
@@ -77,10 +78,10 @@ func evalAVERAGEDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error)
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	if count == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValDIV0)), nil
+		return evalError(ErrValDIV0), nil
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(sum / float64(count))}, nil
 }
@@ -110,8 +111,7 @@ func evalCOUNTDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 			}
 			ignoreRefDerived := arg.Array.Origin == nil
 			arg.Array.Grid.Iterate(func(r, c int, cell EvalValue) bool {
-				v := EvalValueToValue(cell)
-				if v.Type == ValueNumber && !(ignoreRefDerived && valueHasRefMetadata(v)) {
+				if countEvalNumberCell(cell, ignoreRefDerived) {
 					count++
 				}
 				return true
@@ -123,7 +123,7 @@ func evalCOUNTDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 				}
 				return nil
 			}); err != nil {
-				return ValueToEvalValue(*err), nil
+				return evalScalar(*err), nil
 			}
 		}
 	}
@@ -147,9 +147,20 @@ func evalCOUNTADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) 
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(float64(count))}, nil
+}
+
+func countEvalNumberCell(cell EvalValue, ignoreRefDerived bool) bool {
+	if cell.Kind == EvalScalar {
+		return cell.Scalar.Type == ValueNumber
+	}
+	if ignoreRefDerived && cell.Kind == EvalRef {
+		return false
+	}
+	v := EvalValueToValue(cell)
+	return v.Type == ValueNumber && !(ignoreRefDerived && valueHasRefMetadata(v))
 }
 
 func evalMINDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
@@ -184,7 +195,7 @@ func evalMINDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	if !found {
 		return EvalValue{Kind: EvalScalar, Scalar: NumberVal(0)}, nil
@@ -224,7 +235,7 @@ func evalMAXDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	if !found {
 		return EvalValue{Kind: EvalScalar, Scalar: NumberVal(0)}, nil
@@ -257,18 +268,18 @@ func evalSUMSQDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 			return nil
 		},
 	); err != nil {
-		return ValueToEvalValue(*err), nil
+		return evalScalar(*err), nil
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(sum)}, nil
 }
 
 func evalDEVSQDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	nums, errVal := collectReducerNumericEvalArgs(args, true)
 	if errVal != nil {
-		return ValueToEvalValue(*errVal), nil
+		return evalScalar(*errVal), nil
 	}
 	if len(nums) == 0 {
 		return EvalValue{Kind: EvalScalar, Scalar: NumberVal(0)}, nil
@@ -288,14 +299,14 @@ func evalDEVSQDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalAVEDEVDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	if len(args) == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	nums, mean, _, errVal := meanAndSumSqReducerEvalArgs(args, true)
 	if errVal != nil {
-		return ValueToEvalValue(*errVal), nil
+		return evalScalar(*errVal), nil
 	}
 	if len(nums) == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValNUM)), nil
+		return evalError(ErrValNUM), nil
 	}
 	absDevSum := 0.0
 	for _, n := range nums {
@@ -343,11 +354,11 @@ func evalReducerVarianceLikeDirectRange(
 	meanAndSumSq func([]EvalValue) ([]float64, float64, float64, *Value),
 ) EvalValue {
 	if len(args) == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE))
+		return evalError(ErrValVALUE)
 	}
 	nums, _, ssq, errVal := meanAndSumSq(args)
 	if errVal != nil {
-		return ValueToEvalValue(*errVal)
+		return evalScalar(*errVal)
 	}
 	minCount := 1
 	denom := float64(len(nums))
@@ -356,7 +367,7 @@ func evalReducerVarianceLikeDirectRange(
 		denom = float64(len(nums) - 1)
 	}
 	if len(nums) < minCount {
-		return ValueToEvalValue(ErrorVal(ErrValDIV0))
+		return evalError(ErrValDIV0)
 	}
 	result := ssq / denom
 	if sqrtResult {
@@ -542,4 +553,254 @@ func reducerRefGrid(ref *RefValue) Grid {
 		rows: ref.ToRow - ref.FromRow + 1,
 		cols: ref.ToCol - ref.FromCol + 1,
 	}
+}
+
+func sumproductFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind: FnKindReduction,
+		VarArg: func(i int) ArgSpec {
+			return ArgSpec{Load: ArgLoadArray, Adapt: ArgAdaptPassThrough}
+		},
+		Return: ReturnModeScalar,
+		Eval:   eval,
+	}
+}
+
+func evalSUMPRODUCTDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) == 0 {
+		return evalError(ErrValVALUE), nil
+	}
+	sources := make([]criteriaValueSource, len(args))
+	rows, cols := 0, 0
+	for i, arg := range args {
+		if arg.Kind == EvalKindError {
+			return evalError(arg.Err), nil
+		}
+		sources[i] = newCriteriaValueSource(arg)
+		argRows, argCols := sources[i].dims()
+		if i == 0 {
+			rows, cols = argRows, argCols
+			continue
+		}
+		if argRows != rows || argCols != cols {
+			return evalError(ErrValVALUE), nil
+		}
+	}
+
+	sum := 0.0
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			product := 1.0
+			for i, source := range sources {
+				cellEval := source.evalCell(r, c, EmptyVal())
+				cell := EvalValueToValue(cellEval)
+				if cell.Type == ValueError {
+					return evalScalar(cell), nil
+				}
+				if anonymousRefDerivedEvalArrayCell(args[i], cellEval) {
+					product = 0
+					continue
+				}
+				if cell.Type == ValueString || cell.Type == ValueBool {
+					product = 0
+					continue
+				}
+				n, errVal := CoerceNum(cell)
+				if errVal != nil {
+					n = 0
+				}
+				product *= n
+			}
+			sum += product
+		}
+	}
+	return evalScalar(NumberVal(sum)), nil
+}
+
+func anonymousRefDerivedEvalArrayCell(container EvalValue, cell EvalValue) bool {
+	if container.Kind != EvalArray || container.Array == nil || container.Array.Origin != nil {
+		return false
+	}
+	if cell.Kind == EvalRef {
+		return true
+	}
+	return valueHasRefMetadata(EvalValueToValue(cell))
+}
+
+func criteriaExtremaFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind: FnKindReduction,
+		Args: []ArgSpec{
+			{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough},
+		},
+		VarArg: func(i int) ArgSpec {
+			if i == 0 {
+				return ArgSpec{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough}
+			}
+			if i%2 == 1 {
+				return ArgSpec{Load: ArgLoadDirectRange, Adapt: ArgAdaptPassThrough}
+			}
+			return ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough}
+		},
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+func evalMAXIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalCriteriaExtremaEval(criteriaExtremaMax, args), nil
+}
+
+func evalMINIFSCriteria(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalCriteriaExtremaEval(criteriaExtremaMin, args), nil
+}
+
+func evalCriteriaExtremaEval(kind criteriaExtremaKind, args []EvalValue) EvalValue {
+	if len(args) < 3 || (len(args)-1)%2 != 0 {
+		return evalError(ErrValVALUE)
+	}
+	if args[0].Kind != EvalArray && args[0].Kind != EvalRef {
+		return evalError(ErrValVALUE)
+	}
+	scanSource := newCriteriaValueSource(args[0])
+	prepared := make([]criteriaPreparedPair, 0, (len(args)-1)/2)
+	broadcastRows := 0
+	broadcastCols := 0
+	hasBroadcast := false
+
+	for k := 1; k < len(args); k += 2 {
+		pair := criteriaPreparedPair{
+			rangeSource:    newCriteriaValueSource(args[k]),
+			criteriaSource: newCriteriaCriterionSource(args[k+1]),
+		}
+		prepared = append(prepared, pair)
+		if hasBroadcast || pair.criteriaSource.isScalar() {
+			continue
+		}
+		broadcastRows, broadcastCols = pair.criteriaSource.dims()
+		hasBroadcast = true
+	}
+
+	if !hasBroadcast {
+		return evalScalar(evalCriteriaExtremaScalar(kind, scanSource, prepared, 0, 0))
+	}
+
+	rows := make([][]Value, broadcastRows)
+	for r := 0; r < broadcastRows; r++ {
+		row := make([]Value, broadcastCols)
+		for c := 0; c < broadcastCols; c++ {
+			row[c] = evalCriteriaExtremaScalar(kind, scanSource, prepared, r, c)
+		}
+		rows[r] = row
+	}
+	return evalArray(rows, SpillBounded)
+}
+
+func newCriteriaCriterionSource(v EvalValue) criteriaValueSource {
+	legacy := EvalValueToValue(v)
+	if legacy.Type == ValueArray {
+		return newCriteriaValueSource(v)
+	}
+	scalar := legacy
+	return criteriaValueSource{scalar: &scalar}
+}
+
+func frequencyFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind: FnKindArrayNative,
+		Args: []ArgSpec{
+			{Load: ArgLoadArray, Adapt: ArgAdaptPassThrough},
+			{Load: ArgLoadArray, Adapt: ArgAdaptPassThrough},
+		},
+		Return: ReturnModeArray,
+		Eval:   eval,
+	}
+}
+
+func evalFREQUENCYDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	if len(args) != 2 {
+		return evalError(ErrValVALUE), nil
+	}
+	data, errVal := collectFrequencyNumbers(args[0])
+	if errVal != nil {
+		return evalScalar(*errVal), nil
+	}
+	bins, errVal := collectFrequencyNumbers(args[1])
+	if errVal != nil {
+		return evalScalar(*errVal), nil
+	}
+	return evalArray(frequencyRows(data, bins), SpillBounded), nil
+}
+
+func collectFrequencyNumbers(v EvalValue) ([]float64, *Value) {
+	var nums []float64
+	visit := func(cell EvalValue) *Value {
+		legacy := EvalValueToValue(cell)
+		if legacy.Type == ValueError {
+			return &legacy
+		}
+		if legacy.Type == ValueNumber {
+			nums = append(nums, legacy.Num)
+		}
+		return nil
+	}
+	switch v.Kind {
+	case EvalKindError:
+		errVal := ErrorVal(v.Err)
+		return nil, &errVal
+	case EvalScalar:
+		if errVal := visit(v); errVal != nil {
+			return nil, errVal
+		}
+	case EvalArray:
+		if v.Array == nil || v.Array.Grid == nil {
+			return nums, nil
+		}
+		var errVal *Value
+		v.Array.Grid.Iterate(func(r, c int, cell EvalValue) bool {
+			errVal = visit(cell)
+			return errVal == nil
+		})
+		if errVal != nil {
+			return nil, errVal
+		}
+	case EvalRef:
+		var errVal *Value
+		if grid := reducerRefGrid(v.Ref); grid != nil {
+			grid.Iterate(func(r, c int, cell EvalValue) bool {
+				errVal = visit(cell)
+				return errVal == nil
+			})
+		}
+		if errVal != nil {
+			return nil, errVal
+		}
+	}
+	return nums, nil
+}
+
+func frequencyRows(data []float64, bins []float64) [][]Value {
+	if len(bins) == 0 {
+		return [][]Value{{NumberVal(float64(len(data)))}}
+	}
+	sort.Float64s(bins)
+	counts := make([]float64, len(bins)+1)
+	for _, v := range data {
+		placed := false
+		for i, b := range bins {
+			if v <= b {
+				counts[i]++
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			counts[len(bins)]++
+		}
+	}
+	rows := make([][]Value, len(counts))
+	for i, c := range counts {
+		rows[i] = []Value{NumberVal(c)}
+	}
+	return rows
 }

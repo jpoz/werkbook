@@ -2,7 +2,7 @@ package formula
 
 import "testing"
 
-func TestInheritedArrayMetadataParity(t *testing.T) {
+func TestInheritedArrayContractParity(t *testing.T) {
 	tests := []struct {
 		name      string
 		kind      FnKind
@@ -34,12 +34,12 @@ func TestInheritedArrayMetadataParity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			meta, ok := funcMetaForName(tt.name)
+			spec, ok := funcSpecForName(tt.name)
 			if !ok {
-				t.Fatalf("metadata missing for %s", tt.name)
+				t.Fatalf("contract missing for %s", tt.name)
 			}
-			if meta.Kind != tt.kind {
-				t.Fatalf("kind = %v, want %v", meta.Kind, tt.kind)
+			if spec.Kind != tt.kind {
+				t.Fatalf("kind = %v, want %v", spec.Kind, tt.kind)
 			}
 			for i := 0; i < 3; i++ {
 				want := tt.inherited[i]
@@ -51,7 +51,7 @@ func TestInheritedArrayMetadataParity(t *testing.T) {
 	}
 }
 
-func TestInheritedArrayMetadataDoesNotExpand(t *testing.T) {
+func TestInheritedArrayContractDoesNotExpand(t *testing.T) {
 	cases := []struct {
 		name     string
 		argIndex int
@@ -80,7 +80,7 @@ func TestInheritedArrayMetadataDoesNotExpand(t *testing.T) {
 	}
 }
 
-func TestRegisterClearsStaleMetadataOnOverride(t *testing.T) {
+func TestRegisterClearsStaleMetaBackedSpecOnOverride(t *testing.T) {
 	const name = "TEST.REGISTER.CLEAR"
 
 	RegisterWithMeta(name, NoCtx(func(args []Value) (Value, error) {
@@ -91,15 +91,15 @@ func TestRegisterClearsStaleMetadataOnOverride(t *testing.T) {
 	})
 
 	if got := inheritedArrayEvalForFuncArg(name, 0); !got {
-		t.Fatalf("expected inherited array metadata for %s before override", name)
+		t.Fatalf("expected inherited array contract for %s before override", name)
 	}
 
 	Register(name, NoCtx(func(args []Value) (Value, error) {
 		return NumberVal(2), nil
 	}))
 
-	if _, ok := funcMetaForName(name); ok {
-		t.Fatalf("expected metadata for %s to be cleared after plain Register override", name)
+	if _, ok := funcSpecForName(name); ok {
+		t.Fatalf("expected contract for %s to be cleared after plain Register override", name)
 	}
 	if got := inheritedArrayEvalForFuncArg(name, 0); got {
 		t.Fatalf("inheritedArrayEvalForFuncArg(%q, 0) = true, want false after override", name)

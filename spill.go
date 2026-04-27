@@ -43,19 +43,48 @@ func (f *File) isEvaluatingCell(sheet string, col, row int) bool {
 }
 
 func spillArrayRect(raw formula.Value, anchorCol, anchorRow int) (toCol, toRow int, ok bool) {
-	if raw.Type != formula.ValueArray || raw.NoSpill {
+	rows, ok := spillArrayRows(raw)
+	if !ok {
 		return 0, 0, false
 	}
 	spillCols := 0
-	for _, row := range raw.Array {
+	for _, row := range rows {
 		if len(row) > spillCols {
 			spillCols = len(row)
 		}
 	}
-	if len(raw.Array) == 0 || spillCols == 0 {
+	if len(rows) == 0 || spillCols == 0 {
 		return 0, 0, false
 	}
-	return anchorCol + spillCols - 1, anchorRow + len(raw.Array) - 1, true
+	return anchorCol + spillCols - 1, anchorRow + len(rows) - 1, true
+}
+
+func spillArrayRows(raw formula.Value) ([][]formula.Value, bool) {
+	if raw.Type != formula.ValueArray {
+		return nil, false
+	}
+	ev := formula.ValueToEvalValue(raw)
+	if ev.Kind == formula.EvalArray && ev.Array != nil && ev.Array.SpillClass == formula.SpillScalarOnly {
+		return nil, false
+	}
+	if raw.NoSpill {
+		return nil, false
+	}
+	return raw.Array, true
+}
+
+func spillArrayCell(raw formula.Value, rowOffset, colOffset int) (formula.Value, bool) {
+	rows, ok := spillArrayRows(raw)
+	if !ok {
+		return formula.Value{}, false
+	}
+	if rowOffset < 0 || rowOffset >= len(rows) || colOffset < 0 {
+		return formula.Value{}, false
+	}
+	if colOffset >= len(rows[rowOffset]) {
+		return formula.Value{}, false
+	}
+	return rows[rowOffset][colOffset], true
 }
 
 func (s *Sheet) invalidateSpillOverlay() {
@@ -142,7 +171,7 @@ func (s *Sheet) rebuildSpillOverlay() {
 					continue
 				}
 				raw := cell.rawValue
-				if raw.Type != formula.ValueArray || raw.NoSpill {
+				if _, ok := spillArrayRows(raw); !ok {
 					continue
 				}
 				anchor := spillLookupAnchor{

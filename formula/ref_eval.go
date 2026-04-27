@@ -38,13 +38,13 @@ func callRefProducerWithSpec(spec FuncSpec, args []Value, ctx *EvalContext) (Val
 
 func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	if len(args) < 1 || len(args) > 2 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	if args[0].Kind == EvalKindError {
 		return args[0], nil
 	}
 	if ctx == nil || ctx.Resolver == nil {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 
 	a1Style := true
@@ -57,7 +57,7 @@ func evalINDIRECT(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	}
 	refText := ValueToString(legacyArg)
 	if refText == "" {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 	return evalIndirectText(refText, a1Style, ctx), nil
 }
@@ -72,7 +72,7 @@ func evalIndirectLegacyArray(arg Value, a1Style bool, ctx *EvalContext) EvalValu
 		}
 		rows[r] = row
 	}
-	return ValueToEvalValue(Value{Type: ValueArray, Array: rows})
+	return evalArray(rows, SpillBounded)
 }
 
 func indirectElementValue(v EvalValue, ctx *EvalContext) Value {
@@ -99,12 +99,12 @@ func indirectElementValue(v EvalValue, ctx *EvalContext) Value {
 
 func evalIndirectText(refText string, a1Style bool, ctx *EvalContext) EvalValue {
 	if refText == "" {
-		return ValueToEvalValue(ErrorVal(ErrValREF))
+		return evalError(ErrValREF)
 	}
 	if !a1Style {
 		converted, err := r1c1ToA1At(refText, ctx.CurrentRow, ctx.CurrentCol)
 		if err != nil {
-			return ValueToEvalValue(ErrorVal(ErrValREF))
+			return evalError(ErrValREF)
 		}
 		refText = converted
 	}
@@ -125,7 +125,7 @@ func evalIndirectText(refText string, a1Style bool, ctx *EvalContext) EvalValue 
 		right := cellPart[colonIdx+1:]
 		addr, err := indirectParseRange(left, right, sheet)
 		if err != nil {
-			return ValueToEvalValue(ErrorVal(ErrValREF))
+			return evalError(ErrValREF)
 		}
 		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
 		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
@@ -148,14 +148,14 @@ func evalIndirectText(refText string, a1Style bool, ctx *EvalContext) EvalValue 
 			}
 		}
 		if RangeCellCountExceedsLimit(checkRows, checkCols) {
-			return ValueToEvalValue(ErrorVal(ErrValREF))
+			return evalError(ErrValREF)
 		}
 
 		var rows [][]Value
 		if !isFullCol && !isFullRow {
 			rows = ctx.Resolver.GetRangeValues(addr)
 			if isRangeOverflowMatrix(rows) {
-				return ValueToEvalValue(ErrorVal(ErrValREF))
+				return evalError(ErrValREF)
 			}
 		}
 		return newEvalRangeRef(addr, rows, ctx.Resolver, legacy)
@@ -176,21 +176,21 @@ func evalIndirectText(refText string, a1Style bool, ctx *EvalContext) EvalValue 
 			return valueToIndirectEvalValue(named, ctx.Resolver)
 		}
 	}
-	return ValueToEvalValue(ErrorVal(ErrValREF))
+	return evalError(ErrValREF)
 }
 
 func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	if len(args) < 3 || len(args) > 5 {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 	if ctx == nil || ctx.Resolver == nil {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 	if args[0].Kind == EvalKindError {
 		return args[0], nil
 	}
 	if args[0].Kind != EvalRef || args[0].Ref == nil {
-		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
+		return evalError(ErrValVALUE), nil
 	}
 
 	ref := args[0].Ref
@@ -208,21 +208,21 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	candidateWidth := refWidth
 
 	if len(args) >= 4 {
-		heightArg := adaptFuncArg(offsetScalarArgSpec, EvalValueToValue(args[3]), ctx)
+		heightArg := offsetLegacyArg(args[3], offsetScalarArgSpec, ctx)
 		if heightArg.Type != ValueEmpty {
 			hN, errV := CoerceNum(heightArg)
 			if errV != nil {
-				return ValueToEvalValue(*errV), nil
+				return evalScalar(*errV), nil
 			}
 			candidateHeight = int(math.Trunc(hN))
 		}
 	}
 	if len(args) >= 5 {
-		widthArg := adaptFuncArg(offsetScalarArgSpec, EvalValueToValue(args[4]), ctx)
+		widthArg := offsetLegacyArg(args[4], offsetScalarArgSpec, ctx)
 		if widthArg.Type != ValueEmpty {
 			wN, errV := CoerceNum(widthArg)
 			if errV != nil {
-				return ValueToEvalValue(*errV), nil
+				return evalScalar(*errV), nil
 			}
 			candidateWidth = int(math.Trunc(wN))
 		}
@@ -237,21 +237,21 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	}
 
 	if len(args) >= 4 {
-		heightArg := adaptFuncArg(sizeSpec, EvalValueToValue(args[3]), ctx)
+		heightArg := offsetLegacyArg(args[3], sizeSpec, ctx)
 		if heightArg.Type != ValueEmpty {
 			hN, errV := CoerceNum(heightArg)
 			if errV != nil {
-				return ValueToEvalValue(*errV), nil
+				return evalScalar(*errV), nil
 			}
 			height = int(math.Trunc(hN))
 		}
 	}
 	if len(args) >= 5 {
-		widthArg := adaptFuncArg(sizeSpec, EvalValueToValue(args[4]), ctx)
+		widthArg := offsetLegacyArg(args[4], sizeSpec, ctx)
 		if widthArg.Type != ValueEmpty {
 			wN, errV := CoerceNum(widthArg)
 			if errV != nil {
-				return ValueToEvalValue(*errV), nil
+				return evalScalar(*errV), nil
 			}
 			width = int(math.Trunc(wN))
 		}
@@ -259,19 +259,19 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 
 	// Legacy OFFSET scalarizes anonymous row/col arrays only when the result
 	// remains a single cell; multi-cell refs must reject them instead.
-	rowsN, errV := CoerceNum(adaptFuncArg(rowsSpec, EvalValueToValue(args[1]), ctx))
+	rowsN, errV := CoerceNum(offsetLegacyArg(args[1], rowsSpec, ctx))
 	if errV != nil {
-		return ValueToEvalValue(*errV), nil
+		return evalScalar(*errV), nil
 	}
 	rowsOff := int(math.Trunc(rowsN))
 
-	colsN, errV := CoerceNum(adaptFuncArg(colsSpec, EvalValueToValue(args[2]), ctx))
+	colsN, errV := CoerceNum(offsetLegacyArg(args[2], colsSpec, ctx))
 	if errV != nil {
-		return ValueToEvalValue(*errV), nil
+		return evalScalar(*errV), nil
 	}
 	colsOff := int(math.Trunc(colsN))
 	if height == 0 || width == 0 {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 
 	newFromRow := fromRow + rowsOff
@@ -294,7 +294,7 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	}
 
 	if newFromRow < 1 || newFromCol < 1 || newToRow > maxRows || newToCol > maxCols {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 
 	if height == 1 && width == 1 {
@@ -313,9 +313,13 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 	}
 	rows := ctx.Resolver.GetRangeValues(addr)
 	if isRangeOverflowMatrix(rows) {
-		return ValueToEvalValue(ErrorVal(ErrValREF)), nil
+		return evalError(ErrValREF), nil
 	}
 	return newEvalRangeRef(addr, rows, ctx.Resolver, nil), nil
+}
+
+func offsetLegacyArg(arg EvalValue, spec ArgSpec, ctx *EvalContext) Value {
+	return adaptFuncArg(spec, EvalValueToValue(arg), ctx)
 }
 
 func valueToIndirectEvalValue(v Value, resolver CellResolver) EvalValue {

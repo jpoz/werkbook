@@ -67,16 +67,21 @@ func formulaDisplayValueAt(
 	intersectRangeOrigin bool,
 	currentCol, currentRow int,
 ) formula.Value {
-	if fv.Type == formula.ValueArray && fv.NoSpill && !isArrayFormula {
-		return formula.ErrorVal(formula.ErrValVALUE)
-	}
+	return formulaDisplayEvalValueAt(formula.ValueToEvalValue(fv), isArrayFormula, intersectRangeOrigin, currentCol, currentRow)
+}
+
+func formulaDisplayEvalValueAt(
+	ev formula.EvalValue,
+	isArrayFormula bool,
+	intersectRangeOrigin bool,
+	currentCol, currentRow int,
+) formula.Value {
 	if !intersectRangeOrigin || isArrayFormula {
-		return formulaDisplayValue(fv, isArrayFormula)
+		return formulaDisplayEvalValue(ev, isArrayFormula)
 	}
 
-	ev := formula.ValueToEvalValue(fv)
 	if ev.Kind != formula.EvalRef || ev.Ref == nil {
-		return formulaDisplayValue(fv, isArrayFormula)
+		return formulaDisplayEvalValue(ev, isArrayFormula)
 	}
 
 	ref := ev.Ref

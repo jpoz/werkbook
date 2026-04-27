@@ -56,6 +56,31 @@ type ArrayValue struct {
 	SpillClass SpillClass
 }
 
+func evalError(err ErrorValue) EvalValue {
+	return EvalValue{Kind: EvalKindError, Err: err}
+}
+
+func evalScalar(v Value) EvalValue {
+	if v.Type == ValueError {
+		return evalError(v.Err)
+	}
+	return EvalValue{Kind: EvalScalar, Scalar: v}
+}
+
+func evalArray(rows [][]Value, spillClass SpillClass) EvalValue {
+	rowCount := len(rows)
+	colCount := materializedArrayCols(rows)
+	return EvalValue{
+		Kind: EvalArray,
+		Array: &ArrayValue{
+			Rows:       rowCount,
+			Cols:       colCount,
+			Grid:       newLegacyValueGrid(rows),
+			SpillClass: spillClass,
+		},
+	}
+}
+
 // RefValue is the evaluator's first-class worksheet reference representation.
 type RefValue struct {
 	Sheet        string
@@ -122,7 +147,7 @@ func valueToEvalValueWithResolver(v Value, resolver CellResolver) EvalValue {
 	case ValueError:
 		return EvalValue{Kind: EvalKindError, Err: v.Err}
 	case ValueArray:
-		if v.RangeOrigin != nil {
+		if v.RangeOrigin != nil && !v.NoSpill {
 			ro := v.RangeOrigin
 			return EvalValue{
 				Kind: EvalRef,

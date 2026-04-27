@@ -33,10 +33,9 @@ type FuncMeta struct {
 }
 
 var (
-	registry       = map[string]Func{}
-	funcMetaByName = map[string]FuncMeta{}
-	nameToID       = map[string]int{}
-	idToName       []string
+	registry = map[string]Func{}
+	nameToID = map[string]int{}
+	idToName []string
 )
 
 // Register adds a formula function to the global registry.
@@ -49,26 +48,21 @@ func Register(name string, fn Func) {
 		idToName = append(idToName, upper)
 		nameToID[upper] = id
 	}
-	delete(funcMetaByName, upper)
 	delete(funcSpecByName, upper)
 	registry[upper] = fn
 }
 
-// RegisterWithMeta adds a formula function and stores registration metadata
-// keyed by the function name.
+// RegisterWithMeta preserves the older metadata registration API by translating
+// the metadata into the unified function contract.
 func RegisterWithMeta(name string, fn Func, meta FuncMeta) {
-	Register(name, fn)
-	funcMetaByName[normalizeFuncName(name)] = cloneFuncMeta(meta)
+	RegisterWithSpec(name, fn, funcSpecFromMeta(name, meta))
 }
 
 // RegisterScalarLifted registers a scalar function that should inherit array
 // context for its first argument when the compiler is already in an inherited
 // array evaluation path.
 func RegisterScalarLifted(name string, fn Func) {
-	RegisterWithMeta(name, fn, FuncMeta{
-		Kind:               FnKindScalarLifted,
-		InheritedArrayArgs: map[int]bool{0: true},
-	})
+	RegisterWithSpec(name, fn, scalarLiftedFuncSpec(1, elementWiseCallFuncs[normalizeFuncName(name)], 0))
 }
 
 // LookupFunc returns the function ID for use by the compiler.
@@ -105,26 +99,6 @@ func RegisteredFunctions() []string {
 	out := make([]string, len(idToName))
 	copy(out, idToName)
 	return out
-}
-
-func cloneFuncMeta(meta FuncMeta) FuncMeta {
-	if len(meta.InheritedArrayArgs) == 0 {
-		return meta
-	}
-	cloned := make(map[int]bool, len(meta.InheritedArrayArgs))
-	for idx, ok := range meta.InheritedArrayArgs {
-		cloned[idx] = ok
-	}
-	meta.InheritedArrayArgs = cloned
-	return meta
-}
-
-func funcMetaForName(name string) (FuncMeta, bool) {
-	meta, ok := funcMetaByName[normalizeFuncName(name)]
-	if !ok {
-		return FuncMeta{}, false
-	}
-	return cloneFuncMeta(meta), true
 }
 
 // NoCtx wraps a function that doesn't need EvalContext into a Func.
@@ -619,8 +593,9 @@ func ArgEvalModeForFuncArg(name string, argIndex int) FuncArgEvalMode {
 }
 
 func inheritedArrayEvalForFuncArg(name string, argIndex int) bool {
-	if meta, ok := funcMetaForName(name); ok && meta.InheritedArrayArgs != nil {
-		return meta.InheritedArrayArgs[argIndex]
+	if spec, ok := funcSpecForName(name); ok {
+		argSpec, ok := funcArgSpec(spec, argIndex)
+		return ok && argSpec.InheritArray
 	}
 	positions, ok := inheritedArrayArgFuncs[strings.ToUpper(name)]
 	return ok && positions[argIndex]
