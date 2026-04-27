@@ -13,14 +13,14 @@ func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("ANCHORARRAY", fnANCHORARRAY)
 	RegisterWithSpec("FILTER", NoCtx(fnFILTER), gridShapeFuncSpec(evalFILTER))
-	RegisterWithSpec("HLOOKUP", NoCtx(fnHLOOKUP), hlookupFuncSpec())
+	RegisterWithSpec("HLOOKUP", NoCtx(fnHLOOKUP), hlookupFuncSpec(evalHLOOKUP))
 	RegisterWithSpec("INDEX", NoCtx(fnINDEX), indexFuncSpec(evalINDEXSelector))
 	RegisterWithSpec("INDIRECT", fnINDIRECT, refProducerFuncSpec(evalINDIRECT))
-	RegisterWithSpec("LOOKUP", NoCtx(fnLOOKUP), lookupFuncSpec())
-	RegisterWithSpec("MATCH", NoCtx(fnMATCH), matchFuncSpec())
+	RegisterWithSpec("LOOKUP", NoCtx(fnLOOKUP), lookupFuncSpec(evalLOOKUP))
+	RegisterWithSpec("MATCH", NoCtx(fnMATCH), matchFuncSpec(evalMATCH))
 	RegisterWithSpec("OFFSET", fnOFFSET, refProducerFuncSpec(evalOFFSET))
 	Register("SINGLE", fnSINGLE)
-	RegisterWithSpec("VLOOKUP", NoCtx(fnVLOOKUP), vlookupFuncSpec())
+	RegisterWithSpec("VLOOKUP", NoCtx(fnVLOOKUP), vlookupFuncSpec(evalVLOOKUP))
 	RegisterWithSpec("TAKE", NoCtx(fnTAKE), selectorFuncSpec(evalTAKESelector))
 	RegisterWithSpec("DROP", NoCtx(fnDROP), selectorFuncSpec(evalDROPSelector))
 	RegisterWithSpec("EXPAND", NoCtx(fnEXPAND), gridShapeFuncSpec(evalEXPAND))
@@ -35,8 +35,8 @@ func init() {
 	RegisterWithSpec("HSTACK", NoCtx(fnHSTACK), gridShapeFuncSpec(evalHSTACK))
 	RegisterWithSpec("VSTACK", NoCtx(fnVSTACK), gridShapeFuncSpec(evalVSTACK))
 	Register("HYPERLINK", NoCtx(fnHyperlink))
-	RegisterWithSpec("XLOOKUP", NoCtx(fnXLOOKUP), xlookupFuncSpec())
-	RegisterWithSpec("XMATCH", NoCtx(fnXMATCH), xmatchFuncSpec())
+	RegisterWithSpec("XLOOKUP", NoCtx(fnXLOOKUP), xlookupFuncSpec(evalXLOOKUP))
+	RegisterWithSpec("XMATCH", NoCtx(fnXMATCH), xmatchFuncSpec(evalXMATCH))
 }
 
 // lookupArg0 is the shared ArgSpec for the lookup_value argument: scalar
@@ -52,66 +52,119 @@ var lookupPassRef = ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough
 // xlookupFuncSpec wires XLOOKUP into the Phase 2 contract system: scalar
 // context scalarizes the first argument via legacy implicit intersection,
 // and array context fans it out element-wise through FnKindLookupArrayLift.
-func xlookupFuncSpec() FuncSpec {
+func xlookupFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
 }
 
 // xmatchFuncSpec mirrors xlookupFuncSpec with two positional args.
-func xmatchFuncSpec() FuncSpec {
+func xmatchFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
 }
 
 // vlookupFuncSpec wires VLOOKUP. Excel fans out the lookup_value array in
 // array context (e.g. inside FILTER's include argument) and collapses it in
 // scalar context (via implicit intersection on range-backed arrays).
-func vlookupFuncSpec() FuncSpec {
+func vlookupFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
 }
 
 // hlookupFuncSpec wires HLOOKUP with the same shape as VLOOKUP.
-func hlookupFuncSpec() FuncSpec {
+func hlookupFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
 }
 
 // matchFuncSpec wires MATCH with two positional args (lookup_value,
 // lookup_array) and optional match_type.
-func matchFuncSpec() FuncSpec {
+func matchFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
 }
 
 // lookupFuncSpec wires the legacy LOOKUP function.
-func lookupFuncSpec() FuncSpec {
+func lookupFuncSpec(eval EvalFunc) FuncSpec {
 	return FuncSpec{
 		Kind:   FnKindLookupArrayLift,
 		Args:   []ArgSpec{lookupArg0, lookupPassRef},
 		VarArg: func(_ int) ArgSpec { return lookupPassRef },
 		Return: ReturnModePassThrough,
+		Eval:   eval,
 	}
+}
+
+func evalLookupArrayLiftCore(args []EvalValue, core func([]Value, []EvalValue) (Value, error)) (EvalValue, error) {
+	if len(args) > 0 && lookupEvalArgShouldLift(args[0]) {
+		src, errVal := normalizeEvalGridValueSource(args[0])
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		rows, cols := src.dims()
+		if rows == 0 || cols == 0 {
+			return evalError(ErrValVALUE), nil
+		}
+		result := newValueMatrix(rows, cols)
+		scalarEvalArgs := make([]EvalValue, len(args))
+		copy(scalarEvalArgs, args)
+		for row := 0; row < rows; row++ {
+			for col := 0; col < cols; col++ {
+				scalarEvalArgs[0] = ValueToEvalValue(src.cell(row, col))
+				scalarArgs := scalarLegacyArgsFromEval(scalarEvalArgs)
+				cell, err := core(scalarArgs, scalarEvalArgs)
+				if err != nil {
+					return EvalValue{}, err
+				}
+				result[row][col] = cell
+			}
+		}
+		if rows == 1 && cols == 1 {
+			return ValueToEvalValue(result[0][0]), nil
+		}
+		return evalArray(result, SpillBounded), nil
+	}
+	got, err := core(scalarLegacyArgsFromEval(args), args)
+	if err != nil {
+		return EvalValue{}, err
+	}
+	return ValueToEvalValue(got), nil
+}
+
+func lookupEvalArgShouldLift(arg EvalValue) bool {
+	return arg.Kind == EvalArray || arg.Kind == EvalRef
+}
+
+func lookupArgIsGrid(legacy Value, evalArg *EvalValue) bool {
+	if evalArg != nil {
+		return evalArg.Kind == EvalArray || evalArg.Kind == EvalRef
+	}
+	return legacy.Type == ValueArray
 }
 
 func fnSINGLE(args []Value, ctx *EvalContext) (Value, error) {
@@ -272,19 +325,28 @@ func filterCore(args []Value, evalArgs []EvalValue) (Value, error) {
 }
 
 func fnVLOOKUP(args []Value) (Value, error) {
+	return vlookupCore(args, nil)
+}
+
+func evalVLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, vlookupCore)
+}
+
+func vlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
-	table := args[1]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
+	table := legacyArgValue(args[1], evalArgAt(evalArgs, 1))
 	if table.Type == ValueError {
 		return table, nil
 	}
-	grid, errVal := normalizeToArrayGrid(table)
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	colIdx, e := CoerceNum(args[2])
+	rowCount, colCount := grid.dims()
+	colIdx, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	if e != nil {
 		return *e, nil
 	}
@@ -295,13 +357,13 @@ func fnVLOOKUP(args []Value) (Value, error) {
 
 	rangeLookup := true
 	if len(args) == 4 {
-		rangeLookup = IsTruthy(args[3])
+		rangeLookup = IsTruthy(legacyArgValue(args[3], evalArgAt(evalArgs, 3)))
 	}
 
 	if rangeLookup {
 		// Excel uses binary search for approximate match. This matters
 		// on unsorted data where a linear scan and binary search diverge.
-		lo, hi := 0, grid.rowCount-1
+		lo, hi := 0, rowCount-1
 		result := -1
 		for lo <= hi {
 			mid := (lo + hi) / 2
@@ -319,7 +381,7 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if ci > grid.colCount {
+		if ci > colCount {
 			return ErrorVal(ErrValREF), nil
 		}
 		return grid.cell(result, ci-1), nil
@@ -338,7 +400,7 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for row := 0; row < grid.rowCount; row++ {
+	for row := 0; row < rowCount; row++ {
 		cell := grid.cell(row, 0)
 		// In Excel, VLOOKUP exact match skips truly empty cells.
 		if cell.Type == ValueEmpty {
@@ -353,7 +415,7 @@ func fnVLOOKUP(args []Value) (Value, error) {
 			matched = CompareValuesExact(cell, lookup) == 0
 		}
 		if matched {
-			if ci > grid.colCount {
+			if ci > colCount {
 				return ErrorVal(ErrValREF), nil
 			}
 			return grid.cell(row, ci-1), nil
@@ -363,16 +425,24 @@ func fnVLOOKUP(args []Value) (Value, error) {
 }
 
 func fnHLOOKUP(args []Value) (Value, error) {
+	return hlookupCore(args, nil)
+}
+
+func evalHLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, hlookupCore)
+}
+
+func hlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
-	table := args[1]
-	grid, errVal := normalizeToArrayGrid(table)
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	rowIdx, e := CoerceNum(args[2])
+	rowCount, colCount := grid.dims()
+	rowIdx, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	if e != nil {
 		return *e, nil
 	}
@@ -380,18 +450,18 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	if ri < 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	if ri > grid.rowCount {
+	if ri > rowCount {
 		return ErrorVal(ErrValREF), nil
 	}
 
 	rangeLookup := true
 	if len(args) == 4 {
-		rangeLookup = IsTruthy(args[3])
+		rangeLookup = IsTruthy(legacyArgValue(args[3], evalArgAt(evalArgs, 3)))
 	}
 
 	if rangeLookup {
 		// Excel uses binary search for approximate match.
-		lo, hi := 0, grid.colCount-1
+		lo, hi := 0, colCount-1
 		result := -1
 		for lo <= hi {
 			mid := (lo + hi) / 2
@@ -425,7 +495,7 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for i := 0; i < grid.colCount; i++ {
+	for i := 0; i < colCount; i++ {
 		cell := grid.cell(0, i)
 		if cell.Type == ValueEmpty {
 			continue
@@ -481,39 +551,40 @@ func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
 }
 
 func fnMATCH(args []Value) (Value, error) {
+	return matchCore(args, nil)
+}
+
+func evalMATCH(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, matchCore)
+}
+
+func matchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	arr := args[1]
 	if lookup.Type == ValueError {
 		return lookup, nil
 	}
-	if arr.Type == ValueError {
-		return arr, nil
+	arrValue := legacyArgValue(arr, evalArgAt(evalArgs, 1))
+	if arrValue.Type == ValueError {
+		return arrValue, nil
 	}
 	matchType := 1
 	if len(args) == 3 {
-		mt, e := CoerceNum(args[2])
+		mt, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 		if e != nil {
 			return *e, nil
 		}
 		matchType = int(mt)
 	}
 
-	var values []Value
-	if arr.Type == ValueArray {
-		grid, errVal := normalizeToArrayGrid(arr)
-		if errVal != nil {
-			return *errVal, nil
-		}
-		values = make([]Value, 0, grid.rowCount*grid.colCount)
-		for r := 0; r < grid.rowCount; r++ {
-			values = append(values, grid.row(r)...)
-		}
-	} else {
-		values = []Value{arr}
+	grid, errVal := normalizeGridShapeArg(arr, evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	values := grid.flattenRowMajor()
 
 	// For exact match, support wildcard matching on string lookups.
 	useWildcard := false
@@ -688,23 +759,33 @@ func fnADDRESS(args []Value) (Value, error) {
 }
 
 func fnLOOKUP(args []Value) (Value, error) {
+	return lookupCore(args, nil)
+}
+
+func evalLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, lookupCore)
+}
+
+func lookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	lookupArr := args[1]
 	resultArr := lookupArr
+	resultEvalArg := evalArgAt(evalArgs, 1)
 	if len(args) == 3 {
 		resultArr = args[2]
+		resultEvalArg = evalArgAt(evalArgs, 2)
 	}
 
-	lookupGrid, errVal := normalizeToArrayGrid(lookupArr)
+	lookupGrid, errVal := normalizeGridShapeArg(lookupArr, evalArgAt(evalArgs, 1))
 	if errVal != nil {
 		return *errVal, nil
 	}
 	lookupValues := lookupGrid.flattenRowMajor()
 
-	resultGrid, errVal := normalizeToArrayGrid(resultArr)
+	resultGrid, errVal := normalizeGridShapeArg(resultArr, resultEvalArg)
 	if errVal != nil {
 		return *errVal, nil
 	}
@@ -728,21 +809,32 @@ func fnLOOKUP(args []Value) (Value, error) {
 }
 
 func fnXLOOKUP(args []Value) (Value, error) {
+	return xlookupCore(args, nil)
+}
+
+func evalXLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, xlookupCore)
+}
+
+func xlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 6 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	lookupArr := args[1]
-	returnArr := args[2]
+	returnArr := legacyArgValue(args[2], evalArgAt(evalArgs, 2))
 
 	notFound := ErrorVal(ErrValNA)
-	if len(args) >= 4 && args[3].Type != ValueEmpty {
-		notFound = args[3]
+	if len(args) >= 4 {
+		notFoundArg := legacyArgValue(args[3], evalArgAt(evalArgs, 3))
+		if notFoundArg.Type != ValueEmpty {
+			notFound = notFoundArg
+		}
 	}
 
 	matchMode := 0
 	if len(args) >= 5 {
-		mm, e := CoerceNum(args[4])
+		mm, e := CoerceNum(legacyArgValue(args[4], evalArgAt(evalArgs, 4)))
 		if e != nil {
 			return *e, nil
 		}
@@ -751,28 +843,28 @@ func fnXLOOKUP(args []Value) (Value, error) {
 
 	searchMode := 1
 	if len(args) >= 6 {
-		sm, e := CoerceNum(args[5])
+		sm, e := CoerceNum(legacyArgValue(args[5], evalArgAt(evalArgs, 5)))
 		if e != nil {
 			return *e, nil
 		}
 		searchMode = int(sm)
 	}
 
-	lookupGrid, errVal := normalizeToArrayGrid(lookupArr)
+	lookupGrid, errVal := normalizeGridShapeArg(lookupArr, evalArgAt(evalArgs, 1))
 	if errVal != nil {
 		return *errVal, nil
 	}
 	lookupValues := lookupGrid.flattenRowMajor()
+	lookupRows, lookupCols := lookupGrid.dims()
 
 	// Determine lookup orientation: row-oriented if the lookup array is a
 	// single row with multiple columns; column-oriented otherwise.
-	isRowOriented := lookupArr.Type == ValueArray &&
-		lookupGrid.rowCount == 1 && lookupGrid.colCount > 1
+	isRowOriented := lookupRows == 1 && lookupCols > 1
 
-	var returnGrid arrayGrid
-	hasReturnGrid := returnArr.Type == ValueArray
+	var returnGrid gridValueSource
+	hasReturnGrid := lookupArgIsGrid(args[2], evalArgAt(evalArgs, 2))
 	if hasReturnGrid {
-		returnGrid, errVal = normalizeToArrayGrid(returnArr)
+		returnGrid, errVal = normalizeGridShapeArg(args[2], evalArgAt(evalArgs, 2))
 		if errVal != nil {
 			return *errVal, nil
 		}
@@ -788,15 +880,9 @@ func fnXLOOKUP(args []Value) (Value, error) {
 			return ErrorVal(ErrValNA), nil
 		}
 		if isRowOriented {
-			if i < 0 || i >= returnGrid.colCount {
-				return ErrorVal(ErrValNA), nil
-			}
 			return returnGrid.projectCol(i), nil
 		}
 		// Column-oriented lookup: index i is a row index.
-		if i < 0 || i >= returnGrid.rowCount {
-			return ErrorVal(ErrValNA), nil
-		}
 		return returnGrid.projectRow(i), nil
 	}
 
@@ -1914,26 +2000,35 @@ func transposeGrid(grid [][]Value) [][]Value {
 // fnXMATCH implements XMATCH(lookup_value, lookup_array, [match_mode], [search_mode]).
 // It returns the 1-based relative position of an item in an array.
 func fnXMATCH(args []Value) (Value, error) {
+	return xmatchCore(args, nil)
+}
+
+func evalXMATCH(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, xmatchCore)
+}
+
+func xmatchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	if lookup.Type == ValueError {
 		return lookup, nil
 	}
 
-	arr := args[1]
+	arr := legacyArgValue(args[1], evalArgAt(evalArgs, 1))
 	if arr.Type == ValueError {
 		return arr, nil
 	}
 
 	matchMode := 0
 	if len(args) >= 3 {
-		if args[2].Type == ValueError {
-			return args[2], nil
+		matchModeArg := legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+		if matchModeArg.Type == ValueError {
+			return matchModeArg, nil
 		}
-		mm, e := CoerceNum(args[2])
+		mm, e := CoerceNum(matchModeArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -1942,10 +2037,11 @@ func fnXMATCH(args []Value) (Value, error) {
 
 	searchMode := 1
 	if len(args) >= 4 {
-		if args[3].Type == ValueError {
-			return args[3], nil
+		searchModeArg := legacyArgValue(args[3], evalArgAt(evalArgs, 3))
+		if searchModeArg.Type == ValueError {
+			return searchModeArg, nil
 		}
-		sm, e := CoerceNum(args[3])
+		sm, e := CoerceNum(searchModeArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -1967,14 +2063,11 @@ func fnXMATCH(args []Value) (Value, error) {
 	}
 
 	// Flatten lookup_array into a single slice.
-	var values []Value
-	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			values = append(values, row...)
-		}
-	} else {
-		values = []Value{arr}
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	values := grid.flattenRowMajor()
 
 	n := len(values)
 	if n == 0 {

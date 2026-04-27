@@ -933,6 +933,36 @@ func TestLookupFamilyFuncSpecs(t *testing.T) {
 		wantArgs []ArgSpec
 	}{
 		{
+			name: "VLOOKUP",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "HLOOKUP",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "MATCH",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
+			name: "LOOKUP",
+			wantArgs: []ArgSpec{
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
+				{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough},
+			},
+		},
+		{
 			name: "XLOOKUP",
 			wantArgs: []ArgSpec{
 				{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny},
@@ -961,8 +991,8 @@ func TestLookupFamilyFuncSpecs(t *testing.T) {
 			if spec.Return != ReturnModePassThrough {
 				t.Fatalf("Return = %v, want %v", spec.Return, ReturnModePassThrough)
 			}
-			if spec.Eval != nil {
-				t.Fatalf("Eval should be nil (shadow mode) for %s", tt.name)
+			if spec.Eval == nil {
+				t.Fatalf("Eval missing for %s", tt.name)
 			}
 			for i, want := range tt.wantArgs {
 				got, ok := funcArgSpec(spec, i)

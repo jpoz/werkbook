@@ -207,6 +207,37 @@ func flattenGridValueSource(src gridValueSource, scanByCol bool, ignore int) []V
 	return flat
 }
 
+func (s gridValueSource) flattenRowMajor() []Value {
+	return flattenGridValueSource(s, false, 0)
+}
+
+func (s gridValueSource) projectRow(row int) Value {
+	rows, cols := s.dims()
+	if row < 0 || row >= rows {
+		return ErrorVal(ErrValNA)
+	}
+	if cols <= 1 {
+		return s.cell(row, 0)
+	}
+	return Value{Type: ValueArray, Array: [][]Value{s.rowValues(row)}}
+}
+
+func (s gridValueSource) projectCol(col int) Value {
+	rows, cols := s.dims()
+	if col < 0 || col >= cols {
+		return ErrorVal(ErrValNA)
+	}
+	if rows <= 1 {
+		return s.cell(0, col)
+	}
+	values := s.columnValues(col)
+	out := make([][]Value, len(values))
+	for i, v := range values {
+		out[i] = []Value{v}
+	}
+	return Value{Type: ValueArray, Array: out}
+}
+
 func (s gridValueSource) materializeRows(indices []int) [][]Value {
 	if len(indices) == 0 {
 		return nil
