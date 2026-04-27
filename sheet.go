@@ -984,12 +984,9 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 
 	s.refreshSpillAnchorsForRange(req, req.toCol)
 	overlay := s.ensureSpillOverlay()
-	var spills *rangeMaterializationSpills
+	var spills rangeSpillReader
 	if len(overlay.index.anchors) > 0 {
-		spills = &rangeMaterializationSpills{
-			anchors: make([]rangeSpillAnchor, 0, len(overlay.index.anchors)),
-		}
-		spills.anchors = append(spills.anchors, overlay.index.anchors...)
+		spills = &overlay.index
 	}
 
 	res := materializeRange(req, grid, spills)

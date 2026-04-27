@@ -64,10 +64,6 @@ func spillArrayRows(raw formula.Value) ([][]formula.Value, bool) {
 	if raw.Type != formula.ValueArray {
 		return nil, false
 	}
-	ev := formula.ValueToEvalValue(raw)
-	if ev.Kind == formula.EvalArray && ev.Array != nil && ev.Array.SpillClass == formula.SpillScalarOnly {
-		return nil, false
-	}
 	if raw.NoSpill {
 		return nil, false
 	}
@@ -105,6 +101,12 @@ func (s *Sheet) ensurePendingSpillAnchors() {
 	if s.spill.pendingGen == s.file.calcGen {
 		return
 	}
+	if !s.hasPendingSpillAnchors() {
+		s.spill.pendingRows = nil
+		s.spill.pendingRowNums = nil
+		s.spill.pendingGen = s.file.calcGen
+		return
+	}
 
 	pendingRows := make(map[int][]pendingSpillAnchor)
 	for anchorRow, sheetRow := range s.rows {
@@ -137,6 +139,21 @@ func (s *Sheet) ensurePendingSpillAnchors() {
 	s.spill.pendingRows = pendingRows
 	s.spill.pendingRowNums = pendingRowNums
 	s.spill.pendingGen = s.file.calcGen
+}
+
+func (s *Sheet) hasPendingSpillAnchors() bool {
+	for anchorRow, sheetRow := range s.rows {
+		for anchorCol, cell := range sheetRow.cells {
+			if !isDynamicArrayAnchor(cell) {
+				continue
+			}
+			if state, ok := s.spillState(anchorCol, anchorRow); ok && state.gen == s.file.calcGen {
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Sheet) markSpillAnchorResolved(col, row int) {

@@ -534,6 +534,23 @@ func iterateReducerGrid(grid Grid, visit func(Value) *Value) *Value {
 	if grid == nil || visit == nil {
 		return nil
 	}
+	if legacy, ok := grid.(interface {
+		legacyRows() ([][]Value, int, int)
+	}); ok {
+		rows, rowCount, colCount := legacy.legacyRows()
+		for r := 0; r < rowCount; r++ {
+			for c := 0; c < colCount; c++ {
+				cell := EmptyVal()
+				if r < len(rows) && c < len(rows[r]) {
+					cell = rows[r][c]
+				}
+				if err := visit(cell); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
 	var err *Value
 	grid.Iterate(func(r, c int, cell EvalValue) bool {
 		err = visit(EvalValueToValue(cell))

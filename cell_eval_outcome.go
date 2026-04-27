@@ -5,9 +5,11 @@ import "github.com/jpoz/werkbook/formula"
 // CellEvalOutcome separates the raw evaluator result from the scalar value a
 // formula anchor displays in the grid.
 type CellEvalOutcome struct {
-	Raw     formula.EvalValue
-	Display formula.Value
-	Spill   *SpillPlan
+	Raw         formula.EvalValue
+	rawValue    formula.Value
+	hasRawValue bool
+	Display     formula.Value
+	Spill       *SpillPlan
 }
 
 // SpillPlan captures the attempted and published spill bounds for an anchor.
@@ -20,13 +22,18 @@ type SpillPlan struct {
 
 func newCellEvalOutcome(raw formula.Value, display formula.Value, spill *SpillPlan) CellEvalOutcome {
 	return CellEvalOutcome{
-		Raw:     formula.ValueToEvalValue(raw),
-		Display: display,
-		Spill:   spill,
+		Raw:         formula.ValueToEvalValue(raw),
+		rawValue:    raw,
+		hasRawValue: true,
+		Display:     display,
+		Spill:       spill,
 	}
 }
 
 func (o CellEvalOutcome) RawValue() formula.Value {
+	if o.hasRawValue {
+		return o.rawValue
+	}
 	return formula.EvalValueToValue(o.Raw)
 }
 

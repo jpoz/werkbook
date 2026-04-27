@@ -60,3 +60,10 @@ func (idx *spillLookupIndex) lookup(col, row int) *spillLookupSpan {
 	}
 	return nil
 }
+
+func (idx *spillLookupIndex) Anchors(string) []rangeSpillAnchor {
+	if idx == nil {
+		return nil
+	}
+	return idx.anchors
+}

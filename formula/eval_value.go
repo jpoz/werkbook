@@ -334,6 +334,10 @@ func newLegacyValueGrid(rows [][]Value) legacyValueGrid {
 	return legacyValueGrid{rows: rows, r: len(rows), c: maxCols}
 }
 
+func (g legacyValueGrid) legacyRows() ([][]Value, int, int) {
+	return g.rows, g.r, g.c
+}
+
 func (g legacyValueGrid) Rows() int { return g.r }
 func (g legacyValueGrid) Cols() int { return g.c }
 func (g legacyValueGrid) Cell(r, c int) EvalValue {
@@ -397,6 +401,14 @@ func newResolverRangeGrid(bounds RangeAddr, rows [][]Value, resolver CellResolve
 		g.loaded = true
 	}
 	return g
+}
+
+func (g *resolverRangeGrid) legacyRows() ([][]Value, int, int) {
+	if g == nil {
+		return nil, 0, 0
+	}
+	g.ensureLoaded()
+	return g.rows, g.r, g.c
 }
 
 func (g *resolverRangeGrid) Rows() int {

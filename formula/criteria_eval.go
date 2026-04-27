@@ -22,10 +22,13 @@ type criteriaEvalRequest struct {
 }
 
 type criteriaValueSource struct {
-	scalar *Value
-	grid   Grid
-	rows   int
-	cols   int
+	scalar         *Value
+	grid           Grid
+	rows           int
+	cols           int
+	legacyRows     [][]Value
+	legacyRowCount int
+	legacyColCount int
 }
 
 type criteriaPreparedPair struct {
@@ -438,26 +441,43 @@ func newCriteriaValueSource(v EvalValue) criteriaValueSource {
 		if v.Array == nil {
 			return criteriaValueSource{}
 		}
-		return criteriaValueSource{
+		source := criteriaValueSource{
 			grid: v.Array.Grid,
 			rows: v.Array.Rows,
 			cols: v.Array.Cols,
 		}
+		source.attachLegacyRows()
+		return source
 	case EvalRef:
 		rows, cols := 0, 0
 		if v.Ref != nil {
 			rows = v.Ref.ToRow - v.Ref.FromRow + 1
 			cols = v.Ref.ToCol - v.Ref.FromCol + 1
 		}
-		return criteriaValueSource{
+		source := criteriaValueSource{
 			grid: criteriaRefGrid(v.Ref),
 			rows: rows,
 			cols: cols,
 		}
+		source.attachLegacyRows()
+		return source
 	default:
 		scalar := EmptyVal()
 		return criteriaValueSource{scalar: &scalar}
 	}
+}
+
+func (s *criteriaValueSource) attachLegacyRows() {
+	if s == nil || s.grid == nil {
+		return
+	}
+	legacy, ok := s.grid.(interface {
+		legacyRows() ([][]Value, int, int)
+	})
+	if !ok {
+		return
+	}
+	s.legacyRows, s.legacyRowCount, s.legacyColCount = legacy.legacyRows()
 }
 
 func criteriaRefGrid(ref *RefValue) Grid {
@@ -493,6 +513,9 @@ func (s criteriaValueSource) dims() (rows, cols int) {
 func (s criteriaValueSource) materializedDims() (rows, cols int) {
 	if s.scalar != nil {
 		return 1, 1
+	}
+	if s.legacyRows != nil {
+		return s.legacyRowCount, s.legacyColCount
 	}
 	if s.grid == nil {
 		return 0, 0
@@ -530,6 +553,15 @@ func (s criteriaValueSource) tailCell() Value {
 }
 
 func (s criteriaValueSource) materializedCell(row, col int, fallback Value) Value {
+	if s.legacyRows != nil {
+		if row < 0 || col < 0 || row >= s.legacyRowCount || col >= s.legacyColCount {
+			return fallback
+		}
+		if row < len(s.legacyRows) && col < len(s.legacyRows[row]) {
+			return s.legacyRows[row][col]
+		}
+		return EmptyVal()
+	}
 	return EvalValueToValue(s.evalCell(row, col, fallback))
 }
 
