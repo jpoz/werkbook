@@ -187,6 +187,7 @@ func TestIsDynamicArrayFormula(t *testing.T) {
 		{formula: "BYCOL(A1:B2,LAMBDA(c,SUM(c)))", want: true},
 		{formula: "MAKEARRAY(2,2,LAMBDA(r,c,r+c))", want: true},
 		{formula: "XLOOKUP(A1,B:B,C:C)", want: true},
+		{formula: "TRANSPOSE(A1:C2)", want: true},
 	}
 
 	for _, tt := range tests {

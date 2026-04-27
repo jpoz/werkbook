@@ -27,6 +27,7 @@ const (
 	ErrCodePartialFailure = "PARTIAL_FAILURE"
 	ErrCodeValidation     = "VALIDATION"
 	ErrCodeEncryptedFile  = "ENCRYPTED_FILE"
+	ErrCodeNoFileLoaded   = "NO_FILE_LOADED"
 )
 
 func errFileNotFound(path string, err error) *ErrorInfo {

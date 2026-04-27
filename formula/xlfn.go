@@ -168,6 +168,7 @@ var dynamicArrayFunctions = map[string]struct{}{
 	"TEXTSPLIT":    {},
 	"TOCOL":        {},
 	"TOROW":        {},
+	"TRANSPOSE":    {},
 	"UNIQUE":       {},
 	"VSTACK":       {},
 	"WRAPCOLS":     {},

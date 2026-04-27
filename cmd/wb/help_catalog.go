@@ -360,6 +360,24 @@ func wbToolSpec() toolSpec {
 					"wb version",
 				},
 			},
+			{
+				Name:             "serve",
+				Path:             []string{"serve"},
+				Summary:          "Run an interactive NDJSON session over stdio",
+				Description:      "Read newline-delimited JSON requests from stdin and write newline-delimited JSON responses on stdout. The session holds one workbook in memory across requests, avoiding the per-call open/save overhead of one-shot subcommands. Send {\"op\":\"capabilities\"} for the list of supported ops, or {\"op\":\"quit\"} to terminate cleanly.",
+				Usage:            "wb serve",
+				SupportedFormats: []string{FormatJSON},
+				Notes: []string{
+					"Each input line is one JSON request: {\"id\": <opaque>, \"op\": <name>, \"params\": <object>}.",
+					"Each output line is one JSON response: {\"id\": <echoed>, \"op\": <echoed>, \"ok\": <bool>, \"data\"|\"error\": ...}.",
+					"Supported ops: capabilities, open, create, info, read, apply, calc, save, close, quit.",
+					"On 'apply' partial failure with atomic=true, the in-memory workbook is left partially mutated; close+open to reset.",
+				},
+				Examples: []string{
+					"echo '{\"id\":\"1\",\"op\":\"capabilities\"}' | wb serve",
+					"printf '%s\\n' '{\"op\":\"open\",\"params\":{\"path\":\"data.xlsx\"}}' '{\"op\":\"info\"}' '{\"op\":\"quit\"}' | wb serve",
+				},
+			},
 		},
 		Schemas: inputSchemas(),
 	}
