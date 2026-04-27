@@ -337,9 +337,8 @@ func vlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
-	table := legacyArgValue(args[1], evalArgAt(evalArgs, 1))
-	if table.Type == ValueError {
-		return table, nil
+	if errVal := argTopLevelError(args[1], evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
 	}
 	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
 	if errVal != nil {
@@ -567,9 +566,8 @@ func matchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if lookup.Type == ValueError {
 		return lookup, nil
 	}
-	arrValue := legacyArgValue(arr, evalArgAt(evalArgs, 1))
-	if arrValue.Type == ValueError {
-		return arrValue, nil
+	if errVal := argTopLevelError(arr, evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
 	}
 	matchType := 1
 	if len(args) == 3 {
@@ -822,7 +820,11 @@ func xlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	}
 	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	lookupArr := args[1]
-	returnArr := legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+	hasReturnGrid := lookupArgIsGrid(args[2], evalArgAt(evalArgs, 2))
+	var returnArr Value
+	if !hasReturnGrid {
+		returnArr = legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+	}
 
 	notFound := ErrorVal(ErrValNA)
 	if len(args) >= 4 {
@@ -862,7 +864,6 @@ func xlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	isRowOriented := lookupRows == 1 && lookupCols > 1
 
 	var returnGrid gridValueSource
-	hasReturnGrid := lookupArgIsGrid(args[2], evalArgAt(evalArgs, 2))
 	if hasReturnGrid {
 		returnGrid, errVal = normalizeGridShapeArg(args[2], evalArgAt(evalArgs, 2))
 		if errVal != nil {
@@ -2017,9 +2018,8 @@ func xmatchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return lookup, nil
 	}
 
-	arr := legacyArgValue(args[1], evalArgAt(evalArgs, 1))
-	if arr.Type == ValueError {
-		return arr, nil
+	if errVal := argTopLevelError(args[1], evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
 	}
 
 	matchMode := 0
@@ -2062,11 +2062,11 @@ func xmatchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Flatten lookup_array into a single slice.
 	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
 	if errVal != nil {
 		return *errVal, nil
 	}
+	// Flatten lookup_array into a single slice.
 	values := grid.flattenRowMajor()
 
 	n := len(values)

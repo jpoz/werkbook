@@ -324,6 +324,27 @@ func legacyArgValue(legacy Value, evalArg *EvalValue) Value {
 	return EvalValueToValue(*evalArg)
 }
 
+func argTopLevelError(legacy Value, evalArg *EvalValue) *Value {
+	if evalArg != nil {
+		switch evalArg.Kind {
+		case EvalKindError:
+			errVal := ErrorVal(evalArg.Err)
+			return &errVal
+		case EvalScalar:
+			if evalArg.Scalar.Type == ValueError {
+				errVal := evalArg.Scalar
+				return &errVal
+			}
+		}
+		return nil
+	}
+	if legacy.Type == ValueError {
+		errVal := legacy
+		return &errVal
+	}
+	return nil
+}
+
 func evalGridShapeCore(args []EvalValue, core func([]Value, []EvalValue) (Value, error)) (EvalValue, error) {
 	got, err := core(scalarLegacyArgsFromEval(args), args)
 	if err != nil {

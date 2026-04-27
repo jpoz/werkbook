@@ -47,6 +47,25 @@ func BenchmarkSpillRangeAggregate(b *testing.B) {
 	}
 }
 
+func BenchmarkSpillMatchFullColumn(b *testing.B) {
+	for _, rows := range []int{100, 1000, 5000} {
+		b.Run(fmt.Sprintf("rows=%d", rows), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				f := buildSpillMatchFullColumnWorkbook(b, rows)
+				b.StartTimer()
+				f.Recalculate()
+				v, err := f.Sheet("Calc").GetValue("A1")
+				if err != nil {
+					b.Fatal(err)
+				}
+				spillBenchmarkSink = v.Number
+			}
+		})
+	}
+}
+
 func BenchmarkSpillManyAnchors(b *testing.B) {
 	for _, anchors := range []int{10, 50, 100} {
 		b.Run(fmt.Sprintf("anchors=%d", anchors), func(b *testing.B) {
@@ -144,6 +163,26 @@ func buildSpillRangeAggregateWorkbook(tb testing.TB, rows int) *werkbook.File {
 	for i, formula := range formulas {
 		benchMustSetFormula(tb, calc, benchCellRef(tb, 1, i+1), formula)
 	}
+
+	return f
+}
+
+func buildSpillMatchFullColumnWorkbook(tb testing.TB, rows int) *werkbook.File {
+	tb.Helper()
+
+	f := werkbook.New(werkbook.FirstSheet("Data"))
+	data := f.Sheet("Data")
+	for row := 2; row <= rows+1; row++ {
+		benchMustSetValue(tb, data, benchCellRef(tb, 1, row), true)
+		benchMustSetValue(tb, data, benchCellRef(tb, 2, row), float64(row-1))
+	}
+
+	spill := benchMustNewSheet(tb, f, "Spill")
+	benchMustSetValue(tb, spill, "B1", "Filtered")
+	benchMustSetFormula(tb, spill, "B2", fmt.Sprintf("FILTER(Data!B2:B%d,Data!A2:A%d)", rows+1, rows+1))
+
+	calc := benchMustNewSheet(tb, f, "Calc")
+	benchMustSetFormula(tb, calc, "A1", fmt.Sprintf("MATCH(%d,Spill!B:B,0)", rows))
 
 	return f
 }
