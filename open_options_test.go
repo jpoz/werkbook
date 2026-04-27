@@ -22,8 +22,12 @@ func TestOpenReaderAtWithoutFormulasDefersFormulaRegistration(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := f.WriteTo(&buf); err != nil {
+	n, err := f.WriteTo(&buf)
+	if err != nil {
 		t.Fatalf("WriteTo: %v", err)
+	}
+	if n != int64(buf.Len()) {
+		t.Fatalf("WriteTo wrote %d bytes, buffer has %d", n, buf.Len())
 	}
 
 	f2, err := OpenReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()), WithoutFormulas())

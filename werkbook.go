@@ -226,8 +226,21 @@ func (f *File) SaveAs(name string) error {
 }
 
 // WriteTo serializes the workbook to the given writer.
-func (f *File) WriteTo(w io.Writer) error {
-	return ooxml.WriteWorkbook(w, f.buildWorkbookData())
+func (f *File) WriteTo(w io.Writer) (int64, error) {
+	cw := &countingWriter{w: w}
+	err := ooxml.WriteWorkbook(cw, f.buildWorkbookData())
+	return cw.n, err
+}
+
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	w.n += int64(n)
+	return n, err
 }
 
 // ClearSpillShadowValues removes OOXML-cached spill shadow cell values. This
