@@ -152,7 +152,7 @@ Werkbook supports **450** spreadsheet formula functions.
 | FACT | Returns the factorial of a number. | Math & Trig | 28 |
 | FACTDOUBLE | Returns the double factorial of a number. | Math & Trig | 30 |
 | FALSE | Returns the logical value FALSE. | Logical | 11 |
-| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 110 |
+| FILTER | Filters an array to rows or columns that meet a Boolean include mask. | Lookup & Reference | 111 |
 | FIND | Returns the position of one text value inside another, case-sensitive. | Text | 48 |
 | FISHER | Returns the Fisher transformation of a correlation coefficient. | Statistical | 15 |
 | FISHERINV | Returns the inverse Fisher transformation. | Statistical | 15 |
@@ -254,7 +254,7 @@ Werkbook supports **450** spreadsheet formula functions.
 | LOWER | Converts text to lowercase. | Text | 48 |
 | MAKEARRAY | Builds an array by applying a lambda to row and column indexes. | Logical | 33 |
 | MAP | Applies a lambda element-by-element across one or more arrays. | Logical | 27 |
-| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 80 |
+| MATCH | Returns the relative position of a lookup value in a range or array. | Lookup & Reference | 81 |
 | MAX | Returns the largest numeric value. | Statistical | 42 |
 | MAXA | Returns the largest value, counting logical values and text coercions. | Statistical | 16 |
 | MAXIFS | Returns the maximum value that matches all supplied conditions. | Statistical | 46 |
@@ -354,7 +354,7 @@ Werkbook supports **450** spreadsheet formula functions.
 | SEC | Returns the secant of an angle. | Math & Trig | 26 |
 | SECH | Returns the hyperbolic secant of a number. | Math & Trig | 28 |
 | SECOND | Returns the second from a time or datetime value. | Date & Time | 16 |
-| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 110 |
+| SEQUENCE | Returns a sequence of numbers as an array. | Math & Trig | 116 |
 | SERIESSUM | Returns the sum of a power series. | Math & Trig | 27 |
 | SHEET | Returns the sheet index of a reference. | Information | 14 |
 | SHEETS | Returns the number of sheets in a reference or workbook scope. | Information | 8 |
