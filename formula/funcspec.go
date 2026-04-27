@@ -1,8 +1,7 @@
 package formula
 
 // ArgLoadMode describes how a function argument should be loaded by the
-// contract system. Only a subset is used in the first migration slice; the
-// rest exist so later Part 2 slices do not need to rename the contract layer.
+// contract system.
 type ArgLoadMode uint8
 
 const (
@@ -35,7 +34,7 @@ const (
 )
 
 // ReturnMode classifies the runtime result family a function can produce.
-// Most migrated functions still return the legacy Value shape directly.
+// Most functions still return the public Value shape directly.
 type ReturnMode uint8
 
 const (
@@ -45,9 +44,9 @@ const (
 	ReturnModeRef
 )
 
-// EvalFunc is the internal contract-evaluator hook used by migrated v2
-// families. It consumes EvalValue arguments while the public Value-based Func
-// signature remains intact for non-migrated callers.
+// EvalFunc is the internal contract-evaluator hook. It consumes EvalValue
+// arguments while the public Value-based Func signature remains intact for
+// callers that still use it directly.
 type EvalFunc func(args []EvalValue, ctx *EvalContext) (EvalValue, error)
 
 // ArgSpec defines one positional argument contract.
@@ -57,8 +56,7 @@ type ArgSpec struct {
 	InheritArray bool
 }
 
-// FuncSpec is the contract-system registration record described in the v2
-// architecture plan.
+// FuncSpec is the contract-system registration record.
 type FuncSpec struct {
 	Kind      FnKind
 	Args      []ArgSpec

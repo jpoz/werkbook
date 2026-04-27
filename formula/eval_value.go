@@ -1,8 +1,8 @@
 package formula
 
-// EvalKind classifies the internal evaluator categories described in the v2
-// architecture plan. It intentionally separates scalars, arrays, and refs even
-// while the public/test-facing surface continues to use Value.
+// EvalKind classifies the internal evaluator categories. It intentionally
+// separates scalars, arrays, and refs while the public/test-facing surface
+// continues to use Value.
 type EvalKind uint8
 
 const (
@@ -23,7 +23,7 @@ const (
 	SpillScalarOnly
 )
 
-// EvalValue is the internal runtime envelope used by the v2 migration.
+// EvalValue is the internal runtime envelope.
 type EvalValue struct {
 	Kind   EvalKind
 	Scalar Value
@@ -39,7 +39,7 @@ type ArrayOrigin struct {
 	Cell  *CellAddr
 }
 
-// Grid is the shared array access interface for the new evaluator model.
+// Grid is the shared array access interface for evaluator paths.
 type Grid interface {
 	Rows() int
 	Cols() int
@@ -133,8 +133,8 @@ func (r *RefValue) IterateCells(fn func(r, c int, v EvalValue) bool) {
 	grid.Iterate(fn)
 }
 
-// ValueToEvalValue adapts the legacy Value model into the new internal v2
-// categories so migration slices can be tested without a flag day.
+// ValueToEvalValue adapts the public Value surface into the internal evaluator
+// categories.
 func ValueToEvalValue(v Value) EvalValue {
 	return valueToEvalValueWithResolver(v, nil)
 }
@@ -242,8 +242,8 @@ func legacyRefCellValue(ref *RefValue, rowOffset, colOffset int) Value {
 	return ErrorVal(ErrValVALUE)
 }
 
-// EvalValueToValue adapts the new internal v2 categories back to the legacy
-// Value surface used by today's workbook, tests, and public APIs.
+// EvalValueToValue adapts internal evaluator categories back to the Value
+// surface used by the workbook, tests, and public APIs.
 func EvalValueToValue(v EvalValue) Value {
 	switch v.Kind {
 	case EvalKindError:

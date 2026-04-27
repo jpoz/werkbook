@@ -1201,7 +1201,7 @@ func fnArrayToText(args []Value) (Value, error) {
 	}
 
 	if strict {
-		// Strict: {v1,v2;v3,v4} with rows separated by ";" and columns by ","
+		// Strict: {a,b;c,d} with rows separated by ";" and columns by ","
 		rowCount, colCount := arrayOpBoundsOrScalar(arg)
 		rows := make([]string, rowCount)
 		for row := 0; row < rowCount; row++ {
