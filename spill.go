@@ -7,11 +7,12 @@ import (
 )
 
 type spillOverlay struct {
-	gen         uint64
-	pendingGen  uint64
-	anchors     map[cellKey]*spillAnchorState
-	pendingRows map[int][]pendingSpillAnchor
-	index       spillLookupIndex
+	gen            uint64
+	pendingGen     uint64
+	anchors        map[cellKey]*spillAnchorState
+	pendingRows    map[int][]pendingSpillAnchor
+	pendingRowNums []int
+	index          spillLookupIndex
 }
 
 type spillAnchorState struct {
@@ -128,7 +129,13 @@ func (s *Sheet) ensurePendingSpillAnchors() {
 		})
 		pendingRows[row] = anchors
 	}
+	pendingRowNums := make([]int, 0, len(pendingRows))
+	for row := range pendingRows {
+		pendingRowNums = append(pendingRowNums, row)
+	}
+	sort.Ints(pendingRowNums)
 	s.spill.pendingRows = pendingRows
+	s.spill.pendingRowNums = pendingRowNums
 	s.spill.pendingGen = s.file.calcGen
 }
 
@@ -150,6 +157,11 @@ func (s *Sheet) markSpillAnchorResolved(col, row int) {
 	anchors = anchors[:len(anchors)-1]
 	if len(anchors) == 0 {
 		delete(s.spill.pendingRows, row)
+		idx := sort.SearchInts(s.spill.pendingRowNums, row)
+		if idx < len(s.spill.pendingRowNums) && s.spill.pendingRowNums[idx] == row {
+			copy(s.spill.pendingRowNums[idx:], s.spill.pendingRowNums[idx+1:])
+			s.spill.pendingRowNums = s.spill.pendingRowNums[:len(s.spill.pendingRowNums)-1]
+		}
 		return
 	}
 	s.spill.pendingRows[row] = anchors
@@ -276,37 +288,39 @@ func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 func (s *Sheet) refreshSpillAnchorsForPoint(col, row int) bool {
 	s.ensurePendingSpillAnchors()
 	refreshed := false
-	for anchorRow, anchors := range s.spill.pendingRows {
-		if anchorRow > row {
-			continue
-		}
-		limit := sort.Search(len(anchors), func(i int) bool {
-			return anchors[i].col > col
-		})
-		for _, anchor := range anchors[:limit] {
-			s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
-			refreshed = true
-		}
-	}
+	s.forPendingSpillAnchorsThrough(col, row, func(anchor pendingSpillAnchor) {
+		s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
+		refreshed = true
+	})
 	return refreshed
 }
 
 func (s *Sheet) refreshSpillAnchorsForRange(req rangeMaterializationRequest, logicalToCol int) bool {
 	s.ensurePendingSpillAnchors()
 	refreshed := false
-	for anchorRow, anchors := range s.spill.pendingRows {
-		if anchorRow > req.toRow {
-			continue
-		}
-		limit := sort.Search(len(anchors), func(i int) bool {
-			return anchors[i].col > logicalToCol
+	s.forPendingSpillAnchorsThrough(logicalToCol, req.toRow, func(anchor pendingSpillAnchor) {
+		s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
+		refreshed = true
+	})
+	return refreshed
+}
+
+func (s *Sheet) forPendingSpillAnchorsThrough(maxCol, maxRow int, fn func(pendingSpillAnchor)) {
+	if fn == nil || len(s.spill.pendingRowNums) == 0 {
+		return
+	}
+	rowLimit := sort.Search(len(s.spill.pendingRowNums), func(i int) bool {
+		return s.spill.pendingRowNums[i] > maxRow
+	})
+	for _, anchorRow := range s.spill.pendingRowNums[:rowLimit] {
+		anchors := s.spill.pendingRows[anchorRow]
+		colLimit := sort.Search(len(anchors), func(i int) bool {
+			return anchors[i].col > maxCol
 		})
-		for _, anchor := range anchors[:limit] {
-			s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
-			refreshed = true
+		for _, anchor := range anchors[:colLimit] {
+			fn(anchor)
 		}
 	}
-	return refreshed
 }
 
 func (s *Sheet) publishSpillState(col, row int, plan *SpillPlan) {

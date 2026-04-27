@@ -571,6 +571,79 @@ func TestSpillOverlayIndexLookupSkipsJaggedHole(t *testing.T) {
 	}
 }
 
+func TestRefreshSpillAnchorsForPointSkipsAnchorsAfterPoint(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("A1", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(A1): %v", err)
+	}
+	if err := s.SetFormula("C1", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(C1): %v", err)
+	}
+	if err := s.SetFormula("A3", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(A3): %v", err)
+	}
+	gen := f.calcGen
+
+	if !s.refreshSpillAnchorsForPoint(2, 2) {
+		t.Fatalf("refreshSpillAnchorsForPoint(B2) = false, want true")
+	}
+
+	a1 := s.rows[1].cells[1]
+	c1 := s.rows[1].cells[3]
+	a3 := s.rows[3].cells[1]
+	if a1.rawCachedGen != gen {
+		t.Fatalf("A1 rawCachedGen = %d, want %d", a1.rawCachedGen, gen)
+	}
+	if c1.rawCachedGen == gen {
+		t.Fatalf("C1 was refreshed for B2, want skipped because it is after the point column")
+	}
+	if a3.rawCachedGen == gen {
+		t.Fatalf("A3 was refreshed for B2, want skipped because it is after the point row")
+	}
+}
+
+func TestRefreshSpillAnchorsForRangeSkipsAnchorsAfterRange(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("A1", `SEQUENCE(4,2)`); err != nil {
+		t.Fatalf("SetFormula(A1): %v", err)
+	}
+	if err := s.SetFormula("D1", `SEQUENCE(4,1)`); err != nil {
+		t.Fatalf("SetFormula(D1): %v", err)
+	}
+	if err := s.SetFormula("A5", `SEQUENCE(4,2)`); err != nil {
+		t.Fatalf("SetFormula(A5): %v", err)
+	}
+	gen := f.calcGen
+
+	req := rangeMaterializationRequest{
+		sheet:   "Spill",
+		fromCol: 2,
+		fromRow: 2,
+		toCol:   3,
+		toRow:   4,
+	}
+	if !s.refreshSpillAnchorsForRange(req, req.toCol) {
+		t.Fatalf("refreshSpillAnchorsForRange(B2:C4) = false, want true")
+	}
+
+	a1 := s.rows[1].cells[1]
+	d1 := s.rows[1].cells[4]
+	a5 := s.rows[5].cells[1]
+	if a1.rawCachedGen != gen {
+		t.Fatalf("A1 rawCachedGen = %d, want %d", a1.rawCachedGen, gen)
+	}
+	if d1.rawCachedGen == gen {
+		t.Fatalf("D1 was refreshed for B2:C4, want skipped because it is after the range column")
+	}
+	if a5.rawCachedGen == gen {
+		t.Fatalf("A5 was refreshed for B2:C4, want skipped because it is after the range row")
+	}
+}
+
 func TestSpillBoundsTrackRecalculation(t *testing.T) {
 	f := New(FirstSheet("Data"))
 	data := f.Sheet("Data")

@@ -982,10 +982,8 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 		maxCol: maxCol,
 	}
 
+	s.refreshSpillAnchorsForRange(req, req.toCol)
 	overlay := s.ensureSpillOverlay()
-	if s.refreshSpillAnchorsForRange(req, req.toCol) {
-		overlay = s.ensureSpillOverlay()
-	}
 	var spills *rangeMaterializationSpills
 	if len(overlay.index.anchors) > 0 {
 		spills = &rangeMaterializationSpills{
