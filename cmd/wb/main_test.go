@@ -1139,6 +1139,92 @@ func TestCreatePartialFailureDoesNotSave(t *testing.T) {
 	}
 }
 
+func TestCreateTypedDate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dates.xlsx")
+	spec := `{
+		"cells": [
+			{"cell": "A1", "type": "date",     "value": "2024-03-15"},
+			{"cell": "A2", "type": "datetime", "value": "2024-03-15T10:30:00Z"},
+			{"cell": "A3", "type": "time",     "value": "13:45:00"}
+		]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	// 2024-03-15 corresponds to Excel serial 45366 (1900 date system).
+	stdout, _, code := captureRunJSON("read", "--no-dates", "--include-styles", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on read, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+
+	cellByRef := map[string]cellData{}
+	for _, row := range rd.Rows {
+		for ref, cd := range row.Cells {
+			cellByRef[ref] = cd
+		}
+	}
+	a1, ok := cellByRef["A1"]
+	if !ok {
+		t.Fatal("expected A1 in read output")
+	}
+	v, ok := a1.Value.(float64)
+	if !ok {
+		t.Fatalf("expected A1 value to be a number (date serial), got %T", a1.Value)
+	}
+	if v != 45366 {
+		t.Errorf("expected A1 serial 45366 for 2024-03-15, got %v", v)
+	}
+	if a1.Style == nil {
+		t.Error("expected A1 to have a style attached (date format auto-applied)")
+	}
+}
+
+func TestCreateTypedDateRejectsInvalidValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-date.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"date","value":"not-a-date"}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "invalid date") {
+		t.Errorf("expected error mentioning 'invalid date', got: %s", stderr)
+	}
+}
+
+func TestCreateTypedDateRequiresStringValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "num-date.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"date","value":123}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "string value") {
+		t.Errorf("expected error mentioning 'string value', got: %s", stderr)
+	}
+}
+
+func TestCreateUnknownTypeRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-type.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"hex","value":"0xff"}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "unknown type") {
+		t.Errorf("expected error mentioning 'unknown type', got: %s", stderr)
+	}
+}
+
 func TestModeAgentForcesJSONEnvelope(t *testing.T) {
 	path := createTestFile(t)
 	stdout, _, code := captureRun([]string{"--mode", "agent", "--format", "markdown", "read", "--headers", path})

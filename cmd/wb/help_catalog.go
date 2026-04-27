@@ -205,10 +205,12 @@ func wbToolSpec() toolSpec {
 				Notes: []string{
 					"Unknown JSON fields are rejected.",
 					"The spec supports sheets, cells, and row-oriented data blocks.",
+					"Cell ops accept an optional 'type' field: 'date', 'datetime', 'time'. The value must be a string; a default number-format style is applied unless 'style' is also supplied.",
 				},
 				Examples: []string{
 					"wb create --spec '{\"sheets\":[\"S1\"],\"cells\":[{\"cell\":\"A1\",\"value\":\"hello\"}]}' out.xlsx",
 					"echo '{\"rows\":[{\"start\":\"A1\",\"data\":[[\"a\",\"b\"],[1,2]]}]}' | wb create out.xlsx",
+					"wb create --spec '{\"cells\":[{\"cell\":\"A1\",\"type\":\"date\",\"value\":\"2024-03-15\"}]}' dated.xlsx",
 				},
 			},
 			{

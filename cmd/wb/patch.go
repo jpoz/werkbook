@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	werkbook "github.com/jpoz/werkbook"
 )
@@ -13,6 +14,7 @@ type patchOp struct {
 	Cell        string          `json:"cell,omitempty"`
 	Row         int             `json:"row,omitempty"`
 	Sheet       string          `json:"sheet,omitempty"`
+	Type        string          `json:"type,omitempty"`
 	Value       json.RawMessage `json:"value,omitempty"`
 	Formula     *string         `json:"formula,omitempty"`
 	Style       json.RawMessage `json:"style,omitempty"`
@@ -174,9 +176,14 @@ func applyOnePatch(f *werkbook.File, op patchOp, defaultSheet string, index int)
 		return opResult{Index: index, Cell: op.Cell, Action: "set_formula", Status: "ok"}
 	}
 
+	// Reject type without a value, or type combined with a formula.
+	if op.Type != "" && op.Value == nil {
+		return opResult{Index: index, Cell: op.Cell, Action: "set_value", Status: "error", Error: fmt.Sprintf("type %q requires a value", op.Type)}
+	}
+
 	// Value (including null to clear).
 	if op.Value != nil {
-		val, err := jsonValueToGo(op.Value)
+		val, err := jsonValueToGoTyped(op.Value, op.Type)
 		if err != nil {
 			return opResult{Index: index, Cell: op.Cell, Action: "set_value", Status: "error", Error: err.Error()}
 		}
@@ -184,10 +191,37 @@ func applyOnePatch(f *werkbook.File, op patchOp, defaultSheet string, index int)
 		if err != nil {
 			return opResult{Index: index, Cell: op.Cell, Action: "set_value", Status: "error", Error: err.Error()}
 		}
+		// Auto-apply a default number format for typed dates/times when the
+		// caller did not provide an explicit style. Otherwise Excel renders
+		// the underlying serial number rather than a date.
+		if op.Type != "" && !hasExplicitStyle(op.Style) {
+			if style := defaultStyleForType(op.Type); style != nil {
+				_ = s.SetStyle(op.Cell, style)
+			}
+		}
 		return opResult{Index: index, Cell: op.Cell, Action: "set_value", Status: "ok"}
 	}
 
 	return opResult{Index: index, Cell: op.Cell, Action: "noop", Status: "ok"}
+}
+
+func hasExplicitStyle(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
+}
+
+// defaultStyleForType returns a Style applying the canonical built-in number
+// format for typed temporal values, or nil for types that don't need one.
+func defaultStyleForType(typ string) *werkbook.Style {
+	switch typ {
+	case "date":
+		return &werkbook.Style{NumFmtID: 14} // m/d/yyyy
+	case "datetime":
+		return &werkbook.Style{NumFmtID: 22} // m/d/yyyy h:mm
+	case "time":
+		return &werkbook.Style{NumFmtID: 21} // h:mm:ss
+	default:
+		return nil
+	}
 }
 
 func buildPatchPlan(ops []patchOp, defaultSheet string) []plannedOp {
@@ -252,6 +286,62 @@ func planPatchAction(op patchOp) string {
 	default:
 		return "noop"
 	}
+}
+
+// jsonValueToGoTyped converts a JSON raw value to a Go value, honoring an
+// optional type tag. Supported types: "date", "datetime", "time" — the value
+// must be a JSON string that parses against one of the accepted layouts for
+// that type. An empty type tag dispatches to jsonValueToGo for plain decoding.
+func jsonValueToGoTyped(raw json.RawMessage, typ string) (any, error) {
+	if typ == "" {
+		return jsonValueToGo(raw)
+	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("type %q requires a value", typ)
+	}
+	if raw[0] == 'n' { // null with a type is an error — clear should be explicit.
+		return nil, fmt.Errorf("type %q is not compatible with null value", typ)
+	}
+	if raw[0] != '"' {
+		return nil, fmt.Errorf("type %q requires a JSON string value, got %s", typ, string(raw))
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	t, err := parseTypedTime(s, typ)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s %q: %v", typ, s, err)
+	}
+	return t, nil
+}
+
+// parseTypedTime parses a string into a time.Time using a small whitelist of
+// layouts per type. The returned time uses time.UTC so the workbook's serial
+// representation is deterministic regardless of host timezone.
+func parseTypedTime(s, typ string) (time.Time, error) {
+	var layouts []string
+	switch typ {
+	case "date":
+		layouts = []string{"2006-01-02", "2006/01/02", "01/02/2006"}
+	case "datetime":
+		layouts = []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05",
+			"2006-01-02 15:04:05",
+			"2006-01-02 15:04",
+		}
+	case "time":
+		layouts = []string{"15:04:05", "15:04"}
+	default:
+		return time.Time{}, fmt.Errorf("unknown type (allowed: date, datetime, time)")
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("does not match any accepted layout")
 }
 
 // jsonValueToGo converts a JSON raw value to a Go value suitable for SetValue.
