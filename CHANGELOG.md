@@ -1,5 +1,80 @@
 # Changelog
 
+## v0.10.0
+
+### Formula Engine v2
+
+A large internal restructuring of the formula evaluator. Public APIs remain
+compatible; the migration separates scalars, computed arrays, and worksheet
+references into distinct runtime types so dynamic arrays, spill behavior, and
+range semantics can be reasoned about explicitly.
+
+- **`EvalValue` runtime model**: New internal envelope with `EvalScalar`,
+  `EvalArray`, `EvalRef`, and `EvalKindError` kinds. Worksheet ranges and
+  computed arrays no longer share a single `ValueArray` representation.
+- **`RefValue` with bounds and 3D support**: Reference identity is preserved
+  through `OFFSET`, `INDIRECT`, and selector functions instead of being
+  flattened into anonymous arrays.
+- **`ArrayValue` with explicit shape and `SpillClass`**: Replaces broad
+  reliance on the legacy `NoSpill` flag with `SpillNone` / `SpillBounded` /
+  `SpillUnbounded` / `SpillScalarOnly`.
+- **Lazy `Grid` iteration**: Reducers and scans iterate references and arrays
+  without eagerly materializing full-column / full-row inputs.
+- **Unified `FuncSpec` contracts**: Argument loading, adaptation, and array
+  lifting policy live on each function's spec instead of in scattered global
+  maps. The old `funcMetaByName` semantic map has been removed; `RegisterWithMeta`
+  is now a compatibility shim that produces a `FuncSpec`.
+- **`CellEvalOutcome` (raw / display / spill split)**: The workbook layer now
+  tracks raw evaluation result, displayed anchor value, and spill plan
+  separately, so blocked spills cleanly expose `#SPILL!` while preserving the
+  underlying array.
+- **Eval-aware criteria & reducer paths**: `COUNTIF` / `SUMIF` / `AVERAGEIF`
+  families and `SUM` / `COUNT` / `AVERAGE` / `MIN` / `MAX` consume `EvalValue`
+  and `Grid` directly with far less adapter churn.
+
+### New formula functions
+
+- **Regex (3)**: `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE` (Excel 2024).
+  Cached pattern compiler, Excel-style `$N` replacement expansion, and
+  `instance_num` support. Patterns requiring backreferences/lookarounds (not
+  supported by Go's RE2) return `#VALUE!`.
+
+### Features
+
+- **Intersection & union operators**: Space-separated range intersection
+  (`A1:C3 B2:D4`) returns the rectangular overlap or `#NULL!`; parenthesized
+  union references (`(A1:A2,C1:C2)`) flatten constituent areas.
+- **Dynamic range references**: `A1:INDEX(A:A,n)` and similar reference-
+  producing function calls are accepted on either side of `:` and built at
+  runtime via `OpBuildRange`.
+- **LAMBDA improvements**: `CellRef` accepts bare identifiers as parameter
+  names (e.g. `running_sum`); `_xlpm.` prefixes are stripped on serialization;
+  workbook-level named LAMBDAs can be invoked like functions; `ISOMITTED` is
+  supported.
+- **Sheet-qualified full-row ranges**: `Sheet1!2:3` and `'venture-dist'!2:3`
+  now parse, mirroring the long-supported column-only form.
+
+### Bug fixes
+
+- **Error classification**: `evaluateFormula` no longer collapses every
+  failure to `#NAME?`. Parse/compile failures produce `#NAME?`; expansion
+  overflow and runtime engine errors produce `#VALUE!`.
+- **Quoted sheet names in rewriters**: `ExpandTableRefs`, defined name
+  expansion, `r1c1ToA1`, and `INDIRECT`'s sheet-prefix extraction are now
+  quote-aware and correctly handle escaped `''` within sheet names.
+- **Implicit intersection for mixed operands**: When one operand is a
+  range-derived scalar and the other an anonymous array, the anonymous array
+  is collapsed to its top-left element, matching Excel.
+- **`IFERROR`/`IFNA` under legacy array context**: Nested under
+  `SUMPRODUCT`-style array forcers, these apply implicit intersection;
+  dynamic-array natives (`FILTER`, `SORT`, `UNIQUE`, …) still lift arrays.
+- **`SUMIFS` error propagation**: Errors from referenced cells now propagate
+  instead of being silently ignored.
+- **`BYCOL`/`BYROW`**: Return `#VALUE!` (not `#CALC!`) when the lambda yields
+  an array.
+- **Element-wise lifting**: Financial scalar functions `DB`, `DDB`, `SLN`,
+  `SYD` are registered as element-wise.
+
 ## v0.9.3
 
 ### Bug fixes
