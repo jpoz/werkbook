@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -8,12 +9,13 @@ import (
 )
 
 type toolSpec struct {
-	Name        string        `json:"name"`
-	Summary     string        `json:"summary"`
-	Usage       string        `json:"usage"`
-	Modes       []modeSpec    `json:"modes,omitempty"`
-	GlobalFlags []flagSpec    `json:"global_flags,omitempty"`
-	Commands    []commandSpec `json:"commands,omitempty"`
+	Name        string                     `json:"name"`
+	Summary     string                     `json:"summary"`
+	Usage       string                     `json:"usage"`
+	Modes       []modeSpec                 `json:"modes,omitempty"`
+	GlobalFlags []flagSpec                 `json:"global_flags,omitempty"`
+	Commands    []commandSpec              `json:"commands,omitempty"`
+	Schemas     map[string]json.RawMessage `json:"schemas,omitempty"`
 }
 
 type modeSpec struct {
@@ -167,7 +169,7 @@ func wbToolSpec() toolSpec {
 				Usage:            "wb edit [flags] <file>",
 				RequiresFile:     true,
 				ReadsStdin:       true,
-				StdinJSONKind:    "patch_op[]",
+				StdinJSONKind:    "patch_array",
 				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--patch", ValueName: "json", Description: "Patch JSON array. If omitted, patch JSON is read from stdin."},
@@ -201,11 +203,14 @@ func wbToolSpec() toolSpec {
 				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--spec", ValueName: "json", Description: "Spec JSON. If omitted, spec JSON is read from stdin."},
+					{Name: "--dry-run", Description: "Validate and apply in-memory; do not save. File path becomes optional."},
+					{Name: "--validate-only", Description: "Alias for --dry-run with validate_only=true in the response."},
 				},
 				Notes: []string{
 					"Unknown JSON fields are rejected.",
 					"The spec supports sheets, cells, and row-oriented data blocks.",
 					"Cell ops accept an optional 'type' field: 'date', 'datetime', 'time'. The value must be a string; a default number-format style is applied unless 'style' is also supplied.",
+					"Use --validate-only to check a spec without producing a file. Inspect 'capabilities' for the JSON schema.",
 				},
 				Examples: []string{
 					"wb create --spec '{\"sheets\":[\"S1\"],\"cells\":[{\"cell\":\"A1\",\"value\":\"hello\"}]}' out.xlsx",
@@ -356,6 +361,7 @@ func wbToolSpec() toolSpec {
 				},
 			},
 		},
+		Schemas: inputSchemas(),
 	}
 }
 

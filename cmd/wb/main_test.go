@@ -608,13 +608,39 @@ func TestFormulaList(t *testing.T) {
 	if fl.Count == 0 {
 		t.Error("expected non-zero function count")
 	}
-	// Check sorted.
+	// Check sorted by name.
 	for i := 1; i < len(fl.Functions); i++ {
-		if fl.Functions[i] < fl.Functions[i-1] {
-			t.Errorf("functions not sorted: %s before %s", fl.Functions[i-1], fl.Functions[i])
+		if fl.Functions[i].Name < fl.Functions[i-1].Name {
+			t.Errorf("functions not sorted: %s before %s", fl.Functions[i-1].Name, fl.Functions[i].Name)
 			break
 		}
 	}
+	// Spot-check enriched metadata: VLOOKUP should be a lookup_array_lift kind
+	// with at least 3 required args.
+	var vlookup *formulaInfoForTest
+	for i := range fl.Functions {
+		if fl.Functions[i].Name == "VLOOKUP" {
+			vlookup = (*formulaInfoForTest)(&fl.Functions[i])
+			break
+		}
+	}
+	if vlookup == nil {
+		t.Fatal("expected VLOOKUP in function list")
+	}
+	if vlookup.Kind == "" || vlookup.Kind == "unknown" {
+		t.Errorf("expected VLOOKUP to have a kind, got %q", vlookup.Kind)
+	}
+	if vlookup.MinArgs < 3 {
+		t.Errorf("expected VLOOKUP min_args >= 3, got %d", vlookup.MinArgs)
+	}
+}
+
+// formulaInfoForTest aliases the formula.FunctionInfo shape for test access.
+type formulaInfoForTest struct {
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	MinArgs  int    `json:"min_args"`
+	Variadic bool   `json:"variadic"`
 }
 
 // --- Usage / Error cases ---
@@ -858,6 +884,24 @@ func TestCapabilitiesCommand(t *testing.T) {
 	}
 	if !foundRead || !foundCapabilities {
 		t.Fatalf("expected read and capabilities commands, got %+v", spec.Commands)
+	}
+
+	// Capabilities must expose JSON Schemas for the structured inputs so
+	// agents can fetch the contract in one call.
+	for _, want := range []string{"create_spec", "patch_op", "patch_array", "check_config"} {
+		raw, ok := spec.Schemas[want]
+		if !ok {
+			t.Errorf("expected schema %q in capabilities.schemas", want)
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			t.Errorf("schema %q is not valid JSON: %v", want, err)
+			continue
+		}
+		if obj["title"] != want {
+			t.Errorf("schema %q has wrong title: %v", want, obj["title"])
+		}
 	}
 }
 
@@ -1209,6 +1253,49 @@ func TestCreateTypedDateRequiresStringValue(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "string value") {
 		t.Errorf("expected error mentioning 'string value', got: %s", stderr)
+	}
+}
+
+func TestCreateValidateOnlyDoesNotWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "should-not-exist.xlsx")
+	stdout, _, code := captureRunJSON("create", path, "--validate-only", "--spec", `{"cells":[{"cell":"A1","value":"hi"}]}`)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var cd createData
+	json.Unmarshal(data, &cd)
+	if !cd.DryRun || !cd.ValidateOnly {
+		t.Errorf("expected dry_run and validate_only true, got %+v", cd)
+	}
+	if cd.Saved {
+		t.Error("expected saved=false in validate-only mode")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected file not to be created, stat err=%v", err)
+	}
+}
+
+func TestCreateValidateOnlyWithoutPath(t *testing.T) {
+	stdout, _, code := captureRunJSON("create", "--validate-only", "--spec", `{"cells":[{"cell":"A1","value":"hi"}]}`)
+	if code != 0 {
+		t.Fatalf("expected exit 0 (no path required in validate-only), got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+}
+
+func TestCreateValidateOnlySurfacesErrors(t *testing.T) {
+	_, stderr, code := captureRunJSON("create", "--validate-only", "--spec", `{"cells":[{"cell":"A1","type":"date","value":"not-a-date"}]}`)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "invalid date") {
+		t.Errorf("expected 'invalid date' error in stderr, got: %s", stderr)
 	}
 }
 

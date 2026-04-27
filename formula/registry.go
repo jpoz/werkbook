@@ -101,6 +101,66 @@ func RegisteredFunctions() []string {
 	return out
 }
 
+// FunctionInfo summarizes a registered function for introspection callers
+// (tooling, agents) that need more than just a name. Metadata is derived from
+// registration-time information: argument counts come from FuncSpec, so they
+// reflect the contract the dispatcher enforces — they may not exactly match
+// Excel's optional-argument semantics for every function.
+type FunctionInfo struct {
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	MinArgs  int    `json:"min_args"`
+	Variadic bool   `json:"variadic"`
+}
+
+// LookupFunctionInfo returns introspection metadata for a registered function.
+// Returns ok=false when the name is not registered.
+func LookupFunctionInfo(name string) (FunctionInfo, bool) {
+	upper := normalizeFuncName(name)
+	if _, exists := registry[upper]; !exists {
+		return FunctionInfo{}, false
+	}
+	info := FunctionInfo{Name: upper, Kind: fnKindString(FnKindUnknown)}
+	if spec, ok := funcSpecForName(upper); ok {
+		info.Kind = fnKindString(spec.Kind)
+		info.MinArgs = len(spec.Args)
+		info.Variadic = spec.VarArg != nil
+	}
+	return info, true
+}
+
+// RegisteredFunctionInfos returns introspection records for every registered
+// function, sorted by name.
+func RegisteredFunctionInfos() []FunctionInfo {
+	names := RegisteredFunctions()
+	out := make([]FunctionInfo, 0, len(names))
+	for _, n := range names {
+		if info, ok := LookupFunctionInfo(n); ok {
+			out = append(out, info)
+		}
+	}
+	return out
+}
+
+func fnKindString(k FnKind) string {
+	switch k {
+	case FnKindScalarLifted:
+		return "scalar_lifted"
+	case FnKindReduction:
+		return "reduction"
+	case FnKindArrayNative:
+		return "array_native"
+	case FnKindLookup:
+		return "lookup"
+	case FnKindStateful:
+		return "stateful"
+	case FnKindLookupArrayLift:
+		return "lookup_array_lift"
+	default:
+		return "unknown"
+	}
+}
+
 // NoCtx wraps a function that doesn't need EvalContext into a Func.
 func NoCtx(fn func([]Value) (Value, error)) Func {
 	return func(args []Value, _ *EvalContext) (Value, error) {

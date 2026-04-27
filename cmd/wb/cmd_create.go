@@ -22,13 +22,15 @@ type createRow struct {
 }
 
 type createData struct {
-	File       string     `json:"file"`
-	Sheets     int        `json:"sheets"`
-	Cells      int        `json:"cells"`
-	Applied    int        `json:"applied"`
-	Failed     int        `json:"failed"`
-	Saved      bool       `json:"saved"`
-	Operations []opResult `json:"operations,omitempty"`
+	File         string     `json:"file"`
+	Sheets       int        `json:"sheets"`
+	Cells        int        `json:"cells"`
+	Applied      int        `json:"applied"`
+	Failed       int        `json:"failed"`
+	Saved        bool       `json:"saved"`
+	DryRun       bool       `json:"dry_run,omitempty"`
+	ValidateOnly bool       `json:"validate_only,omitempty"`
+	Operations   []opResult `json:"operations,omitempty"`
 }
 
 func cmdCreate(args []string, globals globalFlags) int {
@@ -42,6 +44,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 	}
 
 	var specFlag string
+	var dryRun, validateOnly bool
 
 	i := 0
 	var filePath string
@@ -54,6 +57,13 @@ func cmdCreate(args []string, globals globalFlags) int {
 			}
 			specFlag = args[i+1]
 			i += 2
+		case "--dry-run":
+			dryRun = true
+			i++
+		case "--validate-only":
+			validateOnly = true
+			dryRun = true
+			i++
 		default:
 			if filePath == "" && len(args[i]) > 0 && args[i][0] != '-' {
 				filePath = args[i]
@@ -65,7 +75,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 		}
 	}
 
-	if filePath == "" {
+	if filePath == "" && !dryRun {
 		writeError(cmd, errUsage("file path required"), globals)
 		return ExitUsage
 	}
@@ -120,16 +130,22 @@ func cmdCreate(args []string, globals globalFlags) int {
 	failed := len(allOps) - cellsApplied
 
 	data := createData{
-		File:       filePath,
-		Sheets:     len(f.SheetNames()),
-		Cells:      cellsApplied,
-		Applied:    cellsApplied,
-		Failed:     failed,
-		Saved:      false,
-		Operations: results,
+		File:         filePath,
+		Sheets:       len(f.SheetNames()),
+		Cells:        cellsApplied,
+		Applied:      cellsApplied,
+		Failed:       failed,
+		Saved:        false,
+		DryRun:       dryRun,
+		ValidateOnly: validateOnly,
+		Operations:   results,
 	}
 
 	if failed > 0 {
+		hint := "Workbook was not saved. Check the 'operations' array for per-operation errors."
+		if dryRun {
+			hint = "Dry run: workbook was not saved. Check the 'operations' array for per-operation errors."
+		}
 		resp := &Response{
 			OK:      false,
 			Command: cmd,
@@ -137,7 +153,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 			Error: &ErrorInfo{
 				Code:    ErrCodePartialFailure,
 				Message: fmt.Sprintf("%d of %d operations failed", failed, len(allOps)),
-				Hint:    "Workbook was not saved. Check the 'operations' array for per-operation errors.",
+				Hint:    hint,
 			},
 			Meta: buildMeta(cmd, globals),
 		}
@@ -145,11 +161,13 @@ func cmdCreate(args []string, globals globalFlags) int {
 		return ExitPartial
 	}
 
-	if err := f.SaveAs(filePath); err != nil {
-		writeError(cmd, errFileSave(filePath, err), globals)
-		return ExitFileIO
+	if !dryRun {
+		if err := f.SaveAs(filePath); err != nil {
+			writeError(cmd, errFileSave(filePath, err), globals)
+			return ExitFileIO
+		}
+		data.Saved = true
 	}
-	data.Saved = true
 
 	writeSuccess(cmd, data, globals)
 	return ExitSuccess
