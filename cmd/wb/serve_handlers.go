@@ -106,15 +106,20 @@ func serveCreate(s *session, raw json.RawMessage) (any, *ErrorInfo) {
 		return nil, &ErrorInfo{Code: ErrCodeInvalidSpec, Message: err.Error()}
 	}
 	allOps := append(spec.Cells, rowOps...)
+	dupWarnings := detectDuplicateWrites(allOps, defaultSheet)
 	results, applied := applyPatches(f, allOps, defaultSheet)
 	failed := len(allOps) - applied
 
 	if failed > 0 {
-		return map[string]any{
+		data := map[string]any{
 			"applied":    applied,
 			"failed":     failed,
 			"operations": results,
-		}, &ErrorInfo{
+		}
+		if len(dupWarnings) > 0 {
+			data["warnings"] = dupWarnings
+		}
+		return data, &ErrorInfo{
 			Code:    ErrCodePartialFailure,
 			Message: fmt.Sprintf("%d of %d operations failed", failed, len(allOps)),
 			Hint:    "Workbook was not loaded into the session. Inspect 'data.operations' for errors.",
@@ -123,10 +128,14 @@ func serveCreate(s *session, raw json.RawMessage) (any, *ErrorInfo) {
 
 	s.file = f
 	s.path = ""
-	return map[string]any{
+	out := map[string]any{
 		"sheets":  f.SheetNames(),
 		"applied": applied,
-	}, nil
+	}
+	if len(dupWarnings) > 0 {
+		out["warnings"] = dupWarnings
+	}
+	return out, nil
 }
 
 func serveInfo(s *session, _ json.RawMessage) (any, *ErrorInfo) {
@@ -233,6 +242,7 @@ func serveApply(s *session, raw json.RawMessage) (any, *ErrorInfo) {
 	// Simpler v1 implementation: apply directly. If atomic and any op fails,
 	// the session is left in a partially-mutated state — flag this in the
 	// response and recommend close+reopen on failure.
+	dupWarnings := detectDuplicateWrites(ops, defaultSheet)
 	results, applied := applyPatches(s.file, ops, defaultSheet)
 	failed := len(ops) - applied
 
@@ -241,6 +251,9 @@ func serveApply(s *session, raw json.RawMessage) (any, *ErrorInfo) {
 		"failed":     failed,
 		"operations": results,
 		"atomic":     atomic,
+	}
+	if len(dupWarnings) > 0 {
+		data["warnings"] = dupWarnings
 	}
 	if failed > 0 {
 		hint := "Inspect 'data.operations' for per-operation errors."

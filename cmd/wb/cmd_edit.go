@@ -138,6 +138,9 @@ func cmdEdit(args []string, globals globalFlags) int {
 		}
 	}
 
+	if dupWarnings := detectDuplicateWrites(ops, defaultSheet); len(dupWarnings) > 0 {
+		globals.warnings = append(globals.warnings, dupWarnings...)
+	}
 	results, applied := applyPatches(f, ops, defaultSheet)
 	failed := len(ops) - applied
 	savePath := outputFlag

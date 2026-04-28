@@ -1775,3 +1775,163 @@ func TestStyleSummaryNil(t *testing.T) {
 		t.Error("expected empty string for nil style")
 	}
 }
+
+// TestCreateWarnsOnDuplicateCellWrite verifies the bug pattern where a `rows`
+// block clobbers a `cells` formula at the same coordinate is surfaced as a
+// warning rather than silently dropping the formula.
+func TestCreateWarnsOnDuplicateCellWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dup.xlsx")
+	spec := `{
+		"sheets": ["S"],
+		"cells": [{"sheet":"S","cell":"B2","formula":"SUM(1+2)"}],
+		"rows":  [{"sheet":"S","start":"A2","data":[["Food", null]]}]
+	}`
+	stdout, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if resp.Meta == nil || len(resp.Meta.Warnings) == 0 {
+		t.Fatalf("expected duplicate-write warning, got: %+v", resp.Meta)
+	}
+	found := false
+	for _, w := range resp.Meta.Warnings {
+		if strings.Contains(w, "S!B2") && strings.Contains(w, "last write wins") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning mentioning S!B2 and 'last write wins', got: %v", resp.Meta.Warnings)
+	}
+}
+
+// TestCreateNoWarningOnDistinctCells confirms the detector doesn't flag
+// well-formed specs that just happen to write many cells.
+func TestCreateNoWarningOnDistinctCells(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clean.xlsx")
+	spec := `{
+		"sheets":["S"],
+		"cells":[
+			{"cell":"A1","value":"x"},
+			{"cell":"A2","value":"y"},
+			{"cell":"A3","value":"z"}
+		]
+	}`
+	stdout, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	for _, w := range resp.Meta.Warnings {
+		if strings.Contains(w, "last write wins") {
+			t.Fatalf("did not expect duplicate-write warning, got: %v", resp.Meta.Warnings)
+		}
+	}
+}
+
+// TestEditWarnsOnDuplicateCellWrite confirms the same detector wires through
+// `wb edit` since edit reuses applyPatches and shares the same failure mode.
+func TestEditWarnsOnDuplicateCellWrite(t *testing.T) {
+	path := createTestFile(t)
+	patch := `[{"cell":"A1","value":"first"},{"cell":"A1","value":"second"}]`
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if resp.Meta == nil || len(resp.Meta.Warnings) == 0 {
+		t.Fatalf("expected duplicate-write warning, got: %+v", resp.Meta)
+	}
+}
+
+// TestCreateRowsTypedObject verifies a row data element can be a JSON object
+// carrying {type, value} so a typed date lives inline with the row block
+// rather than requiring a parallel `cells` op.
+func TestCreateRowsTypedObject(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "typed_rows.xlsx")
+	spec := `{
+		"sheets":["T"],
+		"rows":[{
+			"start":"A1",
+			"data":[
+				["Date","Amount"],
+				[{"type":"date","value":"2026-01-10"}, 80]
+			]
+		}]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	stdout, _, code := captureRunJSON("read", "--sheet", "T", "--include-styles", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on read, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+	cellByRef := map[string]cellData{}
+	for _, row := range rd.Rows {
+		for ref, cd := range row.Cells {
+			cellByRef[ref] = cd
+		}
+	}
+	a2, ok := cellByRef["A2"]
+	if !ok {
+		t.Fatal("expected A2 in read output")
+	}
+	if a2.Type != "date" {
+		t.Errorf("expected A2 type=date, got %q", a2.Type)
+	}
+	if a2.Style == nil {
+		t.Error("expected A2 to have a style attached (date format auto-applied)")
+	}
+}
+
+// TestCreateRowsTypedFormula confirms a row element object can carry a
+// formula instead of (or in addition to) a value.
+func TestCreateRowsTypedFormula(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "row_formula.xlsx")
+	spec := `{
+		"sheets":["S"],
+		"rows":[{
+			"start":"A1",
+			"data":[
+				[1, 2, {"formula":"A1+B1"}]
+			]
+		}]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	stdout, _, code := captureRunJSON("calc", "--sheet", "S", "--range", "C1:C1", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on calc, got %d", code)
+	}
+	if !strings.Contains(stdout, `"value": 3`) {
+		t.Errorf("expected C1 to evaluate to 3, got: %s", stdout)
+	}
+}
+
+// TestCreateRowsRejectsUnknownFieldInElement guards strict-unmarshal of the
+// per-element object so typos surface as validation errors, not silent drops.
+func TestCreateRowsRejectsUnknownFieldInElement(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.xlsx")
+	spec := `{"rows":[{"start":"A1","data":[[{"value":"x","cell":"Z9"}]]}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitValidate {
+		t.Fatalf("expected validate-error exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "cell") {
+		t.Errorf("expected error mentioning the unknown field, got: %s", stderr)
+	}
+}

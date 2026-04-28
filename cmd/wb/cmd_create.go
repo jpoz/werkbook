@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -120,8 +121,14 @@ func cmdCreate(args []string, globals globalFlags) int {
 		return ExitValidate
 	}
 
-	// Apply cell operations, then row operations.
+	// Apply cell operations, then row operations. The order is fixed: cell
+	// ops run first, row ops second. Surface any same-cell collisions so the
+	// caller sees that a later op clobbered an earlier one (the bug pattern
+	// where a `rows` null placeholder erases a `cells` formula).
 	allOps := append(spec.Cells, rowOps...)
+	if dupWarnings := detectDuplicateWrites(allOps, defaultSheet); len(dupWarnings) > 0 {
+		globals.warnings = append(globals.warnings, dupWarnings...)
+	}
 	var results []opResult
 	cellsApplied := 0
 	if len(allOps) > 0 {
@@ -173,7 +180,21 @@ func cmdCreate(args []string, globals globalFlags) int {
 	return ExitSuccess
 }
 
+// rowCellOp is the per-cell shape allowed inside a `rows.data` block when an
+// element is a JSON object instead of a scalar. It's a strict subset of patch_op:
+// `cell` and `sheet` come from the row block itself, and the row geometry is
+// what makes the block useful, so accepting only the per-cell knobs (type,
+// value, formula, style) keeps row mode coherent without inviting confusion.
+type rowCellOp struct {
+	Type    string          `json:"type,omitempty"`
+	Value   json.RawMessage `json:"value,omitempty"`
+	Formula *string         `json:"formula,omitempty"`
+	Style   json.RawMessage `json:"style,omitempty"`
+}
+
 // rowsToPatchOps converts row-oriented data blocks into patch operations.
+// Each element of a row may be a scalar (string/number/bool/null) or a JSON
+// object carrying the same per-cell fields as patch_op.
 func rowsToPatchOps(rows []createRow, defaultSheet string) ([]patchOp, error) {
 	var ops []patchOp
 	for _, r := range rows {
@@ -195,13 +216,31 @@ func rowsToPatchOps(rows []createRow, defaultSheet string) ([]patchOp, error) {
 				if err != nil {
 					return nil, fmt.Errorf("cell coordinates out of range at row %d col %d", ri, ci)
 				}
-				ops = append(ops, patchOp{
-					Cell:  cellRef,
-					Sheet: sheet,
-					Value: rawVal,
-				})
+				op, err := rowDataElementToPatchOp(rawVal, cellRef, sheet)
+				if err != nil {
+					return nil, fmt.Errorf("invalid row data at %s: %v", cellRef, err)
+				}
+				ops = append(ops, op)
 			}
 		}
 	}
 	return ops, nil
+}
+
+func rowDataElementToPatchOp(raw json.RawMessage, cellRef, sheet string) (patchOp, error) {
+	op := patchOp{Cell: cellRef, Sheet: sheet}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		var rco rowCellOp
+		if err := strictUnmarshal(trimmed, &rco); err != nil {
+			return patchOp{}, err
+		}
+		op.Type = rco.Type
+		op.Value = rco.Value
+		op.Formula = rco.Formula
+		op.Style = rco.Style
+		return op, nil
+	}
+	op.Value = raw
+	return op, nil
 }

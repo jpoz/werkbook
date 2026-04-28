@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -342,6 +343,129 @@ func parseTypedTime(s, typ string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("does not match any accepted layout")
+}
+
+// detectDuplicateWrites scans a patch list for value-mutating operations that
+// target the same (sheet, cell) more than once. Each such collision becomes a
+// warning so callers see last-write-wins clobbers (e.g. a `rows` block that
+// overwrites a `cells` formula with a placeholder null) instead of silently
+// losing earlier ops.
+//
+// Style-only ops are excluded: layering style on top of a value is intentional.
+// Range ops with a colon are expanded so a clear over A1:B3 is compared
+// cell-by-cell against later writes inside that rectangle.
+//
+// At most maxDuplicateWarnings distinct cells are reported; remaining
+// collisions roll up into a single "...and N more" line.
+func detectDuplicateWrites(ops []patchOp, defaultSheet string) []string {
+	type key struct{ sheet, cell string }
+	first := map[key]int{}    // first index that wrote each cell
+	indices := map[key][]int{} // all op indices per cell
+	var order []key            // insertion order of first writes
+
+	for i, op := range ops {
+		if !isCellMutation(op) {
+			continue
+		}
+		sheet := op.Sheet
+		if sheet == "" {
+			sheet = defaultSheet
+		}
+		if op.Cell == "" {
+			continue
+		}
+		cells, err := expandCellsForRef(op.Cell)
+		if err != nil {
+			continue // malformed refs are caught by applyOnePatch
+		}
+		for _, c := range cells {
+			k := key{sheet, c}
+			if _, seen := first[k]; !seen {
+				first[k] = i
+				order = append(order, k)
+			}
+			indices[k] = append(indices[k], i)
+		}
+	}
+
+	type dup struct {
+		k       key
+		indices []int
+	}
+	var dups []dup
+	for _, k := range order {
+		if len(indices[k]) > 1 {
+			dups = append(dups, dup{k, indices[k]})
+		}
+	}
+	if len(dups) == 0 {
+		return nil
+	}
+	sort.SliceStable(dups, func(i, j int) bool {
+		return dups[i].indices[0] < dups[j].indices[0]
+	})
+
+	const maxDuplicateWarnings = 20
+	var warnings []string
+	for i, d := range dups {
+		if i >= maxDuplicateWarnings {
+			warnings = append(warnings, fmt.Sprintf(
+				"...and %d more cells written multiple times", len(dups)-maxDuplicateWarnings))
+			break
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"%s!%s written by %d operations (indexes %s); last write wins",
+			d.k.sheet, d.k.cell, len(d.indices), formatIndexList(d.indices)))
+	}
+	return warnings
+}
+
+// isCellMutation reports whether op writes a value, formula, or clears a cell.
+// Pure style ops, sheet-level ops, and width/height ops are excluded — they
+// don't compete with each other for cell content.
+func isCellMutation(op patchOp) bool {
+	if op.AddSheet != "" || op.DeleteSheet != "" {
+		return false
+	}
+	if op.ColumnWidth != nil || (op.Row > 0 && op.RowHeight != nil) {
+		return false
+	}
+	if op.Cell == "" {
+		return false
+	}
+	return op.Clear || op.Formula != nil || op.Value != nil
+}
+
+// expandCellsForRef expands a cell reference into its constituent cell names.
+// A1-style single cells return a one-element slice; ranges like A1:B3 expand
+// into every cell they cover. Used for collision detection across range ops.
+func expandCellsForRef(ref string) ([]string, error) {
+	if !strings.Contains(ref, ":") {
+		return []string{ref}, nil
+	}
+	col1, row1, col2, row2, err := werkbook.RangeToCoordinates(ref)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, (col2-col1+1)*(row2-row1+1))
+	for r := row1; r <= row2; r++ {
+		for c := col1; c <= col2; c++ {
+			name, err := werkbook.CoordinatesToCellName(c, r)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+func formatIndexList(idx []int) string {
+	parts := make([]string, len(idx))
+	for i, n := range idx {
+		parts[i] = fmt.Sprintf("%d", n)
+	}
+	return strings.Join(parts, ",")
 }
 
 // jsonValueToGo converts a JSON raw value to a Go value suitable for SetValue.

@@ -184,6 +184,7 @@ func wbToolSpec() toolSpec {
 				Notes: []string{
 					"Patch JSON can be passed with --patch or via stdin.",
 					"Setting cell values does not auto-expand formula ranges. If you add data beyond a range like SUM(B2:B3), update the formula separately.",
+					"When two ops in the patch target the same cell, the later op wins. Such collisions are reported in meta.warnings (and in data.warnings under 'wb serve' apply).",
 				},
 				Examples: []string{
 					"wb edit --patch '[{\"cell\":\"A1\",\"value\":\"updated\"}]' data.xlsx",
@@ -209,13 +210,16 @@ func wbToolSpec() toolSpec {
 				Notes: []string{
 					"Unknown JSON fields are rejected.",
 					"The spec supports sheets, cells, and row-oriented data blocks.",
+					"Apply order is fixed: every op in 'cells' runs first, then 'rows' (in declaration order within each). When two ops target the same cell, the later op wins; collisions surface in meta.warnings.",
 					"Cell ops accept an optional 'type' field: 'date', 'datetime', 'time'. The value must be a string; a default number-format style is applied unless 'style' is also supplied.",
+					"A row data element may be a scalar or an object {type, value, formula, style} carrying the per-cell patch_op fields — useful for typed dates inline with a row block.",
 					"Use --validate-only to check a spec without producing a file. Inspect 'capabilities' for the JSON schema.",
 				},
 				Examples: []string{
 					"wb create --spec '{\"sheets\":[\"S1\"],\"cells\":[{\"cell\":\"A1\",\"value\":\"hello\"}]}' out.xlsx",
 					"echo '{\"rows\":[{\"start\":\"A1\",\"data\":[[\"a\",\"b\"],[1,2]]}]}' | wb create out.xlsx",
 					"wb create --spec '{\"cells\":[{\"cell\":\"A1\",\"type\":\"date\",\"value\":\"2024-03-15\"}]}' dated.xlsx",
+					"wb create --spec '{\"rows\":[{\"data\":[[{\"type\":\"date\",\"value\":\"2026-01-10\"},80]]}]}' dated_rows.xlsx",
 				},
 			},
 			{

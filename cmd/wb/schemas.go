@@ -54,7 +54,7 @@ const patchArraySchema = `{
 const createSpecSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "create_spec",
-  "description": "Input shape for 'wb create': declares sheets and seeds them with cell ops and/or row-oriented data blocks. Unknown fields are rejected.",
+  "description": "Input shape for 'wb create': declares sheets and seeds them with cell ops and/or row-oriented data blocks. Apply order is fixed: every op in 'cells' runs first, then 'rows' (in declaration order within each). When two ops target the same cell, the later op wins; 'wb create' surfaces these collisions in meta.warnings so an accidental clobber is visible. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -66,12 +66,12 @@ const createSpecSchema = `{
     "cells": {
       "type": "array",
       "items": {"$ref": "patch_op"},
-      "description": "Per-cell operations. Same shape as the patch_op schema used by 'wb edit'."
+      "description": "Per-cell operations applied first. Same shape as the patch_op schema used by 'wb edit'."
     },
     "rows": {
       "type": "array",
       "items": {"$ref": "#/$defs/create_row"},
-      "description": "Row-oriented data blocks. Each block lays values left-to-right, top-to-bottom from 'start'."
+      "description": "Row-oriented data blocks applied after 'cells'. Each block lays values left-to-right, top-to-bottom from 'start'."
     }
   },
   "$defs": {
@@ -81,7 +81,11 @@ const createSpecSchema = `{
       "properties": {
         "sheet": {"type": "string", "description": "Target sheet. Defaults to the first sheet."},
         "start": {"type": "string", "description": "A1-style starting cell. Defaults to A1."},
-        "data":  {"type": "array", "items": {"type": "array"}, "description": "2D array of cell values (raw JSON: string/number/bool/null)."}
+        "data":  {
+          "type": "array",
+          "items": {"type": "array"},
+          "description": "2D array of cell entries. Each entry is either a scalar (string/number/bool, or null which clears the target cell) or a JSON object with the per-cell fields {type, value, formula, style} from patch_op (cell/sheet are derived from the row geometry)."
+        }
       },
       "required": ["data"]
     }
