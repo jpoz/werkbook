@@ -1,10 +1,6 @@
 package werkbook
 
-import (
-	"fmt"
-
-	"github.com/jpoz/werkbook/formula"
-)
+import "github.com/jpoz/werkbook/formula"
 
 // CellEvalOutcome separates the raw evaluator result from the scalar value a
 // formula anchor displays in the grid.
@@ -87,12 +83,6 @@ func formulaDisplayEvalValueAt(
 	intersectRangeOrigin bool,
 	currentCol, currentRow int,
 ) formula.Value {
-	fmt.Printf("DEBUG formulaDisplayEvalValueAt: kind=%v, intersectRangeOrigin=%v, isArrayFormula=%v\n",
-		ev.Kind, intersectRangeOrigin, isArrayFormula)
-	if ev.Kind == formula.EvalArray && ev.Array != nil {
-		fmt.Printf("  EvalArray rows=%d cols=%d origin=%v spillClass=%v\n",
-			ev.Array.Rows, ev.Array.Cols, ev.Array.Origin, ev.Array.SpillClass)
-	}
 	if !intersectRangeOrigin || isArrayFormula {
 		return formulaDisplayEvalValue(ev, isArrayFormula)
 	}
