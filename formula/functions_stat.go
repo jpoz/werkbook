@@ -737,6 +737,24 @@ func matchOperator(v Value, op, operand string) bool {
 		return false
 	}
 
+	// Date-text operand: coerce to serial and compare numerically against
+	// date cells (which are stored as numeric serials). Excel accepts
+	// ">=2026-01-01", ">=1/1/2026", ">=2026/01/01", etc. as date criteria.
+	if serial, _, ok := parseDateTimeString(operand); ok {
+		if v.Type == ValueNumber {
+			return evalOp(op, cmpFloat(v.Num, serial))
+		}
+		if op == "=" && v.Type == ValueString {
+			if vSerial, _, ok2 := parseDateTimeString(v.Str); ok2 {
+				return cmpFloat(vSerial, serial) == 0
+			}
+		}
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
 	// Non-numeric, non-boolean operand: plain string comparison.
 	cmp := strings.Compare(strings.ToLower(ValueToString(v)), strings.ToLower(operand))
 	return evalOp(op, cmp)
