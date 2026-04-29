@@ -132,22 +132,29 @@ func evalCOUNTDirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 
 func evalCOUNTADirectRange(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 	count := 0
-	if err := iterateReducerEvalArgs(
-		args,
-		func(v Value) *Value {
-			if v.Type != ValueEmpty {
+	for _, arg := range args {
+		switch arg.Kind {
+		case EvalKindError:
+			count++
+		case EvalScalar:
+			if arg.Scalar.Type != ValueEmpty {
 				count++
 			}
-			return nil
-		},
-		func(v Value) *Value {
-			if v.Type != ValueEmpty {
-				count++
+		case EvalArray:
+			if arg.Array == nil {
+				continue
 			}
-			return nil
-		},
-	); err != nil {
-		return evalScalar(*err), nil
+			count += arg.Array.Rows * arg.Array.Cols
+		case EvalRef:
+			if err := iterateReducerGrid(reducerRefGrid(arg.Ref), func(v Value) *Value {
+				if v.Type != ValueEmpty {
+					count++
+				}
+				return nil
+			}); err != nil {
+				return evalScalar(*err), nil
+			}
+		}
 	}
 	return EvalValue{Kind: EvalScalar, Scalar: NumberVal(float64(count))}, nil
 }
