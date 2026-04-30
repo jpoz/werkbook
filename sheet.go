@@ -792,9 +792,14 @@ func (s *Sheet) evalCellOutcome(c *Cell, col, row int) (CellEvalOutcome, error) 
 	if c.dynamicArraySpill && !c.isArrayFormula {
 		displaySource = raw
 	}
+	// When the cell carries a spill anchor but the formula did not actually
+	// publish a spillable array (e.g. INDEX(range,0,col) collapsing through
+	// implicit intersection), fall back to legacy implicit intersection at
+	// the formula cell so the displayed value matches Excel's cached scalar.
+	intersectRangeOrigin := !c.dynamicArraySpill || spill == nil
 	return newCellEvalOutcome(
 		raw,
-		formulaDisplayValueAt(displaySource, c.isArrayFormula, !c.dynamicArraySpill, col, row),
+		formulaDisplayValueAt(displaySource, c.isArrayFormula, intersectRangeOrigin, col, row),
 		spill,
 	), nil
 }

@@ -120,6 +120,10 @@ func selectorCellLegacyValue(v EvalValue) Value {
 	return EvalValueToValue(v)
 }
 
+func isOmittedSelectorArg(arg EvalValue) bool {
+	return arg.Kind == EvalScalar && arg.Scalar.Type == ValueEmpty
+}
+
 func selectorScalarInt(arg EvalValue) (int, *Value) {
 	switch arg.Kind {
 	case EvalKindError:
@@ -365,19 +369,20 @@ func evalTAKESelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
 	}
 
-	rowStart, outRows, errVal := func() (int, int, *Value) {
+	rowStart, outRows := 0, src.rows
+	if !isOmittedSelectorArg(args[1]) {
 		count, errVal := selectorScalarInt(args[1])
 		if errVal != nil {
-			return 0, 0, errVal
+			return ValueToEvalValue(*errVal), nil
 		}
-		return selectorTakeBounds(count, src.rows)
-	}()
-	if errVal != nil {
-		return ValueToEvalValue(*errVal), nil
+		rowStart, outRows, errVal = selectorTakeBounds(count, src.rows)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
 	}
 
 	colStart, outCols := 0, src.cols
-	if len(args) == 3 {
+	if len(args) == 3 && !isOmittedSelectorArg(args[2]) {
 		count, errVal := selectorScalarInt(args[2])
 		if errVal != nil {
 			return ValueToEvalValue(*errVal), nil
@@ -404,19 +409,20 @@ func evalDROPSelector(args []EvalValue, _ *EvalContext) (EvalValue, error) {
 		return ValueToEvalValue(ErrorVal(ErrValVALUE)), nil
 	}
 
-	rowStart, outRows, errVal := func() (int, int, *Value) {
+	rowStart, outRows := 0, src.rows
+	if !isOmittedSelectorArg(args[1]) {
 		count, errVal := selectorScalarInt(args[1])
 		if errVal != nil {
-			return 0, 0, errVal
+			return ValueToEvalValue(*errVal), nil
 		}
-		return selectorDropBounds(count, src.rows)
-	}()
-	if errVal != nil {
-		return ValueToEvalValue(*errVal), nil
+		rowStart, outRows, errVal = selectorDropBounds(count, src.rows)
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
 	}
 
 	colStart, outCols := 0, src.cols
-	if len(args) == 3 {
+	if len(args) == 3 && !isOmittedSelectorArg(args[2]) {
 		count, errVal := selectorScalarInt(args[2])
 		if errVal != nil {
 			return ValueToEvalValue(*errVal), nil

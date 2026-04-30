@@ -144,6 +144,18 @@ func buildRectangularSequenceHarness(t *testing.T) (*werkbook.File, *werkbook.Sh
 	return f, data, spill, calc
 }
 
+func buildTransposeHarness(t *testing.T) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet, *werkbook.Sheet) {
+	t.Helper()
+
+	f, data, spill, calc := newSpillHarness(t)
+	mustSetValue(t, data, "A2", 1.0)
+	mustSetValue(t, data, "B2", 2.0)
+	mustSetValue(t, data, "A3", 3.0)
+	mustSetValue(t, data, "B3", 4.0)
+	mustSetFormula(t, spill, "B2", `TRANSPOSE(Data!A2:B3)`)
+	return f, data, spill, calc
+}
+
 func buildResizableFilterHarness(t *testing.T) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet, *werkbook.Sheet) {
 	t.Helper()
 
@@ -235,6 +247,19 @@ func TestSpillRepresentativeShapes(t *testing.T) {
 				numWant("C2", 15),
 				numWant("B3", 20),
 				numWant("C3", 25),
+			},
+		},
+		{
+			name: "transpose square",
+			build: func(t *testing.T) (*werkbook.File, *werkbook.Sheet) {
+				f, _, spill, _ := buildTransposeHarness(t)
+				return f, spill
+			},
+			wants: []spillWant{
+				numWant("B2", 1),
+				numWant("C2", 3),
+				numWant("B3", 2),
+				numWant("C3", 4),
 			},
 		},
 	}

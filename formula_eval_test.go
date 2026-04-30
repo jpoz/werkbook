@@ -431,9 +431,11 @@ func TestRANDARRAYSpillCellsRemainConsistentWithinCalculation(t *testing.T) {
 	}
 }
 
-// TestINDEX_RowZero_ReturnsValueError verifies that direct-range INDEX(range,0)
-// still returns #VALUE! in a non-array cell.
-func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
+// TestINDEX_RowZero_ImplicitIntersect verifies that direct-range INDEX(range,0)
+// in a single-cell context performs Excel's legacy implicit intersection along
+// the formula cell's row, matching the cached value real Excel produces (see
+// wb-fixtures/lookup/index-match.xlsx).
+func TestINDEX_RowZero_ImplicitIntersect(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
 
@@ -441,17 +443,17 @@ func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 	s.SetValue("A2", 20)
 	s.SetValue("A3", 30)
 
-	// Direct-range INDEX with row_num=0 remains non-spilling in a regular cell.
+	// INDEX(A1:A3,0) at B1 implicit-intersects to row 1 of column A → A1 = 10.
 	s.SetFormula("B1", "INDEX(A1:A3,0)")
 	val, err := s.GetValue("B1")
 	if err != nil {
 		t.Fatalf("GetValue B1: %v", err)
 	}
-	if val.Type != werkbook.TypeError {
-		t.Errorf("INDEX(A1:A3,0) type = %v, want TypeError", val.Type)
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("INDEX(A1:A3,0) at B1 type = %v, want TypeNumber", val.Type)
 	}
-	if val.String != "#VALUE!" {
-		t.Errorf("INDEX(A1:A3,0) = %q, want #VALUE!", val.String)
+	if val.Number != 10 {
+		t.Errorf("INDEX(A1:A3,0) at B1 = %g, want 10", val.Number)
 	}
 
 	// SUM(INDEX(range,0)) should still work — SUM consumes the array.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -8,12 +9,13 @@ import (
 )
 
 type toolSpec struct {
-	Name        string        `json:"name"`
-	Summary     string        `json:"summary"`
-	Usage       string        `json:"usage"`
-	Modes       []modeSpec    `json:"modes,omitempty"`
-	GlobalFlags []flagSpec    `json:"global_flags,omitempty"`
-	Commands    []commandSpec `json:"commands,omitempty"`
+	Name        string                     `json:"name"`
+	Summary     string                     `json:"summary"`
+	Usage       string                     `json:"usage"`
+	Modes       []modeSpec                 `json:"modes,omitempty"`
+	GlobalFlags []flagSpec                 `json:"global_flags,omitempty"`
+	Commands    []commandSpec              `json:"commands,omitempty"`
+	Schemas     map[string]json.RawMessage `json:"schemas,omitempty"`
 }
 
 type modeSpec struct {
@@ -167,7 +169,7 @@ func wbToolSpec() toolSpec {
 				Usage:            "wb edit [flags] <file>",
 				RequiresFile:     true,
 				ReadsStdin:       true,
-				StdinJSONKind:    "patch_op[]",
+				StdinJSONKind:    "patch_array",
 				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--patch", ValueName: "json", Description: "Patch JSON array. If omitted, patch JSON is read from stdin."},
@@ -182,6 +184,7 @@ func wbToolSpec() toolSpec {
 				Notes: []string{
 					"Patch JSON can be passed with --patch or via stdin.",
 					"Setting cell values does not auto-expand formula ranges. If you add data beyond a range like SUM(B2:B3), update the formula separately.",
+					"When two ops in the patch target the same cell, the later op wins. Such collisions are reported in meta.warnings (and in data.warnings under 'wb serve' apply).",
 				},
 				Examples: []string{
 					"wb edit --patch '[{\"cell\":\"A1\",\"value\":\"updated\"}]' data.xlsx",
@@ -201,14 +204,22 @@ func wbToolSpec() toolSpec {
 				SupportedFormats: []string{FormatText, FormatJSON},
 				Flags: []flagSpec{
 					{Name: "--spec", ValueName: "json", Description: "Spec JSON. If omitted, spec JSON is read from stdin."},
+					{Name: "--dry-run", Description: "Validate and apply in-memory; do not save. File path becomes optional."},
+					{Name: "--validate-only", Description: "Alias for --dry-run with validate_only=true in the response."},
 				},
 				Notes: []string{
 					"Unknown JSON fields are rejected.",
 					"The spec supports sheets, cells, and row-oriented data blocks.",
+					"Apply order is fixed: every op in 'cells' runs first, then 'rows' (in declaration order within each). When two ops target the same cell, the later op wins; collisions surface in meta.warnings.",
+					"Cell ops accept an optional 'type' field: 'date', 'datetime', 'time'. The value must be a string; a default number-format style is applied unless 'style' is also supplied.",
+					"A row data element may be a scalar or an object {type, value, formula, style} carrying the per-cell patch_op fields — useful for typed dates inline with a row block.",
+					"Use --validate-only to check a spec without producing a file. Inspect 'capabilities' for the JSON schema.",
 				},
 				Examples: []string{
 					"wb create --spec '{\"sheets\":[\"S1\"],\"cells\":[{\"cell\":\"A1\",\"value\":\"hello\"}]}' out.xlsx",
 					"echo '{\"rows\":[{\"start\":\"A1\",\"data\":[[\"a\",\"b\"],[1,2]]}]}' | wb create out.xlsx",
+					"wb create --spec '{\"cells\":[{\"cell\":\"A1\",\"type\":\"date\",\"value\":\"2024-03-15\"}]}' dated.xlsx",
+					"wb create --spec '{\"rows\":[{\"data\":[[{\"type\":\"date\",\"value\":\"2026-01-10\"},80]]}]}' dated_rows.xlsx",
 				},
 			},
 			{
@@ -353,7 +364,26 @@ func wbToolSpec() toolSpec {
 					"wb version",
 				},
 			},
+			{
+				Name:             "serve",
+				Path:             []string{"serve"},
+				Summary:          "Run an interactive NDJSON session over stdio",
+				Description:      "Read newline-delimited JSON requests from stdin and write newline-delimited JSON responses on stdout. The session holds one workbook in memory across requests, avoiding the per-call open/save overhead of one-shot subcommands. Send {\"op\":\"capabilities\"} for the list of supported ops, or {\"op\":\"quit\"} to terminate cleanly.",
+				Usage:            "wb serve",
+				SupportedFormats: []string{FormatJSON},
+				Notes: []string{
+					"Each input line is one JSON request: {\"id\": <opaque>, \"op\": <name>, \"params\": <object>}.",
+					"Each output line is one JSON response: {\"id\": <echoed>, \"op\": <echoed>, \"ok\": <bool>, \"data\"|\"error\": ...}.",
+					"Supported ops: capabilities, open, create, info, read, apply, calc, save, close, quit.",
+					"On 'apply' partial failure with atomic=true, the in-memory workbook is left partially mutated; close+open to reset.",
+				},
+				Examples: []string{
+					"echo '{\"id\":\"1\",\"op\":\"capabilities\"}' | wb serve",
+					"printf '%s\\n' '{\"op\":\"open\",\"params\":{\"path\":\"data.xlsx\"}}' '{\"op\":\"info\"}' '{\"op\":\"quit\"}' | wb serve",
+				},
+			},
 		},
+		Schemas: inputSchemas(),
 	}
 }
 

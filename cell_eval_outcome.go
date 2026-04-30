@@ -87,6 +87,12 @@ func formulaDisplayEvalValueAt(
 		return formulaDisplayEvalValue(ev, isArrayFormula)
 	}
 
+	if ev.Kind == formula.EvalArray && ev.Array != nil &&
+		ev.Array.Origin != nil && ev.Array.Origin.Range != nil &&
+		ev.Array.Grid != nil {
+		return formulaDisplayArrayIntersect(ev.Array, currentCol, currentRow, isArrayFormula)
+	}
+
 	if ev.Kind != formula.EvalRef || ev.Ref == nil {
 		return formulaDisplayEvalValue(ev, isArrayFormula)
 	}
@@ -113,6 +119,44 @@ func formulaDisplayEvalValueAt(
 	if ref.FromRow == ref.ToRow {
 		if currentCol >= ref.FromCol && currentCol <= ref.ToCol {
 			return formulaDisplayRefValueAt(ref, 0, currentCol-ref.FromCol, isArrayFormula)
+		}
+		return formula.ErrorVal(formula.ErrValVALUE)
+	}
+	return formula.ErrorVal(formula.ErrValVALUE)
+}
+
+// formulaDisplayArrayIntersect implements legacy implicit intersection for an
+// EvalArray that carries a source-range origin (e.g. INDEX(A1:D4,0,2) which
+// produces a column window backed by B1:B4). Excel resolves these in
+// single-cell context by intersecting the array along the formula cell's row
+// or column, mirroring the EvalRef path above.
+func formulaDisplayArrayIntersect(arr *formula.ArrayValue, currentCol, currentRow int, isArrayFormula bool) formula.Value {
+	rng := arr.Origin.Range
+	grid := arr.Grid
+	rows := arr.Rows
+	cols := arr.Cols
+	cellAt := func(r, c int) formula.Value {
+		if r < 0 || c < 0 || r >= rows || c >= cols {
+			return formula.ErrorVal(formula.ErrValVALUE)
+		}
+		return formulaDisplayEvalValue(grid.Cell(r, c), isArrayFormula)
+	}
+	if rng.FromCol == rng.ToCol && rng.FromRow == rng.ToRow {
+		return cellAt(0, 0)
+	}
+	if currentCol >= rng.FromCol && currentCol <= rng.ToCol &&
+		currentRow >= rng.FromRow && currentRow <= rng.ToRow {
+		return cellAt(currentRow-rng.FromRow, currentCol-rng.FromCol)
+	}
+	if rng.FromCol == rng.ToCol {
+		if currentRow >= rng.FromRow && currentRow <= rng.ToRow {
+			return cellAt(currentRow-rng.FromRow, 0)
+		}
+		return formula.ErrorVal(formula.ErrValVALUE)
+	}
+	if rng.FromRow == rng.ToRow {
+		if currentCol >= rng.FromCol && currentCol <= rng.ToCol {
+			return cellAt(0, currentCol-rng.FromCol)
 		}
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}

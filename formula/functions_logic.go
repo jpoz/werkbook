@@ -270,7 +270,7 @@ func fnSORT(args []Value) (Value, error) {
 	}
 
 	sortIndex := 1
-	if len(args) >= 2 {
+	if len(args) >= 2 && args[1].Type != ValueEmpty {
 		si, e := CoerceNum(args[1])
 		if e != nil {
 			return *e, nil
@@ -279,7 +279,7 @@ func fnSORT(args []Value) (Value, error) {
 	}
 
 	sortOrder := 1
-	if len(args) >= 3 {
+	if len(args) >= 3 && args[2].Type != ValueEmpty {
 		so, e := CoerceNum(args[2])
 		if e != nil {
 			return *e, nil

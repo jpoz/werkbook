@@ -153,11 +153,11 @@ func regexExtractScalar(re *regexp.Regexp, text string, mode int) Value {
 		if len(matches) == 0 {
 			return ErrorVal(ErrValNA)
 		}
-		rows := make([][]Value, len(matches))
+		row := make([]Value, len(matches))
 		for i, m := range matches {
-			rows[i] = []Value{StringVal(m)}
+			row[i] = StringVal(m)
 		}
-		return Value{Type: ValueArray, Array: rows}
+		return Value{Type: ValueArray, Array: [][]Value{row}}
 	case 2:
 		sub := re.FindStringSubmatch(text)
 		if sub == nil {

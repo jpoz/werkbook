@@ -89,13 +89,13 @@ func TestREGEXEXTRACT_Mode1_AllMatches(t *testing.T) {
 	if got.Type != ValueArray {
 		t.Fatalf("want array, got %+v", got)
 	}
-	if len(got.Array) != 3 || len(got.Array[0]) != 1 {
-		t.Fatalf("want 3x1, got %dx%d", len(got.Array), len(got.Array[0]))
+	if len(got.Array) != 1 || len(got.Array[0]) != 3 {
+		t.Fatalf("want 1x3, got %dx%d", len(got.Array), len(got.Array[0]))
 	}
 	want := []string{"123", "456", "789"}
 	for i, w := range want {
-		if got.Array[i][0].Str != w {
-			t.Errorf("row %d: got %q, want %q", i, got.Array[i][0].Str, w)
+		if got.Array[0][i].Str != w {
+			t.Errorf("col %d: got %q, want %q", i, got.Array[0][i].Str, w)
 		}
 	}
 }

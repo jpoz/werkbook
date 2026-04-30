@@ -40804,3 +40804,62 @@ func TestT_DIST_2T_CrossCheck(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// MatchesCriteria — date-text operands with comparison operators
+// ---------------------------------------------------------------------------
+
+// Excel coerces date-formatted text in *IF criteria operands to date serials,
+// so e.g. SUMIFS(amounts, dates, ">=2026-01-01") compares the criterion as a
+// number against the numeric (date) cell. Without this coercion, the operand
+// falls through to lexical string comparison and matches the wrong rows
+// (see ../testdata/edges/109_sumifs_date_criteria_forms.xlsx).
+func TestMatchesCriteriaDateTextOperand(t *testing.T) {
+	// 2026-01-01 = serial 46023; 2026-01-05 = 46027; 2026-02-01 = 46054.
+	tests := []struct {
+		name string
+		v    Value
+		crit Value
+		want bool
+	}{
+		// ISO dash-separated: ">=2026-01-01"
+		{name: "iso_dash_ge_pre", v: NumberVal(46022), crit: StringVal(">=2026-01-01"), want: false},
+		{name: "iso_dash_ge_eq", v: NumberVal(46023), crit: StringVal(">=2026-01-01"), want: true},
+		{name: "iso_dash_ge_post", v: NumberVal(46054), crit: StringVal(">=2026-01-01"), want: true},
+		{name: "iso_dash_lt_pre", v: NumberVal(46023), crit: StringVal("<2026-02-01"), want: true},
+		{name: "iso_dash_lt_eq", v: NumberVal(46054), crit: StringVal("<2026-02-01"), want: false},
+		{name: "iso_dash_lt_post", v: NumberVal(46055), crit: StringVal("<2026-02-01"), want: false},
+		// US slash-separated: ">=1/1/2026"
+		{name: "us_slash_ge_eq", v: NumberVal(46023), crit: StringVal(">=1/1/2026"), want: true},
+		{name: "us_slash_ge_pre", v: NumberVal(46022), crit: StringVal(">=1/1/2026"), want: false},
+		{name: "us_slash_lt_post", v: NumberVal(46054), crit: StringVal("<2/1/2026"), want: false},
+		// ISO slash-separated: ">=2026/01/01"
+		{name: "iso_slash_ge_eq", v: NumberVal(46023), crit: StringVal(">=2026/01/01"), want: true},
+		{name: "iso_slash_lt_pre", v: NumberVal(46023), crit: StringVal("<2026/02/01"), want: true},
+		// Equality with date-text operand against numeric date cell
+		{name: "eq_iso_dash_match", v: NumberVal(46027), crit: StringVal("=2026-01-05"), want: true},
+		{name: "eq_iso_dash_no_match", v: NumberVal(46028), crit: StringVal("=2026-01-05"), want: false},
+		// "<>" with date-text operand
+		{name: "ne_iso_dash_match", v: NumberVal(46028), crit: StringVal("<>2026-01-05"), want: true},
+		{name: "ne_iso_dash_no_match", v: NumberVal(46027), crit: StringVal("<>2026-01-05"), want: false},
+		// "=" against a text cell whose content parses as the same date
+		{name: "eq_text_cell_iso_dash", v: StringVal("2026-01-05"), crit: StringVal("=2026-01-05"), want: true},
+		// Ordering operator against text cell: existing matchOperator policy
+		// only coerces text cells for "=" (mirrors the numeric branch). A
+		// text cell containing a date should NOT match an ordering criterion.
+		{name: "ge_text_cell_no_match", v: StringVal("2026-03-15"), crit: StringVal(">=2026-01-01"), want: false},
+		// Boolean cell vs date-text criterion: not equal, so "<>" matches
+		// and other operators don't.
+		{name: "ne_bool_cell_matches", v: BoolVal(true), crit: StringVal("<>2026-01-01"), want: true},
+		{name: "ge_bool_cell_no_match", v: BoolVal(true), crit: StringVal(">=2026-01-01"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesCriteria(tt.v, tt.crit)
+			if got != tt.want {
+				t.Errorf("MatchesCriteria(%v, %v) = %v, want %v", tt.v, tt.crit, got, tt.want)
+			}
+		})
+	}
+}

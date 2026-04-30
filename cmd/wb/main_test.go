@@ -608,13 +608,39 @@ func TestFormulaList(t *testing.T) {
 	if fl.Count == 0 {
 		t.Error("expected non-zero function count")
 	}
-	// Check sorted.
+	// Check sorted by name.
 	for i := 1; i < len(fl.Functions); i++ {
-		if fl.Functions[i] < fl.Functions[i-1] {
-			t.Errorf("functions not sorted: %s before %s", fl.Functions[i-1], fl.Functions[i])
+		if fl.Functions[i].Name < fl.Functions[i-1].Name {
+			t.Errorf("functions not sorted: %s before %s", fl.Functions[i-1].Name, fl.Functions[i].Name)
 			break
 		}
 	}
+	// Spot-check enriched metadata: VLOOKUP should be a lookup_array_lift kind
+	// with at least 3 required args.
+	var vlookup *formulaInfoForTest
+	for i := range fl.Functions {
+		if fl.Functions[i].Name == "VLOOKUP" {
+			vlookup = (*formulaInfoForTest)(&fl.Functions[i])
+			break
+		}
+	}
+	if vlookup == nil {
+		t.Fatal("expected VLOOKUP in function list")
+	}
+	if vlookup.Kind == "" || vlookup.Kind == "unknown" {
+		t.Errorf("expected VLOOKUP to have a kind, got %q", vlookup.Kind)
+	}
+	if vlookup.MinArgs < 3 {
+		t.Errorf("expected VLOOKUP min_args >= 3, got %d", vlookup.MinArgs)
+	}
+}
+
+// formulaInfoForTest aliases the formula.FunctionInfo shape for test access.
+type formulaInfoForTest struct {
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	MinArgs  int    `json:"min_args"`
+	Variadic bool   `json:"variadic"`
 }
 
 // --- Usage / Error cases ---
@@ -858,6 +884,24 @@ func TestCapabilitiesCommand(t *testing.T) {
 	}
 	if !foundRead || !foundCapabilities {
 		t.Fatalf("expected read and capabilities commands, got %+v", spec.Commands)
+	}
+
+	// Capabilities must expose JSON Schemas for the structured inputs so
+	// agents can fetch the contract in one call.
+	for _, want := range []string{"create_spec", "patch_op", "patch_array", "check_config"} {
+		raw, ok := spec.Schemas[want]
+		if !ok {
+			t.Errorf("expected schema %q in capabilities.schemas", want)
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			t.Errorf("schema %q is not valid JSON: %v", want, err)
+			continue
+		}
+		if obj["title"] != want {
+			t.Errorf("schema %q has wrong title: %v", want, obj["title"])
+		}
 	}
 }
 
@@ -1136,6 +1180,135 @@ func TestCreatePartialFailureDoesNotSave(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected output file to not exist, stat err=%v", err)
+	}
+}
+
+func TestCreateTypedDate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dates.xlsx")
+	spec := `{
+		"cells": [
+			{"cell": "A1", "type": "date",     "value": "2024-03-15"},
+			{"cell": "A2", "type": "datetime", "value": "2024-03-15T10:30:00Z"},
+			{"cell": "A3", "type": "time",     "value": "13:45:00"}
+		]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	// 2024-03-15 corresponds to Excel serial 45366 (1900 date system).
+	stdout, _, code := captureRunJSON("read", "--no-dates", "--include-styles", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on read, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+
+	cellByRef := map[string]cellData{}
+	for _, row := range rd.Rows {
+		for ref, cd := range row.Cells {
+			cellByRef[ref] = cd
+		}
+	}
+	a1, ok := cellByRef["A1"]
+	if !ok {
+		t.Fatal("expected A1 in read output")
+	}
+	v, ok := a1.Value.(float64)
+	if !ok {
+		t.Fatalf("expected A1 value to be a number (date serial), got %T", a1.Value)
+	}
+	if v != 45366 {
+		t.Errorf("expected A1 serial 45366 for 2024-03-15, got %v", v)
+	}
+	if a1.Style == nil {
+		t.Error("expected A1 to have a style attached (date format auto-applied)")
+	}
+}
+
+func TestCreateTypedDateRejectsInvalidValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-date.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"date","value":"not-a-date"}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "invalid date") {
+		t.Errorf("expected error mentioning 'invalid date', got: %s", stderr)
+	}
+}
+
+func TestCreateTypedDateRequiresStringValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "num-date.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"date","value":123}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "string value") {
+		t.Errorf("expected error mentioning 'string value', got: %s", stderr)
+	}
+}
+
+func TestCreateValidateOnlyDoesNotWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "should-not-exist.xlsx")
+	stdout, _, code := captureRunJSON("create", path, "--validate-only", "--spec", `{"cells":[{"cell":"A1","value":"hi"}]}`)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var cd createData
+	json.Unmarshal(data, &cd)
+	if !cd.DryRun || !cd.ValidateOnly {
+		t.Errorf("expected dry_run and validate_only true, got %+v", cd)
+	}
+	if cd.Saved {
+		t.Error("expected saved=false in validate-only mode")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected file not to be created, stat err=%v", err)
+	}
+}
+
+func TestCreateValidateOnlyWithoutPath(t *testing.T) {
+	stdout, _, code := captureRunJSON("create", "--validate-only", "--spec", `{"cells":[{"cell":"A1","value":"hi"}]}`)
+	if code != 0 {
+		t.Fatalf("expected exit 0 (no path required in validate-only), got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if !resp.OK {
+		t.Fatal("expected ok=true")
+	}
+}
+
+func TestCreateValidateOnlySurfacesErrors(t *testing.T) {
+	_, stderr, code := captureRunJSON("create", "--validate-only", "--spec", `{"cells":[{"cell":"A1","type":"date","value":"not-a-date"}]}`)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "invalid date") {
+		t.Errorf("expected 'invalid date' error in stderr, got: %s", stderr)
+	}
+}
+
+func TestCreateUnknownTypeRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-type.xlsx")
+	spec := `{"cells":[{"cell":"A1","type":"hex","value":"0xff"}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitPartial {
+		t.Fatalf("expected partial-failure exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "unknown type") {
+		t.Errorf("expected error mentioning 'unknown type', got: %s", stderr)
 	}
 }
 
@@ -1600,5 +1773,165 @@ func TestStyleSummary(t *testing.T) {
 func TestStyleSummaryNil(t *testing.T) {
 	if styleSummary(nil) != "" {
 		t.Error("expected empty string for nil style")
+	}
+}
+
+// TestCreateWarnsOnDuplicateCellWrite verifies the bug pattern where a `rows`
+// block clobbers a `cells` formula at the same coordinate is surfaced as a
+// warning rather than silently dropping the formula.
+func TestCreateWarnsOnDuplicateCellWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dup.xlsx")
+	spec := `{
+		"sheets": ["S"],
+		"cells": [{"sheet":"S","cell":"B2","formula":"SUM(1+2)"}],
+		"rows":  [{"sheet":"S","start":"A2","data":[["Food", null]]}]
+	}`
+	stdout, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if resp.Meta == nil || len(resp.Meta.Warnings) == 0 {
+		t.Fatalf("expected duplicate-write warning, got: %+v", resp.Meta)
+	}
+	found := false
+	for _, w := range resp.Meta.Warnings {
+		if strings.Contains(w, "S!B2") && strings.Contains(w, "last write wins") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning mentioning S!B2 and 'last write wins', got: %v", resp.Meta.Warnings)
+	}
+}
+
+// TestCreateNoWarningOnDistinctCells confirms the detector doesn't flag
+// well-formed specs that just happen to write many cells.
+func TestCreateNoWarningOnDistinctCells(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clean.xlsx")
+	spec := `{
+		"sheets":["S"],
+		"cells":[
+			{"cell":"A1","value":"x"},
+			{"cell":"A2","value":"y"},
+			{"cell":"A3","value":"z"}
+		]
+	}`
+	stdout, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	for _, w := range resp.Meta.Warnings {
+		if strings.Contains(w, "last write wins") {
+			t.Fatalf("did not expect duplicate-write warning, got: %v", resp.Meta.Warnings)
+		}
+	}
+}
+
+// TestEditWarnsOnDuplicateCellWrite confirms the same detector wires through
+// `wb edit` since edit reuses applyPatches and shares the same failure mode.
+func TestEditWarnsOnDuplicateCellWrite(t *testing.T) {
+	path := createTestFile(t)
+	patch := `[{"cell":"A1","value":"first"},{"cell":"A1","value":"second"}]`
+	stdout, _, code := captureRunJSON("edit", path, "--patch", patch)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	if resp.Meta == nil || len(resp.Meta.Warnings) == 0 {
+		t.Fatalf("expected duplicate-write warning, got: %+v", resp.Meta)
+	}
+}
+
+// TestCreateRowsTypedObject verifies a row data element can be a JSON object
+// carrying {type, value} so a typed date lives inline with the row block
+// rather than requiring a parallel `cells` op.
+func TestCreateRowsTypedObject(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "typed_rows.xlsx")
+	spec := `{
+		"sheets":["T"],
+		"rows":[{
+			"start":"A1",
+			"data":[
+				["Date","Amount"],
+				[{"type":"date","value":"2026-01-10"}, 80]
+			]
+		}]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	stdout, _, code := captureRunJSON("read", "--sheet", "T", "--include-styles", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on read, got %d", code)
+	}
+	resp := parseResponse(t, stdout)
+	data, _ := json.Marshal(resp.Data)
+	var rd readData
+	json.Unmarshal(data, &rd)
+	cellByRef := map[string]cellData{}
+	for _, row := range rd.Rows {
+		for ref, cd := range row.Cells {
+			cellByRef[ref] = cd
+		}
+	}
+	a2, ok := cellByRef["A2"]
+	if !ok {
+		t.Fatal("expected A2 in read output")
+	}
+	if a2.Type != "date" {
+		t.Errorf("expected A2 type=date, got %q", a2.Type)
+	}
+	if a2.Style == nil {
+		t.Error("expected A2 to have a style attached (date format auto-applied)")
+	}
+}
+
+// TestCreateRowsTypedFormula confirms a row element object can carry a
+// formula instead of (or in addition to) a value.
+func TestCreateRowsTypedFormula(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "row_formula.xlsx")
+	spec := `{
+		"sheets":["S"],
+		"rows":[{
+			"start":"A1",
+			"data":[
+				[1, 2, {"formula":"A1+B1"}]
+			]
+		}]
+	}`
+	_, _, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitSuccess {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	stdout, _, code := captureRunJSON("calc", "--sheet", "S", "--range", "C1:C1", path)
+	if code != 0 {
+		t.Fatalf("expected exit 0 on calc, got %d", code)
+	}
+	if !strings.Contains(stdout, `"value": 3`) {
+		t.Errorf("expected C1 to evaluate to 3, got: %s", stdout)
+	}
+}
+
+// TestCreateRowsRejectsUnknownFieldInElement guards strict-unmarshal of the
+// per-element object so typos surface as validation errors, not silent drops.
+func TestCreateRowsRejectsUnknownFieldInElement(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.xlsx")
+	spec := `{"rows":[{"start":"A1","data":[[{"value":"x","cell":"Z9"}]]}]}`
+	_, stderr, code := captureRunJSON("create", path, "--spec", spec)
+	if code != ExitValidate {
+		t.Fatalf("expected validate-error exit, got %d", code)
+	}
+	if !strings.Contains(stderr, "cell") {
+		t.Errorf("expected error mentioning the unknown field, got: %s", stderr)
 	}
 }

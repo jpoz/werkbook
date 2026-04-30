@@ -582,6 +582,10 @@ func matchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if errVal != nil {
 		return *errVal, nil
 	}
+	gridRows, gridCols := grid.dims()
+	if gridRows > 1 && gridCols > 1 {
+		return ErrorVal(ErrValNA), nil
+	}
 	values := grid.flattenRowMajor()
 
 	// For exact match, support wildcard matching on string lookups.
@@ -868,6 +872,16 @@ func xlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		returnGrid, errVal = normalizeGridShapeArg(args[2], evalArgAt(evalArgs, 2))
 		if errVal != nil {
 			return *errVal, nil
+		}
+		returnRows, returnCols := returnGrid.dims()
+		if isRowOriented {
+			if returnCols != lookupCols {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		} else {
+			if returnRows != lookupRows {
+				return ErrorVal(ErrValVALUE), nil
+			}
 		}
 	}
 

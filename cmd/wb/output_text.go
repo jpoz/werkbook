@@ -242,13 +242,24 @@ func renderEditText(data editData) string {
 
 func renderCreateText(data createData) string {
 	var sb strings.Builder
-	if data.Saved {
+	switch {
+	case data.Saved:
 		sb.WriteString("Created workbook")
-	} else {
+	case data.DryRun && data.Failed == 0:
+		if data.ValidateOnly {
+			sb.WriteString("Spec is valid (validate-only)")
+		} else {
+			sb.WriteString("Spec is valid (dry run)")
+		}
+	default:
 		sb.WriteString("Workbook creation did not finish")
 	}
 	sb.WriteString("\nFile: ")
-	sb.WriteString(data.File)
+	if data.File == "" {
+		sb.WriteString("(none)")
+	} else {
+		sb.WriteString(data.File)
+	}
 	sb.WriteString("\nSheets: ")
 	sb.WriteString(fmt.Sprintf("%d", data.Sheets))
 	sb.WriteString("\nCells applied: ")
@@ -257,6 +268,9 @@ func renderCreateText(data createData) string {
 	sb.WriteString(fmt.Sprintf("%d", data.Failed))
 	sb.WriteString("\nSaved: ")
 	sb.WriteString(yesNo(data.Saved))
+	if data.DryRun {
+		sb.WriteString("\nDry run: yes")
+	}
 
 	if len(data.Operations) > 0 && data.Failed > 0 {
 		sb.WriteString("\n\nOperations\n")
@@ -280,8 +294,16 @@ func renderFormulaListText(data formulaListData) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%d %s\n", data.Count, pluralize(data.Count, "function", "functions")))
 	for _, fn := range data.Functions {
-		sb.WriteString(fn)
-		sb.WriteString("\n")
+		var args string
+		if fn.Kind == "unknown" {
+			args = "?"
+		} else {
+			args = fmt.Sprintf("%d", fn.MinArgs)
+			if fn.Variadic {
+				args += "+"
+			}
+		}
+		sb.WriteString(fmt.Sprintf("  %-20s %-18s args=%s\n", fn.Name, fn.Kind, args))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
