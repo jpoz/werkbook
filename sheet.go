@@ -544,32 +544,76 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		}
 	}
 
-	// Sort rows by number.
-	rowNums := make([]int, 0, len(s.rows))
+	// Cached spill follower values, indexed by row then column. These are
+	// emitted as physical "shadow" cells alongside the regular cell stream
+	// so that consumers which cannot evaluate dynamic-array functions
+	// (notably Apple Numbers) can still display each spilled row.
+	shadowsByRow := s.collectSpillShadowsByRow()
+
+	// Build the union of row numbers from physical rows and shadow-only rows.
+	rowSet := make(map[int]struct{}, len(s.rows)+len(shadowsByRow))
 	for n := range s.rows {
+		rowSet[n] = struct{}{}
+	}
+	for n := range shadowsByRow {
+		rowSet[n] = struct{}{}
+	}
+	rowNums := make([]int, 0, len(rowSet))
+	for n := range rowSet {
 		rowNums = append(rowNums, n)
 	}
 	sort.Ints(rowNums)
 
 	for _, rn := range rowNums {
-		r := s.rows[rn]
-		if len(r.cells) == 0 && r.height == 0 && !r.hidden {
+		r, hasRow := s.rows[rn]
+		rowShadows := shadowsByRow[rn]
+		if !hasRow && len(rowShadows) == 0 {
 			continue
 		}
-		rd := ooxml.RowData{Num: rn, Height: r.height, Hidden: r.hidden}
+		var (
+			rowHeight float64
+			rowHidden bool
+			rowCells  map[int]*Cell
+		)
+		if hasRow {
+			rowHeight = r.height
+			rowHidden = r.hidden
+			rowCells = r.cells
+		}
+		if len(rowCells) == 0 && len(rowShadows) == 0 && rowHeight == 0 && !rowHidden {
+			continue
+		}
+		rd := ooxml.RowData{Num: rn, Height: rowHeight, Hidden: rowHidden}
 
-		// Sort cells by column.
-		colNums := make([]int, 0, len(r.cells))
-		for c := range r.cells {
+		// Build the union of column numbers from physical cells and
+		// shadow cells in this row.
+		colSet := make(map[int]struct{}, len(rowCells)+len(rowShadows))
+		for c := range rowCells {
+			colSet[c] = struct{}{}
+		}
+		for c := range rowShadows {
+			colSet[c] = struct{}{}
+		}
+		colNums := make([]int, 0, len(colSet))
+		for c := range colSet {
 			colNums = append(colNums, c)
 		}
 		sort.Ints(colNums)
 
 		for _, cn := range colNums {
-			c := r.cells[cn]
+			c, hasCell := rowCells[cn]
+			shadowVal, hasShadow := rowShadows[cn]
+			if !hasCell {
+				// Shadow-only cell: emit a value-bearing follower with no
+				// formula and no style.
+				ref, _ := CoordinatesToCellName(cn, rn)
+				cd := cellToData(ref, shadowVal, "", false, "", false)
+				rd.Cells = append(rd.Cells, cd)
+				continue
+			}
 			// Resolve dirty/stale formulas before serializing.
 			s.resolveCell(c, cn, rn)
-			if c.value.Type == TypeEmpty && c.formula == "" && c.style == nil {
+			if c.value.Type == TypeEmpty && c.formula == "" && c.style == nil && !hasShadow {
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
@@ -587,6 +631,12 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				} else {
 					formulaRef = s.dynamicArrayFormulaRef(ref, cn, rn, c)
 				}
+			} else if hasShadow && c.formula == "" && c.value.Type == TypeEmpty {
+				// Empty placeholder cell (typically a styled stub from the
+				// template) sitting inside a published spill range. Inject
+				// the cached spill value so downstream readers can display
+				// the spilled row.
+				saveValue = shadowVal
 			}
 			isDynamicArray := false
 			if c.dynamicArraySpill && !c.isArrayFormula {
@@ -625,6 +675,59 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		}
 	}
 	return sd
+}
+
+// collectSpillShadowsByRow returns the cached spill follower values for
+// every dynamic-array anchor on this sheet, indexed by row then column.
+// The anchor cell itself is excluded; the returned map only contains
+// follower positions.
+//
+// Spill follower cells are not stored as physical cells in werkbook —
+// they live in the spill overlay and are recomputed on demand. Excel
+// re-evaluates the anchor's formula on load so it does not need follower
+// values persisted, but other consumers (notably Apple Numbers) cannot
+// evaluate `_xlfn._xlws.FILTER`/SORT/etc. and rely on these cached values
+// to render each spilled row.
+func (s *Sheet) collectSpillShadowsByRow() map[int]map[int]Value {
+	overlay := s.ensureSpillOverlay()
+	if overlay == nil || len(overlay.index.spans) == 0 {
+		return nil
+	}
+	shadows := make(map[int]map[int]Value)
+	for i := range overlay.index.spans {
+		span := &overlay.index.spans[i]
+		raw := span.anchor.cell.rawValue
+		rows, ok := spillArrayRows(raw)
+		if !ok {
+			continue
+		}
+		for rowOff, arrRow := range rows {
+			row := span.anchor.row + rowOff
+			if row > span.toRow {
+				break
+			}
+			for colOff := range arrRow {
+				col := span.anchor.col + colOff
+				if col > span.toCol {
+					break
+				}
+				if col == span.anchor.col && row == span.anchor.row {
+					continue
+				}
+				fv, ok := spillArrayCell(raw, rowOff, colOff)
+				if !ok {
+					continue
+				}
+				rowShadows := shadows[row]
+				if rowShadows == nil {
+					rowShadows = make(map[int]Value)
+					shadows[row] = rowShadows
+				}
+				rowShadows[col] = formulaValueToValue(fv, false)
+			}
+		}
+	}
+	return shadows
 }
 
 func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell) string {
