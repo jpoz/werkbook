@@ -36,6 +36,29 @@ func TestSpill_WritesCachedFollowerValues(t *testing.T) {
 	// Followers: B3, B4 — additional matched values (30, 50).
 	assertCellValue(t, cells, "B3", "30")
 	assertCellValue(t, cells, "B4", "50")
+
+	// Followers must carry an empty <f ca="1"/> element so consumers like
+	// Apple Numbers recognise them as cached spill output rather than
+	// orphaned literal cells.
+	assertSpillFollowerFormulaTag(t, cells, "B3")
+	assertSpillFollowerFormulaTag(t, cells, "B4")
+}
+
+func assertSpillFollowerFormulaTag(t *testing.T, cells map[string]sheetCell, ref string) {
+	t.Helper()
+	c, ok := cells[ref]
+	if !ok {
+		t.Fatalf("cell %s missing", ref)
+	}
+	if !c.HasF {
+		t.Fatalf("cell %s missing <f> element; expected empty <f ca=\"1\"/> for spill follower", ref)
+	}
+	if c.FCa != "1" {
+		t.Fatalf("cell %s <f ca=> = %q, want %q", ref, c.FCa, "1")
+	}
+	if c.FText != "" {
+		t.Fatalf("cell %s <f> text = %q, want empty for spill follower", ref, c.FText)
+	}
 }
 
 // TestSpill_StringFollowerValuesPersisted verifies that string-typed spill
@@ -71,9 +94,12 @@ func TestSpill_StringFollowerValuesPersisted(t *testing.T) {
 }
 
 type sheetCell struct {
-	Ref   string
-	Type  string
-	Value string
+	Ref     string
+	Type    string
+	Value   string
+	HasF    bool
+	FCa     string
+	FText   string
 }
 
 func readSheetCells(t *testing.T, data []byte, sheetName string) map[string]sheetCell {
@@ -93,10 +119,15 @@ func readSheetCells(t *testing.T, data []byte, sheetName string) map[string]shee
 	type relationships struct {
 		Relationships []relationship `xml:"Relationship"`
 	}
+	type fXML struct {
+		Ca   string `xml:"ca,attr"`
+		Text string `xml:",chardata"`
+	}
 	type cellXML struct {
 		Ref   string `xml:"r,attr"`
 		Type  string `xml:"t,attr"`
 		Value string `xml:"v"`
+		F     *fXML  `xml:"f"`
 	}
 	type rowXML struct {
 		Cells []cellXML `xml:"c"`
@@ -175,7 +206,13 @@ func readSheetCells(t *testing.T, data []byte, sheetName string) map[string]shee
 	out := make(map[string]sheetCell)
 	for _, row := range sheet.Rows {
 		for _, c := range row.Cells {
-			out[c.Ref] = sheetCell{Ref: c.Ref, Type: c.Type, Value: c.Value}
+			sc := sheetCell{Ref: c.Ref, Type: c.Type, Value: c.Value}
+			if c.F != nil {
+				sc.HasF = true
+				sc.FCa = c.F.Ca
+				sc.FText = c.F.Text
+			}
+			out[c.Ref] = sc
 		}
 	}
 	return out

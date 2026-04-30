@@ -391,6 +391,12 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 					c.FE.T = cd.FormulaType
 					c.FE.Ref = cd.FormulaRef
 				}
+			} else if cd.IsSpillFollower {
+				// Cached spill follower cell. Emit an empty <f ca="1"/> so
+				// consumers that render cached values rather than recomputing
+				// the array formula (notably Apple Numbers) recognize the
+				// cell as part of a dynamic-array result.
+				c.FE = &xlsxF{Ca: 1}
 			}
 			if cd.StyleIdx > 0 && styleIndexMap != nil && cd.StyleIdx < len(styleIndexMap) {
 				c.S = styleIndexMap[cd.StyleIdx]

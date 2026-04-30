@@ -605,9 +605,11 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 			shadowVal, hasShadow := rowShadows[cn]
 			if !hasCell {
 				// Shadow-only cell: emit a value-bearing follower with no
-				// formula and no style.
+				// formula text but mark it as a spill follower so the writer
+				// emits an empty <f ca="1"/> alongside the cached value.
 				ref, _ := CoordinatesToCellName(cn, rn)
 				cd := cellToData(ref, shadowVal, "", false, "", false)
+				cd.IsSpillFollower = true
 				rd.Cells = append(rd.Cells, cd)
 				continue
 			}
@@ -622,6 +624,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				formulaRef = state.formulaRef
 			}
 			saveValue := c.value
+			injectShadow := false
 			if c.dynamicArraySpill && !c.isArrayFormula {
 				if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 					// #SPILL! means the spill failed. Write as plain formula
@@ -637,6 +640,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				// the cached spill value so downstream readers can display
 				// the spilled row.
 				saveValue = shadowVal
+				injectShadow = true
 			}
 			isDynamicArray := false
 			if c.dynamicArraySpill && !c.isArrayFormula {
@@ -646,6 +650,9 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				}
 			}
 			cd := cellToData(ref, saveValue, c.formula, c.isArrayFormula, formulaRef, isDynamicArray)
+			if injectShadow {
+				cd.IsSpillFollower = true
+			}
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
