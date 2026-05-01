@@ -1,5 +1,60 @@
 # Changelog
 
+## v0.11.0
+
+### CLI
+
+- **`wb serve` command**: New NDJSON-over-stdin/stdout interface for stateful,
+  long-running workbook sessions. Avoids the per-command cost of opening and
+  saving a file, letting external agents perform multiple operations on a
+  single in-memory workbook.
+- **`--dry-run` / `--validate-only` flags on `create`**: Build workbooks in
+  memory without disk I/O so callers can verify complex specifications
+  independently of filesystem side effects.
+- **Embedded input JSON schemas in `capabilities`**: Capabilities output now
+  includes formal JSON schemas for every structured input, giving agents a
+  machine-readable contract to validate payloads against.
+- **Formula discovery metadata**: Formula listings expose argument counts and
+  types so callers can introspect what each function accepts.
+- **Typed date/time cell support**: Cell operations accept an optional `type`
+  field for `date`, `datetime`, and `time` values. Strings are parsed and
+  converted to Excel serials with appropriate default number formats applied,
+  preventing Excel from displaying raw serial numbers.
+- **Inline typed row values**: Row data elements accept `{type, value, formula,
+  style}` objects alongside scalar entries.
+- **Duplicate-write detection**: `wb` warns when multiple operations target the
+  same cell (e.g. a later row write clobbering an earlier formula).
+
+### Compatibility
+
+- **Cached spill values for dynamic array followers**: Saved files now persist
+  cached values for spill follower cells and emit `<f ca="1"/>` tags. Excel
+  re-evaluates on load and doesn't need this, but Apple Numbers and other
+  consumers that cannot evaluate `_xlfn._xlws.FILTER` and friends now display
+  spilled results correctly.
+
+### Formula engine
+
+- **`TRANSPOSE` registered as a dynamic array function**: The engine now
+  correctly identifies and spills `TRANSPOSE` results.
+- **Date-text operands in criteria**: `COUNTIF` / `SUMIF` / `AVERAGEIF`
+  families coerce date-formatted text operands like `">=2026-01-01"` to
+  numeric serials before comparison, matching Excel. ISO dash, US slash, and
+  ISO slash formats are recognized.
+- **`INDEX(range, 0)` implicit intersection**: In non-array context,
+  `INDEX(range, 0)` now performs implicit intersection at the formula cell's
+  row instead of returning `#VALUE!`.
+- **`REGEXEXTRACT` mode 1 layout**: Returns a horizontal `1×n` array instead
+  of a vertical `n×1` array, matching Excel.
+- **Implicit intersection for range-origin arrays**: Array results that carry
+  a range origin now collapse to a single cell correctly when used in
+  non-array context (e.g. `INDEX` returning a vector).
+- **Argument validation alignment**: `XLOOKUP`, `MATCH`, `TAKE`, and `DROP`
+  argument validation matches Excel for omitted parameters and dimension
+  constraints.
+- **`COUNTA` / `SORT`**: Empty values and errors are processed correctly
+  across argument types.
+
 ## v0.10.0
 
 ### Formula Engine v2
