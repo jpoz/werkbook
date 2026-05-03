@@ -196,6 +196,7 @@ func (f *File) SetSheetName(old, new string) error {
 		}
 	}
 
+	f.rewriteSheetNameRefs(old, new)
 	f.rebuildFormulaState()
 	return nil
 }
