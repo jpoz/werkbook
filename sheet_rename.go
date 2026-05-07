@@ -155,6 +155,15 @@ func rewriteQuotedRef(src string, start int, oldEscaped, newName string) (int, s
 	escaped := name.String()
 	past := closingQuote + 2 // index past '!
 
+	// Sheet token preceded by ']' indicates an external workbook ref like
+	// [Book.xlsx]'Sheet 1'!A1. A ']' inside the quoted token indicates a
+	// fully quoted external ref like '[Book.xlsx]Sheet1:Sheet3'!A1. In both
+	// cases the sheet name lives in another workbook, so do not rewrite it
+	// when renaming a local sheet.
+	if precededByExternalRef(src, start) || strings.Contains(escaped, "]") {
+		return past, "", false
+	}
+
 	// Check for 3D ref (colon inside the quoted name).
 	if idx := strings.Index(escaped, ":"); idx >= 0 {
 		left := escaped[:idx]
@@ -192,6 +201,13 @@ func rewriteUnquotedRef(src string, start int, oldName, newName string) (int, st
 		j++
 	}
 	word := src[start:j]
+
+	// Sheet token preceded by ']' indicates an external workbook ref like
+	// [Book.xlsx]Sheet1!A1 — the name lives in another workbook, so do not
+	// rewrite it when renaming a local sheet.
+	if precededByExternalRef(src, start) {
+		return j, "", false
+	}
 
 	// Only match unquoted old names that don't themselves need quoting.
 	canMatchUnquoted := !sheetRefNeedsQuoting(oldName)
@@ -255,6 +271,40 @@ func barewordLooksCellRef(s string) bool {
 		i++
 	}
 	return true
+}
+
+// precededByExternalRef reports whether the sheet token at src[start] is
+// part of an external workbook reference. The bracket of [Book.xlsx] /
+// [1] / [\Book.xlsx]:
+//
+//   - immediately precedes the token: [Book.xlsx]Sheet1!A1
+//   - precedes a 3D ref: [Book.xlsx]Sheet1:Sheet3!A1 (when scanning the
+//     second endpoint Sheet3, the bracket sits past one ':Word' jump).
+//
+// Returns true when either pattern is detected so the caller skips
+// rewriting — the sheet name lives in another workbook.
+func precededByExternalRef(src string, start int) bool {
+	i := skipBackWhitespace(src, start-1)
+	if i >= 0 && src[i] == ']' {
+		return true
+	}
+	if i < 0 || src[i] != ':' {
+		return false
+	}
+	// Walked one ':' back; consume an unquoted word and re-check for ']'.
+	i--
+	for i >= 0 && isUnquotedSheetCont(src[i]) {
+		i--
+	}
+	i = skipBackWhitespace(src, i)
+	return i >= 0 && src[i] == ']'
+}
+
+func skipBackWhitespace(src string, i int) int {
+	for i >= 0 && (src[i] == ' ' || src[i] == '\t') {
+		i--
+	}
+	return i
 }
 
 func isUnquotedSheetStart(ch byte) bool {

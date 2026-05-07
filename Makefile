@@ -96,6 +96,10 @@ test: ## Run all unit tests
 	$(call print_stage,Running tests)
 	gotestsum -f dots ./...
 
+.PHONY: test-all
+test-all: test testdata testfixtures ## Run unit tests, testdata, and testfixtures
+	$(call print_success,All tests complete!)
+
 .PHONY: testdata
 testdata: ## Run remote test data checks (requires ../testdata sibling repo)
 	$(call print_stage,Running test data check)
