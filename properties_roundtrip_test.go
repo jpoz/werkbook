@@ -1,6 +1,7 @@
 package werkbook_test
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -110,3 +111,29 @@ func TestCorePropertiesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenSavePreservesExistingCorePropertiesXML(t *testing.T) {
+	orig := readSheetXML(t, "excel_probe.xlsx", "docProps/core.xml")
+
+	f, err := werkbook.Open("excel_probe.xlsx")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	got := f.CoreProperties()
+	if got.Creator != "James Pozdena" || got.LastModifiedBy != "James Pozdena" {
+		t.Fatalf("unexpected parsed core properties: %#v", got)
+	}
+	if got.Created.IsZero() || got.Modified.IsZero() {
+		t.Fatalf("expected parsed created and modified timestamps, got %#v", got)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preserved.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	roundTrip := readSheetXML(t, path, "docProps/core.xml")
+	if !bytes.Equal(roundTrip, orig) {
+		t.Fatalf("core.xml changed on untouched round-trip\nwant: %s\ngot:  %s", orig, roundTrip)
+	}
+}
