@@ -225,6 +225,65 @@ func TestRewriteSheetRefsInFormula_SumRangeAcrossSheetRef(t *testing.T) {
 	}
 }
 
+func TestRewriteSheetRefsInFormula_ExternalWorkbookUnquotedSkipped(t *testing.T) {
+	src := "[Book.xlsx]Sheet1!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet1", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_ExternalIndirectUnquotedSkipped(t *testing.T) {
+	src := "[1]Sheet1!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet1", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_ExternalRefDoesNotBlockLocalRewrite(t *testing.T) {
+	got := rewriteSheetRefsInFormula("[Book.xlsx]Sheet1!A1+Sheet1!B1", "Sheet1", "Data")
+	want := "[Book.xlsx]Sheet1!A1+Data!B1"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_ExternalQuotedSheetSkipped(t *testing.T) {
+	src := "[Book.xlsx]'Sheet 1'!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet 1", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_FullyQuotedExternalRefSkipped(t *testing.T) {
+	// 'C:\path\[Book.xlsx]Sheet1'!A1 — the entire external ref is inside
+	// the quotes; the embedded sheet token is part of the workbook
+	// reference, not a local sheet name to rewrite.
+	src := "'C:\\path\\[Book.xlsx]Sheet1'!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet1", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_External3DUnquotedSkipped(t *testing.T) {
+	src := "[Book.xlsx]Sheet1:Sheet3!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet1", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
+func TestRewriteSheetRefsInFormula_External3DSecondEndpointSkipped(t *testing.T) {
+	src := "[Book.xlsx]Sheet1:Sheet3!A1"
+	got := rewriteSheetRefsInFormula(src, "Sheet3", "Data")
+	if got != src {
+		t.Fatalf("got %q, want %q (unchanged)", got, src)
+	}
+}
+
 // --- Integration tests for SetSheetName formula rewriting ---
 
 func TestSetSheetName_RewritesCrossSheetFormula(t *testing.T) {
@@ -394,6 +453,27 @@ func TestSetSheetName_RoundTrip(t *testing.T) {
 	}
 	if names[0].Value != "X!$A$1" {
 		t.Fatalf("defined name Value = %q, want %q", names[0].Value, "X!$A$1")
+	}
+}
+
+func TestSetSheetName_PreservesExternalWorkbookRef(t *testing.T) {
+	f := New()
+	s1 := f.Sheet("Sheet1")
+	s1.SetValue("A1", 5)
+
+	s2, _ := f.NewSheet("Sheet2")
+	// Local Sheet1!B1 should rewrite; the [Book.xlsx]Sheet1!A1 external ref
+	// must stay intact since it points at a sheet in another workbook.
+	s2.SetFormula("A1", "[Book.xlsx]Sheet1!A1+Sheet1!B1")
+
+	if err := f.SetSheetName("Sheet1", "Data"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := f.Sheet("Sheet2").GetFormula("A1")
+	want := "[Book.xlsx]Sheet1!A1+Data!B1"
+	if got != want {
+		t.Fatalf("formula = %q, want %q", got, want)
 	}
 }
 
