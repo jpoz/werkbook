@@ -284,6 +284,14 @@ func TestRewriteSheetRefsInFormula_External3DSecondEndpointSkipped(t *testing.T)
 	}
 }
 
+func TestRewriteSheetRefsInFormula_FullyQuotedExternal3DSkipped(t *testing.T) {
+	got := rewriteSheetRefsInFormula("'[Book.xlsx]Sheet1:Sheet3'!A1+Sheet3!B1", "Sheet3", "Data")
+	want := "'[Book.xlsx]Sheet1:Sheet3'!A1+Data!B1"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 // --- Integration tests for SetSheetName formula rewriting ---
 
 func TestSetSheetName_RewritesCrossSheetFormula(t *testing.T) {

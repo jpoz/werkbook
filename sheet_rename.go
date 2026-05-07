@@ -152,15 +152,17 @@ func rewriteQuotedRef(src string, start int, oldEscaped, newName string) (int, s
 		return closingQuote + 1, "", false
 	}
 
-	// Sheet token preceded by ']' indicates an external workbook ref like
-	// [Book.xlsx]'Sheet 1'!A1 — the name lives in another workbook, so do
-	// not rewrite it when renaming a local sheet.
-	if precededByExternalRef(src, start) {
-		return closingQuote + 2, "", false
-	}
-
 	escaped := name.String()
 	past := closingQuote + 2 // index past '!
+
+	// Sheet token preceded by ']' indicates an external workbook ref like
+	// [Book.xlsx]'Sheet 1'!A1. A ']' inside the quoted token indicates a
+	// fully quoted external ref like '[Book.xlsx]Sheet1:Sheet3'!A1. In both
+	// cases the sheet name lives in another workbook, so do not rewrite it
+	// when renaming a local sheet.
+	if precededByExternalRef(src, start) || strings.Contains(escaped, "]") {
+		return past, "", false
+	}
 
 	// Check for 3D ref (colon inside the quoted name).
 	if idx := strings.Index(escaped, ":"); idx >= 0 {
