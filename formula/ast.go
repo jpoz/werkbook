@@ -105,7 +105,7 @@ func (n *CellRef) String() string {
 	}
 	var b strings.Builder
 	if n.Sheet != "" {
-		if needsQuoting(n.Sheet) {
+		if NeedsQuoting(n.Sheet) {
 			b.WriteByte('\'')
 			b.WriteString(strings.ReplaceAll(n.Sheet, "'", "''"))
 			b.WriteByte('\'')
@@ -343,14 +343,18 @@ func (n *MakeArrayExpr) String() string {
 	return fmt.Sprintf("(MAKEARRAY params=%v)", n.ParamNames)
 }
 
-// needsQuoting returns true if a sheet name contains characters that require quoting.
-func needsQuoting(name string) bool {
+// NeedsQuoting returns true if a sheet name contains characters that require quoting.
+func NeedsQuoting(name string) bool {
 	for _, c := range name {
 		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
 			return true
 		}
 	}
 	return false
+}
+
+func needsQuoting(name string) bool {
+	return NeedsQuoting(name)
 }
 
 // ColNumberToLetters converts a 1-based column number to column letters (e.g. 1→"A", 27→"AA").
