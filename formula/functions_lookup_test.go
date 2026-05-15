@@ -6244,10 +6244,10 @@ func TestFILTER_NoneMatchWithIfEmpty(t *testing.T) {
 	}
 }
 
-func TestFILTER_ErrorInCriterionSpillsErrorGrid(t *testing.T) {
-	// FILTER({1;2;3}, {TRUE;#N/A;TRUE}) should NOT short-circuit to a
-	// scalar error — Excel spills the error across the value shape so
-	// COUNTA sees 3 cells and SUM propagates.
+func TestFILTER_ErrorInCriterionPropagatesScalar(t *testing.T) {
+	// FILTER({1;2;3}, {TRUE;#N/A;TRUE}) returns a single #N/A — Excel
+	// propagates the first error from the include argument as a scalar
+	// and does not spill across the value shape. See issue #70.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
@@ -6259,16 +6259,8 @@ func TestFILTER_ErrorInCriterionSpillsErrorGrid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fnFILTER: %v", err)
 	}
-	if got.Type != ValueArray {
-		t.Fatalf("expected ValueArray, got %v", got.Type)
-	}
-	if len(got.Array) != 3 {
-		t.Fatalf("expected 3 rows, got %d", len(got.Array))
-	}
-	for i, row := range got.Array {
-		if len(row) != 1 || row[0].Type != ValueError || row[0].Err != ErrValNA {
-			t.Errorf("row %d: want #N/A, got %v", i, row[0])
-		}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("got %v, want scalar #N/A", got)
 	}
 }
 
@@ -6356,9 +6348,9 @@ func TestFILTER_StringValues(t *testing.T) {
 }
 
 func TestFILTER_ErrorInInclude(t *testing.T) {
-	// Excel spills the first error across the value shape instead of
-	// collapsing to a scalar — so COUNTA sees one cell per value-row and
-	// SUM propagates.
+	// Excel propagates the first error in the include argument as a
+	// single scalar — the result does not spill across the value shape.
+	// See issue #70.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
@@ -6370,13 +6362,8 @@ func TestFILTER_ErrorInInclude(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fnFILTER: %v", err)
 	}
-	if got.Type != ValueArray || len(got.Array) != 3 {
-		t.Fatalf("want 3-row error spill, got %v", got)
-	}
-	for i, row := range got.Array {
-		if len(row) != 1 || row[0].Type != ValueError || row[0].Err != ErrValDIV0 {
-			t.Errorf("row %d: want #DIV/0!, got %v", i, row[0])
-		}
+	if got.Type != ValueError || got.Err != ErrValDIV0 {
+		t.Errorf("got %v, want scalar #DIV/0!", got)
 	}
 }
 
@@ -6979,9 +6966,8 @@ func TestFILTER_ColumnFilterIfEmpty(t *testing.T) {
 }
 
 func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
-	// Excel spills the first error across the value shape in column-filter
-	// mode too, so downstream aggregators see per-cell errors rather than
-	// a collapsed scalar.
+	// Excel propagates the first error in the include argument as a
+	// single scalar in column-filter mode as well. See issue #70.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1), NumberVal(2), NumberVal(3)},
@@ -6993,13 +6979,8 @@ func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fnFILTER: %v", err)
 	}
-	if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 {
-		t.Fatalf("want 1x3 error spill, got %v", got)
-	}
-	for i, cell := range got.Array[0] {
-		if cell.Type != ValueError || cell.Err != ErrValNUM {
-			t.Errorf("col %d: want #NUM!, got %v", i, cell)
-		}
+	if got.Type != ValueError || got.Err != ErrValNUM {
+		t.Errorf("got %v, want scalar #NUM!", got)
 	}
 }
 
@@ -18330,5 +18311,37 @@ func TestUNIQUE_ThreeColumnByColExactlyOnce(t *testing.T) {
 		if got.Array[r][0].Num != w {
 			t.Errorf("[%d][0] = %g, want %g", r, got.Array[r][0].Num, w)
 		}
+	}
+}
+
+// TestFILTER_Issue70_IncludeWithErrorsCollapsesToScalar pins down the fix
+// from issue #70: when the include argument contains errors (because
+// DATEVALUE was applied to empty/invalid cells), FILTER must propagate
+// the first error as a single scalar, not as a spill grid sized to the
+// value argument. The if_empty argument is also ignored in this case.
+func TestFILTER_Issue70_IncludeWithErrorsCollapsesToScalar(t *testing.T) {
+	// value = {"2026-04-01"; ""; ""; ""}
+	// include = {#VALUE!; #VALUE!; #VALUE!; #VALUE!}
+	// if_empty = "No upcoming fees" — should be ignored, error wins.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("2026-04-01")},
+			{StringVal("")},
+			{StringVal("")},
+			{StringVal("")},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+		}},
+		StringVal("No upcoming fees"),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("got %v, want single-cell #VALUE!", got)
 	}
 }

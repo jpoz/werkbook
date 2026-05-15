@@ -266,23 +266,6 @@ func (s gridValueSource) materializeCols(indices []int) [][]Value {
 	return out
 }
 
-func (s gridValueSource) spilledError(err Value) Value {
-	rows, cols := s.dims()
-	if rows == 0 || cols == 0 {
-		return err
-	}
-	out := newValueMatrix(rows, cols)
-	for row := 0; row < rows; row++ {
-		for col := 0; col < cols; col++ {
-			out[row][col] = err
-		}
-	}
-	if rows == 1 && cols == 1 {
-		return out[0][0]
-	}
-	return Value{Type: ValueArray, Array: out}
-}
-
 func collapseArrayResult(rows [][]Value) Value {
 	if len(rows) == 1 && len(rows[0]) == 1 {
 		return rows[0][0]
