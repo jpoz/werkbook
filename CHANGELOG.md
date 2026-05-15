@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Formula engine
+
+- **`FILTER` now propagates errors in the `include` argument as a single
+  scalar** (matches Excel). Previously the error spilled across the value
+  shape, producing an N-row `#VALUE!` grid (e.g. `A2:A41`) and ignoring
+  Excel's documented short-circuit behavior. The `if_empty` argument is also
+  ignored in this case, with the error winning. Fixes #70.
+
 ## v0.11.0
 
 ### CLI

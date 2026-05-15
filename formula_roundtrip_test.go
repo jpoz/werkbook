@@ -690,12 +690,11 @@ func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
 			t.Fatalf("round-trip workbook missing dynamic-array metadata %q\nxml: %s", want, dstSheetXML)
 		}
 	}
-	// The spill range may differ from the imported value once the engine
-	// can evaluate the formula — Excel does the same on recalc. We only
-	// require that some ref is emitted and anchors at the master cell.
-	// Tighten back to an exact value once FILTER matches Excel — see #70.
-	if !strings.Contains(dstSheetXML, `ref="`+anchorCell+`:`) && !strings.Contains(dstSheetXML, `ref="`+anchorCell+`"`) {
-		t.Fatalf("round-trip workbook missing dynamic-array ref anchored at %s\nxml: %s", anchorCell, dstSheetXML)
+	// FILTER is not re-evaluated on this round-trip (no dependency
+	// was dirtied), so the imported spill ref is preserved verbatim.
+	// Issue #70 tightened this back from a wildcard match.
+	if !strings.Contains(dstSheetXML, `ref="`+spillRef+`"`) {
+		t.Fatalf("round-trip workbook missing preserved spill ref %q\nxml: %s", spillRef, dstSheetXML)
 	}
 
 	workbookRels := string(readSheetXML(t, dstPath, "xl/_rels/workbook.xml.rels"))
@@ -739,15 +738,12 @@ func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
 				if !cd.IsDynamicArray {
 					t.Fatalf("expected %s to remain a dynamic array anchor: %#v", anchorCell, cd)
 				}
-				// FormulaRef may differ from the imported spillRef if the
-				// engine recomputed the spill; only require a non-empty
-				// ref anchored at the master cell. Exact-value fidelity
-				// depends on FILTER matching Excel — see #70.
-				if cd.FormulaRef == "" {
-					t.Fatalf("FormulaRef is empty; expected a spill range anchored at %s", anchorCell)
-				}
-				if !strings.HasPrefix(cd.FormulaRef, anchorCell+":") && cd.FormulaRef != anchorCell {
-					t.Fatalf("FormulaRef = %q, expected anchor at %s", cd.FormulaRef, anchorCell)
+				// FILTER is not re-evaluated on this round-trip,
+				// so the imported spill ref is preserved verbatim.
+				// Issue #70 tightened this back from a wildcard
+				// match.
+				if cd.FormulaRef != spillRef {
+					t.Fatalf("FormulaRef = %q, want %q (preserved imported value)", cd.FormulaRef, spillRef)
 				}
 			}
 		}

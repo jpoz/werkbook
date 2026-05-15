@@ -267,14 +267,13 @@ func filterCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		if len(includeVals) != numRows {
 			return ErrorVal(ErrValVALUE), nil
 		}
-		// Excel's FILTER, when the include argument contains errors, does
-		// not abort to a scalar — the error spills across the whole value
-		// shape, so COUNTA over the result sees one cell per input row and
-		// SUM propagates the error cleanly. Mirror that here by replicating
-		// the first error into a grid the size of the value argument.
+		// Excel's FILTER propagates the first error in the include
+		// argument as a single scalar — the result does not spill at
+		// all (see issue #70). The if_empty argument is also ignored
+		// in this case; the error wins.
 		for _, iv := range includeVals {
 			if iv.Type == ValueError {
-				return arrSource.spilledError(iv), nil
+				return iv, nil
 			}
 		}
 		var keepRows []int
@@ -302,7 +301,9 @@ func filterCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	}
 	for _, iv := range includeVals {
 		if iv.Type == ValueError {
-			return arrSource.spilledError(iv), nil
+			// See issue #70 — propagate the first include error as
+			// a single-cell result, matching Excel.
+			return iv, nil
 		}
 	}
 	var keepCols []int
