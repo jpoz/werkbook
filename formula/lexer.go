@@ -407,7 +407,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		// Sheet names that look like cell refs
 		// must be quoted to form a valid 3D reference.
 		word := string(l.src[start:l.pos])
-		if !looksLikeCellRef(word) {
+		if !LooksLikeCellRef(word) {
 			if bangPos := l.find3DSheetBang(); bangPos > 0 {
 				l.pos = bangPos + 1 // skip past !
 				refStart := l.pos
@@ -426,7 +426,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		if l.pos >= len(l.src) || !isIdentContinue(l.src[l.pos]) {
 			if l.pos >= len(l.src) || l.src[l.pos] != '(' {
 				val := string(l.src[start:l.pos])
-				if looksLikeCellRef(val) {
+				if LooksLikeCellRef(val) {
 					return Token{Type: TokCellRef, Value: val, Pos: start}, nil
 				}
 			}
@@ -456,7 +456,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	}
 	if !hasDollar && l.pos < len(l.src) && l.src[l.pos] == ':' {
 		word := string(l.src[start:l.pos])
-		if !looksLikeCellRef(word) {
+		if !LooksLikeCellRef(word) {
 			if bangPos := l.find3DSheetBang(); bangPos > 0 {
 				l.pos = bangPos + 1 // skip past !
 				refStart := l.pos
@@ -484,7 +484,7 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 	}
 
 	// If it looks like a cell ref, return as cell ref.
-	if looksLikeCellRef(word) {
+	if LooksLikeCellRef(word) {
 		return Token{Type: TokCellRef, Value: word, Pos: start}, nil
 	}
 
@@ -581,9 +581,9 @@ func canFollowIntersect(t TokenType, val string) bool {
 	return false
 }
 
-// looksLikeCellRef checks if a string looks like a valid cell reference.
+// LooksLikeCellRef checks if a string looks like a valid cell reference.
 // Accepts: A1, $A1, A$1, $A$1, XFD1048576, etc.
-func looksLikeCellRef(s string) bool {
+func LooksLikeCellRef(s string) bool {
 	i := 0
 	if i < len(s) && s[i] == '$' {
 		i++
@@ -614,6 +614,10 @@ func looksLikeCellRef(s string) bool {
 	}
 	// Must consume entire string.
 	return i == len(s)
+}
+
+func looksLikeCellRef(s string) bool {
+	return LooksLikeCellRef(s)
 }
 
 func isAlpha(ch byte) bool {

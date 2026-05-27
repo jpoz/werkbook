@@ -1,17 +1,10 @@
 package werkbook
 
-import "strings"
+import (
+	"strings"
 
-// sheetRefNeedsQuoting reports whether a sheet name must be single-quoted in
-// formula text. Matches the formula package's needsQuoting logic.
-func sheetRefNeedsQuoting(name string) bool {
-	for _, c := range name {
-		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
-			return true
-		}
-	}
-	return false
-}
+	"github.com/jpoz/werkbook/formula"
+)
 
 // escapeSheetName doubles any apostrophes in name for use inside a
 // single-quoted sheet reference (e.g. Fund's Data → Fund''s Data).
@@ -28,7 +21,7 @@ func unescapeSheetName(escaped string) string {
 // formatSheetRef returns the properly formatted sheet!-prefix for a simple
 // (non-3D) sheet reference.
 func formatSheetRef(name string) string {
-	if sheetRefNeedsQuoting(name) {
+	if formula.NeedsQuoting(name) {
 		return "'" + escapeSheetName(name) + "'!"
 	}
 	return name + "!"
@@ -37,7 +30,7 @@ func formatSheetRef(name string) string {
 // format3DSheetRef returns the properly formatted sheet!-prefix for a 3D
 // reference (Start:End!). Each endpoint is independently checked for quoting.
 func format3DSheetRef(start, end string) string {
-	if sheetRefNeedsQuoting(start) || sheetRefNeedsQuoting(end) {
+	if formula.NeedsQuoting(start) || formula.NeedsQuoting(end) {
 		return "'" + escapeSheetName(start) + ":" + escapeSheetName(end) + "'!"
 	}
 	return start + ":" + end + "!"
@@ -210,14 +203,14 @@ func rewriteUnquotedRef(src string, start int, oldName, newName string) (int, st
 	}
 
 	// Only match unquoted old names that don't themselves need quoting.
-	canMatchUnquoted := !sheetRefNeedsQuoting(oldName)
+	canMatchUnquoted := !formula.NeedsQuoting(oldName)
 
 	// Check for 3D ref: Word:Word2!
 	// To distinguish genuine 3D refs (Other:Sheet1!A1) from cell-range-colon-
 	// sheet patterns (A1:Sheet1!B1), skip 3D detection when Word1 looks like a
 	// cell reference (letters followed by digits, e.g. A1, BC23). This mirrors
 	// the disambiguation in formula/lexer.go:looksLikeCellRef.
-	if j < len(src) && src[j] == ':' && canMatchUnquoted && !barewordLooksCellRef(word) {
+	if j < len(src) && src[j] == ':' && canMatchUnquoted && !formula.LooksLikeCellRef(word) {
 		k := j + 1
 		if k < len(src) && isUnquotedSheetStart(src[k]) {
 			m := k + 1
@@ -249,28 +242,6 @@ func rewriteUnquotedRef(src string, start int, oldName, newName string) (int, st
 
 	// Not a sheet ref — just a bareword; return up to end of word only.
 	return j, "", false
-}
-
-// barewordLooksCellRef reports whether a bareword (no $ signs, no special
-// chars) looks like a cell reference — 1-3 letters followed by 1+ digits,
-// e.g. A1, BC23, XFD1048576. Used to disambiguate 3D refs from range
-// operators: in A1:Sheet1!B1, the A1 is a cell ref not a sheet name.
-// Simplified from formula/lexer.go:looksLikeCellRef (which also handles $).
-func barewordLooksCellRef(s string) bool {
-	i := 0
-	for i < len(s) && ((s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z')) {
-		i++
-	}
-	if i == 0 || i > 3 || i >= len(s) {
-		return false
-	}
-	for i < len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-		i++
-	}
-	return true
 }
 
 // precededByExternalRef reports whether the sheet token at src[start] is
