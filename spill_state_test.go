@@ -93,6 +93,68 @@ func TestSpillArrayRect(t *testing.T) {
 			wantToCol: 12, wantToRow: 11,
 			wantOK: true,
 		},
+		{
+			// FILTER over an unbounded source range (`A2:A1048576`) pads its
+			// result with empty rows beyond the real matches. The spill region
+			// must size to the real data, not the padding. See issue #59.
+			name: "trailing empty rows are trimmed",
+			raw: formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{
+				{formula.NumberVal(10)},
+				{formula.NumberVal(20)},
+				{{Type: formula.ValueEmpty}},
+				{{Type: formula.ValueEmpty}},
+			}},
+			anchorCol: 2, anchorRow: 2,
+			wantToCol: 2, wantToRow: 3,
+			wantOK: true,
+		},
+		{
+			// Arithmetic on empty padding cells produces 0 (cols E–H in the
+			// issue repro). Trailing zero rows are padding too.
+			name:      "trailing zero rows are trimmed",
+			raw:       numArray([][]float64{{5}, {3}, {0}, {0}, {0}}),
+			anchorCol: 1, anchorRow: 1,
+			wantToCol: 1, wantToRow: 2,
+			wantOK: true,
+		},
+		{
+			// Only the trailing run is trimmed; interior zeros are real data
+			// and stay in the spill region (FILTER({5;0;3}) -> {5;0;3}).
+			name:      "interior zeros are preserved",
+			raw:       numArray([][]float64{{5}, {0}, {3}}),
+			anchorCol: 1, anchorRow: 1,
+			wantToCol: 1, wantToRow: 3,
+			wantOK: true,
+		},
+		{
+			name: "trailing empty-string and false rows are trimmed",
+			raw: formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{
+				{formula.StringVal("a")},
+				{formula.StringVal("")},
+				{formula.BoolVal(false)},
+			}},
+			anchorCol: 1, anchorRow: 1,
+			wantToCol: 1, wantToRow: 1,
+			wantOK: true,
+		},
+		{
+			// A trailing row that still holds any real cell is not all-falsy
+			// and must be kept, even when other cells in it are padding.
+			name: "trailing row with one real cell is kept",
+			raw: formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{
+				{formula.NumberVal(1), formula.NumberVal(2)},
+				{formula.NumberVal(0), formula.NumberVal(9)},
+			}},
+			anchorCol: 1, anchorRow: 1,
+			wantToCol: 2, wantToRow: 2,
+			wantOK: true,
+		},
+		{
+			name:      "all-falsy array does not spill",
+			raw:       numArray([][]float64{{0}, {0}, {0}}),
+			anchorCol: 1, anchorRow: 1,
+			wantOK: false,
+		},
 	}
 
 	for _, tt := range tests {

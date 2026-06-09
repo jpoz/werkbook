@@ -48,6 +48,15 @@ func spillArrayRect(raw formula.Value, anchorCol, anchorRow int) (toCol, toRow i
 	if !ok {
 		return 0, 0, false
 	}
+	// Functions sized by unbounded source ranges (e.g. FILTER over
+	// `A2:A1048576`) can return an array whose trailing rows are pure
+	// padding — empty strings, zeros, or FALSE produced by arithmetic on
+	// empty cells. Publishing those rows inflates the spill region to ~1M
+	// rows and makes any consumer that iterates the region effectively hang.
+	// Trim the trailing run of all-falsy rows before sizing the rect; the
+	// untrimmed array is still used for per-cell reads within the rect, so
+	// non-trailing falsy cells (e.g. FILTER({5;0;3}) -> {5;0;3}) are kept.
+	rows = trimTrailingFalsyArrayRows(rows)
 	spillCols := 0
 	for _, row := range rows {
 		if len(row) > spillCols {
@@ -58,6 +67,44 @@ func spillArrayRect(raw formula.Value, anchorCol, anchorRow int) (toCol, toRow i
 		return 0, 0, false
 	}
 	return anchorCol + spillCols - 1, anchorRow + len(rows) - 1, true
+}
+
+// trimTrailingFalsyArrayRows returns rows with the trailing run of all-falsy
+// rows removed. Only the suffix is trimmed; falsy rows followed by a non-falsy
+// row are preserved so the spill region keeps its interior shape.
+func trimTrailingFalsyArrayRows(rows [][]formula.Value) [][]formula.Value {
+	n := len(rows)
+	for n > 0 && isFalsyArrayRow(rows[n-1]) {
+		n--
+	}
+	return rows[:n]
+}
+
+// isFalsyArrayRow reports whether every cell in the row is "no data": empty,
+// numeric zero, an empty string, or boolean FALSE. Errors and any other value
+// count as real data and stop the trim.
+func isFalsyArrayRow(row []formula.Value) bool {
+	for _, cell := range row {
+		if !isFalsyArrayCell(cell) {
+			return false
+		}
+	}
+	return true
+}
+
+func isFalsyArrayCell(cell formula.Value) bool {
+	switch cell.Type {
+	case formula.ValueEmpty:
+		return true
+	case formula.ValueNumber:
+		return cell.Num == 0
+	case formula.ValueString:
+		return cell.Str == ""
+	case formula.ValueBool:
+		return !cell.Bool
+	default:
+		return false
+	}
 }
 
 func spillArrayRows(raw formula.Value) ([][]formula.Value, bool) {
