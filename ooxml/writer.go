@@ -2,9 +2,11 @@ package ooxml
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 )
 
@@ -506,9 +508,39 @@ func writeXML(zw *zip.Writer, name string, v any) error {
 	if _, err := io.WriteString(w, xmlHeader); err != nil {
 		return err
 	}
-	enc := xml.NewEncoder(w)
+	var buf bytes.Buffer
+	enc := xml.NewEncoder(&buf)
 	if err := enc.Encode(v); err != nil {
 		return fmt.Errorf("encode %s: %w", name, err)
 	}
-	return enc.Close()
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	_, err = w.Write(selfCloseEmptyElements(buf.Bytes()))
+	return err
+}
+
+// emptyElementPattern matches elements with no content, e.g.
+// <mergeCell ref="A1:K1"></mergeCell>, which encoding/xml emits because Go
+// has no native support for self-closing tags. Excel writes these as
+// self-closing (<mergeCell ref="A1:K1"/>), and some consumers — notably the
+// @extend-ai/react-xlsx viewer's parser — only recognize the self-closing
+// form. Attribute values containing '>' simply don't match and are left as-is.
+var emptyElementPattern = regexp.MustCompile(`<([A-Za-z_][\w.:-]*)([^<>]*)></([A-Za-z_][\w.:-]*)>`)
+
+// selfCloseEmptyElements rewrites content-free elements to self-closing form
+// for Excel parity and broader consumer compatibility.
+func selfCloseEmptyElements(b []byte) []byte {
+	return emptyElementPattern.ReplaceAllFunc(b, func(m []byte) []byte {
+		sub := emptyElementPattern.FindSubmatch(m)
+		if !bytes.Equal(sub[1], sub[3]) {
+			return m
+		}
+		var out bytes.Buffer
+		out.WriteByte('<')
+		out.Write(sub[1])
+		out.Write(bytes.TrimRight(sub[2], " "))
+		out.WriteString("/>")
+		return out.Bytes()
+	})
 }
