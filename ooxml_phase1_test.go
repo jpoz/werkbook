@@ -146,7 +146,7 @@ func TestTableAuthoringRoundTrip(t *testing.T) {
 		}
 	}
 	sheetXML := string(readSheetXML(t, path, "xl/worksheets/sheet1.xml"))
-	if !strings.Contains(sheetXML, `<tableParts count="1">`) || !strings.Contains(sheetXML, `<tablePart r:id="rId1"></tablePart>`) {
+	if !strings.Contains(sheetXML, `<tableParts count="1">`) || !strings.Contains(sheetXML, `<tablePart r:id="rId1"/>`) {
 		t.Fatalf("expected worksheet to reference table part: %s", sheetXML)
 	}
 	sheetRels := string(readSheetXML(t, path, "xl/worksheets/_rels/sheet1.xml.rels"))
