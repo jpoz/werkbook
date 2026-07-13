@@ -1288,6 +1288,55 @@ func TestSpillFullRowRangeReference(t *testing.T) {
 	}
 }
 
+// TestSpillTrimsTrailingPadding locks down issue #59: a FILTER whose predicate
+// is truthy for empty cells (e.g. `<>"skip"`) over a tall source range produces
+// a result that is real values at the top followed by a long run of empty
+// padding rows. Publishing that padding as the spill region inflates the
+// anchor's footprint to ~maxRow and makes any consumer that walks the region
+// effectively hang.
+//
+// Range clamping caps unbounded refs at the sheet's used extent, so to
+// reproduce the padding the value column must be empty at the bottom while a
+// *different* column forces the used extent far down the sheet.
+func TestSpillTrimsTrailingPadding(t *testing.T) {
+	f, data, spill, _ := newSpillHarness(t)
+
+	// Real B-values only at rows 2..6; "skip" rows are filtered out.
+	labels := []string{"a", "skip", "b", "skip", "c"}
+	amounts := []float64{10, 20, 30, 40, 50}
+	for i := range labels {
+		r := strconv.Itoa(i + 2)
+		mustSetValue(t, data, "A"+r, labels[i])
+		mustSetValue(t, data, "B"+r, amounts[i])
+	}
+	// A far-down cell in an unrelated column pushes the used extent past the
+	// real data so the FILTER source range is not clamped back to row 6.
+	mustSetValue(t, data, "C100000", "anchor")
+
+	// `<>"skip"` is TRUE for the empty cells below row 6, so the FILTER result
+	// is [10, 30, 50] followed by ~100k empty padding rows.
+	mustSetFormula(t, spill, "B2", `FILTER(Data!B2:B100000, Data!A2:A100000<>"skip")`)
+	f.Recalculate()
+
+	// The spill region must size to the three real matches (B2:B4), not to the
+	// padded tail.
+	toCol, toRow, ok := spill.SpillBounds(2, 2)
+	if !ok {
+		t.Fatalf("SpillBounds(B2): no published spill")
+	}
+	if toCol != 2 || toRow != 4 {
+		t.Fatalf("SpillBounds(B2) = (%d,%d), want (2,4)", toCol, toRow)
+	}
+
+	assertSheetWants(t, spill,
+		numWant("B2", 10),
+		numWant("B3", 30),
+		numWant("B4", 50),
+	)
+	// A cell deep in the would-be padding region must not be part of the spill.
+	assertEmptyCell(t, spill, "B500")
+}
+
 // TestSpillRangeAggregationAfterGrowth locks down that aggregators re-read
 // a spill after the underlying data grows/shrinks. This is a generalization
 // of TestSpillRecalculationTracksGrowthAndShrink that adds SUMIF/COUNTIF/MAX
