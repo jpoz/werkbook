@@ -21,6 +21,7 @@ type File struct {
 	corePropsRaw   []byte
 	corePropsDirty bool
 	calcGen        uint64            // incremented on any cell mutation; starts at 1
+	batchWrites    int               // >0 while inside BeginBatchWrite/EndBatchWrite
 	evaluating     map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
 	deps           *formula.DepGraph // cell dependency graph for incremental recalculation
 	tableDefs      []Table
@@ -648,9 +649,36 @@ func (f *File) registerAllFormulas(strict bool) error {
 	return nil
 }
 
+// BeginBatchWrite suspends per-write dependent invalidation until the matching
+// EndBatchWrite. Use it around bulk data loads into a workbook whose formulas
+// are already registered: every SetValue/SetFormula otherwise walks the whole
+// transitive dependent graph, which is O(dependents) per cell and dominates
+// bulk writes on formula-heavy workbooks.
+//
+// Correctness does not depend on the walk: each write still bumps calcGen, and
+// every formula read (Recalculate, GetValue, evaluateFormulaRaw) re-evaluates
+// any cell whose cachedGen is behind calcGen. Skipping the walk only drops the
+// redundant dirty flags. Calls nest; invalidation resumes when the outermost
+// batch ends.
+func (f *File) BeginBatchWrite() {
+	f.batchWrites++
+}
+
+// EndBatchWrite closes the innermost BeginBatchWrite. Unbalanced calls are a
+// no-op rather than a panic so a deferred EndBatchWrite is always safe.
+func (f *File) EndBatchWrite() {
+	if f.batchWrites > 0 {
+		f.batchWrites--
+	}
+}
+
 // invalidateDependents queries the dep graph for all transitive dependents
-// of the given cell and marks them dirty.
+// of the given cell and marks them dirty. Skipped inside a batch write; see
+// BeginBatchWrite for why that is safe.
 func (f *File) invalidateDependents(sheet string, col, row int) {
+	if f.batchWrites > 0 {
+		return
+	}
 	changed := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
 	for _, dep := range f.deps.Dependents(changed) {
 		s := f.Sheet(dep.Sheet)

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### API
+
+- **`File.BeginBatchWrite` / `File.EndBatchWrite`**: suspend per-write
+  dependent invalidation around bulk data loads. Each `SetValue`/`SetFormula`
+  otherwise walks the whole transitive dependent graph, which made loading a
+  few hundred rows into a formula-heavy workbook take minutes; batched, the
+  same load takes milliseconds. Writes still bump `calcGen`, so formulas
+  re-evaluate on the next `Recalculate` or `GetValue` exactly as before.
+
 ### Formula engine
 
 - **`FILTER` now propagates errors in the `include` argument as a single
