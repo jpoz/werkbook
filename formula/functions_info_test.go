@@ -2249,6 +2249,28 @@ func TestCOLUMN(t *testing.T) {
 		}
 	})
 
+	t.Run("offset_ref_to_error_cell_uses_ref_column", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 2, Row: 2}: ErrorVal(ErrValDIV0),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `COLUMN(OFFSET(A1,1,1))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("COLUMN(OFFSET(A1,1,1)) = %v, want 2", got)
+		}
+	})
+
 	t.Run("range_ref_returns_leftmost_column", func(t *testing.T) {
 		// When a range is passed, COLUMN returns the leftmost column.
 		// In the current implementation, a range resolves to a ValueArray
@@ -4580,6 +4602,38 @@ func TestISREF(t *testing.T) {
 		}
 	})
 
+	t.Run("eval_ref_backed_error_value", func(t *testing.T) {
+		got, err := fnISREF([]Value{
+			EvalValueToValue(newEvalSingleCellRef(
+				CellAddr{Col: 2, Row: 2},
+				ErrorVal(ErrValDIV0),
+			)),
+		})
+		if err != nil {
+			t.Fatalf("fnISREF: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("fnISREF(evalRef-backed error) = %v, want TRUE", got)
+		}
+	})
+
+	t.Run("eval_ref_backed_3d_range", func(t *testing.T) {
+		got, err := fnISREF([]Value{
+			EvalValueToValue(newEvalRangeRef(
+				RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+				[][]Value{{NumberVal(1)}},
+				nil,
+				nil,
+			)),
+		})
+		if err != nil {
+			t.Fatalf("fnISREF: %v", err)
+		}
+		if got.Type != ValueBool || !got.Bool {
+			t.Errorf("fnISREF(evalRef-backed 3D range) = %v, want TRUE", got)
+		}
+	})
+
 	t.Run("concatenation_result", func(t *testing.T) {
 		resolver := &mockResolver{}
 		ctx := &EvalContext{
@@ -5075,8 +5129,8 @@ func TestROW(t *testing.T) {
 	})
 
 	t.Run("row_with_indirect_cell", func(t *testing.T) {
-		// INDIRECT("B7") for a single cell resolves the cell value (not a ref),
-		// so ROW(INDIRECT("B7")) receives a non-ref and returns #VALUE!.
+		// INDIRECT("B7") preserves single-cell ref identity across the
+		// legacy boundary, so ROW can still report the referenced row number.
 		ctx := &EvalContext{
 			CurrentCol:   1,
 			CurrentRow:   1,
@@ -5088,8 +5142,30 @@ func TestROW(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Eval: %v", err)
 		}
-		if got.Type != ValueError || got.Err != ErrValVALUE {
-			t.Errorf("ROW(INDIRECT(\"B7\")) = %v, want #VALUE!", got)
+		if got.Type != ValueNumber || got.Num != 7 {
+			t.Errorf("ROW(INDIRECT(\"B7\")) = %v, want 7", got)
+		}
+	})
+
+	t.Run("row_with_indirect_error_cell", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 2, Row: 2}: ErrorVal(ErrValDIV0),
+			},
+		}
+		ctx := &EvalContext{
+			CurrentCol:   1,
+			CurrentRow:   1,
+			CurrentSheet: "",
+			Resolver:     resolver,
+		}
+		cf := evalCompile(t, `ROW(INDIRECT("B2"))`)
+		got, err := Eval(cf, resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 2 {
+			t.Errorf("ROW(INDIRECT(\"B2\")) = %v, want 2", got)
 		}
 	})
 
@@ -5248,6 +5324,23 @@ func TestAREAS(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("eval_ref_backed_3d_range", func(t *testing.T) {
+		got, err := fnAREAS([]Value{
+			EvalValueToValue(newEvalRangeRef(
+				RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+				[][]Value{{NumberVal(1)}},
+				nil,
+				nil,
+			)),
+		})
+		if err != nil {
+			t.Fatalf("fnAREAS: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 1 {
+			t.Errorf("AREAS(evalRef-backed 3D range) = %v, want 1", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -5490,6 +5583,42 @@ func TestSHEET(t *testing.T) {
 		}
 	})
 
+	t.Run("eval_ref_backed_error_value", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEET([]Value{
+			EvalValueToValue(newEvalSingleCellRef(
+				CellAddr{Sheet: "Data", Col: 2, Row: 2},
+				ErrorVal(ErrValDIV0),
+			)),
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 4 {
+			t.Errorf("SHEET(evalRef-backed Data!B2) = %v, want 4", result)
+		}
+	})
+
+	t.Run("eval_ref_backed_3d_range_uses_start_sheet", func(t *testing.T) {
+		resolver := newResolver()
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Summary", Resolver: resolver}
+		result, err := fnSHEET([]Value{
+			EvalValueToValue(newEvalRangeRef(
+				RangeAddr{Sheet: "Sheet2", SheetEnd: "Data", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+				[][]Value{{NumberVal(1)}},
+				nil,
+				nil,
+			)),
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEET: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 2 {
+			t.Errorf("SHEET(evalRef-backed Sheet2:Data!A1) = %v, want 2", result)
+		}
+	})
+
 	t.Run("no_args_current_sheet_last", func(t *testing.T) {
 		resolver := newResolver()
 		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Summary", Resolver: resolver}
@@ -5583,6 +5712,42 @@ func TestSHEETS(t *testing.T) {
 		}
 		if result.Type != ValueNumber || result.Num != 1 {
 			t.Errorf("SHEETS(Sheet1!A1:C3) = %v, want 1", result)
+		}
+	})
+
+	t.Run("eval_ref_backed_error_value_returns_1", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEETS([]Value{
+			EvalValueToValue(newEvalSingleCellRef(
+				CellAddr{Sheet: "Data", Col: 2, Row: 2},
+				ErrorVal(ErrValDIV0),
+			)),
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 1 {
+			t.Errorf("SHEETS(evalRef-backed Data!B2) = %v, want 1", result)
+		}
+	})
+
+	t.Run("eval_ref_backed_3d_range", func(t *testing.T) {
+		resolver := newResolver(sheets5)
+		ctx := &EvalContext{CurrentCol: 1, CurrentRow: 1, CurrentSheet: "Sheet1", Resolver: resolver}
+		result, err := fnSHEETS([]Value{
+			EvalValueToValue(newEvalRangeRef(
+				RangeAddr{Sheet: "Sheet1", SheetEnd: "Sheet3", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 1},
+				[][]Value{{NumberVal(1)}},
+				nil,
+				nil,
+			)),
+		}, ctx)
+		if err != nil {
+			t.Fatalf("fnSHEETS: %v", err)
+		}
+		if result.Type != ValueNumber || result.Num != 3 {
+			t.Errorf("SHEETS(evalRef-backed Sheet1:Sheet3!A1) = %v, want 3", result)
 		}
 	})
 

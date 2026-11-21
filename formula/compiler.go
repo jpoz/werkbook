@@ -11,14 +11,18 @@ import (
 
 // Compile walks the AST rooted at node and emits bytecode.
 func Compile(source string, node Node) (*CompiledFormula, error) {
-	return compileWithMode(source, node, false)
-}
-
-// CompileSpillProbe compiles a formula for top-level dynamic-array probing.
-// It suppresses implicit intersection for the outer expression while preserving
-// the compiler's nested-function array-context suspension rules.
-func CompileSpillProbe(source string, node Node) (*CompiledFormula, error) {
-	return compileWithMode(source, node, true)
+	compiled, err := compileWithMode(source, node, false)
+	if err != nil {
+		return nil, err
+	}
+	if formulaNeedsTopLevelArray(node) {
+		topLevelArray, err := compileWithMode(source, node, true)
+		if err != nil {
+			return nil, err
+		}
+		compiled.TopLevelArray = topLevelArray
+	}
+	return compiled, nil
 }
 
 func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*CompiledFormula, error) {
@@ -29,6 +33,7 @@ func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*Compiled
 		rngIdx: make(map[RangeAddr]uint32),
 	}
 	if topLevelArrayCtx {
+		c.dynamicArrayDepth = 1
 		c.emit(OpEnterArrayCtx, 0)
 		if err := c.compileNodeCtx(node, true); err != nil {
 			return nil, err
@@ -40,13 +45,12 @@ func compileWithMode(source string, node Node, topLevelArrayCtx bool) (*Compiled
 		}
 	}
 	return &CompiledFormula{
-		Source:          source,
-		Code:            c.code,
-		Consts:          c.consts,
-		Refs:            c.refs,
-		Ranges:          c.ranges,
-		SubFormulas:     c.subFormulas,
-		NeedsSpillProbe: formulaNeedsSpillProbe(node),
+		Source:      source,
+		Code:        c.code,
+		Consts:      c.consts,
+		Refs:        c.refs,
+		Ranges:      c.ranges,
+		SubFormulas: c.subFormulas,
 	}, nil
 }
 
@@ -61,10 +65,46 @@ type compiler struct {
 	strIdx map[string]uint32
 	refIdx map[CellAddr]uint32
 	rngIdx map[RangeAddr]uint32
+
+	// dynamicArrayDepth tracks nesting inside dynamic-array-native functions
+	// (FILTER, SORT, UNIQUE, HSTACK, MAP, etc.). Inside those, IFERROR/IFNA
+	// lift over arrays like any element-wise function. Outside (top level or
+	// under legacy array-forcing like SUMPRODUCT), IFERROR/IFNA follow Excel's
+	// scalar implicit-intersection semantics.
+	dynamicArrayDepth int
+
+	// legacyArrayDepth tracks compile-time nesting inside any array-forcing
+	// caller (SUMPRODUCT, SUMIF family, INDEX, array-evaluated arg slots,
+	// CSE probes, DynamicRangeRef). It is incremented only at "real" array
+	// ctx entries — NOT at the suspend-for-IF pair that emits a
+	// Leave/Enter pair around a scalar caller's arguments. OpCall uses this
+	// counter to set the inheritedArrayCtx flag so element-wise functions
+	// keep broadcasting when they appear inside SUMPRODUCT(IF(…), …) even
+	// though runtime arrayCtxDepth drops to 0 inside IF's arms.
+	legacyArrayDepth int
 }
 
 func (c *compiler) emit(op OpCode, operand uint32) {
 	c.code = append(c.code, Instruction{Op: op, Operand: operand})
+}
+
+// enterLegacyArrayCtx emits OpEnterArrayCtx and bumps the compile-time
+// legacyArrayDepth counter. Use this for "real" array-forcing entries
+// (SUMPRODUCT and friends, array-consuming arg slots, CSE probes) so nested
+// OpCall instructions know they're inside a legacy array context even when a
+// sibling IF suspends the runtime array-ctx counter for its own arm.
+func (c *compiler) enterLegacyArrayCtx() {
+	c.emit(OpEnterArrayCtx, 0)
+	c.legacyArrayDepth++
+}
+
+// leaveLegacyArrayCtx emits OpLeaveArrayCtx and decrements the counter.
+// Must be paired one-to-one with enterLegacyArrayCtx — raw Leave/Enter pairs
+// used only for the IF-suspend dance stay off this accounting because they
+// cancel at the outer level.
+func (c *compiler) leaveLegacyArrayCtx() {
+	c.emit(OpLeaveArrayCtx, 0)
+	c.legacyArrayDepth--
 }
 
 // addConst returns the index for a constant, deduplicating numbers and strings.
@@ -141,6 +181,12 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpPushError, uint32(ErrValNAME))
 			return nil
 		}
+		if n.Name != "" {
+			// Bare identifier that was not resolved as a defined name nor
+			// consumed by LET/LAMBDA desugaring.
+			c.emit(OpPushError, uint32(ErrValNAME))
+			return nil
+		}
 		if n.Col < 1 || n.Col > maxCols {
 			// Column outside valid range [A, XFD] (includes overflow-wrapped values)
 			// that wasn't consumed by LET/LAMBDA desugaring — invalid ref.
@@ -189,8 +235,47 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpLoadRange, idx)
 		}
 
+	case *IntersectRef:
+		if !isReferenceNode(n.Left) || !isReferenceNode(n.Right) {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		if err := c.compileIntersectOperand(n.Left, inArrayCtx); err != nil {
+			return err
+		}
+		if err := c.compileIntersectOperand(n.Right, inArrayCtx); err != nil {
+			return err
+		}
+		c.emit(OpIntersect, 0)
+
+	case *DynamicRangeRef:
+		// Both endpoints must yield single-cell references at runtime.
+		// CellRef operands compile to OpLoadCellRef so their address is
+		// available without resolving the cell value; other ref-returning
+		// expressions are compiled in array context so full-column/row
+		// args (e.g. A:A inside INDEX(A:A,n)) don't implicit-intersect
+		// before the function can use them as references.
+		c.emit(OpEnterArrayCtx, 0)
+		if err := c.compileIntersectOperand(n.From, true); err != nil {
+			return err
+		}
+		if err := c.compileIntersectOperand(n.To, true); err != nil {
+			return err
+		}
+		c.emit(OpLeaveArrayCtx, 0)
+		c.emit(OpBuildRange, 0)
+
 	case *UnionRef:
-		return fmt.Errorf("union references are only supported inside AREAS")
+		if len(n.Areas) == 0 {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		for _, area := range n.Areas {
+			if err := c.compileNodeCtx(area, inArrayCtx); err != nil {
+				return err
+			}
+		}
+		c.emit(OpUnion, uint32(len(n.Areas)))
 
 	case *UnaryExpr:
 		if err := c.compileNodeCtx(n.Operand, inArrayCtx); err != nil {
@@ -201,6 +286,8 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 			c.emit(OpNeg, 0)
 		case "+":
 			// no-op
+		case "@":
+			c.emit(OpImplicitIntersect, 0)
 		default:
 			return fmt.Errorf("unknown unary operator %q", n.Op)
 		}
@@ -443,18 +530,18 @@ func (c *compiler) compileNodeCtx(node Node, inArrayCtx bool) error {
 	return nil
 }
 
-func formulaNeedsSpillProbe(node Node) bool {
+func formulaNeedsTopLevelArray(node Node) bool {
 	switch n := node.(type) {
 	case *RangeRef:
 		return true
 	case *ArrayLit:
 		return true
 	case *UnaryExpr:
-		return formulaNeedsSpillProbe(n.Operand)
+		return formulaNeedsTopLevelArray(n.Operand)
 	case *BinaryExpr:
-		return formulaNeedsSpillProbe(n.Left) || formulaNeedsSpillProbe(n.Right)
+		return formulaNeedsTopLevelArray(n.Left) || formulaNeedsTopLevelArray(n.Right)
 	case *FuncCall:
-		return funcCallNeedsSpillProbe(n)
+		return funcCallNeedsTopLevelArray(n)
 	case *MapExpr:
 		return true
 	case *ScanExpr:
@@ -469,30 +556,70 @@ func formulaNeedsSpillProbe(node Node) bool {
 	return false
 }
 
-func funcCallNeedsSpillProbe(call *FuncCall) bool {
+func funcCallNeedsTopLevelArray(call *FuncCall) bool {
 	name := normalizeFuncName(call.Name)
+	switch name {
+	case "OFFSET", "INDIRECT":
+		return true
+	}
 	if _, ok := dynamicArrayFunctions[name]; ok {
 		return true
+	}
+	if indices, ok := criteriaTopLevelArrayArgIndexes(name, len(call.Args)); ok {
+		for _, idx := range indices {
+			if formulaNeedsTopLevelArray(call.Args[idx]) {
+				return true
+			}
+		}
+		return false
 	}
 	if !functionCanReturnArrayFromArrayArgs(name) {
 		return false
 	}
 	for _, arg := range call.Args {
-		if formulaNeedsSpillProbe(arg) {
+		if formulaNeedsTopLevelArray(arg) {
 			return true
 		}
 	}
 	return false
 }
 
+func criteriaTopLevelArrayArgIndexes(name string, argc int) ([]int, bool) {
+	switch name {
+	case "COUNTIF", "SUMIF", "AVERAGEIF":
+		if argc >= 2 {
+			return []int{1}, true
+		}
+		return nil, true
+	case "COUNTIFS":
+		idxs := make([]int, 0, argc/2)
+		for i := 1; i < argc; i += 2 {
+			idxs = append(idxs, i)
+		}
+		return idxs, true
+	case "SUMIFS", "AVERAGEIFS":
+		idxs := make([]int, 0, argc/2)
+		for i := 2; i < argc; i += 2 {
+			idxs = append(idxs, i)
+		}
+		return idxs, true
+	default:
+		return nil, false
+	}
+}
+
 func functionCanReturnArrayFromArrayArgs(name string) bool {
 	if name == "IF" {
 		return true
 	}
-	if elementWiseCallFuncs[name] {
+	if name == "INDEX" {
 		return true
 	}
-	if meta, ok := funcMetaForName(name); ok && meta.Kind == FnKindScalarLifted {
+	switch name {
+	case "COUNTIF", "SUMIF", "AVERAGEIF", "COUNTIFS", "SUMIFS", "AVERAGEIFS":
+		return true
+	}
+	if functionUsesElementwiseContract(name) {
 		return true
 	}
 	return false
@@ -514,13 +641,79 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// removed earlier.
 	name = strings.TrimPrefix(name, "_XLFN._XLWS.")
 	name = strings.TrimPrefix(name, "_XLFN.")
+	// ISOMITTED checks whether its argument was an omitted LAMBDA parameter.
+	// Because LAMBDA invocation substitutes the raw AST node (including
+	// *EmptyArg for empty argument slots), this is a purely syntactic check
+	// at compile time.
+	if name == "ISOMITTED" {
+		if len(n.Args) != 1 {
+			c.emit(OpPushError, uint32(ErrValVALUE))
+			return nil
+		}
+		if _, isEmpty := n.Args[0].(*EmptyArg); isEmpty {
+			c.emit(OpPushBool, 1)
+			return nil
+		}
+		c.emit(OpPushBool, 0)
+		return nil
+	}
 	funcID := LookupFunc(name)
 	if funcID < 0 {
-		return fmt.Errorf("unknown function %q", n.Name)
+		// Unknown function names produce #NAME? at runtime in Excel so that
+		// wrappers like IFERROR/ISERROR/ERROR.TYPE can catch the error.
+		c.emit(OpPushError, uint32(ErrValNAME))
+		return nil
 	}
 	argc := len(n.Args)
 	if argc > 255 {
 		return fmt.Errorf("function %q has %d arguments (max 255)", n.Name, argc)
+	}
+
+	// IFERROR and IFNA evaluate their arguments in Excel's legacy scalar
+	// context when called inside a legacy array-forcing function (SUMPRODUCT,
+	// SUMIF, MATCH, …): range references implicit-intersect at the formula
+	// cell's row/column before the function runs. Evidence:
+	// testdata/error_propagation/{06,11,12}_* all resolve SUMPRODUCT(IFERROR(
+	// range, …), …) to #VALUE! because the implicit-intersected IFERROR
+	// returns a scalar that SUMPRODUCT can't line up against the sibling
+	// range. Dynamic-array-native wrappers (FILTER, SORT, UNIQUE, …) keep
+	// array semantics — verified against Excel in spill fixture
+	// 33_iferror_datevalue_full_column.xlsx. CSE array formulas opt out via
+	// the opcode's ctx.IsArrayFormula guard.
+	if name == "IFERROR" || name == "IFNA" {
+		if c.dynamicArrayDepth == 0 {
+			wasArrayCtx := inArrayCtx
+			if wasArrayCtx {
+				c.emit(OpLeaveArrayCtx, 0)
+			}
+			for i, arg := range n.Args {
+				if err := c.compileNodeCtx(arg, false); err != nil {
+					return err
+				}
+				// Arg 0 collapses fully (legacy implicit intersection over
+				// range-backed and anonymous arrays alike) because Excel's
+				// IFERROR oracle for patterns like
+				//   SUM(IFERROR(MAP(...with-errors...), 0))
+				// shows MAP's anonymous output collapsed to its top-left
+				// cell. Arg 1 only intersects range-backed arrays so that
+				// anonymous fallbacks like SEQUENCE(5) keep their shape in
+				//   ROWS(IFERROR(FILTER(...empty...), SEQUENCE(5)))
+				// — otherwise the fallback array would collapse to its
+				// anchor scalar before reaching ROWS/SUM/etc.
+				if i == 0 {
+					c.emit(OpImplicitIntersect, 0)
+				} else {
+					c.emit(OpImplicitIntersectRefOnly, 0)
+				}
+			}
+			if wasArrayCtx {
+				c.emit(OpEnterArrayCtx, 0)
+			}
+			c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || wasArrayCtx))
+			return nil
+		}
+		// Fall through to the element-wise lifting path for dynamic-array
+		// contexts.
 	}
 
 	inheritedArrayCtx := inArrayCtx
@@ -529,7 +722,13 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 	// function arguments. Suspending the inherited array context here matches
 	// Excel's legacy implicit-intersection behavior for formulas like:
 	//   SUMPRODUCT(mask*IF(range-range*scalar>0, range-range*scalar, 0))
-	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name)
+	// Element-wise functions (ROUND, IFERROR, etc.) must NOT have their
+	// inherited array context suspended, because their arguments need array
+	// semantics for the arithmetic inside them to broadcast correctly.
+	// Without this, expressions like ROUND(G*scalar, 0) inside FILTER
+	// conditions lose array context, causing G to be implicitly intersected
+	// to a single cell.
+	suspendInheritedArrayCtx := inArrayCtx && !IsArrayFunc(name) && !functionUsesElementwiseContract(name)
 	if suspendInheritedArrayCtx {
 		c.emit(OpLeaveArrayCtx, 0)
 		// The deferred restore intentionally covers the early-return paths
@@ -553,7 +752,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		if cr, ok := n.Args[0].(*CellRef); ok && !cr.DotNotation && cr.SheetEnd == "" && cr.Col <= maxCols {
 			idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
 			c.emit(OpLoadCellRef, idx)
-			c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+			c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 			return nil
 		}
 		// For ISREF, range references are also references.
@@ -561,7 +760,7 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			if rr, ok := n.Args[0].(*RangeRef); ok && rr.From.Col >= 1 && rr.From.Col <= maxCols && rr.To.Col >= 1 && rr.To.Col <= maxCols {
 				idx := c.addRef(CellAddr{Sheet: rr.From.Sheet, Col: rr.From.Col, Row: rr.From.Row})
 				c.emit(OpLoadCellRef, idx)
-				c.emit(OpCall, uint32(funcID)<<8|uint32(argc))
+				c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 				return nil
 			}
 			// INDIRECT (and OFFSET) are ref-returning functions.
@@ -598,8 +797,16 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 			}
 		default:
 			// Range references already produce ValueArray with RangeOrigin.
-			if err := c.compileNodeCtx(first, inArrayCtx); err != nil {
-				return err
+			if isDirectRangeRefNode(first) {
+				c.enterLegacyArrayCtx()
+				if err := c.compileNodeCtx(first, true); err != nil {
+					return err
+				}
+				c.leaveLegacyArrayCtx()
+			} else {
+				if err := c.compileNodeCtx(first, inArrayCtx); err != nil {
+					return err
+				}
 			}
 		}
 		for _, arg := range n.Args[1:] {
@@ -607,42 +814,45 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 				return err
 			}
 		}
-		operand := uint32(funcID)<<8 | uint32(argc)
-		c.emit(OpCall, operand)
+		c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx))
 		return nil
 	}
 
 	arrayCtx := IsArrayFunc(name)
 	if arrayCtx {
-		c.emit(OpEnterArrayCtx, 0)
+		c.enterLegacyArrayCtx()
+	}
+	if IsDynamicArrayFunc(name) {
+		c.dynamicArrayDepth++
+		defer func() { c.dynamicArrayDepth-- }()
 	}
 	for i, arg := range n.Args {
 		forceInheritedArrayArg := suspendInheritedArrayCtx && inheritedArrayCtx && inheritedArrayEvalForFuncArg(name, i)
 		if !arrayCtx {
 			switch ArgEvalModeForFuncArg(name, i) {
 			case FuncArgEvalArray:
-				c.emit(OpEnterArrayCtx, 0)
+				c.enterLegacyArrayCtx()
 				if err := c.compileNodeCtx(arg, true); err != nil {
 					return err
 				}
-				c.emit(OpLeaveArrayCtx, 0)
+				c.leaveLegacyArrayCtx()
 				continue
 			case FuncArgEvalDirectRange:
 				if isDirectRangeRefNode(arg) {
-					c.emit(OpEnterArrayCtx, 0)
+					c.enterLegacyArrayCtx()
 					if err := c.compileNodeCtx(arg, true); err != nil {
 						return err
 					}
-					c.emit(OpLeaveArrayCtx, 0)
+					c.leaveLegacyArrayCtx()
 					continue
 				}
 			}
 			if forceInheritedArrayArg {
-				c.emit(OpEnterArrayCtx, 0)
+				c.enterLegacyArrayCtx()
 				if err := c.compileNodeCtx(arg, true); err != nil {
 					return err
 				}
-				c.emit(OpLeaveArrayCtx, 0)
+				c.leaveLegacyArrayCtx()
 				continue
 			}
 		}
@@ -651,11 +861,22 @@ func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {
 		}
 	}
 	if arrayCtx {
-		c.emit(OpLeaveArrayCtx, 0)
+		c.leaveLegacyArrayCtx()
 	}
-	operand := uint32(funcID)<<8 | uint32(argc)
-	c.emit(OpCall, operand)
+	c.emit(OpCall, callOperand(funcID, argc, c.legacyArrayDepth > 0 || inheritedArrayCtx || arrayCtx))
 	return nil
+}
+
+// callOperand packs funcID, argc, and the inheritedArrayCtx flag into a single
+// OpCall operand. The flag tells the runtime to skip the legacy
+// implicit-intersection gate: set it whenever this call site was compiled
+// inside a (possibly suspended) array-forcing context.
+func callOperand(funcID, argc int, inheritedArrayCtx bool) uint32 {
+	operand := uint32(funcID)<<8 | uint32(argc)
+	if inheritedArrayCtx {
+		operand |= callFlagInheritedArrayCtx
+	}
+	return operand
 }
 
 func binaryOpCode(op string) (OpCode, error) {
@@ -690,6 +911,40 @@ func binaryOpCode(op string) (OpCode, error) {
 }
 
 func isDirectRangeRefNode(node Node) bool {
-	_, ok := node.(*RangeRef)
-	return ok
+	switch node.(type) {
+	case *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	}
+	return false
+}
+
+// compileIntersectOperand compiles an operand of the intersection operator.
+// CellRef operands are loaded as ValueRef so rangeIntersect can recover their
+// address; otherwise OpLoadCell would push a value with no origin and the
+// intersection of two single-cell refs would fall through to #VALUE! instead
+// of computing the rectangle (and #NULL! when they don't overlap).
+func (c *compiler) compileIntersectOperand(n Node, inArrayCtx bool) error {
+	if cr, ok := n.(*CellRef); ok && !cr.DotNotation && cr.Name == "" && cr.SheetEnd == "" && cr.Col >= 1 && cr.Col <= maxCols {
+		idx := c.addRef(CellAddr{Sheet: cr.Sheet, Col: cr.Col, Row: cr.Row})
+		c.emit(OpLoadCellRef, idx)
+		return nil
+	}
+	return c.compileNodeCtx(n, inArrayCtx)
+}
+
+// isReferenceNode reports whether a node can legitimately appear as an
+// operand of the intersection operator. This mirrors Excel's rule: only
+// reference-producing expressions (cells, ranges, nested intersections, and
+// certain reference-returning function calls) are permitted.
+func isReferenceNode(n Node) bool {
+	switch v := n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	case *FuncCall:
+		switch strings.ToUpper(v.Name) {
+		case "OFFSET", "INDIRECT", "INDEX", "CHOOSE", "IF", "IFS", "SWITCH", "ANCHORARRAY":
+			return true
+		}
+	}
+	return false
 }

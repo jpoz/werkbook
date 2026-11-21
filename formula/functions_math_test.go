@@ -4169,6 +4169,25 @@ func TestMDETERM_LargeValues(t *testing.T) {
 	}
 }
 
+func TestMDETERM_WithCellRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, "MDETERM(A1:B2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != -2 {
+		t.Fatalf("MDETERM(A1:B2) = %v, want -2", got)
+	}
+}
+
 func TestMDETERM_PermutationMatrix(t *testing.T) {
 	// Permutation matrix: det = -1 (single swap from identity)
 	result, err := fnMDETERM([]Value{
@@ -4700,6 +4719,33 @@ func TestMINVERSE_LargeValues(t *testing.T) {
 	}
 }
 
+func TestMINVERSE_WithCellRange(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, "MINVERSE(A1:B2)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueArray {
+		t.Fatalf("expected array, got %v", got.Type)
+	}
+	want := [][]float64{{-2, 1}, {1.5, -0.5}}
+	for r := 0; r < 2; r++ {
+		for c := 0; c < 2; c++ {
+			if math.Abs(got.Array[r][c].Num-want[r][c]) > 1e-10 {
+				t.Errorf("[%d][%d]: got %g, want %g", r, c, got.Array[r][c].Num, want[r][c])
+			}
+		}
+	}
+}
+
 func TestMINVERSE_NearSingular(t *testing.T) {
 	// A matrix with a very small determinant should still invert if above threshold.
 	// {1, 1; 1, 1.0000000001} has det ~ 1e-10 which is above 1e-15 threshold.
@@ -4894,6 +4940,57 @@ func TestMINVERSE_StringArg(t *testing.T) {
 	}
 	if result.Type != ValueError || result.Err != ErrValVALUE {
 		t.Errorf("expected #VALUE!, got %v", result)
+	}
+}
+
+func TestMatrixFunctions_InvalidMatrixInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   func([]Value) (Value, error)
+		arg  Value
+	}{
+		{
+			name: "mdeterm_jagged_array",
+			fn:   fnMDETERM,
+			arg: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(2)},
+				{NumberVal(3)},
+			}},
+		},
+		{
+			name: "mdeterm_trimmed_range_missing_row",
+			fn:   fnMDETERM,
+			arg: trimmedRangeValue([][]Value{
+				{NumberVal(1), NumberVal(2)},
+			}, 1, 1, 2, 2),
+		},
+		{
+			name: "minverse_jagged_array",
+			fn:   fnMINVERSE,
+			arg: Value{Type: ValueArray, Array: [][]Value{
+				{NumberVal(1), NumberVal(2)},
+				{NumberVal(3)},
+			}},
+		},
+		{
+			name: "minverse_trimmed_range_missing_row",
+			fn:   fnMINVERSE,
+			arg: trimmedRangeValue([][]Value{
+				{NumberVal(1), NumberVal(2)},
+			}, 1, 1, 2, 2),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.fn([]Value{tt.arg})
+			if err != nil {
+				t.Fatalf("fn: %v", err)
+			}
+			if got.Type != ValueError || got.Err != ErrValVALUE {
+				t.Fatalf("got %v, want #VALUE!", got)
+			}
+		})
 	}
 }
 
@@ -11053,7 +11150,8 @@ func TestQUOTIENT(t *testing.T) {
 //
 // Therefore a = QUOTIENT(a,b)*b + MOD(a,b) only holds when a and b have the
 // same sign (where INT and TRUNC agree). The always-true identity for MOD is:
-//   a = INT(a/b)*b + MOD(a,b)
+//
+//	a = INT(a/b)*b + MOD(a,b)
 //
 // We test both properties here.
 func TestMODQUOTIENTCrossCheck(t *testing.T) {
@@ -12177,9 +12275,9 @@ func TestSUBTOTAL(t *testing.T) {
 // HiddenRowChecker for comprehensive SUBTOTAL testing.
 type subtotalMockResolver struct {
 	cells          map[CellAddr]Value
-	subtotalCells  map[CellAddr]bool            // cells that contain SUBTOTAL formulas
-	hiddenRows     map[string]map[int]bool       // sheet -> row -> hidden
-	autoFilterRows map[string]map[int]bool       // sheet -> row -> filtered by autoFilter
+	subtotalCells  map[CellAddr]bool       // cells that contain SUBTOTAL formulas
+	hiddenRows     map[string]map[int]bool // sheet -> row -> hidden
+	autoFilterRows map[string]map[int]bool // sheet -> row -> filtered by autoFilter
 }
 
 func (m *subtotalMockResolver) GetCellValue(addr CellAddr) Value {
@@ -12229,6 +12327,14 @@ func (m *subtotalMockResolver) IsRowFilteredByAutoFilter(sheet string, row int) 
 		return sheetMap[row]
 	}
 	return false
+}
+
+type subtotalSparseResolver struct {
+	subtotalMockResolver
+}
+
+func (m *subtotalSparseResolver) GetRangeValues(addr RangeAddr) [][]Value {
+	return (&sparseResolver{cells: m.cells}).GetRangeValues(addr)
 }
 
 func TestSUBTOTALComprehensive(t *testing.T) {
@@ -13207,6 +13313,65 @@ func TestSUBTOTALComprehensive(t *testing.T) {
 			t.Errorf("got %v (%g), want %g", got.Type, got.Num, expected)
 		}
 	})
+}
+
+func TestSubtotalFilterArgsPreservesTrimmedRangeOrigin(t *testing.T) {
+	arg := trimmedRangeValue([][]Value{
+		{NumberVal(10)},
+	}, 1, 1, 1, 3)
+	ctx := &EvalContext{
+		Resolver: &subtotalMockResolver{
+			autoFilterRows: map[string]map[int]bool{
+				"": {1: true},
+			},
+		},
+	}
+
+	gotArgs := subtotalFilterArgs([]Value{arg}, ctx, false)
+	if len(gotArgs) != 1 {
+		t.Fatalf("len(filtered) = %d, want 1", len(gotArgs))
+	}
+	got := gotArgs[0]
+	if got.RangeOrigin == nil || got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != 3 {
+		t.Fatalf("RangeOrigin = %+v, want rows 1:3", got.RangeOrigin)
+	}
+	rows, cols := arrayOpBounds(got)
+	if rows != 3 || cols != 1 {
+		t.Fatalf("arrayOpBounds(filtered) = %dx%d, want 3x1", rows, cols)
+	}
+	for row := 0; row < rows; row++ {
+		if cell := arrayElementDirect(got, rows, cols, row, 0); cell.Type != ValueEmpty {
+			t.Fatalf("filtered[%d,0] = %#v, want empty", row, cell)
+		}
+	}
+}
+
+func TestSUBTOTALFullColumnSparseRefUsesLiveGrid(t *testing.T) {
+	resolver := &subtotalSparseResolver{
+		subtotalMockResolver: subtotalMockResolver{
+			cells: map[CellAddr]Value{
+				{Col: 1, Row: 1}: NumberVal(10),
+				{Col: 1, Row: 2}: NumberVal(20),
+				{Col: 1, Row: 3}: NumberVal(30),
+				{Col: 1, Row: 4}: NumberVal(40),
+			},
+			subtotalCells: map[CellAddr]bool{
+				{Col: 1, Row: 4}: true,
+			},
+			hiddenRows: map[string]map[int]bool{
+				"": {2: true},
+			},
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver}
+	cf := evalCompile(t, "SUBTOTAL(109,A:A)")
+	got, err := Eval(cf, resolver, ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 40 {
+		t.Fatalf("SUBTOTAL(109,A:A) = %v (%g), want 40", got.Type, got.Num)
+	}
 }
 
 func TestISOCEILING(t *testing.T) {

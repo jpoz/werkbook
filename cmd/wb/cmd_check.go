@@ -6,8 +6,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	werkbook "github.com/jpoz/werkbook"
 )
@@ -111,6 +113,8 @@ func cmdCheck(args []string, globals globalFlags) int {
 	var toleranceFlag float64
 	var toleranceSet bool
 	var configPath string
+	var verbose bool
+	var jobs int
 
 	i := 0
 	var paths []string
@@ -142,6 +146,21 @@ func cmdCheck(args []string, globals globalFlags) int {
 				return ExitUsage
 			}
 			configPath = args[i+1]
+			i += 2
+		case "--verbose", "-v":
+			verbose = true
+			i++
+		case "--jobs", "-j":
+			if i+1 >= len(args) {
+				writeError(cmd, errUsage("--jobs requires a value"), globals)
+				return ExitUsage
+			}
+			n, err := parseInt(args[i+1])
+			if err != nil || n < 1 {
+				writeError(cmd, errUsage(fmt.Sprintf("invalid --jobs value: %s (must be a positive integer)", args[i+1])), globals)
+				return ExitUsage
+			}
+			jobs = n
 			i += 2
 		default:
 			if len(args[i]) > 0 && args[i][0] != '-' {
@@ -188,31 +207,102 @@ func cmdCheck(args []string, globals globalFlags) int {
 
 	// Single file: use the original single-file output for backward compatibility.
 	if len(filePaths) == 1 {
-		return cmdCheckSingle(filePaths[0], sheetFlag, &cfg, cmd, globals)
+		return cmdCheckSingle(filePaths[0], sheetFlag, &cfg, cmd, globals, verbose)
 	}
 
-	// Multiple files: aggregate results.
+	// Multiple files: run in parallel, aggregate results in input order so
+	// the non-verbose output is byte-identical to the serial implementation.
+	if jobs <= 0 {
+		jobs = runtime.NumCPU()
+	}
+	if jobs > len(filePaths) {
+		jobs = len(filePaths)
+	}
+
+	type checkJob struct {
+		idx  int
+		path string
+	}
+	type checkJobResult struct {
+		idx     int
+		path    string
+		ignored bool
+		skipped bool
+		errMsg  string
+		data    checkData
+		elapsed time.Duration
+	}
+
+	jobCh := make(chan checkJob)
+	resCh := make(chan checkJobResult, len(filePaths))
+
+	for range jobs {
+		go func() {
+			for j := range jobCh {
+				if cfg.shouldIgnoreFile(j.path) {
+					resCh <- checkJobResult{idx: j.idx, path: j.path, ignored: true}
+					continue
+				}
+				start := time.Now()
+				result, skipped, ferr := checkFile(j.path, sheetFlag, &cfg)
+				resCh <- checkJobResult{
+					idx:     j.idx,
+					path:    j.path,
+					skipped: skipped,
+					errMsg:  ferr,
+					data:    result,
+					elapsed: time.Since(start),
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for i, fp := range filePaths {
+			jobCh <- checkJob{idx: i, path: fp}
+		}
+		close(jobCh)
+	}()
+
+	results := make([]checkJobResult, len(filePaths))
+	for range filePaths {
+		r := <-resCh
+		results[r.idx] = r
+		if verbose {
+			// Single consumer — no mutex needed.
+			switch {
+			case r.ignored:
+				fmt.Fprintf(os.Stderr, "%s — ignored\n", r.path)
+			case r.errMsg != "":
+				fmt.Fprintf(os.Stderr, "%s — error: %s\n", r.path, r.errMsg)
+			case r.skipped:
+				fmt.Fprintf(os.Stderr, "%s — skipped (uncached) in %s\n", r.path, formatCheckDuration(r.elapsed))
+			default:
+				fmt.Fprintf(os.Stderr, "%s — %d formulas in %s\n", r.path, r.data.Formulas, formatCheckDuration(r.elapsed))
+			}
+		}
+	}
+
 	multi := checkMultiData{}
-	for _, fp := range filePaths {
-		if cfg.shouldIgnoreFile(fp) {
+	for _, r := range results {
+		if r.ignored {
 			continue
 		}
-		result, skipped, ferr := checkFile(fp, sheetFlag, &cfg)
-		if ferr != "" {
+		if r.errMsg != "" {
 			multi.Errors++
-			multi.FileErrors = append(multi.FileErrors, fileError{File: fp, Error: ferr})
+			multi.FileErrors = append(multi.FileErrors, fileError{File: r.path, Error: r.errMsg})
 			continue
 		}
-		if skipped {
+		if r.skipped {
 			multi.Skipped++
-			multi.SkippedFiles = append(multi.SkippedFiles, fp)
+			multi.SkippedFiles = append(multi.SkippedFiles, r.path)
 			continue
 		}
 		multi.Files++
-		multi.Formulas += result.Formulas
-		multi.Matches += result.Matches
-		multi.Mismatches += result.Mismatches
-		multi.Results = append(multi.Results, result)
+		multi.Formulas += r.data.Formulas
+		multi.Matches += r.data.Matches
+		multi.Mismatches += r.data.Mismatches
+		multi.Results = append(multi.Results, r.data)
 	}
 
 	writeSuccess(cmd, multi, globals)
@@ -250,19 +340,47 @@ func expandXLSXPaths(paths []string) ([]string, error) {
 	return result, nil
 }
 
-func cmdCheckSingle(filePath, sheetFlag string, cfg *checkConfig, cmd string, globals globalFlags) int {
+func cmdCheckSingle(filePath, sheetFlag string, cfg *checkConfig, cmd string, globals globalFlags, verbose bool) int {
 	if cfg.shouldIgnoreFile(filePath) {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s — ignored\n", filePath)
+		}
 		writeSuccess(cmd, checkData{File: filePath}, globals)
 		return ExitSuccess
 	}
-	result, _, ferr := checkFile(filePath, sheetFlag, cfg)
+	start := time.Now()
+	result, skipped, ferr := checkFile(filePath, sheetFlag, cfg)
+	elapsed := time.Since(start)
 	if ferr != "" {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s — error: %s\n", filePath, ferr)
+		}
 		writeError(cmd, &ErrorInfo{Code: ErrCodeFileOpenFailed, Message: ferr}, globals)
 		return ExitFileIO
+	}
+	if verbose {
+		if skipped {
+			fmt.Fprintf(os.Stderr, "%s — skipped (uncached) in %s\n", filePath, formatCheckDuration(elapsed))
+		} else {
+			fmt.Fprintf(os.Stderr, "%s — %d formulas in %s\n", filePath, result.Formulas, formatCheckDuration(elapsed))
+		}
 	}
 
 	writeSuccess(cmd, result, globals)
 	return ExitSuccess
+}
+
+// formatCheckDuration renders an elapsed duration in a compact, stable form
+// suitable for per-file verbose progress output.
+func formatCheckDuration(d time.Duration) string {
+	switch {
+	case d >= time.Second:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	case d >= time.Millisecond:
+		return fmt.Sprintf("%.1fms", float64(d)/float64(time.Millisecond))
+	default:
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	}
 }
 
 func checkFile(filePath, sheetFlag string, cfg *checkConfig) (result checkData, skipped bool, errMsg string) {
@@ -458,8 +576,6 @@ var volatileFuncs = []string{
 	"RANDBETWEEN",
 	"NOW",
 	"TODAY",
-	"OFFSET",
-	"INDIRECT",
 }
 
 func valuesEqual(a, b werkbook.Value, tolerance float64) bool {
@@ -498,6 +614,12 @@ func parseFloat(s string) (float64, error) {
 	var f float64
 	_, err := fmt.Sscanf(s, "%f", &f)
 	return f, err
+}
+
+func parseInt(s string) (int, error) {
+	var n int
+	_, err := fmt.Sscanf(s, "%d", &n)
+	return n, err
 }
 
 func renderCheckMultiText(data checkMultiData) string {

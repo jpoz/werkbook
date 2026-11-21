@@ -67,20 +67,15 @@ func fnCHOOSE(args []Value) (Value, error) {
 func fnCONCAT(args []Value) (Value, error) {
 	var b strings.Builder
 	for _, arg := range args {
-		if arg.Type == ValueError {
-			return arg, nil
-		}
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return cell, nil
-					}
-					b.WriteString(ValueToString(cell))
-				}
+		if errVal := walkFlattenedValueCells(arg, func(cell Value) *Value {
+			if cell.Type == ValueError {
+				cellErr := cell
+				return &cellErr
 			}
-		} else {
-			b.WriteString(ValueToString(arg))
+			b.WriteString(ValueToString(cell))
+			return nil
+		}); errVal != nil {
+			return *errVal, nil
 		}
 	}
 	return StringVal(b.String()), nil
@@ -95,6 +90,21 @@ func fnCONCATENATE(args []Value) (Value, error) {
 		b.WriteString(ValueToString(arg))
 	}
 	return StringVal(b.String()), nil
+}
+
+// walkFlattenedValueCells iterates a scalar or array in row-major order using
+// the shared array-grid seam so ref-backed and trimmed ranges keep their
+// logical shape across legacy Value boundaries.
+func walkFlattenedValueCells(v Value, visit func(Value) *Value) *Value {
+	if visit == nil {
+		return nil
+	}
+	var errVal *Value
+	iterateValueElements(v, func(cell Value) bool {
+		errVal = visit(cell)
+		return errVal == nil
+	})
+	return errVal
 }
 
 func fnDOLLAR(args []Value) (Value, error) {
@@ -479,8 +489,26 @@ func fnTRIM(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	s := ValueToString(args[0])
-	fields := strings.Fields(s)
-	return StringVal(strings.Join(fields, " ")), nil
+	// Excel TRIM only collapses ASCII space (U+0020). It deliberately leaves
+	// NBSP (U+00A0) and other Unicode whitespace in place, which is a
+	// well-documented gotcha when cleaning data copied from web sources.
+	var b strings.Builder
+	b.Grow(len(s))
+	inRun := false
+	for i := 0; i < len(s); i++ {
+		if s[i] == ' ' {
+			if !inRun {
+				inRun = true
+			}
+			continue
+		}
+		if inRun && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		inRun = false
+		b.WriteByte(s[i])
+	}
+	return StringVal(b.String()), nil
 }
 
 func fnUnichar(args []Value) (Value, error) {
@@ -967,21 +995,13 @@ func fnTEXTJOIN(args []Value) (Value, error) {
 
 	var parts []string
 	for _, arg := range args[2:] {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if ignoreEmpty && (cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "")) {
-						continue
-					}
-					parts = append(parts, ValueToString(cell))
-				}
+		_ = walkFlattenedValueCells(arg, func(cell Value) *Value {
+			if ignoreEmpty && (cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "")) {
+				return nil
 			}
-		} else {
-			if ignoreEmpty && (arg.Type == ValueEmpty || (arg.Type == ValueString && arg.Str == "")) {
-				continue
-			}
-			parts = append(parts, ValueToString(arg))
-		}
+			parts = append(parts, ValueToString(cell))
+			return nil
+		})
 	}
 
 	result := strings.Join(parts, delimiter)
@@ -999,24 +1019,11 @@ func fnVALUEFn(args []Value) (Value, error) {
 		return args[0], nil
 	}
 	s := ValueToString(args[0])
-	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, ",", "")
-	s = strings.ReplaceAll(s, "$", "")
-
-	if strings.HasSuffix(s, "%") {
-		s = strings.TrimSuffix(s, "%")
-		num, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		return NumberVal(num / 100), nil
-	}
-
-	num, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	n, ok := excelParseNumber(s)
+	if !ok {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	return NumberVal(num), nil
+	return NumberVal(n), nil
 }
 
 // romanPair maps an integer value to its Roman numeral representation.
@@ -1194,35 +1201,25 @@ func fnArrayToText(args []Value) (Value, error) {
 	}
 
 	if strict {
-		// Strict: {v1,v2;v3,v4} with rows separated by ";" and columns by ","
-		var rows []string
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				var cols []string
-				for _, cell := range row {
-					cols = append(cols, valueToTextFormat(cell, true))
-				}
-				rows = append(rows, strings.Join(cols, ","))
+		// Strict: {a,b;c,d} with rows separated by ";" and columns by ","
+		rowCount, colCount := arrayOpBoundsOrScalar(arg)
+		rows := make([]string, rowCount)
+		for row := 0; row < rowCount; row++ {
+			cols := make([]string, colCount)
+			for col := 0; col < colCount; col++ {
+				cols[col] = valueToTextFormat(arrayElementDirect(arg, rowCount, colCount, row, col), true)
 			}
-		} else {
-			rows = append(rows, valueToTextFormat(arg, true))
+			rows[row] = strings.Join(cols, ",")
 		}
 		return StringVal("{" + strings.Join(rows, ";") + "}"), nil
 	}
 
 	// Concise: join all values with ", "
-	var vals []Value
-	if arg.Type == ValueArray {
-		for _, row := range arg.Array {
-			vals = append(vals, row...)
-		}
-	} else {
-		vals = append(vals, arg)
-	}
 	var parts []string
-	for _, v := range vals {
-		parts = append(parts, valueToTextFormat(v, false))
-	}
+	_ = walkFlattenedValueCells(arg, func(cell Value) *Value {
+		parts = append(parts, valueToTextFormat(cell, false))
+		return nil
+	})
 	return StringVal(strings.Join(parts, ", ")), nil
 }
 
@@ -1498,20 +1495,15 @@ func fnTextAfter(args []Value) (Value, error) {
 	return StringVal(text[pos+len(delimiter):]), nil
 }
 
-// collectDelimiters extracts a list of delimiter strings from a Value.
-// If the value is an array, all non-empty string elements are collected.
-// Otherwise the single string value is returned.
+// collectDelimiters extracts stringified delimiters from a Value in row-major
+// order, preserving ref-backed and trimmed-range iteration behavior.
 func collectDelimiters(v Value) []string {
-	if v.Type == ValueArray {
-		var delims []string
-		for _, row := range v.Array {
-			for _, cell := range row {
-				delims = append(delims, ValueToString(cell))
-			}
-		}
-		return delims
-	}
-	return []string{ValueToString(v)}
+	delims := make([]string, 0, valueCellCount(v))
+	_ = walkFlattenedValueCells(v, func(cell Value) *Value {
+		delims = append(delims, ValueToString(cell))
+		return nil
+	})
+	return delims
 }
 
 // textSplitByDelimiters splits text by any of the given delimiters.

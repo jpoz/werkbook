@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,13 +23,15 @@ type createRow struct {
 }
 
 type createData struct {
-	File       string     `json:"file"`
-	Sheets     int        `json:"sheets"`
-	Cells      int        `json:"cells"`
-	Applied    int        `json:"applied"`
-	Failed     int        `json:"failed"`
-	Saved      bool       `json:"saved"`
-	Operations []opResult `json:"operations,omitempty"`
+	File         string     `json:"file"`
+	Sheets       int        `json:"sheets"`
+	Cells        int        `json:"cells"`
+	Applied      int        `json:"applied"`
+	Failed       int        `json:"failed"`
+	Saved        bool       `json:"saved"`
+	DryRun       bool       `json:"dry_run,omitempty"`
+	ValidateOnly bool       `json:"validate_only,omitempty"`
+	Operations   []opResult `json:"operations,omitempty"`
 }
 
 func cmdCreate(args []string, globals globalFlags) int {
@@ -42,6 +45,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 	}
 
 	var specFlag string
+	var dryRun, validateOnly bool
 
 	i := 0
 	var filePath string
@@ -54,6 +58,13 @@ func cmdCreate(args []string, globals globalFlags) int {
 			}
 			specFlag = args[i+1]
 			i += 2
+		case "--dry-run":
+			dryRun = true
+			i++
+		case "--validate-only":
+			validateOnly = true
+			dryRun = true
+			i++
 		default:
 			if filePath == "" && len(args[i]) > 0 && args[i][0] != '-' {
 				filePath = args[i]
@@ -65,7 +76,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 		}
 	}
 
-	if filePath == "" {
+	if filePath == "" && !dryRun {
 		writeError(cmd, errUsage("file path required"), globals)
 		return ExitUsage
 	}
@@ -110,8 +121,14 @@ func cmdCreate(args []string, globals globalFlags) int {
 		return ExitValidate
 	}
 
-	// Apply cell operations, then row operations.
+	// Apply cell operations, then row operations. The order is fixed: cell
+	// ops run first, row ops second. Surface any same-cell collisions so the
+	// caller sees that a later op clobbered an earlier one (the bug pattern
+	// where a `rows` null placeholder erases a `cells` formula).
 	allOps := append(spec.Cells, rowOps...)
+	if dupWarnings := detectDuplicateWrites(allOps, defaultSheet); len(dupWarnings) > 0 {
+		globals.warnings = append(globals.warnings, dupWarnings...)
+	}
 	var results []opResult
 	cellsApplied := 0
 	if len(allOps) > 0 {
@@ -120,16 +137,22 @@ func cmdCreate(args []string, globals globalFlags) int {
 	failed := len(allOps) - cellsApplied
 
 	data := createData{
-		File:       filePath,
-		Sheets:     len(f.SheetNames()),
-		Cells:      cellsApplied,
-		Applied:    cellsApplied,
-		Failed:     failed,
-		Saved:      false,
-		Operations: results,
+		File:         filePath,
+		Sheets:       len(f.SheetNames()),
+		Cells:        cellsApplied,
+		Applied:      cellsApplied,
+		Failed:       failed,
+		Saved:        false,
+		DryRun:       dryRun,
+		ValidateOnly: validateOnly,
+		Operations:   results,
 	}
 
 	if failed > 0 {
+		hint := "Workbook was not saved. Check the 'operations' array for per-operation errors."
+		if dryRun {
+			hint = "Dry run: workbook was not saved. Check the 'operations' array for per-operation errors."
+		}
 		resp := &Response{
 			OK:      false,
 			Command: cmd,
@@ -137,7 +160,7 @@ func cmdCreate(args []string, globals globalFlags) int {
 			Error: &ErrorInfo{
 				Code:    ErrCodePartialFailure,
 				Message: fmt.Sprintf("%d of %d operations failed", failed, len(allOps)),
-				Hint:    "Workbook was not saved. Check the 'operations' array for per-operation errors.",
+				Hint:    hint,
 			},
 			Meta: buildMeta(cmd, globals),
 		}
@@ -145,17 +168,33 @@ func cmdCreate(args []string, globals globalFlags) int {
 		return ExitPartial
 	}
 
-	if err := f.SaveAs(filePath); err != nil {
-		writeError(cmd, errFileSave(filePath, err), globals)
-		return ExitFileIO
+	if !dryRun {
+		if err := f.SaveAs(filePath); err != nil {
+			writeError(cmd, errFileSave(filePath, err), globals)
+			return ExitFileIO
+		}
+		data.Saved = true
 	}
-	data.Saved = true
 
 	writeSuccess(cmd, data, globals)
 	return ExitSuccess
 }
 
+// rowCellOp is the per-cell shape allowed inside a `rows.data` block when an
+// element is a JSON object instead of a scalar. It's a strict subset of patch_op:
+// `cell` and `sheet` come from the row block itself, and the row geometry is
+// what makes the block useful, so accepting only the per-cell knobs (type,
+// value, formula, style) keeps row mode coherent without inviting confusion.
+type rowCellOp struct {
+	Type    string          `json:"type,omitempty"`
+	Value   json.RawMessage `json:"value,omitempty"`
+	Formula *string         `json:"formula,omitempty"`
+	Style   json.RawMessage `json:"style,omitempty"`
+}
+
 // rowsToPatchOps converts row-oriented data blocks into patch operations.
+// Each element of a row may be a scalar (string/number/bool/null) or a JSON
+// object carrying the same per-cell fields as patch_op.
 func rowsToPatchOps(rows []createRow, defaultSheet string) ([]patchOp, error) {
 	var ops []patchOp
 	for _, r := range rows {
@@ -177,13 +216,31 @@ func rowsToPatchOps(rows []createRow, defaultSheet string) ([]patchOp, error) {
 				if err != nil {
 					return nil, fmt.Errorf("cell coordinates out of range at row %d col %d", ri, ci)
 				}
-				ops = append(ops, patchOp{
-					Cell:  cellRef,
-					Sheet: sheet,
-					Value: rawVal,
-				})
+				op, err := rowDataElementToPatchOp(rawVal, cellRef, sheet)
+				if err != nil {
+					return nil, fmt.Errorf("invalid row data at %s: %v", cellRef, err)
+				}
+				ops = append(ops, op)
 			}
 		}
 	}
 	return ops, nil
+}
+
+func rowDataElementToPatchOp(raw json.RawMessage, cellRef, sheet string) (patchOp, error) {
+	op := patchOp{Cell: cellRef, Sheet: sheet}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		var rco rowCellOp
+		if err := strictUnmarshal(trimmed, &rco); err != nil {
+			return patchOp{}, err
+		}
+		op.Type = rco.Type
+		op.Value = rco.Value
+		op.Formula = rco.Formula
+		op.Style = rco.Style
+		return op, nil
+	}
+	op.Value = raw
+	return op, nil
 }

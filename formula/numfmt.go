@@ -594,13 +594,17 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 	minute := (wholeSec % 3600) / 60
 	second := wholeSec % 60
 
-	// We still need time.Time for date components (year, month, day, weekday).
+	// We still need time.Time for weekday. Year/month/day come from
+	// serialDatePartsForDateSystem so the 1900-system serial 60 renders as
+	// "1900-02-29" (Excel's intentional leap-year bug) rather than
+	// "1900-03-01".
 	var t time.Time
 	if date1904 {
 		t = SerialToTime1904(serial)
 	} else {
 		t = SerialToTime(serial)
 	}
+	yearDP, monthDP, dayDP := serialDatePartsForDateSystem(serial, date1904)
 
 	hour12 := hour % 12
 	if hour12 == 0 {
@@ -623,9 +627,9 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 		ap = strings.ToLower(ap)
 	}
 
-	day := t.Day()
-	month := int(t.Month())
-	year := t.Year()
+	day := dayDP
+	month := int(monthDP)
+	year := yearDP
 	weekday := int(t.Weekday())
 	if weekday == 0 {
 		weekday = 7 // Sunday = 7 for our array indexing

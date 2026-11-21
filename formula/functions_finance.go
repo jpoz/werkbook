@@ -3,7 +3,6 @@ package formula
 import (
 	"fmt"
 	"math"
-	"strings"
 	"time"
 )
 
@@ -839,23 +838,13 @@ func coerceDateNum(v Value) (float64, *Value) {
 	if e == nil {
 		return n, nil
 	}
-	// If the value is a string that couldn't be parsed as a number, try date parsing.
+	// If the value is a string that couldn't be parsed as a number, try
+	// Excel's text→date coercion. The unified parser accepts datetime
+	// strings too; callers that care about fractional time pull it out of
+	// the returned serial directly.
 	if v.Type == ValueString {
-		text := strings.TrimSpace(v.Str)
-		layouts := []string{
-			"1/2/2006",
-			"01/02/2006",
-			"2-Jan-2006",
-			"02-Jan-2006",
-			"2006/01/02",
-			"2006-01-02",
-			"January 2, 2006",
-		}
-		for _, layout := range layouts {
-			t, err := time.Parse(layout, text)
-			if err == nil {
-				return math.Floor(TimeToSerial(t)), nil
-			}
+		if serial, _, ok := parseDateTimeString(v.Str); ok {
+			return serial, nil
 		}
 	}
 	return 0, e

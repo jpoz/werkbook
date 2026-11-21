@@ -14,18 +14,18 @@ func init() {
 		Kind:               FnKindScalarLifted,
 		InheritedArrayArgs: map[int]bool{0: true, 1: true},
 	})
-	RegisterScalarLifted("ISBLANK", NoCtx(fnISBLANK))
-	RegisterScalarLifted("ISERR", NoCtx(fnISERR))
-	RegisterScalarLifted("ISERROR", NoCtx(fnISERROR))
+	RegisterScalarLiftedUnarySpec("ISBLANK", NoCtx(fnISBLANK))
+	RegisterScalarLiftedUnarySpec("ISERR", NoCtx(fnISERR))
+	RegisterScalarLiftedUnarySpec("ISERROR", NoCtx(fnISERROR))
 	Register("ISEVEN", NoCtx(fnISEVEN))
 	Register("ISLOGICAL", NoCtx(fnISLOGICAL))
-	RegisterScalarLifted("ISNA", NoCtx(fnISNA))
+	RegisterScalarLiftedUnarySpec("ISNA", NoCtx(fnISNA))
 	Register("ISNONTEXT", NoCtx(fnISNONTEXT))
-	RegisterScalarLifted("ISNUMBER", NoCtx(fnISNUMBER))
+	RegisterScalarLiftedUnarySpec("ISNUMBER", NoCtx(fnISNUMBER))
 	Register("ISODD", NoCtx(fnISODD))
 	Register("ISREF", NoCtx(fnISREF))
-	RegisterScalarLifted("ISTEXT", NoCtx(fnISTEXT))
-	RegisterScalarLifted("N", NoCtx(fnN))
+	RegisterScalarLiftedUnarySpec("ISTEXT", NoCtx(fnISTEXT))
+	RegisterScalarLiftedUnarySpec("N", NoCtx(fnN))
 	Register("NA", NoCtx(fnNA))
 	Register("ROW", fnROW)
 	Register("ROWS", NoCtx(fnROWS))
@@ -102,7 +102,8 @@ func fnISREF(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	return BoolVal(args[0].Type == ValueRef), nil
+	_, ok := infoRefBounds(args[0])
+	return BoolVal(ok), nil
 }
 
 func fnISNA(args []Value) (Value, error) {
@@ -213,18 +214,17 @@ func fnAREAS(args []Value) (Value, error) {
 	return ErrorVal(ErrValVALUE), nil
 }
 
+func infoRefBounds(v Value) (RangeAddr, bool) {
+	ref, ok := legacyValueRef(v)
+	if !ok {
+		return RangeAddr{}, false
+	}
+	return ref.Bounds(), true
+}
+
 func areasCount(v Value) (int, bool) {
-	switch v.Type {
-	case ValueRef:
+	if _, ok := infoRefBounds(v); ok {
 		return 1, true
-	case ValueArray:
-		if v.RangeOrigin != nil {
-			return 1, true
-		}
-	default:
-		if v.CellOrigin != nil {
-			return 1, true
-		}
 	}
 	return 0, false
 }
@@ -236,12 +236,16 @@ func fnCOLUMN(args []Value, ctx *EvalContext) (Value, error) {
 		}
 		return NumberVal(float64(ctx.CurrentCol)), nil
 	}
-	if len(args) == 1 && args[0].Type == ValueError {
-		return args[0], nil
-	}
-	if len(args) == 1 && args[0].Type == ValueRef {
-		col := int(args[0].Num) % 100_000
-		return NumberVal(float64(col)), nil
+	if len(args) == 1 {
+		if bounds, ok := infoRefBounds(args[0]); ok {
+			if args[0].Type == ValueArray && args[0].RangeOrigin != nil {
+				return ErrorVal(ErrValVALUE), nil
+			}
+			return NumberVal(float64(bounds.FromCol)), nil
+		}
+		if args[0].Type == ValueError {
+			return args[0], nil
+		}
 	}
 	return ErrorVal(ErrValVALUE), nil
 }
@@ -253,22 +257,21 @@ func fnROW(args []Value, ctx *EvalContext) (Value, error) {
 		}
 		return NumberVal(float64(ctx.CurrentRow)), nil
 	}
-	if len(args) == 1 && args[0].Type == ValueError {
-		return args[0], nil
-	}
-	if len(args) == 1 && args[0].Type == ValueRef {
-		row := int(args[0].Num) / 100_000
-		return NumberVal(float64(row)), nil
-	}
-	// Handle array with RangeOrigin (e.g. from INDIRECT): return column of row numbers.
-	if len(args) == 1 && args[0].Type == ValueArray && args[0].RangeOrigin != nil {
-		ro := args[0].RangeOrigin
-		nRows := ro.ToRow - ro.FromRow + 1
-		rows := make([][]Value, nRows)
-		for i := 0; i < nRows; i++ {
-			rows[i] = []Value{NumberVal(float64(ro.FromRow + i))}
+	if len(args) == 1 {
+		if bounds, ok := infoRefBounds(args[0]); ok {
+			if args[0].Type != ValueArray || args[0].RangeOrigin == nil {
+				return NumberVal(float64(bounds.FromRow)), nil
+			}
+			nRows := bounds.ToRow - bounds.FromRow + 1
+			rows := make([][]Value, nRows)
+			for i := 0; i < nRows; i++ {
+				rows[i] = []Value{NumberVal(float64(bounds.FromRow + i))}
+			}
+			return Value{Type: ValueArray, Array: rows}, nil
 		}
-		return Value{Type: ValueArray, Array: rows}, nil
+		if args[0].Type == ValueError {
+			return args[0], nil
+		}
 	}
 	return ErrorVal(ErrValVALUE), nil
 }
@@ -278,6 +281,9 @@ func fnCOLUMNS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	if args[0].Type == ValueError {
+		if args[0].Err == ErrValCALC {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		return args[0], nil
 	}
 	if args[0].Type == ValueArray {
@@ -294,6 +300,9 @@ func fnROWS(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 	if args[0].Type == ValueError {
+		if args[0].Err == ErrValCALC {
+			return ErrorVal(ErrValVALUE), nil
+		}
 		return args[0], nil
 	}
 	if args[0].Type == ValueArray {
@@ -410,14 +419,8 @@ func fnSHEET(args []Value, ctx *EvalContext) (Value, error) {
 
 	arg := args[0]
 
-	// Error propagation.
-	if arg.Type == ValueError {
-		return arg, nil
-	}
-
-	// ValueRef: extract sheet from reference.
-	if arg.Type == ValueRef {
-		sheetName := arg.Str // Str holds the sheet name for ValueRef
+	if bounds, ok := infoRefBounds(arg); ok {
+		sheetName := bounds.Sheet
 		if sheetName == "" && ctx != nil {
 			sheetName = ctx.CurrentSheet
 		}
@@ -435,6 +438,11 @@ func fnSHEET(args []Value, ctx *EvalContext) (Value, error) {
 			}
 		}
 		return ErrorVal(ErrValREF), nil
+	}
+
+	// Error propagation.
+	if arg.Type == ValueError {
+		return arg, nil
 	}
 
 	// String arg: look up sheet by name.
@@ -453,28 +461,6 @@ func fnSHEET(args []Value, ctx *EvalContext) (Value, error) {
 			}
 		}
 		return ErrorVal(ErrValNA), nil
-	}
-
-	// For arrays (range references), return sheet of the range origin.
-	if arg.Type == ValueArray && arg.RangeOrigin != nil {
-		sheetName := arg.RangeOrigin.Sheet
-		if sheetName == "" && ctx != nil {
-			sheetName = ctx.CurrentSheet
-		}
-		if ctx == nil || ctx.Resolver == nil {
-			return ErrorVal(ErrValNA), nil
-		}
-		slp, ok := ctx.Resolver.(SheetListProvider)
-		if !ok {
-			return ErrorVal(ErrValNA), nil
-		}
-		sheets := slp.GetSheetNames()
-		for i, name := range sheets {
-			if strings.EqualFold(name, sheetName) {
-				return NumberVal(float64(i + 1)), nil
-			}
-		}
-		return ErrorVal(ErrValREF), nil
 	}
 
 	// Other types: #VALUE!
@@ -503,44 +489,41 @@ func fnSHEETS(args []Value, ctx *EvalContext) (Value, error) {
 
 	arg := args[0]
 
+	if bounds, ok := infoRefBounds(arg); ok {
+		if bounds.SheetEnd != "" {
+			if ctx == nil || ctx.Resolver == nil {
+				return ErrorVal(ErrValREF), nil
+			}
+			slp, ok := ctx.Resolver.(SheetListProvider)
+			if !ok {
+				return ErrorVal(ErrValREF), nil
+			}
+			sheets := slp.GetSheetNames()
+			startIdx, endIdx := -1, -1
+			startLower := strings.ToLower(bounds.Sheet)
+			endLower := strings.ToLower(bounds.SheetEnd)
+			for i, name := range sheets {
+				nameLower := strings.ToLower(name)
+				if nameLower == startLower {
+					startIdx = i
+				}
+				if nameLower == endLower {
+					endIdx = i
+				}
+			}
+			if startIdx < 0 || endIdx < 0 {
+				return ErrorVal(ErrValREF), nil
+			}
+			if startIdx > endIdx {
+				startIdx, endIdx = endIdx, startIdx
+			}
+			return NumberVal(float64(endIdx - startIdx + 1)), nil
+		}
+		return NumberVal(1), nil
+	}
+
 	if arg.Type == ValueError {
 		return arg, nil
-	}
-
-	// For a 3D range reference (SheetEnd set), count sheets in the range.
-	if arg.Type == ValueArray && arg.RangeOrigin != nil && arg.RangeOrigin.SheetEnd != "" {
-		if ctx == nil || ctx.Resolver == nil {
-			return ErrorVal(ErrValREF), nil
-		}
-		slp, ok := ctx.Resolver.(SheetListProvider)
-		if !ok {
-			return ErrorVal(ErrValREF), nil
-		}
-		sheets := slp.GetSheetNames()
-		startIdx, endIdx := -1, -1
-		startLower := strings.ToLower(arg.RangeOrigin.Sheet)
-		endLower := strings.ToLower(arg.RangeOrigin.SheetEnd)
-		for i, name := range sheets {
-			nameLower := strings.ToLower(name)
-			if nameLower == startLower {
-				startIdx = i
-			}
-			if nameLower == endLower {
-				endIdx = i
-			}
-		}
-		if startIdx < 0 || endIdx < 0 {
-			return ErrorVal(ErrValREF), nil
-		}
-		if startIdx > endIdx {
-			startIdx, endIdx = endIdx, startIdx
-		}
-		return NumberVal(float64(endIdx - startIdx + 1)), nil
-	}
-
-	// Single reference or range: always 1 sheet.
-	if arg.Type == ValueRef || arg.Type == ValueArray {
-		return NumberVal(1), nil
 	}
 
 	// Other types: #VALUE!

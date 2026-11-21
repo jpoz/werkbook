@@ -152,12 +152,12 @@ func TestPublishSpillState_IdempotentWithinGen(t *testing.T) {
 	}
 	f.calcGen = 5
 
-	c := &Cell{formula: "SEQUENCE(3)", dynamicArraySpill: true}
 	raw := numArray([][]float64{{1}, {2}, {3}})
+	plan := newSpillPlan(raw, 2, 2)
 
 	// First publish should update fields and invalidate the overlay.
 	s.ensureSpillOverlay() // build with current gen
-	s.publishSpillState(c, 2, 2, raw, false)
+	s.publishSpillState(2, 2, plan)
 	state, ok := s.spillState(2, 2)
 	if !ok {
 		t.Fatalf("missing spill state for B2")
@@ -171,14 +171,14 @@ func TestPublishSpillState_IdempotentWithinGen(t *testing.T) {
 
 	// Second call with identical rect must be a no-op: overlay gen stays.
 	s.spill.gen = f.calcGen
-	s.publishSpillState(c, 2, 2, raw, false)
+	s.publishSpillState(2, 2, plan)
 	if s.spill.gen != f.calcGen {
 		t.Fatalf("overlay gen was invalidated on idempotent publish")
 	}
 
 	// A call with a different rect must invalidate the overlay.
 	raw2 := numArray([][]float64{{1}, {2}, {3}, {4}})
-	s.publishSpillState(c, 2, 2, raw2, false)
+	s.publishSpillState(2, 2, newSpillPlan(raw2, 2, 2))
 	if s.spill.gen == f.calcGen {
 		t.Fatalf("overlay gen should be invalidated on rect change")
 	}
@@ -196,11 +196,14 @@ func TestPublishSpillState_BlockedKeepsAttemptedButNotPublished(t *testing.T) {
 	}
 	f.calcGen = 7
 
-	c := &Cell{formula: "FILTER(A:A,B:B)", dynamicArraySpill: true}
 	raw := numArray([][]float64{{1}, {2}, {3}})
+	plan := newSpillPlan(raw, 3, 3)
+	plan.Blocked = true
+	plan.PublishedToCol = 3
+	plan.PublishedToRow = 3
 
 	// blocked=true: attempted rect is still tracked, but published collapses.
-	s.publishSpillState(c, 3, 3, raw, true)
+	s.publishSpillState(3, 3, plan)
 	state, ok := s.spillState(3, 3)
 	if !ok {
 		t.Fatalf("missing spill state for C3")
@@ -445,5 +448,294 @@ func TestBuildWorkbookDataDoesNotClobberBlockedSpillAnchor(t *testing.T) {
 	}
 	if !foundB2 || !foundD1 {
 		t.Fatalf("WorkbookData missing B2 or D1: B2=%v D1=%v", foundB2, foundD1)
+	}
+}
+
+func TestCellEvalOutcomeSeparatesBlockedDisplayFromRawSpill(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("B2", `SEQUENCE(3)`); err != nil {
+		t.Fatalf("SetFormula(B2): %v", err)
+	}
+	if err := s.SetValue("B3", "blocker"); err != nil {
+		t.Fatalf("SetValue(B3): %v", err)
+	}
+
+	cell := s.rows[2].cells[2]
+	outcome, err := s.evalCellOutcome(cell, 2, 2)
+	if err != nil {
+		t.Fatalf("evalCellOutcome: %v", err)
+	}
+	if outcome.Display.Type != formula.ValueError || outcome.Display.Err != formula.ErrValSPILL {
+		t.Fatalf("Display = %#v, want #SPILL!", outcome.Display)
+	}
+	if outcome.Spill == nil || !outcome.Spill.Blocked {
+		t.Fatalf("Spill = %#v, want blocked spill plan", outcome.Spill)
+	}
+	raw := outcome.RawValue()
+	if raw.Type != formula.ValueArray {
+		t.Fatalf("RawValue.Type = %v, want ValueArray", raw.Type)
+	}
+	if len(raw.Array) != 3 || len(raw.Array[0]) != 1 {
+		t.Fatalf("RawValue.Array shape = %v, want 3x1", raw.Array)
+	}
+	if raw.Array[1][0].Type != formula.ValueNumber || raw.Array[1][0].Num != 2 {
+		t.Fatalf("RawValue second row = %#v, want number 2", raw.Array[1][0])
+	}
+}
+
+func TestSpillOverlayIndexLookup(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("B2", `SEQUENCE(2,2,10,1)`); err != nil {
+		t.Fatalf("SetFormula(B2): %v", err)
+	}
+	f.Recalculate()
+
+	overlay := s.ensureSpillOverlay()
+	if got := overlay.index.lookup(2, 2); got != nil {
+		t.Fatalf("lookup(B2) = %#v, want nil for anchor cell", got)
+	}
+	for _, cell := range []struct {
+		col, row int
+		want     float64
+	}{
+		{3, 2, 11},
+		{2, 3, 12},
+		{3, 3, 13},
+	} {
+		span := overlay.index.lookup(cell.col, cell.row)
+		if span == nil {
+			t.Fatalf("lookup(%d,%d) = nil, want spill span", cell.col, cell.row)
+		}
+		got, ok := s.spillFormulaValueAt(cell.col, cell.row)
+		if !ok {
+			t.Fatalf("spillFormulaValueAt(%d,%d) = missing", cell.col, cell.row)
+		}
+		if got.Type != formula.ValueNumber || got.Num != cell.want {
+			t.Fatalf("spillFormulaValueAt(%d,%d) = %#v, want %g", cell.col, cell.row, got, cell.want)
+		}
+	}
+}
+
+func TestSpillOverlayIndexLookupSkipsJaggedHole(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+	f.calcGen = 1
+
+	raw1 := formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{
+		{formula.NumberVal(1), formula.NumberVal(2), formula.NumberVal(3)},
+		{formula.NumberVal(4)},
+	}}
+	raw2 := formula.Value{Type: formula.ValueArray, Array: [][]formula.Value{{
+		formula.NumberVal(10),
+		formula.NumberVal(11),
+	}}}
+
+	if s.rows[2] == nil {
+		s.rows[2] = &Row{num: 2, cells: make(map[int]*Cell)}
+	}
+	s.rows[2].cells[2] = &Cell{
+		col:               2,
+		formula:           "JAGGED()",
+		dynamicArraySpill: true,
+		rawValue:          raw1,
+		rawCachedGen:      f.calcGen,
+	}
+	if s.rows[3] == nil {
+		s.rows[3] = &Row{num: 3, cells: make(map[int]*Cell)}
+	}
+	s.rows[3].cells[3] = &Cell{
+		col:               3,
+		formula:           "ROWPAIR()",
+		dynamicArraySpill: true,
+		rawValue:          raw2,
+		rawCachedGen:      f.calcGen,
+	}
+
+	s.publishSpillState(2, 2, newSpillPlan(raw1, 2, 2))
+	s.publishSpillState(3, 3, newSpillPlan(raw2, 3, 3))
+
+	overlay := s.ensureSpillOverlay()
+	if got := overlay.index.lookup(4, 3); got == nil {
+		t.Fatalf("lookup(D3) = nil, want spill span from C3")
+	}
+	got, ok := s.spillFormulaValueAt(4, 3)
+	if !ok {
+		t.Fatalf("spillFormulaValueAt(D3) = missing")
+	}
+	if got.Type != formula.ValueNumber || got.Num != 11 {
+		t.Fatalf("spillFormulaValueAt(D3) = %#v, want 11", got)
+	}
+}
+
+func TestRefreshSpillAnchorsForPointSkipsAnchorsAfterPoint(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("A1", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(A1): %v", err)
+	}
+	if err := s.SetFormula("C1", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(C1): %v", err)
+	}
+	if err := s.SetFormula("A3", `SEQUENCE(3,1)`); err != nil {
+		t.Fatalf("SetFormula(A3): %v", err)
+	}
+	gen := f.calcGen
+
+	if !s.refreshSpillAnchorsForPoint(2, 2) {
+		t.Fatalf("refreshSpillAnchorsForPoint(B2) = false, want true")
+	}
+
+	a1 := s.rows[1].cells[1]
+	c1 := s.rows[1].cells[3]
+	a3 := s.rows[3].cells[1]
+	if a1.rawCachedGen != gen {
+		t.Fatalf("A1 rawCachedGen = %d, want %d", a1.rawCachedGen, gen)
+	}
+	if c1.rawCachedGen == gen {
+		t.Fatalf("C1 was refreshed for B2, want skipped because it is after the point column")
+	}
+	if a3.rawCachedGen == gen {
+		t.Fatalf("A3 was refreshed for B2, want skipped because it is after the point row")
+	}
+}
+
+func TestRefreshSpillAnchorsForRangeSkipsAnchorsAfterRange(t *testing.T) {
+	f := New(FirstSheet("Spill"))
+	s := f.Sheet("Spill")
+
+	if err := s.SetFormula("A1", `SEQUENCE(4,2)`); err != nil {
+		t.Fatalf("SetFormula(A1): %v", err)
+	}
+	if err := s.SetFormula("D1", `SEQUENCE(4,1)`); err != nil {
+		t.Fatalf("SetFormula(D1): %v", err)
+	}
+	if err := s.SetFormula("A5", `SEQUENCE(4,2)`); err != nil {
+		t.Fatalf("SetFormula(A5): %v", err)
+	}
+	gen := f.calcGen
+
+	req := rangeMaterializationRequest{
+		sheet:   "Spill",
+		fromCol: 2,
+		fromRow: 2,
+		toCol:   3,
+		toRow:   4,
+	}
+	if !s.refreshSpillAnchorsForRange(req, req.toCol) {
+		t.Fatalf("refreshSpillAnchorsForRange(B2:C4) = false, want true")
+	}
+
+	a1 := s.rows[1].cells[1]
+	d1 := s.rows[1].cells[4]
+	a5 := s.rows[5].cells[1]
+	if a1.rawCachedGen != gen {
+		t.Fatalf("A1 rawCachedGen = %d, want %d", a1.rawCachedGen, gen)
+	}
+	if d1.rawCachedGen == gen {
+		t.Fatalf("D1 was refreshed for B2:C4, want skipped because it is after the range column")
+	}
+	if a5.rawCachedGen == gen {
+		t.Fatalf("A5 was refreshed for B2:C4, want skipped because it is after the range row")
+	}
+}
+
+func TestSpillBoundsTrackRecalculation(t *testing.T) {
+	f := New(FirstSheet("Data"))
+	data := f.Sheet("Data")
+	spill, err := f.NewSheet("Spill")
+	if err != nil {
+		t.Fatalf("NewSheet(Spill): %v", err)
+	}
+
+	for _, cell := range []struct {
+		ref string
+		val any
+	}{
+		{"A2", true},
+		{"B2", 10.0},
+		{"A3", true},
+		{"B3", 20.0},
+		{"A4", false},
+		{"B4", 30.0},
+	} {
+		if err := data.SetValue(cell.ref, cell.val); err != nil {
+			t.Fatalf("SetValue(%s): %v", cell.ref, err)
+		}
+	}
+	if err := spill.SetFormula("B2", `FILTER(Data!B2:B4,Data!A2:A4)`); err != nil {
+		t.Fatalf("SetFormula(B2): %v", err)
+	}
+
+	f.Recalculate()
+	toCol, toRow, ok := spill.SpillBounds(2, 2)
+	if !ok || toCol != 2 || toRow != 3 {
+		t.Fatalf("SpillBounds after initial recalc = (%d,%d,%v), want (2,3,true)", toCol, toRow, ok)
+	}
+
+	if err := data.SetValue("A4", true); err != nil {
+		t.Fatalf("SetValue(A4): %v", err)
+	}
+	f.Recalculate()
+	toCol, toRow, ok = spill.SpillBounds(2, 2)
+	if !ok || toCol != 2 || toRow != 4 {
+		t.Fatalf("SpillBounds after growth = (%d,%d,%v), want (2,4,true)", toCol, toRow, ok)
+	}
+
+	if err := data.SetValue("A3", false); err != nil {
+		t.Fatalf("SetValue(A3): %v", err)
+	}
+	if err := data.SetValue("A4", false); err != nil {
+		t.Fatalf("SetValue(A4 second): %v", err)
+	}
+	f.Recalculate()
+	if _, _, ok := spill.SpillBounds(2, 2); ok {
+		t.Fatalf("SpillBounds after shrink-to-anchor reported a spill, want none")
+	}
+}
+
+func TestNonDynamicRangeRefDisplayUsesImplicitIntersection(t *testing.T) {
+	f := New(FirstSheet("data"))
+	data := f.Sheet("data")
+	results, err := f.NewSheet("results")
+	if err != nil {
+		t.Fatalf("NewSheet(results): %v", err)
+	}
+	for i, row := range []struct {
+		a float64
+		b float64
+	}{
+		{1, 10},
+		{2, 20},
+		{3, 30},
+		{4, 40},
+		{5, 50},
+	} {
+		refA, _ := CoordinatesToCellName(1, i+2)
+		refB, _ := CoordinatesToCellName(2, i+2)
+		if err := data.SetValue(refA, row.a); err != nil {
+			t.Fatalf("SetValue(%s): %v", refA, err)
+		}
+		if err := data.SetValue(refB, row.b); err != nil {
+			t.Fatalf("SetValue(%s): %v", refB, err)
+		}
+	}
+	if err := results.SetFormula("B2", `OFFSET(data!A2:B6, 0, 0)`); err != nil {
+		t.Fatalf("SetFormula(B2): %v", err)
+	}
+	results.rows[2].cells[2].dynamicArraySpill = false
+
+	f.Recalculate()
+
+	got, err := results.GetValue("B2")
+	if err != nil {
+		t.Fatalf("GetValue(B2): %v", err)
+	}
+	if got.Type != TypeNumber || got.Number != 10 {
+		t.Fatalf("B2 = %#v, want 10 via implicit intersection", got)
 	}
 }

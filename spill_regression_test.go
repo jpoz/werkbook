@@ -144,6 +144,18 @@ func buildRectangularSequenceHarness(t *testing.T) (*werkbook.File, *werkbook.Sh
 	return f, data, spill, calc
 }
 
+func buildTransposeHarness(t *testing.T) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet, *werkbook.Sheet) {
+	t.Helper()
+
+	f, data, spill, calc := newSpillHarness(t)
+	mustSetValue(t, data, "A2", 1.0)
+	mustSetValue(t, data, "B2", 2.0)
+	mustSetValue(t, data, "A3", 3.0)
+	mustSetValue(t, data, "B3", 4.0)
+	mustSetFormula(t, spill, "B2", `TRANSPOSE(Data!A2:B3)`)
+	return f, data, spill, calc
+}
+
 func buildResizableFilterHarness(t *testing.T) (*werkbook.File, *werkbook.Sheet, *werkbook.Sheet, *werkbook.Sheet) {
 	t.Helper()
 
@@ -235,6 +247,19 @@ func TestSpillRepresentativeShapes(t *testing.T) {
 				numWant("C2", 15),
 				numWant("B3", 20),
 				numWant("C3", 25),
+			},
+		},
+		{
+			name: "transpose square",
+			build: func(t *testing.T) (*werkbook.File, *werkbook.Sheet) {
+				f, _, spill, _ := buildTransposeHarness(t)
+				return f, spill
+			},
+			wants: []spillWant{
+				numWant("B2", 1),
+				numWant("C2", 3),
+				numWant("B3", 2),
+				numWant("C3", 4),
 			},
 		},
 	}
@@ -891,35 +916,46 @@ func TestSpillArrayContextInheritance(t *testing.T) {
 
 	t.Run("IFERROR_inside_SUMPRODUCT", func(t *testing.T) {
 		f, _, calc := build(t)
-		// IFERROR inside SUMPRODUCT: wrap a potentially-erroring division
-		// and sum the safe results. (PR #43)
+		// IFERROR inside a legacy array-forcing wrapper (SUMPRODUCT) follows
+		// Excel's scalar implicit-intersection rule: the range ref collapses
+		// to the formula-cell row before IFERROR runs. Formula is at A1 on
+		// calc, so row 1 is outside Data!B2:B5 → implicit intersection yields
+		// #VALUE!, 1/#VALUE! is #VALUE!, IFERROR catches it and returns 0.
+		// Verified against Excel in
+		// testdata/error_propagation/11_iferror_in_sumproduct.xlsx (B1).
 		mustSetFormula(t, calc, "A1", `SUMPRODUCT(IFERROR(1/Data!B2:B5,0))`)
 		f.Recalculate()
 		val, err := calc.GetValue("A1")
 		if err != nil {
 			t.Fatalf("GetValue: %v", err)
 		}
-		// 1/10 + 1/-20 + 1/30 + 1/-40 = 0.1 - 0.05 + 0.0333... - 0.025 = 0.058333...
-		want := 1.0/10 + 1.0/-20 + 1.0/30 + 1.0/-40
-		if val.Type != werkbook.TypeNumber || absDiff(val.Number, want) > 1e-9 {
-			t.Fatalf("IFERROR inside SUMPRODUCT = %#v, want %g", val, want)
+		if val.Type != werkbook.TypeNumber || val.Number != 0 {
+			t.Fatalf("IFERROR inside SUMPRODUCT = %#v, want 0", val)
 		}
 	})
 
 	t.Run("IFNA_inside_SUMPRODUCT", func(t *testing.T) {
 		f, _, calc := build(t)
-		// Seed a column with mixed #N/A and numeric values, then ensure
-		// IFNA lifts to array context and substitutes 0 for the errors.
-		// Confirms PR #43: IFNA respects inherited array context.
+		// IFNA inside SUMPRODUCT follows the same scalar rule: D2:D5 is
+		// implicit-intersected at row 1 (outside [2,5]) → #VALUE!. IFNA
+		// only catches #N/A, not #VALUE!, so the error propagates through
+		// SUMPRODUCT. Verified against Excel in
+		// testdata/error_propagation/11_iferror_in_sumproduct.xlsx (A1).
 		mustSetValue(t, calc, "D2", 10.0)
 		mustSetFormula(t, calc, "D3", `NA()`)
 		mustSetValue(t, calc, "D4", 20.0)
 		mustSetFormula(t, calc, "D5", `NA()`)
 		mustSetFormula(t, calc, "A1", `SUMPRODUCT(IFNA(D2:D5,0))`)
-		// Control: sanity check that the raw sum DOES propagate #N/A.
+		// Control: the raw sum still propagates #N/A.
 		mustSetFormula(t, calc, "A2", `SUMPRODUCT(D2:D5)`)
 		f.Recalculate()
-		assertSheetWants(t, calc, numWant("A1", 30))
+		val, err := calc.GetValue("A1")
+		if err != nil {
+			t.Fatalf("GetValue: %v", err)
+		}
+		if val.Type != werkbook.TypeError || val.String != "#VALUE!" {
+			t.Fatalf("A1 = %#v, want #VALUE!", val)
+		}
 		ctrl, _ := calc.GetValue("A2")
 		if ctrl.Type != werkbook.TypeError || ctrl.String != "#N/A" {
 			t.Fatalf("control A2 should be #N/A error, got %#v", ctrl)
@@ -1234,11 +1270,10 @@ func TestSpillBlockedTransitions(t *testing.T) {
 	}
 }
 
-// TestSpillFullRowRangeReference is a live tripwire for a known gap:
-// full-row range references like Spill!2:3 currently return #NAME? because
-// the range parser does not accept row-only syntax on sheet-qualified refs.
-// When the gap is fixed, the test will flip from skip to assert and will
-// lock down that full-row refs correctly pick up published spill bounds.
+// TestSpillFullRowRangeReference locks down sheet-qualified full-row
+// range references (Spill!2:3), the mirror of the long-supported full-column
+// form (Spill!B:D). Regression coverage for parser + cellref handling of
+// row-only refs when a sheet qualifier is present.
 func TestSpillFullRowRangeReference(t *testing.T) {
 	f, _, _, calc := buildHorizontalHStackHarness(t)
 	mustSetFormula(t, calc, "A1", `SUM(Spill!2:3)`)
@@ -1247,10 +1282,6 @@ func TestSpillFullRowRangeReference(t *testing.T) {
 	val, err := calc.GetValue("A1")
 	if err != nil {
 		t.Fatalf("GetValue: %v", err)
-	}
-	if val.Type == werkbook.TypeError && val.String == "#NAME?" {
-		t.Skip("full-row range references (Spill!2:3) not yet supported; " +
-			"remove this skip once the parser accepts row-only syntax")
 	}
 	if val.Type != werkbook.TypeNumber || val.Number != 60 {
 		t.Fatalf("SUM(Spill!2:3) = %#v, want number 60", val)

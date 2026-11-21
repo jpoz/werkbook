@@ -88,6 +88,40 @@ func TestLET(t *testing.T) {
 	}
 }
 
+func TestLETBoundLambdaInvocation(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(3),
+			{Col: 1, Row: 2}: NumberVal(4),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		// LET-bound LAMBDA invoked by name
+		{"LET(sq, LAMBDA(n, n*n), sq(A1) + sq(A2))", NumberVal(25)},
+		// Currying via nested LAMBDA
+		{"LET(mul, LAMBDA(a, LAMBDA(b, a*b)), double, mul(2), double(A2))", NumberVal(8)},
+		// Long parameter names
+		{"LET(cube, LAMBDA(n, n*n*n), cube(A1))", NumberVal(27)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("Eval(%q) = %#v, want %#v", tt.formula, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLETErrors(t *testing.T) {
 	resolver := &mockResolver{}
 

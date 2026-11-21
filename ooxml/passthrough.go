@@ -298,7 +298,10 @@ func encodeNamedXMLFragment(name string, v any) ([]byte, error) {
 	if err := enc.Close(); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	// Writer-generated fragments follow the same self-closing convention as
+	// writeXML. Passthrough fragments are not touched: they are emitted
+	// verbatim from the source part.
+	return selfCloseEmptyElements(buf.Bytes()), nil
 }
 
 func writePassthroughXML(

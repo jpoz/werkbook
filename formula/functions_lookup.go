@@ -12,30 +12,166 @@ import (
 func init() {
 	Register("ADDRESS", NoCtx(fnADDRESS))
 	Register("ANCHORARRAY", fnANCHORARRAY)
-	Register("FILTER", NoCtx(fnFILTER))
-	Register("HLOOKUP", NoCtx(fnHLOOKUP))
-	Register("INDEX", NoCtx(fnINDEX))
-	Register("INDIRECT", fnINDIRECT)
-	Register("LOOKUP", NoCtx(fnLOOKUP))
-	Register("MATCH", NoCtx(fnMATCH))
-	Register("OFFSET", fnOFFSET)
-	Register("VLOOKUP", NoCtx(fnVLOOKUP))
-	Register("TAKE", NoCtx(fnTAKE))
-	Register("DROP", NoCtx(fnDROP))
-	Register("EXPAND", NoCtx(fnEXPAND))
-	Register("CHOOSECOLS", NoCtx(fnCHOOSECOLS))
-	Register("CHOOSEROWS", NoCtx(fnCHOOSEROWS))
-	Register("TOCOL", NoCtx(fnTOCOL))
-	Register("TOROW", NoCtx(fnTOROW))
-	Register("TRANSPOSE", NoCtx(fnTRANSPOSE))
-	Register("UNIQUE", NoCtx(fnUNIQUE))
-	Register("WRAPCOLS", NoCtx(fnWRAPCOLS))
-	Register("WRAPROWS", NoCtx(fnWRAPROWS))
-	Register("HSTACK", NoCtx(fnHSTACK))
-	Register("VSTACK", NoCtx(fnVSTACK))
+	RegisterWithSpec("FILTER", NoCtx(fnFILTER), gridShapeFuncSpec(evalFILTER))
+	RegisterWithSpec("HLOOKUP", NoCtx(fnHLOOKUP), hlookupFuncSpec(evalHLOOKUP))
+	RegisterWithSpec("INDEX", NoCtx(fnINDEX), indexFuncSpec(evalINDEXSelector))
+	RegisterWithSpec("INDIRECT", fnINDIRECT, refProducerFuncSpec(evalINDIRECT))
+	RegisterWithSpec("LOOKUP", NoCtx(fnLOOKUP), lookupFuncSpec(evalLOOKUP))
+	RegisterWithSpec("MATCH", NoCtx(fnMATCH), matchFuncSpec(evalMATCH))
+	RegisterWithSpec("OFFSET", fnOFFSET, refProducerFuncSpec(evalOFFSET))
+	Register("SINGLE", fnSINGLE)
+	RegisterWithSpec("VLOOKUP", NoCtx(fnVLOOKUP), vlookupFuncSpec(evalVLOOKUP))
+	RegisterWithSpec("TAKE", NoCtx(fnTAKE), selectorFuncSpec(evalTAKESelector))
+	RegisterWithSpec("DROP", NoCtx(fnDROP), selectorFuncSpec(evalDROPSelector))
+	RegisterWithSpec("EXPAND", NoCtx(fnEXPAND), gridShapeFuncSpec(evalEXPAND))
+	RegisterWithSpec("CHOOSECOLS", NoCtx(fnCHOOSECOLS), selectorFuncSpec(evalCHOOSECOLSSelector))
+	RegisterWithSpec("CHOOSEROWS", NoCtx(fnCHOOSEROWS), selectorFuncSpec(evalCHOOSEROWSSelector))
+	RegisterWithSpec("TOCOL", NoCtx(fnTOCOL), gridShapeFuncSpec(evalTOCOL))
+	RegisterWithSpec("TOROW", NoCtx(fnTOROW), gridShapeFuncSpec(evalTOROW))
+	RegisterWithSpec("TRANSPOSE", NoCtx(fnTRANSPOSE), gridShapeFuncSpec(evalTRANSPOSE))
+	RegisterWithSpec("UNIQUE", NoCtx(fnUNIQUE), gridShapeFuncSpec(evalUNIQUE))
+	RegisterWithSpec("WRAPCOLS", NoCtx(fnWRAPCOLS), gridShapeFuncSpec(evalWRAPCOLS))
+	RegisterWithSpec("WRAPROWS", NoCtx(fnWRAPROWS), gridShapeFuncSpec(evalWRAPROWS))
+	RegisterWithSpec("HSTACK", NoCtx(fnHSTACK), gridShapeFuncSpec(evalHSTACK))
+	RegisterWithSpec("VSTACK", NoCtx(fnVSTACK), gridShapeFuncSpec(evalVSTACK))
 	Register("HYPERLINK", NoCtx(fnHyperlink))
-	Register("XLOOKUP", NoCtx(fnXLOOKUP))
-	Register("XMATCH", NoCtx(fnXMATCH))
+	RegisterWithSpec("XLOOKUP", NoCtx(fnXLOOKUP), xlookupFuncSpec(evalXLOOKUP))
+	RegisterWithSpec("XMATCH", NoCtx(fnXMATCH), xmatchFuncSpec(evalXMATCH))
+}
+
+// lookupArg0 is the shared ArgSpec for the lookup_value argument: scalar
+// context collapses an array to its top-left (or range-aligned) cell via
+// ArgAdaptScalarizeAny, while array context preserves the array so the
+// FnKindLookupArrayLift dispatch in callFuncWithSpec can fan it out.
+var lookupArg0 = ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptScalarizeAny}
+
+// lookupPassRef is the shared ArgSpec for trailing arguments (table/range,
+// column index, match type, etc.). Arrays and ranges pass through unchanged.
+var lookupPassRef = ArgSpec{Load: ArgLoadPassthrough, Adapt: ArgAdaptPassThrough}
+
+// xlookupFuncSpec wires XLOOKUP into the Phase 2 contract system: scalar
+// context scalarizes the first argument via legacy implicit intersection,
+// and array context fans it out element-wise through FnKindLookupArrayLift.
+func xlookupFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+// xmatchFuncSpec mirrors xlookupFuncSpec with two positional args.
+func xmatchFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+// vlookupFuncSpec wires VLOOKUP. Excel fans out the lookup_value array in
+// array context (e.g. inside FILTER's include argument) and collapses it in
+// scalar context (via implicit intersection on range-backed arrays).
+func vlookupFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+// hlookupFuncSpec wires HLOOKUP with the same shape as VLOOKUP.
+func hlookupFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+// matchFuncSpec wires MATCH with two positional args (lookup_value,
+// lookup_array) and optional match_type.
+func matchFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+// lookupFuncSpec wires the legacy LOOKUP function.
+func lookupFuncSpec(eval EvalFunc) FuncSpec {
+	return FuncSpec{
+		Kind:   FnKindLookupArrayLift,
+		Args:   []ArgSpec{lookupArg0, lookupPassRef},
+		VarArg: func(_ int) ArgSpec { return lookupPassRef },
+		Return: ReturnModePassThrough,
+		Eval:   eval,
+	}
+}
+
+func evalLookupArrayLiftCore(args []EvalValue, core func([]Value, []EvalValue) (Value, error)) (EvalValue, error) {
+	if len(args) > 0 && lookupEvalArgShouldLift(args[0]) {
+		src, errVal := normalizeEvalGridValueSource(args[0])
+		if errVal != nil {
+			return ValueToEvalValue(*errVal), nil
+		}
+		rows, cols := src.dims()
+		if rows == 0 || cols == 0 {
+			return evalError(ErrValVALUE), nil
+		}
+		result := newValueMatrix(rows, cols)
+		scalarEvalArgs := make([]EvalValue, len(args))
+		copy(scalarEvalArgs, args)
+		for row := 0; row < rows; row++ {
+			for col := 0; col < cols; col++ {
+				scalarEvalArgs[0] = ValueToEvalValue(src.cell(row, col))
+				scalarArgs := scalarLegacyArgsFromEval(scalarEvalArgs)
+				cell, err := core(scalarArgs, scalarEvalArgs)
+				if err != nil {
+					return EvalValue{}, err
+				}
+				result[row][col] = cell
+			}
+		}
+		if rows == 1 && cols == 1 {
+			return ValueToEvalValue(result[0][0]), nil
+		}
+		return evalArray(result, SpillBounded), nil
+	}
+	got, err := core(scalarLegacyArgsFromEval(args), args)
+	if err != nil {
+		return EvalValue{}, err
+	}
+	return ValueToEvalValue(got), nil
+}
+
+func lookupEvalArgShouldLift(arg EvalValue) bool {
+	return arg.Kind == EvalArray || arg.Kind == EvalRef
+}
+
+func lookupArgIsGrid(legacy Value, evalArg *EvalValue) bool {
+	if evalArg != nil {
+		return evalArg.Kind == EvalArray || evalArg.Kind == EvalRef
+	}
+	return legacy.Type == ValueArray
+}
+
+func fnSINGLE(args []Value, ctx *EvalContext) (Value, error) {
+	if len(args) != 1 {
+		return ErrorVal(ErrValVALUE), nil
+	}
+	return explicitIntersect(args[0], ctx), nil
 }
 
 // fnANCHORARRAY implements ANCHORARRAY(ref). It returns the full dynamic
@@ -70,89 +206,57 @@ func fnANCHORARRAY(args []Value, ctx *EvalContext) (Value, error) {
 // fnFILTER implements FILTER(array, include, [if_empty]).
 // It filters rows or columns of an array based on a Boolean array.
 func fnFILTER(args []Value) (Value, error) {
+	return filterCore(args, nil)
+}
+
+func evalFILTER(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return ValueToEvalValue(filterCoreEval(args, nil)), nil
+}
+
+func filterCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Normalize array to 2D grid.
-	arr := args[0]
-	var grid [][]Value
-	switch arr.Type {
-	case ValueArray:
-		grid = arr.Array
-	case ValueError:
-		return arr, nil
-	default:
-		grid = [][]Value{{arr}}
+	arrSource, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
+	if errVal != nil {
+		if errVal.Err == ErrValVALUE {
+			return ErrorVal(ErrValCALC), nil
+		}
+		return *errVal, nil
 	}
-	if len(grid) == 0 {
+	numRows, numCols := arrSource.dims()
+	if numRows == 0 || numCols == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
 
-	// Normalize include to 2D grid.
-	inc := args[1]
-	var incGrid [][]Value
-	switch inc.Type {
-	case ValueArray:
-		incGrid = inc.Array
-	case ValueError:
-		return inc, nil
-	default:
-		incGrid = [][]Value{{inc}}
+	incSource, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
-
-	// Determine filtering direction: row filtering vs column filtering.
-	// Row filtering: include has same number of rows as array (column vector).
-	// Column filtering: include has same number of columns as array (row vector).
-	numRows := len(grid)
-	numCols := 0
-	for _, row := range grid {
-		if len(row) > numCols {
-			numCols = len(row)
-		}
-	}
-
-	incRows := len(incGrid)
-	incCols := 0
-	for _, row := range incGrid {
-		if len(row) > incCols {
-			incCols = len(row)
-		}
-	}
+	incRows, incCols := incSource.dims()
 
 	// Flatten include to a single list of values.
 	filterByCol := false
 	var includeVals []Value
 	if incRows == numRows && (incCols == 1 || incRows == 1 && incCols == 1) {
 		// Row filtering: include is a column vector with same row count.
-		for _, row := range incGrid {
-			if len(row) > 0 {
-				includeVals = append(includeVals, row[0])
-			} else {
-				includeVals = append(includeVals, EmptyVal())
-			}
+		includeVals = make([]Value, numRows)
+		for row := 0; row < numRows; row++ {
+			includeVals[row] = incSource.cell(row, 0)
 		}
 	} else if incRows == 1 && incCols == numCols {
 		// Column filtering: include is a row vector with same column count.
 		filterByCol = true
-		includeVals = make([]Value, incCols)
-		if len(incGrid) > 0 {
-			for i := 0; i < incCols; i++ {
-				if i < len(incGrid[0]) {
-					includeVals[i] = incGrid[0][i]
-				} else {
-					includeVals[i] = EmptyVal()
-				}
-			}
+		includeVals = make([]Value, numCols)
+		for col := 0; col < numCols; col++ {
+			includeVals[col] = incSource.cell(0, col)
 		}
 	} else if incRows == numRows {
 		// Multi-column include with same rows — flatten first column.
-		for _, row := range incGrid {
-			if len(row) > 0 {
-				includeVals = append(includeVals, row[0])
-			} else {
-				includeVals = append(includeVals, EmptyVal())
-			}
+		includeVals = make([]Value, numRows)
+		for row := 0; row < numRows; row++ {
+			includeVals[row] = incSource.cell(row, 0)
 		}
 	} else {
 		return ErrorVal(ErrValVALUE), nil
@@ -163,88 +267,86 @@ func fnFILTER(args []Value) (Value, error) {
 		if len(includeVals) != numRows {
 			return ErrorVal(ErrValVALUE), nil
 		}
-		var result [][]Value
-		for i, iv := range includeVals {
+		// Excel's FILTER propagates the first error in the include
+		// argument as a single scalar — the result does not spill at
+		// all (see issue #70). The if_empty argument is also ignored
+		// in this case; the error wins.
+		for _, iv := range includeVals {
 			if iv.Type == ValueError {
 				return iv, nil
 			}
+		}
+		var keepRows []int
+		for i, iv := range includeVals {
 			n, e := CoerceNum(iv)
 			if e != nil {
 				return *e, nil
 			}
 			if n != 0 {
-				row := make([]Value, len(grid[i]))
-				copy(row, grid[i])
-				result = append(result, row)
+				keepRows = append(keepRows, i)
 			}
 		}
-		if len(result) == 0 {
+		if len(keepRows) == 0 {
 			if len(args) == 3 {
-				return args[2], nil
+				return legacyArgValue(args[2], evalArgAt(evalArgs, 2)), nil
 			}
 			return ErrorVal(ErrValCALC), nil
 		}
-		if len(result) == 1 && len(result[0]) == 1 {
-			return result[0][0], nil
-		}
-		return Value{Type: ValueArray, Array: result}, nil
+		return collapseArrayResult(arrSource.materializeRows(keepRows)), nil
 	}
 
 	// Column filtering.
 	if len(includeVals) != numCols {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	// Determine which columns to keep.
-	var keepCols []int
-	for i, iv := range includeVals {
+	for _, iv := range includeVals {
 		if iv.Type == ValueError {
+			// See issue #70 — propagate the first include error as
+			// a single-cell result, matching Excel.
 			return iv, nil
 		}
+	}
+	var keepCols []int
+	for col, iv := range includeVals {
 		n, e := CoerceNum(iv)
 		if e != nil {
 			return *e, nil
 		}
 		if n != 0 {
-			keepCols = append(keepCols, i)
+			keepCols = append(keepCols, col)
 		}
 	}
 	if len(keepCols) == 0 {
 		if len(args) == 3 {
-			return args[2], nil
+			return legacyArgValue(args[2], evalArgAt(evalArgs, 2)), nil
 		}
 		return ErrorVal(ErrValCALC), nil
 	}
-	var result [][]Value
-	for _, row := range grid {
-		newRow := make([]Value, len(keepCols))
-		for j, ci := range keepCols {
-			if ci < len(row) {
-				newRow[j] = row[ci]
-			} else {
-				newRow[j] = EmptyVal()
-			}
-		}
-		result = append(result, newRow)
-	}
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return collapseArrayResult(arrSource.materializeCols(keepCols)), nil
 }
 
 func fnVLOOKUP(args []Value) (Value, error) {
+	return vlookupCore(args, nil)
+}
+
+func evalVLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, vlookupCore)
+}
+
+func vlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
-	table := args[1]
-	if table.Type == ValueError {
-		return table, nil
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
+	if errVal := argTopLevelError(args[1], evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
 	}
-	if table.Type != ValueArray {
-		return ErrorVal(ErrValVALUE), nil
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
-	colIdx, e := CoerceNum(args[2])
+	rowCount, colCount := grid.dims()
+	colIdx, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	if e != nil {
 		return *e, nil
 	}
@@ -255,32 +357,34 @@ func fnVLOOKUP(args []Value) (Value, error) {
 
 	rangeLookup := true
 	if len(args) == 4 {
-		rangeLookup = IsTruthy(args[3])
+		rangeLookup = IsTruthy(legacyArgValue(args[3], evalArgAt(evalArgs, 3)))
 	}
 
 	if rangeLookup {
-		lastMatch := -1
-		for i, row := range table.Array {
-			if len(row) == 0 {
-				continue
-			}
-			cmp := CompareValues(row[0], lookup)
+		// Excel uses binary search for approximate match. This matters
+		// on unsorted data where a linear scan and binary search diverge.
+		lo, hi := 0, rowCount-1
+		result := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			cmp := CompareValues(grid.cell(mid, 0), lookup)
 			if cmp == 0 {
-				lastMatch = i
+				result = mid
 				break
+			} else if cmp < 0 {
+				result = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
 			}
-			if cmp > 0 {
-				break
-			}
-			lastMatch = i
 		}
-		if lastMatch < 0 {
+		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if ci > len(table.Array[lastMatch]) {
+		if ci > colCount {
 			return ErrorVal(ErrValREF), nil
 		}
-		return table.Array[lastMatch][ci-1], nil
+		return grid.cell(result, ci-1), nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -296,11 +400,8 @@ func fnVLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for _, row := range table.Array {
-		if len(row) == 0 {
-			continue
-		}
-		cell := row[0]
+	for row := 0; row < rowCount; row++ {
+		cell := grid.cell(row, 0)
 		// In Excel, VLOOKUP exact match skips truly empty cells.
 		if cell.Type == ValueEmpty {
 			continue
@@ -314,25 +415,34 @@ func fnVLOOKUP(args []Value) (Value, error) {
 			matched = CompareValuesExact(cell, lookup) == 0
 		}
 		if matched {
-			if ci > len(row) {
+			if ci > colCount {
 				return ErrorVal(ErrValREF), nil
 			}
-			return row[ci-1], nil
+			return grid.cell(row, ci-1), nil
 		}
 	}
 	return ErrorVal(ErrValNA), nil
 }
 
 func fnHLOOKUP(args []Value) (Value, error) {
+	return hlookupCore(args, nil)
+}
+
+func evalHLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, hlookupCore)
+}
+
+func hlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
-	table := args[1]
-	if table.Type != ValueArray || len(table.Array) == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
-	rowIdx, e := CoerceNum(args[2])
+	rowCount, colCount := grid.dims()
+	rowIdx, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	if e != nil {
 		return *e, nil
 	}
@@ -340,37 +450,36 @@ func fnHLOOKUP(args []Value) (Value, error) {
 	if ri < 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	if ri > len(table.Array) {
+	if ri > rowCount {
 		return ErrorVal(ErrValREF), nil
 	}
 
 	rangeLookup := true
 	if len(args) == 4 {
-		rangeLookup = IsTruthy(args[3])
+		rangeLookup = IsTruthy(legacyArgValue(args[3], evalArgAt(evalArgs, 3)))
 	}
 
-	firstRow := table.Array[0]
-
 	if rangeLookup {
-		lastMatch := -1
-		for i, cell := range firstRow {
-			cmp := CompareValues(cell, lookup)
+		// Excel uses binary search for approximate match.
+		lo, hi := 0, colCount-1
+		result := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			cmp := CompareValues(grid.cell(0, mid), lookup)
 			if cmp == 0 {
-				lastMatch = i
+				result = mid
 				break
+			} else if cmp < 0 {
+				result = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
 			}
-			if cmp > 0 {
-				break
-			}
-			lastMatch = i
 		}
-		if lastMatch < 0 {
+		if result < 0 {
 			return ErrorVal(ErrValNA), nil
 		}
-		if lastMatch >= len(table.Array[ri-1]) {
-			return ErrorVal(ErrValREF), nil
-		}
-		return table.Array[ri-1][lastMatch], nil
+		return grid.cell(ri-1, result), nil
 	}
 
 	// Determine if wildcard matching is needed (only for string lookups).
@@ -386,7 +495,8 @@ func fnHLOOKUP(args []Value) (Value, error) {
 		}
 	}
 
-	for i, cell := range firstRow {
+	for i := 0; i < colCount; i++ {
+		cell := grid.cell(0, i)
 		if cell.Type == ValueEmpty {
 			continue
 		}
@@ -399,117 +509,38 @@ func fnHLOOKUP(args []Value) (Value, error) {
 			matched = CompareValuesExact(cell, lookup) == 0
 		}
 		if matched {
-			if i >= len(table.Array[ri-1]) {
-				return ErrorVal(ErrValREF), nil
-			}
-			return table.Array[ri-1][i], nil
+			return grid.cell(ri-1, i), nil
 		}
 	}
 	return ErrorVal(ErrValNA), nil
 }
 
 func fnINDEX(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	arr := args[0]
-	if arr.Type != ValueArray {
-		return arr, nil
-	}
-	rows, cols := effectiveArrayBounds(arr)
-	rowNum, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	ri := int(rowNum)
+	return callSelectorEval(evalINDEXSelector, args)
+}
 
-	// Default col_num: if not provided, default to 1 (first column).
-	colNum := 1
-	if len(args) == 3 {
-		cn, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		colNum = int(cn)
-	} else if rows == 1 {
-		// INDEX(single_row_array, n) is treated as INDEX(array, 1, n).
-		// This also preserves the row/column zero semantics in the special
-		// handling below: INDEX(single_row_array, 0) returns the full row.
-		ri = 1
-		colNum = int(rowNum)
+func callSelectorEval(eval EvalFunc, args []Value) (Value, error) {
+	evalArgs := make([]EvalValue, len(args))
+	for i, arg := range args {
+		evalArgs[i] = ValueToEvalValue(arg)
 	}
+	result, err := eval(evalArgs, nil)
+	if err != nil {
+		return Value{}, err
+	}
+	return EvalValueToValue(result), nil
+}
 
-	// Negative indices are invalid and return #VALUE!.
-	if ri < 0 || colNum < 0 {
-		return ErrorVal(ErrValVALUE), nil
+func normalizeIndexSelector(idx, max int) (int, *Value) {
+	if idx < 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return 0, &errVal
 	}
-
-	// row_num=0 means return the entire column (or array if col_num=0 too).
-	// The result is an array marked NoSpill; in a single-cell (non-array)
-	// context the caller converts this to #VALUE!. Functions like SUM that
-	// consume the array directly still work because they read Array elements
-	// before the final scalar reduction.
-	if ri == 0 && colNum == 0 {
-		v := arr
-		v.NoSpill = true
-		return v, nil
+	if idx > max {
+		errVal := ErrorVal(ErrValREF)
+		return 0, &errVal
 	}
-	if ri == 0 {
-		// Return entire column as a single-column array.
-		ci := colNum - 1
-		if ci < 0 || ci >= cols {
-			return ErrorVal(ErrValREF), nil
-		}
-		col := make([][]Value, len(arr.Array))
-		for i, row := range arr.Array {
-			cell := EmptyVal()
-			if ci < len(row) {
-				cell = row[ci]
-			}
-			col[i] = []Value{cell}
-		}
-		out := Value{Type: ValueArray, Array: col, NoSpill: true}
-		if arr.RangeOrigin != nil {
-			origin := *arr.RangeOrigin
-			origin.FromCol += ci
-			origin.ToCol = origin.FromCol
-			out.RangeOrigin = &origin
-		}
-		return out, nil
-	}
-	if colNum == 0 {
-		// Return entire row as a single-row array.
-		ri--
-		if ri < 0 || ri >= rows {
-			return ErrorVal(ErrValREF), nil
-		}
-		width := materializedArrayCols(arr.Array)
-		if width == 0 {
-			width = 1
-		}
-		row := make([]Value, width)
-		if ri < len(arr.Array) {
-			copy(row, arr.Array[ri])
-		}
-		out := Value{Type: ValueArray, Array: [][]Value{row}, NoSpill: true}
-		if arr.RangeOrigin != nil {
-			origin := *arr.RangeOrigin
-			origin.FromRow += ri
-			origin.ToRow = origin.FromRow
-			out.RangeOrigin = &origin
-		}
-		return out, nil
-	}
-
-	ri--
-	colNum--
-	if ri < 0 || ri >= rows {
-		return ErrorVal(ErrValREF), nil
-	}
-	if colNum < 0 || colNum >= cols {
-		return ErrorVal(ErrValREF), nil
-	}
-	return indexArrayValue(arr, ri, colNum), nil
+	return idx, nil
 }
 
 func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
@@ -520,28 +551,43 @@ func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
 }
 
 func fnMATCH(args []Value) (Value, error) {
+	return matchCore(args, nil)
+}
+
+func evalMATCH(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, matchCore)
+}
+
+func matchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	arr := args[1]
+	if lookup.Type == ValueError {
+		return lookup, nil
+	}
+	if errVal := argTopLevelError(arr, evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
+	}
 	matchType := 1
 	if len(args) == 3 {
-		mt, e := CoerceNum(args[2])
+		mt, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 		if e != nil {
 			return *e, nil
 		}
 		matchType = int(mt)
 	}
 
-	var values []Value
-	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			values = append(values, row...)
-		}
-	} else {
-		values = []Value{arr}
+	grid, errVal := normalizeGridShapeArg(arr, evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	gridRows, gridCols := grid.dims()
+	if gridRows > 1 && gridCols > 1 {
+		return ErrorVal(ErrValNA), nil
+	}
+	values := grid.flattenRowMajor()
 
 	// For exact match, support wildcard matching on string lookups.
 	useWildcard := false
@@ -716,33 +762,37 @@ func fnADDRESS(args []Value) (Value, error) {
 }
 
 func fnLOOKUP(args []Value) (Value, error) {
+	return lookupCore(args, nil)
+}
+
+func evalLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, lookupCore)
+}
+
+func lookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	lookupArr := args[1]
 	resultArr := lookupArr
+	resultEvalArg := evalArgAt(evalArgs, 1)
 	if len(args) == 3 {
 		resultArr = args[2]
+		resultEvalArg = evalArgAt(evalArgs, 2)
 	}
 
-	var lookupValues []Value
-	if lookupArr.Type == ValueArray {
-		for _, row := range lookupArr.Array {
-			lookupValues = append(lookupValues, row...)
-		}
-	} else {
-		lookupValues = []Value{lookupArr}
+	lookupGrid, errVal := normalizeGridShapeArg(lookupArr, evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	lookupValues := lookupGrid.flattenRowMajor()
 
-	var resultValues []Value
-	if resultArr.Type == ValueArray {
-		for _, row := range resultArr.Array {
-			resultValues = append(resultValues, row...)
-		}
-	} else {
-		resultValues = []Value{resultArr}
+	resultGrid, errVal := normalizeGridShapeArg(resultArr, resultEvalArg)
+	if errVal != nil {
+		return *errVal, nil
 	}
+	resultValues := resultGrid.flattenRowMajor()
 
 	lastMatch := -1
 	for i, v := range lookupValues {
@@ -762,21 +812,36 @@ func fnLOOKUP(args []Value) (Value, error) {
 }
 
 func fnXLOOKUP(args []Value) (Value, error) {
+	return xlookupCore(args, nil)
+}
+
+func evalXLOOKUP(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, xlookupCore)
+}
+
+func xlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 3 || len(args) > 6 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	lookupArr := args[1]
-	returnArr := args[2]
+	hasReturnGrid := lookupArgIsGrid(args[2], evalArgAt(evalArgs, 2))
+	var returnArr Value
+	if !hasReturnGrid {
+		returnArr = legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+	}
 
 	notFound := ErrorVal(ErrValNA)
-	if len(args) >= 4 && args[3].Type != ValueEmpty {
-		notFound = args[3]
+	if len(args) >= 4 {
+		notFoundArg := legacyArgValue(args[3], evalArgAt(evalArgs, 3))
+		if notFoundArg.Type != ValueEmpty {
+			notFound = notFoundArg
+		}
 	}
 
 	matchMode := 0
 	if len(args) >= 5 {
-		mm, e := CoerceNum(args[4])
+		mm, e := CoerceNum(legacyArgValue(args[4], evalArgAt(evalArgs, 4)))
 		if e != nil {
 			return *e, nil
 		}
@@ -785,38 +850,56 @@ func fnXLOOKUP(args []Value) (Value, error) {
 
 	searchMode := 1
 	if len(args) >= 6 {
-		sm, e := CoerceNum(args[5])
+		sm, e := CoerceNum(legacyArgValue(args[5], evalArgAt(evalArgs, 5)))
 		if e != nil {
 			return *e, nil
 		}
 		searchMode = int(sm)
 	}
 
-	var lookupValues []Value
-	if lookupArr.Type == ValueArray {
-		for _, row := range lookupArr.Array {
-			lookupValues = append(lookupValues, row...)
-		}
-	} else {
-		lookupValues = []Value{lookupArr}
+	lookupGrid, errVal := normalizeGridShapeArg(lookupArr, evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	lookupValues := lookupGrid.flattenRowMajor()
+	lookupRows, lookupCols := lookupGrid.dims()
 
-	var returnValues []Value
-	if returnArr.Type == ValueArray {
-		for _, row := range returnArr.Array {
-			returnValues = append(returnValues, row...)
+	// Determine lookup orientation: row-oriented if the lookup array is a
+	// single row with multiple columns; column-oriented otherwise.
+	isRowOriented := lookupRows == 1 && lookupCols > 1
+
+	var returnGrid gridValueSource
+	if hasReturnGrid {
+		returnGrid, errVal = normalizeGridShapeArg(args[2], evalArgAt(evalArgs, 2))
+		if errVal != nil {
+			return *errVal, nil
 		}
-	} else {
-		returnValues = []Value{returnArr}
+		returnRows, returnCols := returnGrid.dims()
+		if isRowOriented {
+			if returnCols != lookupCols {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		} else {
+			if returnRows != lookupRows {
+				return ErrorVal(ErrValVALUE), nil
+			}
+		}
 	}
 
 	n := len(lookupValues)
 
 	xlookupReturn := func(i int) (Value, error) {
-		if i >= 0 && i < len(returnValues) {
-			return returnValues[i], nil
+		if !hasReturnGrid {
+			if i == 0 {
+				return returnArr, nil
+			}
+			return ErrorVal(ErrValNA), nil
 		}
-		return ErrorVal(ErrValNA), nil
+		if isRowOriented {
+			return returnGrid.projectCol(i), nil
+		}
+		// Column-oriented lookup: index i is a row index.
+		return returnGrid.projectRow(i), nil
 	}
 
 	// --- Binary search modes (search_mode 2 or -2) ---
@@ -955,118 +1038,7 @@ func xlookupBinarySearch(lookupValues []Value, lookup Value, matchMode int, asce
 // fnINDIRECT implements INDIRECT(ref_text, [a1]).
 // It converts a text string into a cell or range reference and resolves it.
 func fnINDIRECT(args []Value, ctx *EvalContext) (Value, error) {
-	if len(args) < 1 || len(args) > 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	if args[0].Type == ValueError {
-		return args[0], nil
-	}
-
-	refText := ValueToString(args[0])
-	if refText == "" {
-		return ErrorVal(ErrValREF), nil
-	}
-
-	// a1 parameter: default true (A1 style). When false, use R1C1 style.
-	a1Style := true
-	if len(args) == 2 {
-		a1Style = IsTruthy(args[1])
-	}
-
-	if ctx == nil || ctx.Resolver == nil {
-		return ErrorVal(ErrValREF), nil
-	}
-
-	// If R1C1 style, convert to A1 style before parsing.
-	if !a1Style {
-		converted, err := r1c1ToA1(refText)
-		if err != nil {
-			return ErrorVal(ErrValREF), nil
-		}
-		refText = converted
-	}
-
-	// Strip dollar signs (absolute markers) for parsing.
-	cleaned := strings.ReplaceAll(refText, "$", "")
-
-	// Extract optional sheet prefix.
-	sheet := ""
-	cellPart := cleaned
-	if idx := strings.LastIndex(cleaned, "!"); idx >= 0 {
-		sheetPart := cleaned[:idx]
-		// Remove surrounding quotes from sheet name.
-		if len(sheetPart) >= 2 && sheetPart[0] == '\'' && sheetPart[len(sheetPart)-1] == '\'' {
-			sheetPart = sheetPart[1 : len(sheetPart)-1]
-		}
-		sheet = sheetPart
-		cellPart = cleaned[idx+1:]
-	}
-
-	// Check if it's a range (contains colon).
-	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
-		left := cellPart[:colonIdx]
-		right := cellPart[colonIdx+1:]
-		addr, err := indirectParseRange(left, right, sheet)
-		if err != nil {
-			return ErrorVal(ErrValREF), nil
-		}
-		isFullCol := addr.FromRow == 1 && addr.ToRow >= maxRows
-		isFullRow := addr.FromCol == 1 && addr.ToCol >= maxCols
-		nRows := addr.ToRow - addr.FromRow + 1
-		nCols := addr.ToCol - addr.FromCol + 1
-		// For full-row or full-column ranges (e.g. "1:20", "A:C"), return
-		// only the RangeOrigin metadata without resolving cell values.
-		// Functions like ROW() and COLUMN() only need the metadata, and
-		// resolving all cells in such large ranges causes false circular
-		// reference errors when the calling cell falls within the range.
-		if isFullCol || isFullRow {
-			if isFullRow {
-				nCols = 1 // placeholder; actual columns determined by consumer
-			}
-			if isFullCol {
-				nRows = 1 // placeholder; actual rows determined by consumer
-			}
-			if RangeCellCountExceedsLimit(nRows, nCols) {
-				return ErrorVal(ErrValREF), nil
-			}
-			rows := make([][]Value, nRows)
-			for i := range rows {
-				rows[i] = make([]Value, nCols)
-				for j := range rows[i] {
-					rows[i][j] = EmptyVal()
-				}
-			}
-			return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
-		}
-		if RangeCellCountExceedsLimit(nRows, nCols) {
-			return ErrorVal(ErrValREF), nil
-		}
-		rows := ctx.Resolver.GetRangeValues(addr)
-		if isRangeOverflowMatrix(rows) {
-			return ErrorVal(ErrValREF), nil
-		}
-		// Pad trailing blank rows for bounded ranges.
-		expectedRows := addr.ToRow - addr.FromRow + 1
-		cols := addr.ToCol - addr.FromCol + 1
-		for len(rows) < expectedRows {
-			emptyRow := make([]Value, cols)
-			for j := range emptyRow {
-				emptyRow[j] = EmptyVal()
-			}
-			rows = append(rows, emptyRow)
-		}
-		return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
-	}
-
-	// Single cell reference.
-	col, row, err := indirectParseCell(cellPart)
-	if err != nil {
-		return ErrorVal(ErrValREF), nil
-	}
-	addr := CellAddr{Sheet: sheet, Col: col, Row: row}
-	val := ctx.Resolver.GetCellValue(addr)
-	val.CellOrigin = &addr
-	return val, nil
+	return callRefProducerWithSpec(indirectRefProducerSpec, args, ctx)
 }
 
 // indirectParseCell parses a cell reference like "A1" or "B3" into (col, row).
@@ -1159,9 +1131,13 @@ func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
 	}, nil
 }
 
-// parseR1C1Cell parses a single R1C1-style cell reference like "R1C1" or "R5C3"
-// and returns (col, row). The input is case-insensitive.
+// parseR1C1Cell parses a single absolute R1C1-style cell reference like
+// "R1C1" or "R5C3" and returns (col, row). The input is case-insensitive.
 func parseR1C1Cell(s string) (col, row int, err error) {
+	return parseR1C1CellAt(s, 0, 0)
+}
+
+func parseR1C1CellAt(s string, currentRow, currentCol int) (col, row int, err error) {
 	s = strings.ToUpper(s)
 	if len(s) < 4 || s[0] != 'R' {
 		return 0, 0, fmt.Errorf("invalid R1C1 reference %q", s)
@@ -1173,40 +1149,63 @@ func parseR1C1Cell(s string) (col, row int, err error) {
 	cIdx++ // adjust for the slice offset
 	rowStr := s[1:cIdx]
 	colStr := s[cIdx+1:]
-	if rowStr == "" || colStr == "" {
-		return 0, 0, fmt.Errorf("invalid R1C1 reference %q: empty row or col", s)
-	}
-	row, err = strconv.Atoi(rowStr)
-	if err != nil || row < 1 || row > maxRows {
+	row, err = parseR1C1Component(rowStr, currentRow, maxRows)
+	if err != nil {
 		return 0, 0, fmt.Errorf("invalid row in R1C1 reference %q", s)
 	}
-	col, err = strconv.Atoi(colStr)
-	if err != nil || col < 1 || col > maxCols {
+	col, err = parseR1C1Component(colStr, currentCol, maxCols)
+	if err != nil {
 		return 0, 0, fmt.Errorf("invalid col in R1C1 reference %q", s)
 	}
 	return col, row, nil
 }
 
+func parseR1C1Component(part string, current, max int) (int, error) {
+	switch {
+	case part == "":
+		if current < 1 || current > max {
+			return 0, fmt.Errorf("relative R1C1 reference missing current position")
+		}
+		return current, nil
+	case strings.HasPrefix(part, "[") && strings.HasSuffix(part, "]"):
+		if current < 1 || current > max {
+			return 0, fmt.Errorf("relative R1C1 reference missing current position")
+		}
+		delta, err := strconv.Atoi(part[1 : len(part)-1])
+		if err != nil {
+			return 0, err
+		}
+		value := current + delta
+		if value < 1 || value > max {
+			return 0, fmt.Errorf("relative R1C1 component out of bounds")
+		}
+		return value, nil
+	default:
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 1 || value > max {
+			return 0, fmt.Errorf("absolute R1C1 component out of bounds")
+		}
+		return value, nil
+	}
+}
+
 // r1c1ToA1 converts an R1C1-style reference string to A1-style.
 // Supports single cell (R1C1), ranges (R1C1:R5C3), and optional sheet prefixes.
-func r1c1ToA1(ref string) (string, error) {
-	// Preserve sheet prefix.
-	prefix := ""
-	cellPart := ref
-	if idx := strings.LastIndex(ref, "!"); idx >= 0 {
-		prefix = ref[:idx+1]
-		cellPart = ref[idx+1:]
-	}
+func r1c1ToA1At(ref string, currentRow, currentCol int) (string, error) {
+	// Preserve sheet prefix. splitSheetPrefix is quote-aware so a sheet
+	// name quoted like 'Bob's-Sheet' (with an escaped '') does not get
+	// mis-split at an embedded '!'.
+	prefix, cellPart := splitSheetPrefix(ref)
 
 	// Check if it's a range.
 	if colonIdx := strings.IndexByte(cellPart, ':'); colonIdx >= 0 {
 		left := cellPart[:colonIdx]
 		right := cellPart[colonIdx+1:]
-		c1, r1, err := parseR1C1Cell(left)
+		c1, r1, err := parseR1C1CellAt(left, currentRow, currentCol)
 		if err != nil {
 			return "", err
 		}
-		c2, r2, err := parseR1C1Cell(right)
+		c2, r2, err := parseR1C1CellAt(right, currentRow, currentCol)
 		if err != nil {
 			return "", err
 		}
@@ -1214,11 +1213,43 @@ func r1c1ToA1(ref string) (string, error) {
 	}
 
 	// Single cell.
-	c, r, err := parseR1C1Cell(cellPart)
+	c, r, err := parseR1C1CellAt(cellPart, currentRow, currentCol)
 	if err != nil {
 		return "", err
 	}
 	return prefix + ColNumberToLetters(c) + strconv.Itoa(r), nil
+}
+
+// splitSheetPrefix separates a reference string like "Sheet1!A1" or
+// "'Sheet Name'!A1" into its sheet-qualifier prefix (including the
+// trailing '!') and the cell portion. When the sheet name is quoted,
+// embedded '!' characters (and escaped ” quotes) inside the quotes
+// are preserved and do not split the reference. If no sheet qualifier
+// is present, prefix is empty and rest is the whole input.
+func splitSheetPrefix(ref string) (prefix, rest string) {
+	if ref == "" {
+		return "", ref
+	}
+	if ref[0] == '\'' {
+		for i := 1; i < len(ref); i++ {
+			if ref[i] != '\'' {
+				continue
+			}
+			if i+1 < len(ref) && ref[i+1] == '\'' {
+				i++ // step over the second '; outer loop increment skips it
+				continue
+			}
+			if i+1 < len(ref) && ref[i+1] == '!' {
+				return ref[:i+2], ref[i+2:]
+			}
+			return "", ref
+		}
+		return "", ref
+	}
+	if idx := strings.IndexByte(ref, '!'); idx >= 0 {
+		return ref[:idx+1], ref[idx+1:]
+	}
+	return "", ref
 }
 
 func isAllDigits(s string) bool {
@@ -1246,19 +1277,35 @@ func isAllLetters(s string) bool {
 }
 
 func fnTRANSPOSE(args []Value) (Value, error) {
+	return transposeCore(args, nil)
+}
+
+func evalTRANSPOSE(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, transposeCore)
+}
+
+func transposeCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	v := args[0]
-	if v.Type != ValueArray {
-		return v, nil
+	if evalArgAt(evalArgs, 0) == nil {
+		v := args[0]
+		if v.Type != ValueArray {
+			return v, nil
+		}
+		if len(v.Array) == 0 {
+			return Value{Type: ValueArray, Array: nil}, nil
+		}
+	} else if evalArgs[0].Kind == EvalScalar {
+		return EvalValueToValue(evalArgs[0]), nil
 	}
 
-	rows, cols := effectiveArrayBounds(v)
-	if rows == 0 {
-		return Value{Type: ValueArray, Array: nil}, nil
+	src, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
+	if errVal != nil {
+		return *errVal, nil
 	}
-	if cols == 0 {
+	rows, cols := src.dims()
+	if rows == 0 || cols == 0 {
 		return Value{Type: ValueArray, Array: nil}, nil
 	}
 
@@ -1267,7 +1314,7 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 	for c := 0; c < cols; c++ {
 		result[c] = make([]Value, rows)
 		for r := 0; r < rows; r++ {
-			result[c][r] = indexArrayValue(v, r, c)
+			result[c][r] = src.cell(r, c)
 		}
 	}
 	return Value{Type: ValueArray, Array: result}, nil
@@ -1275,13 +1322,19 @@ func fnTRANSPOSE(args []Value) (Value, error) {
 
 // fnUNIQUE implements UNIQUE(array, [by_col], [exactly_once]).
 func fnUNIQUE(args []Value) (Value, error) {
+	return uniqueCore(args, nil)
+}
+
+func evalUNIQUE(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return ValueToEvalValue(uniqueCoreEval(args, nil)), nil
+}
+
+func uniqueCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Extract the 2D grid from the first argument.
-	arr := args[0]
-	grid, errVal := normalizeToArrayGrid(arr)
+	src, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		if errVal.Err == ErrValVALUE {
 			return ErrorVal(ErrValCALC), nil
@@ -1292,7 +1345,7 @@ func fnUNIQUE(args []Value) (Value, error) {
 	// by_col: default FALSE.
 	byCol := false
 	if len(args) >= 2 {
-		bc, e := CoerceNum(args[1])
+		bc, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 		if e != nil {
 			return *e, nil
 		}
@@ -1302,17 +1355,11 @@ func fnUNIQUE(args []Value) (Value, error) {
 	// exactly_once: default FALSE.
 	exactlyOnce := false
 	if len(args) >= 3 {
-		eo, e := CoerceNum(args[2])
+		eo, e := CoerceNum(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 		if e != nil {
 			return *e, nil
 		}
 		exactlyOnce = eo != 0
-	}
-
-	// If by_col, transpose so we always work with rows.
-	fullGrid := grid.matrix()
-	if byCol {
-		fullGrid = transposeGrid(fullGrid)
 	}
 
 	// Build a key for each row and track counts / first-seen order.
@@ -1322,41 +1369,38 @@ func fnUNIQUE(args []Value) (Value, error) {
 	}
 	seen := make(map[string]int) // key → count
 	var order []rowEntry
-	for i, row := range fullGrid {
-		k := rowKey(row)
+	itemCount := uniqueAxisCount(src, byCol)
+	for i := 0; i < itemCount; i++ {
+		k := uniqueAxisKey(src, i, byCol)
 		seen[k]++
 		if seen[k] == 1 {
 			order = append(order, rowEntry{index: i, key: k})
 		}
 	}
 
-	// Collect result rows.
-	var result [][]Value
+	// Collect result rows. Anonymous-array output positions don't have the
+	// "truly blank" concept that ranges do — Excel renders blank source
+	// rows as empty strings in UNIQUE's spill so COUNTA counts them
+	// (COUNT still ignores them, since they aren't numeric). Mirror that
+	// by normalising ValueEmpty to StringVal("") in output while keeping
+	// the row keyed distinctly via rowKey's "E:" prefix.
+	var keep []int
 	for _, entry := range order {
 		if exactlyOnce && seen[entry.key] != 1 {
 			continue
 		}
-		row := fullGrid[entry.index]
-		cp := make([]Value, len(row))
-		copy(cp, row)
-		result = append(result, cp)
+		keep = append(keep, entry.index)
 	}
 
 	// If exactly_once filtered everything out, return #CALC!.
-	if len(result) == 0 {
+	if len(keep) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
 
-	// If by_col, transpose back.
-	if byCol {
-		result = transposeGrid(result)
-	}
+	result := uniqueMaterialize(src, keep, byCol)
 
 	// Return: single value, 1D column array, or 2D array.
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return collapseArrayResult(result), nil
 }
 
 // rowKey produces a string key for a row of Values, encoding type and value
@@ -1375,8 +1419,9 @@ func rowKey(row []Value) string {
 			b.WriteString("N:")
 			b.WriteString(strconv.FormatFloat(v.Num, 'g', -1, 64))
 		case ValueString:
+			// Excel UNIQUE is case-insensitive: "apple" and "Apple" dedup.
 			b.WriteString("S:")
-			b.WriteString(v.Str)
+			b.WriteString(strings.ToLower(v.Str))
 		case ValueBool:
 			b.WriteString("B:")
 			if v.Bool {
@@ -1411,6 +1456,33 @@ func normalizeToGrid(v Value) ([][]Value, *Value) {
 	}
 }
 
+// spilledErrorMatchingGrid returns a Value whose shape matches the given
+// grid, with every cell set to err. Used by FILTER when the include argument
+// has errors: Excel propagates one error cell per value-row so that COUNTA
+// counts them and SUM propagates the first error — returning a bare scalar
+// error collapses both downstream consumers to a single cell.
+func spilledErrorMatchingGrid(grid [][]Value, err Value) Value {
+	if len(grid) == 0 {
+		return err
+	}
+	out := make([][]Value, len(grid))
+	for r, row := range grid {
+		cols := len(row)
+		if cols == 0 {
+			cols = 1
+		}
+		cells := make([]Value, cols)
+		for c := range cells {
+			cells[c] = err
+		}
+		out[r] = cells
+	}
+	if len(out) == 1 && len(out[0]) == 1 {
+		return out[0][0]
+	}
+	return Value{Type: ValueArray, Array: out}
+}
+
 // gridDims returns (rows, maxCols) for a 2D grid.
 func gridDims(grid [][]Value) (int, int) {
 	rows := len(grid)
@@ -1426,167 +1498,42 @@ func gridDims(grid [][]Value) (int, int) {
 // fnTAKE implements TAKE(array, rows, [columns]).
 // Returns a specified number of contiguous rows or columns from the start or end of an array.
 func fnTAKE(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows, numCols := grid.rowCount, grid.colCount
-
-	// Parse rows parameter.
-	rowsArg, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	takeRows := int(rowsArg)
-	if takeRows == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Parse optional columns parameter.
-	takeCols := 0 // 0 means "all columns"
-	if len(args) == 3 {
-		colsArg, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		takeCols = int(colsArg)
-		if takeCols == 0 {
-			return ErrorVal(ErrValVALUE), nil
-		}
-	}
-
-	// Determine row slice.
-	var rowStart, rowEnd int
-	if takeRows > 0 {
-		if takeRows > numRows {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		rowStart = 0
-		rowEnd = takeRows
-	} else {
-		if -takeRows > numRows {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		rowStart = numRows + takeRows
-		rowEnd = numRows
-	}
-
-	// Determine column slice.
-	colStart := 0
-	colEnd := numCols
-	if takeCols != 0 {
-		if takeCols > 0 {
-			if takeCols > numCols {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			colStart = 0
-			colEnd = takeCols
-		} else {
-			if -takeCols > numCols {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			colStart = numCols + takeCols
-			colEnd = numCols
-		}
-	}
-
-	// Build the result grid.
-	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalTAKESelector, args)
 }
 
 // fnDROP implements DROP(array, rows, [columns]).
 // Excludes a specified number of rows or columns from the start or end of an array.
 func fnDROP(args []Value) (Value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows, numCols := grid.rowCount, grid.colCount
-
-	// Parse rows parameter.
-	rowsArg, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	dropRows := int(rowsArg)
-
-	// Parse optional columns parameter.
-	dropCols := 0
-	if len(args) == 3 {
-		colsArg, e := CoerceNum(args[2])
-		if e != nil {
-			return *e, nil
-		}
-		dropCols = int(colsArg)
-	}
-
-	// Determine row slice after dropping.
-	var rowStart, rowEnd int
-	if dropRows >= 0 {
-		rowStart = dropRows
-		rowEnd = numRows
-	} else {
-		rowStart = 0
-		rowEnd = numRows + dropRows
-	}
-	if rowStart >= rowEnd {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Determine column slice after dropping.
-	colStart := 0
-	colEnd := numCols
-	if dropCols > 0 {
-		colStart = dropCols
-	} else if dropCols < 0 {
-		colEnd = numCols + dropCols
-	}
-	if colStart >= colEnd {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Build the result grid.
-	result := grid.subgrid(rowStart, rowEnd, colStart, colEnd)
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalDROPSelector, args)
 }
 
 // fnEXPAND implements EXPAND(array, rows, [columns], [pad_with]).
 // It expands an array to specified dimensions, padding new cells with pad_with
 // (default #N/A).
 func fnEXPAND(args []Value) (Value, error) {
+	return expandCore(args, nil)
+}
+
+func evalEXPAND(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, expandCore)
+}
+
+func expandCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToArrayGrid(args[0])
+	grid, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	srcRows, srcCols := grid.rowCount, grid.colCount
+	srcRows, srcCols := grid.dims()
 
 	// Parse rows argument.
 	targetRows := srcRows
-	if args[1].Type != ValueEmpty {
-		r, e := CoerceNum(args[1])
+	rowsArg := legacyArgValue(args[1], evalArgAt(evalArgs, 1))
+	if rowsArg.Type != ValueEmpty {
+		r, e := CoerceNum(rowsArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -1595,8 +1542,12 @@ func fnEXPAND(args []Value) (Value, error) {
 
 	// Parse optional columns argument.
 	targetCols := srcCols
-	if len(args) >= 3 && args[2].Type != ValueEmpty {
-		c, e := CoerceNum(args[2])
+	colsArg := EmptyVal()
+	if len(args) >= 3 {
+		colsArg = legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+	}
+	if len(args) >= 3 && colsArg.Type != ValueEmpty {
+		c, e := CoerceNum(colsArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -1614,7 +1565,7 @@ func fnEXPAND(args []Value) (Value, error) {
 	// Determine pad value.
 	pad := Value{Type: ValueError, Err: ErrValNA}
 	if len(args) >= 4 {
-		pad = args[3]
+		pad = legacyArgValue(args[3], evalArgAt(evalArgs, 3))
 	}
 
 	// If no expansion needed, return original.
@@ -1641,108 +1592,39 @@ func fnEXPAND(args []Value) (Value, error) {
 	return Value{Type: ValueArray, Array: result}, nil
 }
 
-// normalizeChooserIndex converts a CHOOSECOLS/CHOOSEROWS selector to a
-// zero-based index, supporting negative indexes from the end.
-func normalizeChooserIndex(arg Value, max int) (int, *Value) {
-	idxNum, e := CoerceNum(arg)
-	if e != nil {
-		return 0, e
-	}
-
-	idx := int(idxNum)
-	if idx == 0 || idx > max || idx < -max {
-		errVal := ErrorVal(ErrValVALUE)
-		return 0, &errVal
-	}
-	if idx < 0 {
-		idx = max + idx + 1
-	}
-	return idx - 1, nil
-}
-
 // fnCHOOSECOLS implements CHOOSECOLS(array, col_num1, [col_num2], ...).
 func fnCHOOSECOLS(args []Value) (Value, error) {
-	if len(args) < 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numCols := grid.colCount
-	selectCols := make([]int, len(args)-1)
-	for i, arg := range args[1:] {
-		colIdx, e := normalizeChooserIndex(arg, numCols)
-		if e != nil {
-			return *e, nil
-		}
-		selectCols[i] = colIdx
-	}
-
-	result := make([][]Value, grid.rowCount)
-	for r := 0; r < grid.rowCount; r++ {
-		row := make([]Value, len(selectCols))
-		for c, srcCol := range selectCols {
-			row[c] = grid.cell(r, srcCol)
-		}
-		result[r] = row
-	}
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalCHOOSECOLSSelector, args)
 }
 
 // fnCHOOSEROWS implements CHOOSEROWS(array, row_num1, [row_num2], ...).
 func fnCHOOSEROWS(args []Value) (Value, error) {
-	if len(args) < 2 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	grid, errVal := normalizeToArrayGrid(args[0])
-	if errVal != nil {
-		return *errVal, nil
-	}
-
-	numRows := grid.rowCount
-	selectRows := make([]int, len(args)-1)
-	for i, arg := range args[1:] {
-		rowIdx, e := normalizeChooserIndex(arg, numRows)
-		if e != nil {
-			return *e, nil
-		}
-		selectRows[i] = rowIdx
-	}
-
-	result := make([][]Value, len(selectRows))
-	for i, srcRow := range selectRows {
-		result[i] = grid.row(srcRow)
-	}
-
-	if len(result) == 1 && len(result[0]) == 1 {
-		return result[0][0], nil
-	}
-	return Value{Type: ValueArray, Array: result}, nil
+	return callSelectorEval(evalCHOOSEROWSSelector, args)
 }
 
 // fnTOCOL implements TOCOL(array, [ignore], [scan_by_column]).
 // Returns all values from a 2D array as a single column.
 func fnTOCOL(args []Value) (Value, error) {
+	return tocolCore(args, nil)
+}
+
+func evalTOCOL(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, tocolCore)
+}
+
+func tocolCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToArrayGrid(args[0])
+	grid, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
 
 	ignore := 0
 	if len(args) >= 2 {
-		ig, e := CoerceNum(args[1])
+		ig, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 		if e != nil {
 			return *e, nil
 		}
@@ -1754,10 +1636,10 @@ func fnTOCOL(args []Value) (Value, error) {
 
 	scanByCol := false
 	if len(args) >= 3 {
-		scanByCol = IsTruthy(args[2])
+		scanByCol = IsTruthy(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	}
 
-	flat := flattenArrayGrid(grid, scanByCol, ignore)
+	flat := flattenGridValueSource(grid, scanByCol, ignore)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
@@ -1776,18 +1658,26 @@ func fnTOCOL(args []Value) (Value, error) {
 // fnTOROW implements TOROW(array, [ignore], [scan_by_column]).
 // Returns all values from a 2D array as a single row.
 func fnTOROW(args []Value) (Value, error) {
+	return torowCore(args, nil)
+}
+
+func evalTOROW(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, torowCore)
+}
+
+func torowCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	grid, errVal := normalizeToArrayGrid(args[0])
+	grid, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
 
 	ignore := 0
 	if len(args) >= 2 {
-		ig, e := CoerceNum(args[1])
+		ig, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 		if e != nil {
 			return *e, nil
 		}
@@ -1799,10 +1689,10 @@ func fnTOROW(args []Value) (Value, error) {
 
 	scanByCol := false
 	if len(args) >= 3 {
-		scanByCol = IsTruthy(args[2])
+		scanByCol = IsTruthy(legacyArgValue(args[2], evalArgAt(evalArgs, 2)))
 	}
 
-	flat := flattenArrayGrid(grid, scanByCol, ignore)
+	flat := flattenGridValueSource(grid, scanByCol, ignore)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValCALC), nil
 	}
@@ -1861,21 +1751,29 @@ func shouldInclude(v Value, ignore int) bool {
 // fnWRAPROWS implements WRAPROWS(vector, wrap_count, [pad_with]).
 // Wraps a row or column vector into a 2D array with wrap_count columns per row.
 func fnWRAPROWS(args []Value) (Value, error) {
+	return wraprowsCore(args, nil)
+}
+
+func evalWRAPROWS(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, wraprowsCore)
+}
+
+func wraprowsCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
 	// Flatten input to a 1D vector.
-	grid, errVal := normalizeToArrayGrid(args[0])
+	grid, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	flat := flattenArrayGrid(grid, false, 0)
+	flat := flattenGridValueSource(grid, false, 0)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	wrapArg, e := CoerceNum(args[1])
+	wrapArg, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 	if e != nil {
 		return *e, nil
 	}
@@ -1886,7 +1784,7 @@ func fnWRAPROWS(args []Value) (Value, error) {
 
 	padWith := ErrorVal(ErrValNA)
 	if len(args) == 3 {
-		padWith = args[2]
+		padWith = legacyArgValue(args[2], evalArgAt(evalArgs, 2))
 	}
 
 	// Build 2D array.
@@ -1914,21 +1812,29 @@ func fnWRAPROWS(args []Value) (Value, error) {
 // fnWRAPCOLS implements WRAPCOLS(vector, wrap_count, [pad_with]).
 // Wraps a row or column vector into a 2D array with wrap_count rows per column.
 func fnWRAPCOLS(args []Value) (Value, error) {
+	return wrapcolsCore(args, nil)
+}
+
+func evalWRAPCOLS(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, wrapcolsCore)
+}
+
+func wrapcolsCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
 	// Flatten input to a 1D vector.
-	grid, errVal := normalizeToArrayGrid(args[0])
+	grid, errVal := normalizeGridShapeArg(args[0], evalArgAt(evalArgs, 0))
 	if errVal != nil {
 		return *errVal, nil
 	}
-	flat := flattenArrayGrid(grid, false, 0)
+	flat := flattenGridValueSource(grid, false, 0)
 	if len(flat) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	wrapArg, e := CoerceNum(args[1])
+	wrapArg, e := CoerceNum(legacyArgValue(args[1], evalArgAt(evalArgs, 1)))
 	if e != nil {
 		return *e, nil
 	}
@@ -1939,7 +1845,7 @@ func fnWRAPCOLS(args []Value) (Value, error) {
 
 	padWith := ErrorVal(ErrValNA)
 	if len(args) == 3 {
-		padWith = args[2]
+		padWith = legacyArgValue(args[2], evalArgAt(evalArgs, 2))
 	}
 
 	// Build 2D array filling column-first.
@@ -1966,21 +1872,32 @@ func fnWRAPCOLS(args []Value) (Value, error) {
 // fnHSTACK implements HSTACK(array1, [array2], ...).
 // Horizontally stacks arrays side by side.
 func fnHSTACK(args []Value) (Value, error) {
+	return hstackCore(args, nil)
+}
+
+func evalHSTACK(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, hstackCore)
+}
+
+func hstackCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
 	// Normalize all arguments to grids and find the max row count.
-	grids := make([]arrayGrid, len(args))
+	grids := make([]gridValueSource, len(args))
+	rowCounts := make([]int, len(args))
+	colCounts := make([]int, len(args))
 	maxRows := 0
 	for i, arg := range args {
-		g, errVal := normalizeToArrayGrid(arg)
+		g, errVal := normalizeGridShapeArg(arg, evalArgAt(evalArgs, i))
 		if errVal != nil {
 			return *errVal, nil
 		}
 		grids[i] = g
-		if g.rowCount > maxRows {
-			maxRows = g.rowCount
+		rowCounts[i], colCounts[i] = g.dims()
+		if rowCounts[i] > maxRows {
+			maxRows = rowCounts[i]
 		}
 	}
 
@@ -1988,9 +1905,9 @@ func fnHSTACK(args []Value) (Value, error) {
 	result := make([][]Value, maxRows)
 	for r := 0; r < maxRows; r++ {
 		var row []Value
-		for _, g := range grids {
-			for c := 0; c < g.colCount; c++ {
-				if r < g.rowCount {
+		for i, g := range grids {
+			for c := 0; c < colCounts[i]; c++ {
+				if r < rowCounts[i] {
 					if g.rangeOrigin == nil && !g.hasMaterializedCell(r, c) {
 						row = append(row, ErrorVal(ErrValNA))
 						continue
@@ -2013,31 +1930,42 @@ func fnHSTACK(args []Value) (Value, error) {
 // fnVSTACK implements VSTACK(array1, [array2], ...).
 // Vertically stacks arrays on top of each other.
 func fnVSTACK(args []Value) (Value, error) {
+	return vstackCore(args, nil)
+}
+
+func evalVSTACK(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalGridShapeCore(args, vstackCore)
+}
+
+func vstackCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
 	// Normalize all arguments to grids and find the max column count.
-	grids := make([]arrayGrid, len(args))
+	grids := make([]gridValueSource, len(args))
+	rowCounts := make([]int, len(args))
+	colCounts := make([]int, len(args))
 	maxCols := 0
 	for i, arg := range args {
-		g, errVal := normalizeToArrayGrid(arg)
+		g, errVal := normalizeGridShapeArg(arg, evalArgAt(evalArgs, i))
 		if errVal != nil {
 			return *errVal, nil
 		}
 		grids[i] = g
-		if g.colCount > maxCols {
-			maxCols = g.colCount
+		rowCounts[i], colCounts[i] = g.dims()
+		if colCounts[i] > maxCols {
+			maxCols = colCounts[i]
 		}
 	}
 
 	// Build result by stacking rows from each grid vertically.
 	var result [][]Value
-	for _, g := range grids {
-		for r := 0; r < g.rowCount; r++ {
+	for i, g := range grids {
+		for r := 0; r < rowCounts[i]; r++ {
 			row := make([]Value, maxCols)
 			for c := 0; c < maxCols; c++ {
-				if c < g.colCount {
+				if c < colCounts[i] {
 					if g.rangeOrigin == nil && !g.hasMaterializedCell(r, c) {
 						row[c] = ErrorVal(ErrValNA)
 						continue
@@ -2088,26 +2016,34 @@ func transposeGrid(grid [][]Value) [][]Value {
 // fnXMATCH implements XMATCH(lookup_value, lookup_array, [match_mode], [search_mode]).
 // It returns the 1-based relative position of an item in an array.
 func fnXMATCH(args []Value) (Value, error) {
+	return xmatchCore(args, nil)
+}
+
+func evalXMATCH(args []EvalValue, _ *EvalContext) (EvalValue, error) {
+	return evalLookupArrayLiftCore(args, xmatchCore)
+}
+
+func xmatchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	lookup := args[0]
+	lookup := legacyArgValue(args[0], evalArgAt(evalArgs, 0))
 	if lookup.Type == ValueError {
 		return lookup, nil
 	}
 
-	arr := args[1]
-	if arr.Type == ValueError {
-		return arr, nil
+	if errVal := argTopLevelError(args[1], evalArgAt(evalArgs, 1)); errVal != nil {
+		return *errVal, nil
 	}
 
 	matchMode := 0
 	if len(args) >= 3 {
-		if args[2].Type == ValueError {
-			return args[2], nil
+		matchModeArg := legacyArgValue(args[2], evalArgAt(evalArgs, 2))
+		if matchModeArg.Type == ValueError {
+			return matchModeArg, nil
 		}
-		mm, e := CoerceNum(args[2])
+		mm, e := CoerceNum(matchModeArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -2116,10 +2052,11 @@ func fnXMATCH(args []Value) (Value, error) {
 
 	searchMode := 1
 	if len(args) >= 4 {
-		if args[3].Type == ValueError {
-			return args[3], nil
+		searchModeArg := legacyArgValue(args[3], evalArgAt(evalArgs, 3))
+		if searchModeArg.Type == ValueError {
+			return searchModeArg, nil
 		}
-		sm, e := CoerceNum(args[3])
+		sm, e := CoerceNum(searchModeArg)
 		if e != nil {
 			return *e, nil
 		}
@@ -2140,15 +2077,12 @@ func fnXMATCH(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	// Flatten lookup_array into a single slice.
-	var values []Value
-	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			values = append(values, row...)
-		}
-	} else {
-		values = []Value{arr}
+	grid, errVal := normalizeGridShapeArg(args[1], evalArgAt(evalArgs, 1))
+	if errVal != nil {
+		return *errVal, nil
 	}
+	// Flatten lookup_array into a single slice.
+	values := grid.flattenRowMajor()
 
 	n := len(values)
 	if n == 0 {
@@ -2467,171 +2401,5 @@ func fnHyperlink(args []Value) (Value, error) {
 // fnOFFSET implements OFFSET(reference, rows, cols, [height], [width]).
 // It returns a reference to a range offset from the given reference.
 func fnOFFSET(args []Value, ctx *EvalContext) (Value, error) {
-	if len(args) < 3 || len(args) > 5 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	if ctx == nil || ctx.Resolver == nil {
-		return ErrorVal(ErrValREF), nil
-	}
-
-	// Parse the reference argument.
-	var (
-		sheet   string
-		fromRow int
-		fromCol int
-		toRow   int
-		toCol   int
-	)
-
-	ref := args[0]
-	switch ref.Type {
-	case ValueError:
-		return ref, nil
-	case ValueRef:
-		// Single cell reference: encoded as col + row*100_000, sheet in Str.
-		encoded := int(ref.Num)
-		fromCol = encoded % 100_000
-		fromRow = encoded / 100_000
-		toCol = fromCol
-		toRow = fromRow
-		sheet = ref.Str
-	case ValueArray:
-		if ref.RangeOrigin == nil {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		fromCol = ref.RangeOrigin.FromCol
-		fromRow = ref.RangeOrigin.FromRow
-		toCol = ref.RangeOrigin.ToCol
-		toRow = ref.RangeOrigin.ToRow
-		sheet = ref.RangeOrigin.Sheet
-	default:
-		// A value produced by another function (e.g. nested OFFSET) may
-		// carry a CellOrigin that records its source cell address.
-		if ref.CellOrigin != nil {
-			fromCol = ref.CellOrigin.Col
-			fromRow = ref.CellOrigin.Row
-			toCol = fromCol
-			toRow = fromRow
-			sheet = ref.CellOrigin.Sheet
-		} else {
-			return ErrorVal(ErrValVALUE), nil
-		}
-	}
-
-	// Parse rows offset.
-	rowsN, errV := CoerceNum(args[1])
-	if errV != nil {
-		return *errV, nil
-	}
-	rowsOff := int(math.Trunc(rowsN))
-
-	// Parse cols offset.
-	colsN, errV := CoerceNum(args[2])
-	if errV != nil {
-		return *errV, nil
-	}
-	colsOff := int(math.Trunc(colsN))
-
-	// Default height and width from reference dimensions.
-	refHeight := toRow - fromRow + 1
-	refWidth := toCol - fromCol + 1
-
-	height := refHeight
-	width := refWidth
-
-	// Parse optional height.
-	if len(args) >= 4 {
-		if args[3].Type == ValueEmpty {
-			// Omitted — keep default.
-		} else {
-			hN, errV := CoerceNum(args[3])
-			if errV != nil {
-				return *errV, nil
-			}
-			height = int(math.Trunc(hN))
-		}
-	}
-
-	// Parse optional width.
-	if len(args) >= 5 {
-		if args[4].Type == ValueEmpty {
-			// Omitted — keep default.
-		} else {
-			wN, errV := CoerceNum(args[4])
-			if errV != nil {
-				return *errV, nil
-			}
-			width = int(math.Trunc(wN))
-		}
-	}
-
-	// Height and width of zero are errors.
-	if height == 0 || width == 0 {
-		return ErrorVal(ErrValREF), nil
-	}
-
-	// Compute new range origin.
-	// Negative height/width reverses the direction (range extends upward/left).
-	newFromRow := fromRow + rowsOff
-	newFromCol := fromCol + colsOff
-	var newToRow, newToCol int
-	if height > 0 {
-		newToRow = newFromRow + height - 1
-	} else {
-		// Negative: anchor is at newFromRow, range extends upward.
-		newToRow = newFromRow
-		newFromRow = newFromRow + height + 1
-	}
-	if width > 0 {
-		newToCol = newFromCol + width - 1
-	} else {
-		// Negative: anchor is at newFromCol, range extends left.
-		newToCol = newFromCol
-		newFromCol = newFromCol + width + 1
-	}
-	// Use absolute values for subsequent size checks.
-	if height < 0 {
-		height = -height
-	}
-	if width < 0 {
-		width = -width
-	}
-
-	// Validate bounds.
-	if newFromRow < 1 || newFromCol < 1 || newToRow > maxRows || newToCol > maxCols {
-		return ErrorVal(ErrValREF), nil
-	}
-
-	// Single cell result — return the cell value directly, with the source
-	// cell address attached so nested OFFSET can extract it.
-	if height == 1 && width == 1 {
-		val := ctx.Resolver.GetCellValue(CellAddr{Sheet: sheet, Col: newFromCol, Row: newFromRow})
-		val.FromCell = true
-		val.CellOrigin = &CellAddr{Sheet: sheet, Col: newFromCol, Row: newFromRow}
-		return val, nil
-	}
-
-	// Range result — resolve via GetRangeValues.
-	addr := RangeAddr{
-		Sheet:   sheet,
-		FromCol: newFromCol,
-		FromRow: newFromRow,
-		ToCol:   newToCol,
-		ToRow:   newToRow,
-	}
-	rows := ctx.Resolver.GetRangeValues(addr)
-
-	// Pad trailing blank rows for bounded ranges.
-	expectedRows := addr.ToRow - addr.FromRow + 1
-	cols := addr.ToCol - addr.FromCol + 1
-	for len(rows) < expectedRows {
-		emptyRow := make([]Value, cols)
-		for j := range emptyRow {
-			emptyRow[j] = EmptyVal()
-		}
-		rows = append(rows, emptyRow)
-	}
-
-	return Value{Type: ValueArray, Array: rows, RangeOrigin: &addr}, nil
+	return callRefProducerWithSpec(offsetRefProducerSpec, args, ctx)
 }

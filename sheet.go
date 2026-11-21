@@ -86,12 +86,14 @@ func (s *Sheet) SetValue(cell string, v any) error {
 }
 
 // SetFormula sets a formula on a cell by reference (e.g. "A1").
-// The formula should not include the leading '=' sign.
+// A single leading '=' (as users often type in Excel) is tolerated and stripped;
+// leaving it in would nest inside the OOXML <f> element and save as a #NAME? cell.
 func (s *Sheet) SetFormula(cell string, f string) error {
 	col, row, err := CellNameToCoordinates(cell)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
+	f = strings.TrimPrefix(f, "=")
 	src, err := s.file.expandFormula(f, s.name, row)
 	if err != nil {
 		return err
@@ -120,7 +122,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 		cf, compErr := formula.Compile(src, node)
 		if compErr == nil {
 			c.compiled = cf
-			c.dynamicArraySpill = formulaShouldProbeForSpill(c.formula, cf)
+			c.dynamicArraySpill = formulaNeedsSpillAnchor(c.formula, cf)
 			s.file.deps.Register(qc, s.name, cf.Refs, cf.Ranges)
 		}
 	}
@@ -353,41 +355,20 @@ func (s *Sheet) spillValueAt(col, row int) (Value, bool) {
 }
 
 func (s *Sheet) spillFormulaValueAt(col, row int) (formula.Value, bool) {
-	overlay := s.ensureSpillOverlay()
-	for _, anchor := range overlay.refs {
-		if anchor.row > row || anchor.col > col {
-			continue
+	span := s.ensureSpillOverlay().index.lookup(col, row)
+	if span == nil {
+		if !s.refreshSpillAnchorsForPoint(col, row) {
+			return formula.Value{}, false
 		}
-		state := anchor.state
-		overlayGen := s.spill.gen
-		s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
-		if s.spill.gen != overlayGen {
-			state, _ = s.spillState(anchor.col, anchor.row)
+		span = s.ensureSpillOverlay().index.lookup(col, row)
+		if span == nil {
+			return formula.Value{}, false
 		}
-		if !spillStateHasPublishedSpill(state, anchor.col, anchor.row, s.file.calcGen) {
-			continue
-		}
-		if row > state.publishedToRow || col > state.publishedToCol {
-			continue
-		}
-		rowOffset := row - anchor.row
-		colOffset := col - anchor.col
-		if rowOffset == 0 && colOffset == 0 {
-			continue
-		}
-		raw := anchor.cell.rawValue
-		if raw.Type != formula.ValueArray || raw.NoSpill {
-			continue
-		}
-		if rowOffset < 0 || rowOffset >= len(raw.Array) || colOffset < 0 {
-			continue
-		}
-		if colOffset >= len(raw.Array[rowOffset]) {
-			continue
-		}
-		return raw.Array[rowOffset][colOffset], true
 	}
-	return formula.Value{}, false
+	raw := span.anchor.cell.rawValue
+	rowOffset := row - span.anchor.row
+	colOffset := col - span.anchor.col
+	return spillArrayCell(raw, rowOffset, colOffset)
 }
 
 // hasSpillConflict checks whether any cell in the proposed spill range
@@ -571,32 +552,78 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		}
 	}
 
-	// Sort rows by number.
-	rowNums := make([]int, 0, len(s.rows))
+	// Cached spill follower values, indexed by row then column. These are
+	// emitted as physical "shadow" cells alongside the regular cell stream
+	// so that consumers which cannot evaluate dynamic-array functions
+	// (notably Apple Numbers) can still display each spilled row.
+	shadowsByRow := s.collectSpillShadowsByRow()
+
+	// Build the union of row numbers from physical rows and shadow-only rows.
+	rowSet := make(map[int]struct{}, len(s.rows)+len(shadowsByRow))
 	for n := range s.rows {
+		rowSet[n] = struct{}{}
+	}
+	for n := range shadowsByRow {
+		rowSet[n] = struct{}{}
+	}
+	rowNums := make([]int, 0, len(rowSet))
+	for n := range rowSet {
 		rowNums = append(rowNums, n)
 	}
 	sort.Ints(rowNums)
 
 	for _, rn := range rowNums {
-		r := s.rows[rn]
-		if len(r.cells) == 0 && r.height == 0 && !r.hidden {
+		r, hasRow := s.rows[rn]
+		rowShadows := shadowsByRow[rn]
+		if !hasRow && len(rowShadows) == 0 {
 			continue
 		}
-		rd := ooxml.RowData{Num: rn, Height: r.height, Hidden: r.hidden}
+		var (
+			rowHeight float64
+			rowHidden bool
+			rowCells  map[int]*Cell
+		)
+		if hasRow {
+			rowHeight = r.height
+			rowHidden = r.hidden
+			rowCells = r.cells
+		}
+		if len(rowCells) == 0 && len(rowShadows) == 0 && rowHeight == 0 && !rowHidden {
+			continue
+		}
+		rd := ooxml.RowData{Num: rn, Height: rowHeight, Hidden: rowHidden}
 
-		// Sort cells by column.
-		colNums := make([]int, 0, len(r.cells))
-		for c := range r.cells {
+		// Build the union of column numbers from physical cells and
+		// shadow cells in this row.
+		colSet := make(map[int]struct{}, len(rowCells)+len(rowShadows))
+		for c := range rowCells {
+			colSet[c] = struct{}{}
+		}
+		for c := range rowShadows {
+			colSet[c] = struct{}{}
+		}
+		colNums := make([]int, 0, len(colSet))
+		for c := range colSet {
 			colNums = append(colNums, c)
 		}
 		sort.Ints(colNums)
 
 		for _, cn := range colNums {
-			c := r.cells[cn]
+			c, hasCell := rowCells[cn]
+			shadowVal, hasShadow := rowShadows[cn]
+			if !hasCell {
+				// Shadow-only cell: emit a value-bearing follower with no
+				// formula text but mark it as a spill follower so the writer
+				// emits an empty <f ca="1"/> alongside the cached value.
+				ref, _ := CoordinatesToCellName(cn, rn)
+				cd := cellToData(ref, shadowVal, "", false, "", false)
+				cd.IsSpillFollower = true
+				rd.Cells = append(rd.Cells, cd)
+				continue
+			}
 			// Resolve dirty/stale formulas before serializing.
 			s.resolveCell(c, cn, rn)
-			if c.value.Type == TypeEmpty && c.formula == "" && c.style == nil {
+			if c.value.Type == TypeEmpty && c.formula == "" && c.style == nil && !hasShadow {
 				continue
 			}
 			ref, _ := CoordinatesToCellName(cn, rn)
@@ -605,6 +632,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				formulaRef = state.formulaRef
 			}
 			saveValue := c.value
+			injectShadow := false
 			if c.dynamicArraySpill && !c.isArrayFormula {
 				if c.value.Type == TypeError && c.value.String == "#SPILL!" {
 					// #SPILL! means the spill failed. Write as plain formula
@@ -614,6 +642,13 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				} else {
 					formulaRef = s.dynamicArrayFormulaRef(ref, cn, rn, c)
 				}
+			} else if hasShadow && c.formula == "" && c.value.Type == TypeEmpty {
+				// Empty placeholder cell (typically a styled stub from the
+				// template) sitting inside a published spill range. Inject
+				// the cached spill value so downstream readers can display
+				// the spilled row.
+				saveValue = shadowVal
+				injectShadow = true
 			}
 			isDynamicArray := false
 			if c.dynamicArraySpill && !c.isArrayFormula {
@@ -623,6 +658,9 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 				}
 			}
 			cd := cellToData(ref, saveValue, c.formula, c.isArrayFormula, formulaRef, isDynamicArray)
+			if injectShadow {
+				cd.IsSpillFollower = true
+			}
 
 			if c.style != nil {
 				stData := styleToStyleData(c.style)
@@ -652,6 +690,59 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		}
 	}
 	return sd
+}
+
+// collectSpillShadowsByRow returns the cached spill follower values for
+// every dynamic-array anchor on this sheet, indexed by row then column.
+// The anchor cell itself is excluded; the returned map only contains
+// follower positions.
+//
+// Spill follower cells are not stored as physical cells in werkbook —
+// they live in the spill overlay and are recomputed on demand. Excel
+// re-evaluates the anchor's formula on load so it does not need follower
+// values persisted, but other consumers (notably Apple Numbers) cannot
+// evaluate `_xlfn._xlws.FILTER`/SORT/etc. and rely on these cached values
+// to render each spilled row.
+func (s *Sheet) collectSpillShadowsByRow() map[int]map[int]Value {
+	overlay := s.ensureSpillOverlay()
+	if overlay == nil || len(overlay.index.spans) == 0 {
+		return nil
+	}
+	shadows := make(map[int]map[int]Value)
+	for i := range overlay.index.spans {
+		span := &overlay.index.spans[i]
+		raw := span.anchor.cell.rawValue
+		rows, ok := spillArrayRows(raw)
+		if !ok {
+			continue
+		}
+		for rowOff, arrRow := range rows {
+			row := span.anchor.row + rowOff
+			if row > span.toRow {
+				break
+			}
+			for colOff := range arrRow {
+				col := span.anchor.col + colOff
+				if col > span.toCol {
+					break
+				}
+				if col == span.anchor.col && row == span.anchor.row {
+					continue
+				}
+				fv, ok := spillArrayCell(raw, rowOff, colOff)
+				if !ok {
+					continue
+				}
+				rowShadows := shadows[row]
+				if rowShadows == nil {
+					rowShadows = make(map[int]Value)
+					shadows[row] = rowShadows
+				}
+				rowShadows[col] = formulaValueToValue(fv, false)
+			}
+		}
+	}
+	return shadows
 }
 
 func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow int, c *Cell) string {
@@ -733,8 +824,8 @@ func (s *Sheet) resolveCell(c *Cell, col, row int) {
 	}
 }
 
-func formulaShouldProbeForSpill(f string, cf *formula.CompiledFormula) bool {
-	return formula.IsDynamicArrayFormula(f) || (cf != nil && cf.NeedsSpillProbe)
+func formulaNeedsSpillAnchor(f string, cf *formula.CompiledFormula) bool {
+	return formula.IsDynamicArrayFormula(f) || (cf != nil && cf.TopLevelArray != nil)
 }
 
 func (s *Sheet) compileCellFormula(c *Cell, col, row int) (*formula.CompiledFormula, error) {
@@ -760,28 +851,16 @@ func (s *Sheet) compileCellFormula(c *Cell, col, row int) (*formula.CompiledForm
 	return compiled, nil
 }
 
-func (s *Sheet) evalCellFormula(c *Cell, col, row int, spillProbe bool) (formula.Value, error) {
+func (s *Sheet) evalCellFormula(c *Cell, col, row int, topLevelArray bool) (formula.Value, error) {
 	f := s.file
-	cf := c.compiled
-	if spillProbe {
-		src, err := f.expandFormula(c.formula, s.name, row)
-		if err != nil {
-			return formula.Value{}, err
-		}
-		node, err := formula.Parse(src)
-		if err != nil {
-			return formula.Value{}, err
-		}
-		cf, err = formula.CompileSpillProbe(src, node)
-		if err != nil {
-			return formula.Value{}, err
-		}
-	} else {
-		var err error
-		cf, err = s.compileCellFormula(c, col, row)
-		if err != nil {
-			return formula.Value{}, err
-		}
+	cf, err := s.compileCellFormula(c, col, row)
+	if err != nil {
+		// compileCellFormula wraps expandFormula, Parse, and Compile;
+		// classify as VALUE for size overflow and NAME for parse/compile.
+		return formula.Value{}, formula.WrapEvalError(formula.ErrorValueFromErr(err), err)
+	}
+	if topLevelArray && cf.TopLevelArray != nil {
+		cf = cf.TopLevelArray
 	}
 
 	qc := formula.QualifiedCell{Sheet: s.name, Col: col, Row: row}
@@ -801,7 +880,65 @@ func (s *Sheet) evalCellFormula(c *Cell, col, row int, spillProbe bool) (formula
 	}
 	result, err := formula.Eval(cf, resolver, ctx)
 	f.deps.SetDynamicRanges(qc, formula.DynamicRangeKindMaterialized, resolver.materializedDeps)
-	return result, err
+	// Runtime evaluation failures are engine bugs or resource exhaustion
+	// (stack underflow, bad opcode); Excel would surface these as #VALUE!.
+	return result, formula.WrapEvalError(formula.ErrValVALUE, err)
+}
+
+func (s *Sheet) evalCellOutcome(c *Cell, col, row int) (CellEvalOutcome, error) {
+	displayRaw, err := s.evalCellFormula(c, col, row, false)
+	if err != nil {
+		return CellEvalOutcome{}, err
+	}
+	raw := displayRaw
+	var spill *SpillPlan
+	if c.dynamicArraySpill && !c.isArrayFormula {
+		if !canPublishSpill(displayRaw) && c.compiled != nil && c.compiled.TopLevelArray != nil {
+			if probe, probeErr := s.evalCellFormula(c, col, row, true); probeErr == nil && canPublishSpill(probe) {
+				raw = probe
+			}
+		}
+		spill = newSpillPlan(raw, col, row)
+		if spillRows, ok := spillArrayRows(raw); spill != nil && ok && s.hasSpillConflict(col, row, spillRows) {
+			spill.Blocked = true
+			spill.PublishedToCol = col
+			spill.PublishedToRow = row
+			return newCellEvalOutcome(raw, formula.ErrorVal(formula.ErrValSPILL), spill), nil
+		}
+	}
+	displaySource := displayRaw
+	if c.dynamicArraySpill && !c.isArrayFormula {
+		displaySource = raw
+	}
+	// When the cell carries a spill anchor but the formula did not actually
+	// publish a spillable array (e.g. INDEX(range,0,col) collapsing through
+	// implicit intersection), fall back to legacy implicit intersection at
+	// the formula cell so the displayed value matches Excel's cached scalar.
+	intersectRangeOrigin := !c.dynamicArraySpill || spill == nil
+	return newCellEvalOutcome(
+		raw,
+		formulaDisplayValueAt(displaySource, c.isArrayFormula, intersectRangeOrigin, col, row),
+		spill,
+	), nil
+}
+
+func canPublishSpill(raw formula.Value) bool {
+	_, ok := spillArrayRows(raw)
+	return ok
+}
+
+func (s *Sheet) applyCellOutcome(c *Cell, col, row int, outcome CellEvalOutcome) {
+	raw := outcome.RawValue()
+	c.rawValue = raw
+	c.rawCachedGen = s.file.calcGen
+	c.value = formulaValueToValue(outcome.Display, false)
+	c.cachedGen = s.file.calcGen
+	c.dirty = false
+	if c.dynamicArraySpill && !c.isArrayFormula {
+		s.publishSpillState(col, row, outcome.Spill)
+	} else {
+		s.clearSpillState(col, row)
+	}
 }
 
 // evaluateFormula parses, compiles, and executes the formula on the given cell.
@@ -818,42 +955,20 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
 
-	result, err := s.evalCellFormula(c, col, row, false)
+	outcome, err := s.evalCellOutcome(c, col, row)
 	if err != nil {
+		// Classify the failure (parse/compile → #NAME?; expansion overflow
+		// or runtime engine failure → #VALUE!) instead of collapsing every
+		// error to #NAME?. The underlying message stays reachable via
+		// errors.Is / errors.As on an *formula.EvalError.
+		code := formula.ErrorValueFromErr(err).String()
 		if c.value.Type == TypeString {
-			return Value{Type: TypeString, String: "#NAME?"}
+			return Value{Type: TypeString, String: code}
 		}
-		return Value{Type: TypeError, String: "#NAME?"}
+		return Value{Type: TypeError, String: code}
 	}
-	raw := result
-	if c.dynamicArraySpill && !c.isArrayFormula && (result.Type != formula.ValueArray || result.NoSpill) {
-		if probe, probeErr := s.evalCellFormula(c, col, row, true); probeErr == nil &&
-			probe.Type == formula.ValueArray && !probe.NoSpill {
-			raw = probe
-		}
-	}
-	c.rawValue = raw
-	c.rawCachedGen = f.calcGen
-
-	// Dynamic array spill conflict: if the formula produces an array and
-	// would spill, check that every target cell is either empty or an
-	// empty placeholder. If any cell is occupied, the anchor gets #SPILL!.
-	blocked := false
-	if c.dynamicArraySpill && raw.Type == formula.ValueArray && !raw.NoSpill {
-		if s.hasSpillConflict(col, row, raw.Array) {
-			blocked = true
-		}
-	}
-	if c.dynamicArraySpill && !c.isArrayFormula {
-		s.publishSpillState(c, col, row, raw, blocked)
-	} else {
-		s.clearSpillState(col, row)
-	}
-	if blocked {
-		return Value{Type: TypeError, String: "#SPILL!"}
-	}
-
-	return formulaValueToValue(raw, c.isArrayFormula)
+	s.applyCellOutcome(c, col, row, outcome)
+	return c.value
 }
 
 // evaluateFormulaRaw is like evaluateFormula but returns the raw formula.Value
@@ -874,22 +989,12 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
 
-	result, err := s.evalCellFormula(c, col, row, false)
+	outcome, err := s.evalCellOutcome(c, col, row)
 	if err != nil {
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}
-	if c.dynamicArraySpill && !c.isArrayFormula && (result.Type != formula.ValueArray || result.NoSpill) {
-		if probe, probeErr := s.evalCellFormula(c, col, row, true); probeErr == nil &&
-			probe.Type == formula.ValueArray && !probe.NoSpill {
-			result = probe
-		}
-	}
-	c.rawValue = result
-	c.rawCachedGen = f.calcGen
-	c.value = formulaValueToValue(result, c.isArrayFormula)
-	c.cachedGen = f.calcGen
-	c.dirty = false
-	return result
+	s.applyCellOutcome(c, col, row, outcome)
+	return c.rawValue
 }
 
 // formulaValueToValue converts a formula.Value to a werkbook Value.
@@ -897,6 +1002,7 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 // displays and caches 0, not blank), so ValueEmpty maps to TypeNumber 0.
 // isArrayFormula indicates whether the originating cell is a CSE array formula.
 func formulaValueToValue(fv formula.Value, isArrayFormula bool) Value {
+	fv = formulaDisplayValue(fv, isArrayFormula)
 	switch fv.Type {
 	case formula.ValueNumber:
 		return Value{Type: TypeNumber, Number: fv.Num}
@@ -906,21 +1012,6 @@ func formulaValueToValue(fv formula.Value, isArrayFormula bool) Value {
 		return Value{Type: TypeBool, Bool: fv.Bool}
 	case formula.ValueError:
 		return Value{Type: TypeError, String: fv.Err.String()}
-	case formula.ValueArray:
-		// Arrays marked NoSpill (e.g. INDEX with row_num=0) cannot be
-		// displayed in a single non-array cell; returns #VALUE!.
-		if fv.NoSpill && !isArrayFormula {
-			return Value{Type: TypeError, String: "#VALUE!"}
-		}
-		// Dynamic array spill: return the top-left element of the array
-		// for the anchor cell. Full spill support is not yet implemented,
-		// but returning the first element matches expected behavior for
-		// the formula cell itself.
-		if len(fv.Array) > 0 && len(fv.Array[0]) > 0 {
-			return formulaValueToValue(fv.Array[0][0], isArrayFormula)
-		}
-		// Empty array — treat as numeric 0.
-		return Value{Type: TypeNumber, Number: 0}
 	default:
 		// Empty formula results are treated as numeric 0.
 		return Value{Type: TypeNumber, Number: 0}
@@ -1008,45 +1099,73 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 	}
 	maxRow := s.MaxRow()
 	maxCol := s.MaxCol()
-	_, toCol := clampMaterializedRange(req, maxRow, maxCol)
 	grid := sheetRangeGrid{
 		sheet:  s,
 		maxRow: maxRow,
 		maxCol: maxCol,
 	}
 
+	s.refreshSpillAnchorsForRange(req, req.toCol)
 	overlay := s.ensureSpillOverlay()
-	var spills *rangeMaterializationSpills
-	if len(overlay.refs) > 0 {
-		spills = &rangeMaterializationSpills{
-			anchors: make([]rangeSpillAnchor, 0, len(overlay.refs)),
-		}
-		for _, anchor := range overlay.refs {
-			if anchor.col > req.toCol || anchor.row > req.toRow || anchor.col > toCol {
-				continue
-			}
-			state := anchor.state
-			overlayGen := s.spill.gen
-			s.refreshSpillState(anchor.cell, anchor.col, anchor.row)
-			if s.spill.gen != overlayGen {
-				state, _ = s.spillState(anchor.col, anchor.row)
-			}
-			if !spillStateHasPublishedSpill(state, anchor.col, anchor.row, s.file.calcGen) {
-				continue
-			}
-			spills.anchors = append(spills.anchors, rangeSpillAnchor{
-				col:   anchor.col,
-				row:   anchor.row,
-				toCol: state.publishedToCol,
-				toRow: state.publishedToRow,
-				raw:   anchor.cell.rawValue,
-			})
-		}
+	var spills rangeSpillReader
+	if len(overlay.index.anchors) > 0 {
+		spills = &overlay.index
 	}
 
 	res := materializeRange(req, grid, spills)
 	fr.appendMaterializedDeps(res.discoveredDeps)
 	return res.cells
+}
+
+func (fr *fileResolver) ResolveDefinedNameValue(name, scopeSheet string) (formula.Value, bool) {
+	sheetIdx := -1
+	if scopeSheet != "" {
+		sheetIdx = fr.file.SheetIndex(scopeSheet)
+	}
+	ref, err := fr.file.lookupDefinedName(name, sheetIdx)
+	if err != nil {
+		return formula.Value{}, false
+	}
+
+	sheetName, cellRef, err := parseDefinedNameRef(ref)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	area, err := parseDefinedNameArea(sheetName, cellRef)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	if area.isRange {
+		rows, err := fr.file.resolveDefinedNameRange(area.rangeAddr)
+		if err != nil {
+			return formula.ErrorVal(formula.ErrValREF), true
+		}
+		formulaRows := make([][]formula.Value, len(rows))
+		for i, row := range rows {
+			formulaRows[i] = make([]formula.Value, len(row))
+			for j, cell := range row {
+				formulaRows[i][j] = valueToFormulaValue(cell)
+			}
+		}
+		origin := area.rangeAddr
+		return formula.Value{Type: formula.ValueArray, Array: formulaRows, RangeOrigin: &origin}, true
+	}
+
+	s := fr.file.Sheet(sheetName)
+	if s == nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	cellRefText, err := CoordinatesToCellName(area.cellCol, area.cellRow)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	v, err := s.GetValue(cellRefText)
+	if err != nil {
+		return formula.ErrorVal(formula.ErrValREF), true
+	}
+	out := valueToFormulaValue(v)
+	out.CellOrigin = &formula.CellAddr{Sheet: sheetName, Col: area.cellCol, Row: area.cellRow}
+	return out, true
 }
 
 func (fr *fileResolver) appendMaterializedDeps(ranges []formula.RangeAddr) {

@@ -81,9 +81,16 @@ func (n *EmptyArg) String() string {
 }
 
 // CellRef represents a cell reference, possibly sheet-qualified.
+//
+// When Name is non-empty, this node represents a bare identifier that does not
+// follow the letter+digit cell reference form (e.g. `running_sum`). LET and
+// LAMBDA carry parameter names this way so that underscores and digits can
+// appear in parameter names. If a Name-only CellRef reaches the compiler
+// (i.e. no desugaring consumed it), it compiles to #NAME?.
 type CellRef struct {
 	Sheet       string // empty if not sheet-qualified
 	SheetEnd    string // non-empty for 3D references (Sheet2:Sheet5!A1); the end sheet name
+	Name        string // non-empty for bare identifiers that aren't cell refs (e.g. LET/LAMBDA param names)
 	Col         int    // 1-based column number
 	Row         int    // 1-based row number
 	AbsCol      bool   // true if column is absolute ($A)
@@ -93,9 +100,12 @@ type CellRef struct {
 
 func (n *CellRef) nodeMarker() {}
 func (n *CellRef) String() string {
+	if n.Name != "" {
+		return n.Name
+	}
 	var b strings.Builder
 	if n.Sheet != "" {
-		if needsQuoting(n.Sheet) {
+		if NeedsQuoting(n.Sheet) {
 			b.WriteByte('\'')
 			b.WriteString(strings.ReplaceAll(n.Sheet, "'", "''"))
 			b.WriteByte('\'')
@@ -124,6 +134,33 @@ type RangeRef struct {
 func (n *RangeRef) nodeMarker() {}
 func (n *RangeRef) String() string {
 	return fmt.Sprintf("(: %s %s)", n.From, n.To)
+}
+
+// DynamicRangeRef represents a range built from two reference-producing
+// expressions where at least one side isn't a static cell reference, e.g.
+// A1:INDEX(A:A,n) or OFFSET(A1,1,1):B5. Both endpoints are evaluated at
+// runtime and must resolve to single-cell references.
+type DynamicRangeRef struct {
+	From Node
+	To   Node
+}
+
+func (n *DynamicRangeRef) nodeMarker() {}
+func (n *DynamicRangeRef) String() string {
+	return fmt.Sprintf("(: %s %s)", n.From, n.To)
+}
+
+// IntersectRef represents a reference intersection written as a space between
+// two references, e.g. A1:C3 B2:D4. The result is the rectangular overlap of
+// the two operand ranges (or #NULL! when they don't overlap).
+type IntersectRef struct {
+	Left  Node
+	Right Node
+}
+
+func (n *IntersectRef) nodeMarker() {}
+func (n *IntersectRef) String() string {
+	return fmt.Sprintf("(isect %s %s)", n.Left, n.Right)
 }
 
 // UnionRef represents a parenthesized multi-area reference list like
@@ -306,14 +343,18 @@ func (n *MakeArrayExpr) String() string {
 	return fmt.Sprintf("(MAKEARRAY params=%v)", n.ParamNames)
 }
 
-// needsQuoting returns true if a sheet name contains characters that require quoting.
-func needsQuoting(name string) bool {
+// NeedsQuoting returns true if a sheet name contains characters that require quoting.
+func NeedsQuoting(name string) bool {
 	for _, c := range name {
 		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
 			return true
 		}
 	}
 	return false
+}
+
+func needsQuoting(name string) bool {
+	return NeedsQuoting(name)
 }
 
 // ColNumberToLetters converts a 1-based column number to column letters (e.g. 1→"A", 27→"AA").

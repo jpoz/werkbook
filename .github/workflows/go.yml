@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  GO_VERSION: '1.25'
+  BENCH_PATTERN: 'BenchmarkSpill'
+  BENCH_REGRESSION_THRESHOLD: '1.5'
+
 jobs:
 
   build:
@@ -19,10 +24,79 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.25'
+        go-version: ${{ env.GO_VERSION }}
 
     - name: Build
       run: go build -v ./...
 
+    - name: Vet
+      run: go vet ./...
+
     - name: Test
       run: go test -v ./...
+
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Record benchmark head
+      run: echo "BENCH_HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+    - name: Run base benchmarks
+      if: github.event_name == 'pull_request'
+      run: |
+        set -o pipefail
+        git fetch --no-tags origin "${{ github.base_ref }}" --depth=1
+        git checkout --detach "origin/${{ github.base_ref }}"
+        go test -run '^$' -bench "$BENCH_PATTERN" -benchmem -benchtime=200ms -count=1 . | tee benchmark-base.txt
+
+    - name: Run current benchmarks
+      run: |
+        set -o pipefail
+        git checkout --detach "$BENCH_HEAD_SHA"
+        go test -run '^$' -bench "$BENCH_PATTERN" -benchmem -benchtime=200ms -count=1 . | tee benchmark-current.txt
+
+    - name: Compare benchmark results
+      if: github.event_name == 'pull_request'
+      run: |
+        go run ./scripts/benchcmp \
+          -base benchmark-base.txt \
+          -current benchmark-current.txt \
+          -threshold "$BENCH_REGRESSION_THRESHOLD" \
+          -out benchmark-comparison.md
+
+    - name: Add benchmark summary
+      if: always()
+      run: |
+        {
+          echo '### Current Benchmark Results'
+          echo '```'
+          if [ -f benchmark-current.txt ]; then
+            cat benchmark-current.txt
+          else
+            echo 'benchmark-current.txt was not created'
+          fi
+          echo '```'
+          if [ -f benchmark-comparison.md ]; then
+            cat benchmark-comparison.md
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload benchmark artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: |
+          benchmark-base.txt
+          benchmark-current.txt
+          benchmark-comparison.md
+        if-no-files-found: warn

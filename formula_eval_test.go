@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/jpoz/werkbook"
 )
@@ -431,9 +432,11 @@ func TestRANDARRAYSpillCellsRemainConsistentWithinCalculation(t *testing.T) {
 	}
 }
 
-// TestINDEX_RowZero_ReturnsValueError verifies that INDEX(range,0) returns
-// #VALUE! in a non-array cell, matching expected behaviour.
-func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
+// TestINDEX_RowZero_ImplicitIntersect verifies that direct-range INDEX(range,0)
+// in a single-cell context performs Excel's legacy implicit intersection along
+// the formula cell's row, matching the cached value real Excel produces (see
+// wb-fixtures/lookup/index-match.xlsx).
+func TestINDEX_RowZero_ImplicitIntersect(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
 
@@ -441,18 +444,17 @@ func TestINDEX_RowZero_ReturnsValueError(t *testing.T) {
 	s.SetValue("A2", 20)
 	s.SetValue("A3", 30)
 
-	// INDEX with row_num=0 on a column vector should return #VALUE!
-	// in a regular (non-array) cell.
+	// INDEX(A1:A3,0) at B1 implicit-intersects to row 1 of column A → A1 = 10.
 	s.SetFormula("B1", "INDEX(A1:A3,0)")
 	val, err := s.GetValue("B1")
 	if err != nil {
 		t.Fatalf("GetValue B1: %v", err)
 	}
-	if val.Type != werkbook.TypeError {
-		t.Errorf("INDEX(A1:A3,0) type = %v, want TypeError", val.Type)
+	if val.Type != werkbook.TypeNumber {
+		t.Errorf("INDEX(A1:A3,0) at B1 type = %v, want TypeNumber", val.Type)
 	}
-	if val.String != "#VALUE!" {
-		t.Errorf("INDEX(A1:A3,0) = %q, want #VALUE!", val.String)
+	if val.Number != 10 {
+		t.Errorf("INDEX(A1:A3,0) at B1 = %g, want 10", val.Number)
 	}
 
 	// SUM(INDEX(range,0)) should still work — SUM consumes the array.
@@ -914,11 +916,17 @@ func TestFILTER_FullColumnWithDATEVALUE(t *testing.T) {
 	f.SetSheetName("Sheet1", "Data")
 	data = f.Sheet("Data")
 
+	// The formula compares against TODAY(), so the dates must be relative to
+	// the current date. Fixed dates make the test fail when they pass.
+	now := time.Now()
+	future1 := now.AddDate(1, 0, 0).Format("2006-01-02")
+	future2 := now.AddDate(2, 0, 0).Format("2006-01-02")
+
 	data.SetValue("E1", "Accrued On")
 	data.SetValue("I1", "Amount")
-	data.SetValue("E2", "2026-07-01")
+	data.SetValue("E2", future1)
 	data.SetValue("I2", 216994.0)
-	data.SetValue("E3", "2026-10-01")
+	data.SetValue("E3", future2)
 	data.SetValue("I3", 216994.0)
 	data.SetValue("E4", "2022-01-01")
 	data.SetValue("I4", 50000.0)

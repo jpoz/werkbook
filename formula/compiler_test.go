@@ -1,7 +1,6 @@
 package formula
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -151,7 +150,7 @@ func TestCompileRangeRef(t *testing.T) {
 	}
 }
 
-func TestCompileNeedsSpillProbe(t *testing.T) {
+func TestCompileTopLevelArrayCompanion(t *testing.T) {
 	tests := []struct {
 		input string
 		want  bool
@@ -166,6 +165,7 @@ func TestCompileNeedsSpillProbe(t *testing.T) {
 		{"SUM(A:A)", false},
 		{"COUNT(A:A)", false},
 		{"SUMIF(A:A,\">0\")", false},
+		{"SUMIF(A:A,UNIQUE(B1:B3))", true},
 		{"MATCH(1,A:A,0)", false},
 		{"SUMPRODUCT(A1:A3*B1:B3)", false},
 	}
@@ -173,8 +173,8 @@ func TestCompileNeedsSpillProbe(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			cf := compileFormula(t, tt.input)
-			if cf.NeedsSpillProbe != tt.want {
-				t.Fatalf("NeedsSpillProbe = %v, want %v", cf.NeedsSpillProbe, tt.want)
+			if got := cf.TopLevelArray != nil; got != tt.want {
+				t.Fatalf("TopLevelArray != nil = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -394,16 +394,24 @@ func TestCompileStringDeduplication(t *testing.T) {
 }
 
 func TestCompileUnknownFunction(t *testing.T) {
-	node, err := Parse("NOTAFUNCTION(1)")
+	// Unknown functions must produce #NAME? at runtime (not a compile error)
+	// so wrappers like IFERROR/ISERROR/ERROR.TYPE can catch them, matching
+	// Excel's behavior.
+	src := "NOTAFUNCTION(1)"
+	node, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	_, err = Compile("NOTAFUNCTION(1)", node)
-	if err == nil {
-		t.Fatal("expected compile error for unknown function")
+	cf, err := Compile(src, node)
+	if err != nil {
+		t.Fatalf("unexpected compile error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown function") {
-		t.Errorf("error = %q, want it to contain 'unknown function'", err.Error())
+	result, err := Eval(cf, nil, &EvalContext{})
+	if err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if result.Type != ValueError || result.Err != ErrValNAME {
+		t.Errorf("got %v, want #NAME? error", result)
 	}
 }
 

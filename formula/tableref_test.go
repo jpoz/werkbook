@@ -86,6 +86,21 @@ func TestExpandTableRefs(t *testing.T) {
 			row:     5,
 			want:    "Unknown[Sales]",
 		},
+		{
+			// A table-name substring inside a quoted sheet name must NOT
+			// trigger structured-ref expansion. Mirrors the same guard in
+			// ExpandDefinedNamesBounded.
+			name:    "quoted sheet name containing table name is left alone",
+			formula: "'my-Table6'!A1",
+			row:     5,
+			want:    "'my-Table6'!A1",
+		},
+		{
+			name:    "escaped '' inside quoted sheet name is preserved",
+			formula: "'Bob''s-Table6'!A1",
+			row:     5,
+			want:    "'Bob''s-Table6'!A1",
+		},
 	}
 
 	for _, tt := range tests {

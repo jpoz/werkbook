@@ -168,6 +168,19 @@ func rangeOverflowMatrix() [][]formula.Value {
 	}}}
 }
 
+func newBoolMatrix(nRows, nCols int) [][]bool {
+	if nRows <= 0 || nCols <= 0 {
+		return nil
+	}
+	rows := make([][]bool, nRows)
+	cells := make([]bool, nRows*nCols)
+	for i := range rows {
+		start := i * nCols
+		rows[i] = cells[start : start+nCols]
+	}
+	return rows
+}
+
 func materializeRange(req rangeMaterializationRequest, grid rangeGridReader, spills rangeSpillReader) rangeMaterializationResult {
 	res := rangeMaterializationResult{
 		bounds: formula.RangeAddr{
@@ -214,10 +227,7 @@ func materializeRange(req rangeMaterializationRequest, grid rangeGridReader, spi
 	}
 
 	rows := newFormulaValueMatrix(nRows, nCols)
-	occupied := make([][]bool, nRows)
-	for i := range occupied {
-		occupied[i] = make([]bool, nCols)
-	}
+	occupied := newBoolMatrix(nRows, nCols)
 
 	grid.ForEachCell(req.sheet, req.fromCol, req.fromRow, toCol, toRow, func(col, row int, value formula.Value, occupies bool) {
 		rowIdx := row - req.fromRow
@@ -269,10 +279,7 @@ func materializeRange(req rangeMaterializationRequest, grid rangeGridReader, spi
 				}
 
 				grownRows := newFormulaValueMatrix(nextRows, nextCols)
-				grownOccupied := make([][]bool, nextRows)
-				for i := range grownOccupied {
-					grownOccupied[i] = make([]bool, nextCols)
-				}
+				grownOccupied := newBoolMatrix(nextRows, nextCols)
 				for i := range rows {
 					copy(grownRows[i], rows[i])
 					copy(grownOccupied[i], occupied[i])

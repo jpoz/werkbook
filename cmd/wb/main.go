@@ -84,6 +84,8 @@ func run(args []string) int {
 		return cmdFormula(cmdArgs, globals)
 	case "capabilities":
 		return cmdCapabilities(cmdArgs, globals)
+	case "serve":
+		return cmdServe(cmdArgs, globals)
 	case "version":
 		return cmdVersion(cmdArgs, globals)
 	case "help":
@@ -230,6 +232,8 @@ func nextSuggestedCommands(command string) []string {
 		return []string{"wb capabilities", "wb version"}
 	case "version":
 		return []string{"wb help", "wb capabilities"}
+	case "serve":
+		return []string{"wb capabilities"}
 	default:
 		return []string{"wb help", "wb capabilities"}
 	}

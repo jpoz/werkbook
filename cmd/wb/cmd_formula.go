@@ -7,8 +7,8 @@ import (
 )
 
 type formulaListData struct {
-	Functions []string `json:"functions"`
-	Count     int      `json:"count"`
+	Functions []formula.FunctionInfo `json:"functions"`
+	Count     int                    `json:"count"`
 }
 
 func cmdFormula(args []string, globals globalFlags) int {
@@ -39,12 +39,12 @@ func cmdFormula(args []string, globals globalFlags) int {
 }
 
 func cmdFormulaList(globals globalFlags) int {
-	funcs := formula.RegisteredFunctions()
-	sort.Strings(funcs)
+	infos := formula.RegisteredFunctionInfos()
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 
 	data := formulaListData{
-		Functions: funcs,
-		Count:     len(funcs),
+		Functions: infos,
+		Count:     len(infos),
 	}
 	writeSuccess("formula", data, globals)
 	return ExitSuccess

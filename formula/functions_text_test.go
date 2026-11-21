@@ -4,6 +4,19 @@ import (
 	"testing"
 )
 
+func sparseFullColumnRefValue(col int, cells map[int]Value) Value {
+	resolverCells := make(map[CellAddr]Value, len(cells))
+	for row, value := range cells {
+		resolverCells[CellAddr{Col: col, Row: row}] = value
+	}
+	return EvalValueToValue(newEvalRangeRef(
+		RangeAddr{FromCol: col, FromRow: 1, ToCol: col, ToRow: maxRows},
+		nil,
+		&sparseResolver{cells: resolverCells},
+		&RefLegacyBoundary{PlaceholderRows: 1, PlaceholderCols: 1, UseEmptyArray: true},
+	))
+}
+
 func TestNewTextFunctions(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -1191,8 +1204,9 @@ func TestTRIMEdgeCases(t *testing.T) {
 		{`TRIM(" ")`, ""},
 		// Multiple words with various spacing
 		{`TRIM("  the   quick   brown   fox  ")`, "the quick brown fox"},
-		// Tab characters — strings.Fields splits on all whitespace
-		{`TRIM("hello` + "\t" + `world")`, "hello world"},
+		// Tab characters — Excel's TRIM only handles ASCII space (0x20),
+		// so tabs are preserved verbatim.
+		{`TRIM("hello` + "\t" + `world")`, "hello\tworld"},
 		// Number coercion (42 → "42", no spaces to trim)
 		{`TRIM(42)`, "42"},
 		// Boolean coercion (TRUE → "TRUE")
@@ -1322,26 +1336,20 @@ func TestTRIMComprehensive(t *testing.T) {
 	})
 
 	t.Run("whitespace characters", func(t *testing.T) {
-		// strings.Fields splits on all Unicode whitespace, so tabs and
-		// newlines are treated as separators and collapsed. This differs
-		// from Excel's TRIM which only handles ASCII space (0x20).
+		// Excel's TRIM only removes ASCII space (U+0020). Tabs, newlines,
+		// and NBSP pass through untouched — callers need CLEAN or
+		// SUBSTITUTE to handle those.
 		tests := []struct {
-			name    string
-			input   []Value
-			want    string
+			name  string
+			input []Value
+			want  string
 		}{
-			// Tab between words
-			{"tab between words", []Value{StringVal("hello\tworld")}, "hello world"},
-			// Newline between words
-			{"newline between words", []Value{StringVal("hello\nworld")}, "hello world"},
-			// Carriage return
-			{"cr between words", []Value{StringVal("hello\rworld")}, "hello world"},
-			// Mixed whitespace
-			{"mixed whitespace", []Value{StringVal("  hello\t\n  world  ")}, "hello world"},
-			// Only tabs
-			{"only tabs", []Value{StringVal("\t\t\t")}, ""},
-			// Only newlines
-			{"only newlines", []Value{StringVal("\n\n\n")}, ""},
+			{"tab between words", []Value{StringVal("hello\tworld")}, "hello\tworld"},
+			{"newline between words", []Value{StringVal("hello\nworld")}, "hello\nworld"},
+			{"cr between words", []Value{StringVal("hello\rworld")}, "hello\rworld"},
+			{"mixed whitespace", []Value{StringVal("  hello\t\n  world  ")}, "hello\t\n world"},
+			{"only tabs", []Value{StringVal("\t\t\t")}, "\t\t\t"},
+			{"only newlines", []Value{StringVal("\n\n\n")}, "\n\n\n"},
 		}
 
 		for _, tt := range tests {
@@ -1358,15 +1366,15 @@ func TestTRIMComprehensive(t *testing.T) {
 	})
 
 	t.Run("non-breaking space", func(t *testing.T) {
-		// Non-breaking space (U+00A0) — strings.Fields treats it as whitespace
-		// in Go, so it will be collapsed like regular spaces.
+		// Excel's TRIM leaves NBSP (U+00A0) in place — callers need
+		// SUBSTITUTE(..., UNICHAR(160), " ") before TRIM to clean it.
 		input := "hello\u00A0\u00A0world"
 		got, err := fnTRIM([]Value{StringVal(input)})
 		if err != nil {
 			t.Fatalf("fnTRIM: %v", err)
 		}
-		if got.Type != ValueString || got.Str != "hello world" {
-			t.Fatalf("fnTRIM with NBSP = %q, want %q", got.Str, "hello world")
+		if got.Type != ValueString || got.Str != input {
+			t.Fatalf("fnTRIM with NBSP = %q, want %q", got.Str, input)
 		}
 	})
 
@@ -1722,6 +1730,21 @@ func TestCONCATRange(t *testing.T) {
 	}
 	if got3.Type != ValueString || got3.Str != "123" {
 		t.Errorf("CONCAT(A1:A3) numbers: got %q, want '123'", got3.Str)
+	}
+}
+
+func TestCONCAT_FullColumnSparseRef(t *testing.T) {
+	got, err := fnCONCAT([]Value{
+		sparseFullColumnRefValue(1, map[int]Value{
+			1: StringVal("top"),
+			3: StringVal("bottom"),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("fnCONCAT: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "topbottom" {
+		t.Fatalf("got %v, want topbottom", got)
 	}
 }
 
@@ -2915,36 +2938,36 @@ func TestCHAR_MacRoman(t *testing.T) {
 
 		// Mac OS Roman 0x80-0x9F range
 		{"CHAR(128) = A-diaeresis", `CHAR(128)`, "\u00C4"}, // Ä
-		{"CHAR(129) = A-ring", `CHAR(129)`, "\u00C5"},       // Å
-		{"CHAR(130) = C-cedilla", `CHAR(130)`, "\u00C7"},    // Ç
-		{"CHAR(131) = E-acute", `CHAR(131)`, "\u00C9"},      // É
-		{"CHAR(135) = a-acute", `CHAR(135)`, "\u00E1"},      // á
+		{"CHAR(129) = A-ring", `CHAR(129)`, "\u00C5"},      // Å
+		{"CHAR(130) = C-cedilla", `CHAR(130)`, "\u00C7"},   // Ç
+		{"CHAR(131) = E-acute", `CHAR(131)`, "\u00C9"},     // É
+		{"CHAR(135) = a-acute", `CHAR(135)`, "\u00E1"},     // á
 
 		// Mac OS Roman 0xA0-0xBF range
-		{"CHAR(160) = dagger", `CHAR(160)`, "\u2020"},       // †
-		{"CHAR(161) = degree", `CHAR(161)`, "\u00B0"},       // °
-		{"CHAR(162) = cent", `CHAR(162)`, "\u00A2"},         // ¢
-		{"CHAR(164) = section", `CHAR(164)`, "\u00A7"},      // §
-		{"CHAR(169) = copyright", `CHAR(169)`, "\u00A9"},    // ©
-		{"CHAR(170) = trademark", `CHAR(170)`, "\u2122"},    // ™
-		{"CHAR(176) = infinity", `CHAR(176)`, "\u221E"},     // ∞
+		{"CHAR(160) = dagger", `CHAR(160)`, "\u2020"},    // †
+		{"CHAR(161) = degree", `CHAR(161)`, "\u00B0"},    // °
+		{"CHAR(162) = cent", `CHAR(162)`, "\u00A2"},      // ¢
+		{"CHAR(164) = section", `CHAR(164)`, "\u00A7"},   // §
+		{"CHAR(169) = copyright", `CHAR(169)`, "\u00A9"}, // ©
+		{"CHAR(170) = trademark", `CHAR(170)`, "\u2122"}, // ™
+		{"CHAR(176) = infinity", `CHAR(176)`, "\u221E"},  // ∞
 
 		// Mac OS Roman 0xC0-0xDF range
-		{"CHAR(192) = inv_question", `CHAR(192)`, "\u00BF"}, // ¿
-		{"CHAR(199) = left_guillemet", `CHAR(199)`, "\u00AB"}, // «
-		{"CHAR(200) = right_guillemet", `CHAR(200)`, "\u00BB"}, // »
-		{"CHAR(201) = ellipsis", `CHAR(201)`, "\u2026"},     // …
-		{"CHAR(210) = left_double_quote", `CHAR(210)`, "\u201C"}, // "
+		{"CHAR(192) = inv_question", `CHAR(192)`, "\u00BF"},       // ¿
+		{"CHAR(199) = left_guillemet", `CHAR(199)`, "\u00AB"},     // «
+		{"CHAR(200) = right_guillemet", `CHAR(200)`, "\u00BB"},    // »
+		{"CHAR(201) = ellipsis", `CHAR(201)`, "\u2026"},           // …
+		{"CHAR(210) = left_double_quote", `CHAR(210)`, "\u201C"},  // "
 		{"CHAR(211) = right_double_quote", `CHAR(211)`, "\u201D"}, // "
-		{"CHAR(212) = left_single_quote", `CHAR(212)`, "\u2018"}, // '
+		{"CHAR(212) = left_single_quote", `CHAR(212)`, "\u2018"},  // '
 		{"CHAR(213) = right_single_quote", `CHAR(213)`, "\u2019"}, // '
-		{"CHAR(216) = y-diaeresis", `CHAR(216)`, "\u00FF"},  // ÿ
+		{"CHAR(216) = y-diaeresis", `CHAR(216)`, "\u00FF"},        // ÿ
 
 		// Mac OS Roman 0xE0-0xFF range
-		{"CHAR(219) = euro", `CHAR(219)`, "\u20AC"},         // €
-		{"CHAR(247) = em_dash", `CHAR(208)`, "\u2013"},      // en dash at 0xD0
-		{"CHAR(254) = ogonek", `CHAR(254)`, "\u02DB"},       // ˛
-		{"CHAR(255) = caron", `CHAR(255)`, "\u02C7"},        // ˇ
+		{"CHAR(219) = euro", `CHAR(219)`, "\u20AC"},    // €
+		{"CHAR(247) = em_dash", `CHAR(208)`, "\u2013"}, // en dash at 0xD0
+		{"CHAR(254) = ogonek", `CHAR(254)`, "\u02DB"},  // ˛
+		{"CHAR(255) = caron", `CHAR(255)`, "\u02C7"},   // ˇ
 
 		// Minimum valid code
 		{"CHAR(1) = SOH", `CHAR(1)`, "\x01"},
@@ -3487,6 +3510,35 @@ func TestARRAYTOTEXT(t *testing.T) {
 			t.Errorf("got %v, want 7", got)
 		}
 	})
+}
+
+func TestARRAYTOTEXT_TrimmedRangeLogicalTail(t *testing.T) {
+	got, err := fnArrayToText([]Value{
+		trimmedRangeValue([][]Value{{StringVal("A")}}, 1, 1, 1, 3),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnArrayToText: %v", err)
+	}
+	if got.Type != ValueString || got.Str != `{"A";;}` {
+		t.Fatalf("got %v, want {\"A\";;}", got)
+	}
+}
+
+func TestARRAYTOTEXT_FullColumnSparseRef(t *testing.T) {
+	got, err := fnArrayToText([]Value{
+		sparseFullColumnRefValue(1, map[int]Value{
+			1: StringVal("A"),
+			3: StringVal("B"),
+		}),
+		NumberVal(1),
+	})
+	if err != nil {
+		t.Fatalf("fnArrayToText: %v", err)
+	}
+	if got.Type != ValueString || got.Str != `{"A";;"B"}` {
+		t.Fatalf("got %v, want {\"A\";;\"B\"}", got)
+	}
 }
 
 func TestTEXTBEFORE(t *testing.T) {
@@ -5193,6 +5245,50 @@ func TestTEXTJOIN_RangeAndScalarArgs(t *testing.T) {
 	}
 }
 
+func TestTEXTJOIN_TrimmedRangeLogicalTail(t *testing.T) {
+	got, err := fnTEXTJOIN([]Value{
+		StringVal(","),
+		BoolVal(false),
+		trimmedRangeValue([][]Value{{StringVal("A")}}, 1, 1, 1, 3),
+	})
+	if err != nil {
+		t.Fatalf("fnTEXTJOIN: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "A,," {
+		t.Fatalf("got %v, want A,,", got)
+	}
+}
+
+func TestTEXTJOIN_FullColumnSparseRef(t *testing.T) {
+	got, err := fnTEXTJOIN([]Value{
+		StringVal(","),
+		BoolVal(false),
+		sparseFullColumnRefValue(1, map[int]Value{
+			1: StringVal("A"),
+			3: StringVal("B"),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("fnTEXTJOIN: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "A,,B" {
+		t.Fatalf("got %v, want A,,B", got)
+	}
+}
+
+func TestCollectDelimiters_TrimmedRangeLogicalTail(t *testing.T) {
+	got := collectDelimiters(trimmedRangeValue([][]Value{{StringVal(",")}}, 1, 1, 1, 3))
+	want := []string{",", "", ""}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("delimiter[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestLOWER(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -6823,10 +6919,10 @@ func TestSUBSTITUTEComprehensive(t *testing.T) {
 		{name: "old_longer_than_text", formula: `SUBSTITUTE("ab","abcdef","X")`, want: "ab"},
 
 		// Unicode characters
-		{name: "unicode_replace", formula: `SUBSTITUTE("caf`+"\u00e9"+`","e","E")`, want: "caf\u00e9"},
-		{name: "unicode_replace_accent", formula: `SUBSTITUTE("caf`+"\u00e9"+`","`+"\u00e9"+`","e")`, want: "cafe"},
-		{name: "unicode_emoji", formula: `SUBSTITUTE("hello `+"\U0001F600"+` world","`+"\U0001F600"+`","!")`, want: "hello ! world"},
-		{name: "unicode_cjk", formula: `SUBSTITUTE("`+"\u4f60\u597d\u4e16\u754c"+`","`+"\u4e16\u754c"+`","`+"\u5730\u7403"+`")`, want: "\u4f60\u597d\u5730\u7403"},
+		{name: "unicode_replace", formula: `SUBSTITUTE("caf` + "\u00e9" + `","e","E")`, want: "caf\u00e9"},
+		{name: "unicode_replace_accent", formula: `SUBSTITUTE("caf` + "\u00e9" + `","` + "\u00e9" + `","e")`, want: "cafe"},
+		{name: "unicode_emoji", formula: `SUBSTITUTE("hello ` + "\U0001F600" + ` world","` + "\U0001F600" + `","!")`, want: "hello ! world"},
+		{name: "unicode_cjk", formula: `SUBSTITUTE("` + "\u4f60\u597d\u4e16\u754c" + `","` + "\u4e16\u754c" + `","` + "\u5730\u7403" + `")`, want: "\u4f60\u597d\u5730\u7403"},
 
 		// Whitespace handling
 		{name: "replace_spaces", formula: `SUBSTITUTE("a b c"," ","")`, want: "abc"},

@@ -96,6 +96,20 @@ test: ## Run all unit tests
 	$(call print_stage,Running tests)
 	gotestsum -f dots ./...
 
+.PHONY: test-all
+test-all: test testdata testfixtures ## Run unit tests, testdata, and testfixtures
+	$(call print_success,All tests complete!)
+
+.PHONY: testdata
+testdata: ## Run remote test data checks (requires ../testdata sibling repo)
+	$(call print_stage,Running test data check)
+	(cd ../testdata && make check-all)
+
+.PHONY: testfixtures
+testfixtures: ## Run remote fixture generation tests (requires ../wb-fixtures sibling repo)
+	$(call print_stage,Running fixture generation tests)
+	(cd ../wb-fixtures && make all)
+
 .PHONY: excel-smoke
 excel-smoke: ## Open representative formula-family workbooks in Microsoft Excel (macOS only)
 	$(call print_stage,Running Excel formula smoke tests)

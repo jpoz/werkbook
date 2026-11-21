@@ -1,5 +1,7 @@
 package formula
 
+import "errors"
+
 // ValueType identifies the kind of value held by a Value.
 type ValueType byte
 
@@ -58,6 +60,62 @@ func (e ErrorValue) String() string {
 	}
 }
 
+// EvalError wraps a Go error with an Excel ErrorValue classification so
+// callers can surface the right cell-level error (#NAME?, #VALUE!, #REF!,
+// …) instead of collapsing every failure to #NAME?. Producers inside the
+// engine (parse, compile, expand, runtime) should wrap their errors with
+// the classification that matches the phase; consumers use
+// ErrorValueFromErr to read the code back out.
+type EvalError struct {
+	Code ErrorValue
+	Err  error
+}
+
+// Error returns the wrapped error's message.
+func (e *EvalError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+// Unwrap exposes the wrapped error for errors.Is / errors.As.
+func (e *EvalError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// WrapEvalError annotates a Go error with an Excel ErrorValue classification.
+// Returns nil when err is nil so it's safe to call from `return ..., wrap(err)`
+// sites.
+func WrapEvalError(code ErrorValue, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &EvalError{Code: code, Err: err}
+}
+
+// ErrorValueFromErr returns the Excel ErrorValue classification for a Go
+// error produced by the formula engine. It recognizes *EvalError
+// annotations and the ErrFormulaTooLarge sentinel; other errors default
+// to ErrValNAME, matching Excel's treatment of unrecognized formula
+// text.
+func ErrorValueFromErr(err error) ErrorValue {
+	if err == nil {
+		return ErrValNAME
+	}
+	var ee *EvalError
+	if errors.As(err, &ee) {
+		return ee.Code
+	}
+	if errors.Is(err, ErrFormulaTooLarge) {
+		return ErrValVALUE
+	}
+	return ErrValNAME
+}
+
 // errorCodeFromAST converts the parser's ErrorCode string to a numeric ErrorValue.
 func errorCodeFromAST(code ErrorCode) ErrorValue {
 	switch code {
@@ -88,17 +146,24 @@ func errorCodeFromAST(code ErrorCode) ErrorValue {
 
 // Value is a tagged union representing a formula engine value.
 type Value struct {
-	Type          ValueType
-	Num           float64
-	Str           string
-	Bool          bool
-	Err           ErrorValue
-	Array         [][]Value  // used by ValueArray for range results
+	Type  ValueType
+	Num   float64
+	Str   string
+	Bool  bool
+	Err   ErrorValue
+	Array [][]Value // used by ValueArray for range results
+
+	// The remaining metadata fields are legacy-boundary transport for public
+	// Value callers, OOXML/workbook publication, and compatibility helpers.
+	// New evaluator code should carry the same semantics through EvalValue,
+	// ArrayValue, RefValue, and SpillClass instead of adding runtime meaning
+	// here.
 	RangeOrigin   *RangeAddr // set on ValueArray when loaded from a worksheet range
 	CellOrigin    *CellAddr  // set when a single-cell result carries its source address (e.g. OFFSET)
 	FromCell      bool       // true when loaded from a cell reference (OpLoadCell)
-	NoSpill       bool       // true for arrays that represent whole-row/column references (INDEX with 0); in non-array context these become #VALUE!
+	NoSpill       bool       // true for scalar-only legacy arrays; EvalValue uses SpillScalarOnly
 	RangeOverflow bool       // true for synthetic #REF! cells used to signal that a range was too large to materialize
+	evalRef       *RefValue  // retains live ref identity when a legacy Value must round-trip back through ref-aware evaluators/helpers
 }
 
 // NumberVal creates a Value holding a float64.

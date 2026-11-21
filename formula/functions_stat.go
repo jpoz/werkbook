@@ -8,13 +8,13 @@ import (
 )
 
 func init() {
-	Register("AVERAGE", NoCtx(fnAVERAGE))
+	RegisterWithSpec("AVERAGE", NoCtx(fnAVERAGE), directRangeReducerFuncSpec(evalAVERAGEDirectRange))
 	Register("AVERAGEA", NoCtx(fnAVERAGEA))
-	Register("AVEDEV", NoCtx(fnAVEDEV))
-	Register("AVERAGEIF", NoCtx(fnAVERAGEIF))
-	Register("AVERAGEIFS", NoCtx(fnAVERAGEIFS))
-	Register("COUNT", NoCtx(fnCOUNT))
-	Register("COUNTA", NoCtx(fnCOUNTA))
+	RegisterWithSpec("AVEDEV", NoCtx(fnAVEDEV), directRangeReducerFuncSpec(evalAVEDEVDirectRange))
+	RegisterWithSpec("AVERAGEIF", NoCtx(fnAVERAGEIF), criteriaSingleIfAggregateFuncSpec(evalAVERAGEIFCriteria))
+	RegisterWithSpec("AVERAGEIFS", NoCtx(fnAVERAGEIFS), criteriaPairsAggregateFuncSpec(evalAVERAGEIFSCriteria))
+	RegisterWithSpec("COUNT", NoCtx(fnCOUNT), directRangeReducerFuncSpec(evalCOUNTDirectRange))
+	RegisterWithSpec("COUNTA", NoCtx(fnCOUNTA), directRangeReducerFuncSpec(evalCOUNTADirectRange))
 	Register("CORREL", NoCtx(fnCORREL))
 	Register("CONFIDENCE.NORM", NoCtx(fnConfidenceNorm))
 	Register("CONFIDENCE.T", NoCtx(fnConfidenceT))
@@ -23,11 +23,11 @@ func init() {
 	Register("COVARIANCE.S", NoCtx(fnCOVARIANCES))
 	Register("INTERCEPT", NoCtx(fnINTERCEPT))
 	Register("COUNTBLANK", NoCtx(fnCOUNTBLANK))
-	Register("COUNTIF", NoCtx(fnCOUNTIF))
-	Register("COUNTIFS", NoCtx(fnCOUNTIFS))
-	Register("DEVSQ", NoCtx(fnDEVSQ))
+	RegisterWithSpec("COUNTIF", NoCtx(fnCOUNTIF), criteriaSingleIfFuncSpec(evalCOUNTIFCriteria))
+	RegisterWithSpec("COUNTIFS", NoCtx(fnCOUNTIFS), criteriaPairsFuncSpec(evalCOUNTIFSCriteria))
+	RegisterWithSpec("DEVSQ", NoCtx(fnDEVSQ), directRangeReducerFuncSpec(evalDEVSQDirectRange))
 	Register("FISHER", NoCtx(fnFISHER))
-	Register("FREQUENCY", NoCtx(fnFREQUENCY))
+	RegisterWithSpec("FREQUENCY", NoCtx(fnFREQUENCY), frequencyFuncSpec(evalFREQUENCYDirectRange))
 	Register("FISHERINV", NoCtx(fnFISHERINV))
 	Register("FORECAST", NoCtx(fnFORECAST))
 	Register("FORECAST.LINEAR", NoCtx(fnFORECAST))
@@ -37,13 +37,13 @@ func init() {
 	Register("GROWTH", NoCtx(fnGROWTH))
 	Register("HARMEAN", NoCtx(fnHARMEAN))
 	Register("LARGE", NoCtx(fnLARGE))
-	Register("MAX", NoCtx(fnMAX))
+	RegisterWithSpec("MAX", NoCtx(fnMAX), directRangeReducerFuncSpec(evalMAXDirectRange))
 	Register("MAXA", NoCtx(fnMAXA))
-	Register("MAXIFS", NoCtx(fnMAXIFS))
+	RegisterWithSpec("MAXIFS", NoCtx(fnMAXIFS), criteriaExtremaFuncSpec(evalMAXIFSCriteria))
 	Register("MEDIAN", NoCtx(fnMEDIAN))
-	Register("MIN", NoCtx(fnMIN))
+	RegisterWithSpec("MIN", NoCtx(fnMIN), directRangeReducerFuncSpec(evalMINDirectRange))
 	Register("MINA", NoCtx(fnMINA))
-	Register("MINIFS", NoCtx(fnMINIFS))
+	RegisterWithSpec("MINIFS", NoCtx(fnMINIFS), criteriaExtremaFuncSpec(evalMINIFSCriteria))
 	Register("MODE", NoCtx(fnMODE))
 	Register("MODE.MULT", NoCtx(fnModeMult))
 	Register("MODE.SNGL", NoCtx(fnMODE))
@@ -64,29 +64,29 @@ func init() {
 	Register("RANK.AVG", NoCtx(fnRANKAVG))
 	Register("SLOPE", NoCtx(fnSLOPE))
 	Register("SMALL", NoCtx(fnSMALL))
-	Register("STDEV", NoCtx(fnSTDEV))
-	Register("STDEV.S", NoCtx(fnSTDEV))
-	Register("STDEVA", NoCtx(fnSTDEVA))
-	Register("STDEVP", NoCtx(fnSTDEVP))
-	Register("STDEV.P", NoCtx(fnSTDEVP))
-	Register("STDEVPA", NoCtx(fnSTDEVPA))
+	RegisterWithSpec("STDEV", NoCtx(fnSTDEV), directRangeReducerFuncSpec(evalSTDEVDirectRange))
+	RegisterWithSpec("STDEV.S", NoCtx(fnSTDEV), directRangeReducerFuncSpec(evalSTDEVDirectRange))
+	RegisterWithSpec("STDEVA", NoCtx(fnSTDEVA), directRangeReducerFuncSpec(evalSTDEVADirectRange))
+	RegisterWithSpec("STDEVP", NoCtx(fnSTDEVP), directRangeReducerFuncSpec(evalSTDEVPDirectRange))
+	RegisterWithSpec("STDEV.P", NoCtx(fnSTDEVP), directRangeReducerFuncSpec(evalSTDEVPDirectRange))
+	RegisterWithSpec("STDEVPA", NoCtx(fnSTDEVPA), directRangeReducerFuncSpec(evalSTDEVPADirectRange))
 	Register("STANDARDIZE", NoCtx(fnSTANDARDIZE))
 	Register("STEYX", NoCtx(fnSTEYX))
-	Register("SUM", NoCtx(fnSUM))
-	Register("SUMIF", NoCtx(fnSUMIF))
-	Register("SUMIFS", NoCtx(fnSUMIFS))
-	Register("SUMPRODUCT", NoCtx(fnSUMPRODUCT))
-	Register("SUMSQ", NoCtx(fnSUMSQ))
-	Register("VAR", NoCtx(fnVAR))
-	Register("VAR.S", NoCtx(fnVAR))
+	RegisterWithSpec("SUM", NoCtx(fnSUM), directRangeReducerFuncSpec(evalSUMDirectRange))
+	RegisterWithSpec("SUMIF", NoCtx(fnSUMIF), criteriaSingleIfAggregateFuncSpec(evalSUMIFCriteria))
+	RegisterWithSpec("SUMIFS", NoCtx(fnSUMIFS), criteriaPairsAggregateFuncSpec(evalSUMIFSCriteria))
+	RegisterWithSpec("SUMPRODUCT", NoCtx(fnSUMPRODUCT), sumproductFuncSpec(evalSUMPRODUCTDirectRange))
+	RegisterWithSpec("SUMSQ", NoCtx(fnSUMSQ), directRangeReducerFuncSpec(evalSUMSQDirectRange))
+	RegisterWithSpec("VAR", NoCtx(fnVAR), directRangeReducerFuncSpec(evalVARDirectRange))
+	RegisterWithSpec("VAR.S", NoCtx(fnVAR), directRangeReducerFuncSpec(evalVARDirectRange))
 	Register("TRIMMEAN", NoCtx(fnTRIMMEAN))
 	Register("SKEW", NoCtx(fnSKEW))
 	Register("SKEW.P", NoCtx(fnSkewP))
 	Register("KURT", NoCtx(fnKURT))
-	Register("VARA", NoCtx(fnVARA))
-	Register("VARP", NoCtx(fnVARP))
-	Register("VAR.P", NoCtx(fnVARP))
-	Register("VARPA", NoCtx(fnVARPA))
+	RegisterWithSpec("VARA", NoCtx(fnVARA), directRangeReducerFuncSpec(evalVARADirectRange))
+	RegisterWithSpec("VARP", NoCtx(fnVARP), directRangeReducerFuncSpec(evalVARPDirectRange))
+	RegisterWithSpec("VAR.P", NoCtx(fnVARP), directRangeReducerFuncSpec(evalVARPDirectRange))
+	RegisterWithSpec("VARPA", NoCtx(fnVARPA), directRangeReducerFuncSpec(evalVARPADirectRange))
 	Register("NORM.DIST", NoCtx(fnNormDist))
 	Register("NORM.INV", NoCtx(fnNormInv))
 	Register("NORM.S.DIST", NoCtx(fnNormSDist))
@@ -131,6 +131,16 @@ func init() {
 	Register("LOGEST", NoCtx(fnLOGEST))
 }
 
+func valueHasRefMetadata(v Value) bool {
+	return v.evalRef != nil
+}
+
+func anonymousRefDerivedArrayCell(container Value, cell Value) bool {
+	return container.Type == ValueArray &&
+		container.RangeOrigin == nil &&
+		valueHasRefMetadata(cell)
+}
+
 func fnSUM(args []Value) (Value, error) {
 	sum := 0.0
 	if e := IterateNumeric(args, func(n float64) { sum += n }); e != nil {
@@ -165,27 +175,32 @@ func fnAVERAGEA(args []Value) (Value, error) {
 	for _, arg := range args {
 		switch arg.Type {
 		case ValueArray:
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					switch cell.Type {
-					case ValueError:
-						return cell, nil
-					case ValueNumber:
-						sum += cell.Num
-						count++
-					case ValueBool:
-						if cell.Bool {
-							sum += 1
-						}
-						count++
-					case ValueString:
-						// Text in a range counts as 0.
-						sum += 0
-						count++
-					case ValueEmpty:
-						// Empty cells are ignored.
+			var err Value
+			hasErr := false
+			iterateValueElements(arg, func(cell Value) bool {
+				switch cell.Type {
+				case ValueError:
+					err = cell
+					hasErr = true
+					return false
+				case ValueNumber:
+					sum += cell.Num
+					count++
+				case ValueBool:
+					if cell.Bool {
+						sum += 1
 					}
+					count++
+				case ValueString:
+					// Text in a range counts as 0.
+					count++
+				case ValueEmpty:
+					// Empty cells are ignored.
 				}
+				return true
+			})
+			if hasErr {
+				return err, nil
 			}
 		case ValueError:
 			return arg, nil
@@ -222,7 +237,7 @@ func fnCOUNT(args []Value) (Value, error) {
 		case ValueArray:
 			for _, row := range arg.Array {
 				for _, cell := range row {
-					if cell.Type == ValueNumber {
+					if cell.Type == ValueNumber && !anonymousRefDerivedArrayCell(arg, cell) {
 						count++
 					}
 				}
@@ -461,49 +476,33 @@ func fnLARGE(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	var nums []float64
-	arr := args[0]
-	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			for _, cell := range row {
-				if cell.Type == ValueError {
-					return cell, nil
-				}
-				if cell.Type == ValueNumber {
-					nums = append(nums, cell.Num)
-				}
-			}
-		}
-	} else {
-		n, e := CoerceNum(arr)
-		if e != nil {
-			return *e, nil
-		}
-		nums = append(nums, n)
+	nums, errVal := collectLargeSmallNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
 	}
-	k, e := CoerceNum(args[1])
-	if e != nil {
-		return *e, nil
-	}
-	ki := int(k)
-	if ki < 1 || ki > len(nums) {
-		return ErrorVal(ErrValNUM), nil
-	}
-	sort.Float64s(nums)
-	return NumberVal(nums[len(nums)-ki]), nil
+	return evalLargeSmallK(nums, args[1], true), nil
 }
 
 func fnSMALL(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
+	nums, errVal := collectLargeSmallNums(args[0])
+	if errVal != nil {
+		return *errVal, nil
+	}
+	return evalLargeSmallK(nums, args[1], false), nil
+}
+
+func collectLargeSmallNums(arr Value) ([]float64, *Value) {
 	var nums []float64
-	arr := args[0]
 	if arr.Type == ValueArray {
-		for _, row := range arr.Array {
-			for _, cell := range row {
+		rows, cols := effectiveArrayBounds(arr)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				cell := arrayElementDirect(arr, rows, cols, r, c)
 				if cell.Type == ValueError {
-					return cell, nil
+					return nil, &cell
 				}
 				if cell.Type == ValueNumber {
 					nums = append(nums, cell.Num)
@@ -513,20 +512,45 @@ func fnSMALL(args []Value) (Value, error) {
 	} else {
 		n, e := CoerceNum(arr)
 		if e != nil {
-			return *e, nil
+			return nil, e
 		}
 		nums = append(nums, n)
 	}
-	k, e := CoerceNum(args[1])
+	return nums, nil
+}
+
+func evalLargeSmallK(nums []float64, kArg Value, large bool) Value {
+	if kArg.Type == ValueArray {
+		rows, cols := arrayOpBounds(kArg)
+		result := newValueMatrix(rows, cols)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				result[r][c] = evalLargeSmallScalar(nums, arrayElementDirect(kArg, rows, cols, r, c), large)
+			}
+		}
+		if rows == 1 && cols == 1 {
+			return result[0][0]
+		}
+		return Value{Type: ValueArray, Array: result}
+	}
+	return evalLargeSmallScalar(nums, kArg, large)
+}
+
+func evalLargeSmallScalar(nums []float64, kArg Value, large bool) Value {
+	k, e := CoerceNum(kArg)
 	if e != nil {
-		return *e, nil
+		return *e
 	}
 	ki := int(k)
 	if ki < 1 || ki > len(nums) {
-		return ErrorVal(ErrValNUM), nil
+		return ErrorVal(ErrValNUM)
 	}
-	sort.Float64s(nums)
-	return NumberVal(nums[ki-1]), nil
+	sorted := append([]float64(nil), nums...)
+	sort.Float64s(sorted)
+	if large {
+		return NumberVal(sorted[len(sorted)-ki])
+	}
+	return NumberVal(sorted[ki-1])
 }
 
 func fnCOUNTBLANK(args []Value) (Value, error) {
@@ -537,8 +561,10 @@ func fnCOUNTBLANK(args []Value) (Value, error) {
 	arg := args[0]
 	switch arg.Type {
 	case ValueArray:
-		for _, row := range arg.Array {
-			for _, cell := range row {
+		rows, cols := effectiveArrayBounds(arg)
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				cell := arrayElementDirect(arg, rows, cols, r, c)
 				if cell.Type == ValueEmpty || (cell.Type == ValueString && cell.Str == "") {
 					count++
 				}
@@ -612,6 +638,12 @@ func MatchesCriteria(v Value, criteria Value) bool {
 			if n, err := strconv.ParseFloat(v.Str, 64); err == nil {
 				return n == criteria.Num
 			}
+			// Excel coerces date-like text to its serial when matching a
+			// numeric (date) criterion: DATE(2024,1,1) matches the text
+			// cell "2024-01-01" as well as the numeric serial 45292.
+			if serial, _, ok := parseDateTimeString(v.Str); ok {
+				return serial == criteria.Num
+			}
 		}
 		return false
 	}
@@ -625,6 +657,20 @@ func MatchesCriteria(v Value, criteria Value) bool {
 	}
 	if upper == "FALSE" {
 		return v.Type == ValueBool && !v.Bool
+	}
+
+	// Date-text criterion: if the criterion parses as a date, allow
+	// cross-type matching so "2024-01-01" matches the numeric serial
+	// 45292 and vice versa.
+	if serial, _, ok := parseDateTimeString(critStr); ok {
+		if v.Type == ValueNumber && serial == v.Num {
+			return true
+		}
+		if v.Type == ValueString {
+			if vSerial, _, ok := parseDateTimeString(v.Str); ok && serial == vSerial {
+				return true
+			}
+		}
 	}
 
 	// Other string criteria: use case-insensitive comparison.
@@ -685,6 +731,24 @@ func matchOperator(v Value, op, operand string) bool {
 		}
 		// Boolean or other non-numeric type vs numeric operand:
 		// For <> they are not equal; otherwise no match.
+		if op == "<>" {
+			return true
+		}
+		return false
+	}
+
+	// Date-text operand: coerce to serial and compare numerically against
+	// date cells (which are stored as numeric serials). Excel accepts
+	// ">=2026-01-01", ">=1/1/2026", ">=2026/01/01", etc. as date criteria.
+	if serial, _, ok := parseDateTimeString(operand); ok {
+		if v.Type == ValueNumber {
+			return evalOp(op, cmpFloat(v.Num, serial))
+		}
+		if op == "=" && v.Type == ValueString {
+			if vSerial, _, ok2 := parseDateTimeString(v.Str); ok2 {
+				return cmpFloat(vSerial, serial) == 0
+			}
+		}
 		if op == "<>" {
 			return true
 		}
@@ -844,6 +908,9 @@ func fnSUMIF(args []Value) (Value, error) {
 	if len(args) == 3 {
 		sumRange = args[2]
 	}
+	if criteria.Type == ValueArray {
+		return sumIFArray(rangeArg, criteria, sumRange), nil
+	}
 
 	if rangeArg.Type != ValueArray {
 		if MatchesCriteria(rangeArg, criteria) {
@@ -881,6 +948,23 @@ func fnSUMIF(args []Value) (Value, error) {
 	return NumberVal(sum), nil
 }
 
+func sumIFArray(rangeArg, criteria, sumRange Value) Value {
+	rows, cols := effectiveArrayBounds(criteria)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		row := make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			v, _ := fnSUMIF([]Value{rangeArg, ArrayElement(criteria, i, j), sumRange})
+			row[j] = v
+		}
+		result[i] = row
+	}
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0]
+	}
+	return Value{Type: ValueArray, Array: result}
+}
+
 func fnSUMIFS(args []Value) (Value, error) {
 	if len(args) < 3 || (len(args)-1)%2 != 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -915,7 +999,11 @@ func fnSUMIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(sumRange.Array[r][c]); e == nil {
+				sv := sumRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					sum += n
 				}
 			}
@@ -968,6 +1056,9 @@ func fnCOUNTIF(args []Value) (Value, error) {
 		return rangeArg, nil
 	}
 	criteria := args[1]
+	if criteria.Type == ValueArray {
+		return countIFArray(rangeArg, criteria), nil
+	}
 	count := 0
 	if rangeArg.Type == ValueArray {
 		for _, row := range rangeArg.Array {
@@ -981,6 +1072,23 @@ func fnCOUNTIF(args []Value) (Value, error) {
 		count = 1
 	}
 	return NumberVal(float64(count)), nil
+}
+
+func countIFArray(rangeArg, criteria Value) Value {
+	rows, cols := effectiveArrayBounds(criteria)
+	result := make([][]Value, rows)
+	for i := 0; i < rows; i++ {
+		row := make([]Value, cols)
+		for j := 0; j < cols; j++ {
+			v, _ := fnCOUNTIF([]Value{rangeArg, ArrayElement(criteria, i, j)})
+			row[j] = v
+		}
+		result[i] = row
+	}
+	if len(result) == 1 && len(result[0]) == 1 {
+		return result[0][0]
+	}
+	return Value{Type: ValueArray, Array: result}
 }
 
 func fnCOUNTIFS(args []Value) (Value, error) {
@@ -1080,6 +1188,11 @@ func fnAVERAGEIF(args []Value) (Value, error) {
 					var sv Value
 					if avgRange.Type == ValueArray && i < len(avgRange.Array) && j < len(avgRange.Array[i]) {
 						sv = avgRange.Array[i][j]
+					} else if avgRange.Type != ValueArray {
+						sv = avgRange
+					}
+					if sv.Type == ValueError {
+						return sv, nil
 					}
 					if n, e := CoerceNum(sv); e == nil {
 						sum += n
@@ -1099,55 +1212,58 @@ func fnSUMPRODUCT(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	if args[0].Type != ValueArray {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	firstArr := args[0].Array
-	rows := len(firstArr)
-	cols := 0
-	if rows > 0 {
-		cols = len(firstArr[0])
-	}
-
-	for _, arg := range args[1:] {
-		if arg.Type != ValueArray {
-			return ErrorVal(ErrValVALUE), nil
+	// Propagate any error argument; promote scalar numeric/bool/string args to
+	// 1x1 arrays so SUMPRODUCT(scalar) matches Excel (e.g. SUMPRODUCT(5)=5,
+	// SUMPRODUCT(#N/A)=#N/A).
+	promoted := make([]Value, len(args))
+	for i, arg := range args {
+		if arg.Type == ValueError {
+			return arg, nil
 		}
-		if len(arg.Array) != rows {
-			return ErrorVal(ErrValVALUE), nil
+		if arg.Type == ValueArray {
+			promoted[i] = arg
+			continue
 		}
-		for _, row := range arg.Array {
-			if len(row) != cols {
-				return ErrorVal(ErrValVALUE), nil
-			}
-		}
+		promoted[i] = Value{Type: ValueArray, Array: [][]Value{{arg}}}
 	}
+	args = promoted
 
 	sum := 0.0
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
-			product := 1.0
-			for _, arg := range args {
-				cell := arg.Array[r][c]
-				if cell.Type == ValueError {
-					return cell, nil
-				}
-				// Excel treats text and boolean cell values as 0 in
-				// SUMPRODUCT.  Computed booleans (e.g. from A1:A5>3)
-				// will already have been coerced to numbers by the
-				// arithmetic operators before reaching this function.
-				if cell.Type == ValueString || cell.Type == ValueBool {
-					product = 0
-					continue
-				}
-				n, e := CoerceNum(cell)
-				if e != nil {
-					n = 0
-				}
-				product *= n
+	var iterErr *Value
+	shapeErr := iterateAlignedArgs(args, func(cells []Value) bool {
+		product := 1.0
+		for i, cell := range cells {
+			if cell.Type == ValueError {
+				cellErr := cell
+				iterErr = &cellErr
+				return false
 			}
-			sum += product
+			if anonymousRefDerivedArrayCell(args[i], cell) {
+				product = 0
+				continue
+			}
+			// Excel treats text and boolean cell values as 0 in
+			// SUMPRODUCT. Computed booleans (e.g. from A1:A5>3) will
+			// already have been coerced to numbers by the arithmetic
+			// operators before reaching this function.
+			if cell.Type == ValueString || cell.Type == ValueBool {
+				product = 0
+				continue
+			}
+			n, e := CoerceNum(cell)
+			if e != nil {
+				n = 0
+			}
+			product *= n
 		}
+		sum += product
+		return true
+	})
+	if iterErr != nil {
+		return *iterErr, nil
+	}
+	if shapeErr != nil {
+		return *shapeErr, nil
 	}
 	return NumberVal(sum), nil
 }
@@ -1157,26 +1273,25 @@ func collectNumeric(args []Value) ([]float64, *Value) {
 	// Pre-count capacity to avoid repeated reallocation.
 	cap := 0
 	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				cap += len(row)
-			}
-		} else {
-			cap++
-		}
+		cap += valueCellCount(arg)
 	}
 	nums := make([]float64, 0, cap)
 	for _, arg := range args {
 		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					if cell.Type == ValueError {
-						return nil, &cell
-					}
-					if cell.Type == ValueNumber {
-						nums = append(nums, cell.Num)
-					}
+			var err *Value
+			iterateValueElements(arg, func(cell Value) bool {
+				if cell.Type == ValueError {
+					cellErr := cell
+					err = &cellErr
+					return false
 				}
+				if cell.Type == ValueNumber {
+					nums = append(nums, cell.Num)
+				}
+				return true
+			})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			if arg.Type == ValueError {
@@ -1286,7 +1401,11 @@ func fnAVERAGEIFS(args []Value) (Value, error) {
 				}
 			}
 			if allMatch {
-				if n, e := CoerceNum(avgRange.Array[r][c]); e == nil {
+				sv := avgRange.Array[r][c]
+				if sv.Type == ValueError {
+					return sv, nil
+				}
+				if n, e := CoerceNum(sv); e == nil {
 					sum += n
 					count++
 				}
@@ -1299,6 +1418,134 @@ func fnAVERAGEIFS(args []Value) (Value, error) {
 	return NumberVal(sum / float64(count)), nil
 }
 
+type criteriaExtremaKind uint8
+
+const (
+	criteriaExtremaMax criteriaExtremaKind = iota
+	criteriaExtremaMin
+)
+
+type criteriaExtremaAccumulator struct {
+	kind  criteriaExtremaKind
+	value float64
+	found bool
+}
+
+func legacyCriteriaValueSource(v Value) criteriaValueSource {
+	return newCriteriaValueSource(ValueToEvalValue(v))
+}
+
+func legacyCriteriaCriterionSource(v Value) criteriaValueSource {
+	if v.Type == ValueArray {
+		return legacyCriteriaValueSource(v)
+	}
+	scalar := v
+	return criteriaValueSource{scalar: &scalar}
+}
+
+func evalCriteriaExtrema(kind criteriaExtremaKind, args []Value) Value {
+	scanSource := legacyCriteriaValueSource(args[0])
+	prepared := make([]criteriaPreparedPair, 0, (len(args)-1)/2)
+	broadcastRows := 0
+	broadcastCols := 0
+	hasBroadcast := false
+
+	for k := 1; k < len(args); k += 2 {
+		pair := criteriaPreparedPair{
+			rangeSource:    legacyCriteriaValueSource(args[k]),
+			criteriaSource: legacyCriteriaCriterionSource(args[k+1]),
+		}
+		prepared = append(prepared, pair)
+		if hasBroadcast || pair.criteriaSource.isScalar() {
+			continue
+		}
+		broadcastRows, broadcastCols = pair.criteriaSource.dims()
+		hasBroadcast = true
+	}
+
+	if !hasBroadcast {
+		return evalCriteriaExtremaScalar(kind, scanSource, prepared, 0, 0)
+	}
+
+	rows := make([][]Value, broadcastRows)
+	for r := 0; r < broadcastRows; r++ {
+		row := make([]Value, broadcastCols)
+		for c := 0; c < broadcastCols; c++ {
+			row[c] = evalCriteriaExtremaScalar(kind, scanSource, prepared, r, c)
+		}
+		rows[r] = row
+	}
+	return Value{Type: ValueArray, Array: rows}
+}
+
+func evalCriteriaExtremaScalar(
+	kind criteriaExtremaKind,
+	scanSource criteriaValueSource,
+	pairs []criteriaPreparedPair,
+	criteriaRow int,
+	criteriaCol int,
+) Value {
+	rows, cols := scanSource.dims()
+	acc := criteriaExtremaAccumulator{kind: kind}
+	iterRows, iterCols := criteriaMaterializedBounds(rows, cols, scanSource, scanSource, pairs)
+
+	for r := 0; r < iterRows; r++ {
+		for c := 0; c < iterCols; c++ {
+			if !criteriaMatchesAll(pairs, r, c, criteriaRow, criteriaCol) {
+				continue
+			}
+			if errVal := acc.include(scanSource.alignedCell(r, c)); errVal != nil {
+				return *errVal
+			}
+		}
+	}
+
+	if tailCells := rows*cols - iterRows*iterCols; tailCells > 0 &&
+		criteriaMatchesAllEmpty(pairs, criteriaRow, criteriaCol) {
+		if errVal := acc.includeRepeated(scanSource.tailCell(), tailCells); errVal != nil {
+			return *errVal
+		}
+	}
+
+	return acc.result()
+}
+
+func (a *criteriaExtremaAccumulator) include(v Value) *Value {
+	if v.Type == ValueError {
+		return &v
+	}
+	n, errVal := CoerceNum(v)
+	if errVal != nil {
+		return nil
+	}
+	if !a.found {
+		a.value = n
+		a.found = true
+		return nil
+	}
+	if a.kind == criteriaExtremaMax && n > a.value {
+		a.value = n
+	}
+	if a.kind == criteriaExtremaMin && n < a.value {
+		a.value = n
+	}
+	return nil
+}
+
+func (a *criteriaExtremaAccumulator) includeRepeated(v Value, n int) *Value {
+	if n <= 0 {
+		return nil
+	}
+	return a.include(v)
+}
+
+func (a criteriaExtremaAccumulator) result() Value {
+	if !a.found {
+		return NumberVal(0)
+	}
+	return NumberVal(a.value)
+}
+
 func fnMAXIFS(args []Value) (Value, error) {
 	if len(args) < 3 || (len(args)-1)%2 != 0 {
 		return ErrorVal(ErrValVALUE), nil
@@ -1307,38 +1554,7 @@ func fnMAXIFS(args []Value) (Value, error) {
 	if maxRange.Type != ValueArray {
 		return ErrorVal(ErrValVALUE), nil
 	}
-
-	maxVal := -math.MaxFloat64
-	found := false
-	for r, row := range maxRange.Array {
-		for c := range row {
-			allMatch := true
-			for k := 1; k < len(args); k += 2 {
-				critRange := args[k]
-				criteria := args[k+1]
-				var cellVal Value
-				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
-					cellVal = critRange.Array[r][c]
-				}
-				if !MatchesCriteria(cellVal, criteria) {
-					allMatch = false
-					break
-				}
-			}
-			if allMatch {
-				if n, e := CoerceNum(maxRange.Array[r][c]); e == nil {
-					if !found || n > maxVal {
-						maxVal = n
-						found = true
-					}
-				}
-			}
-		}
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(maxVal), nil
+	return evalCriteriaExtrema(criteriaExtremaMax, args), nil
 }
 
 func fnMINIFS(args []Value) (Value, error) {
@@ -1349,38 +1565,7 @@ func fnMINIFS(args []Value) (Value, error) {
 	if minRange.Type != ValueArray {
 		return ErrorVal(ErrValVALUE), nil
 	}
-
-	minVal := math.MaxFloat64
-	found := false
-	for r, row := range minRange.Array {
-		for c := range row {
-			allMatch := true
-			for k := 1; k < len(args); k += 2 {
-				critRange := args[k]
-				criteria := args[k+1]
-				var cellVal Value
-				if critRange.Type == ValueArray && r < len(critRange.Array) && c < len(critRange.Array[r]) {
-					cellVal = critRange.Array[r][c]
-				}
-				if !MatchesCriteria(cellVal, criteria) {
-					allMatch = false
-					break
-				}
-			}
-			if allMatch {
-				if n, e := CoerceNum(minRange.Array[r][c]); e == nil {
-					if !found || n < minVal {
-						minVal = n
-						found = true
-					}
-				}
-			}
-		}
-	}
-	if !found {
-		return NumberVal(0), nil
-	}
-	return NumberVal(minVal), nil
+	return evalCriteriaExtrema(criteriaExtremaMin, args), nil
 }
 
 func fnMEDIAN(args []Value) (Value, error) {
@@ -1898,36 +2083,35 @@ func fnVARP(args []Value) (Value, error) {
 func collectNumericA(args []Value) ([]float64, *Value) {
 	cap := 0
 	for _, arg := range args {
-		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				cap += len(row)
-			}
-		} else {
-			cap++
-		}
+		cap += valueCellCount(arg)
 	}
 	nums := make([]float64, 0, cap)
 	for _, arg := range args {
 		if arg.Type == ValueArray {
-			for _, row := range arg.Array {
-				for _, cell := range row {
-					switch cell.Type {
-					case ValueError:
-						return nil, &cell
-					case ValueNumber:
-						nums = append(nums, cell.Num)
-					case ValueBool:
-						if cell.Bool {
-							nums = append(nums, 1)
-						} else {
-							nums = append(nums, 0)
-						}
-					case ValueString:
+			var err *Value
+			iterateValueElements(arg, func(cell Value) bool {
+				switch cell.Type {
+				case ValueError:
+					cellErr := cell
+					err = &cellErr
+					return false
+				case ValueNumber:
+					nums = append(nums, cell.Num)
+				case ValueBool:
+					if cell.Bool {
+						nums = append(nums, 1)
+					} else {
 						nums = append(nums, 0)
-					case ValueEmpty:
-						// ignored
 					}
+				case ValueString:
+					nums = append(nums, 0)
+				case ValueEmpty:
+					// ignored
 				}
+				return true
+			})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			switch arg.Type {

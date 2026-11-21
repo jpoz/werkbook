@@ -315,11 +315,11 @@ func fnDATEDIF(args []Value) (Value, error) {
 	if len(args) != 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	startSerial, e := CoerceNum(args[0])
+	startSerial, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
-	endSerial, e2 := CoerceNum(args[1])
+	endSerial, e2 := coerceDateNum(args[1])
 	if e2 != nil {
 		return *e2, nil
 	}
@@ -407,11 +407,11 @@ func fnDAYS(args []Value) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	end, e := CoerceNum(args[0])
+	end, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
-	start, e := CoerceNum(args[1])
+	start, e := coerceDateNum(args[1])
 	if e != nil {
 		return *e, nil
 	}
@@ -498,7 +498,7 @@ func fnHOUR(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -510,7 +510,7 @@ func fnMINUTE(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -522,7 +522,7 @@ func fnSECOND(args []Value) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	n, e := CoerceNum(args[0])
+	n, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
@@ -688,55 +688,26 @@ func fnDATEVALUEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if args[0].Type == ValueError {
 		return args[0], nil
 	}
-	text := strings.TrimSpace(ValueToString(args[0]))
-
-	// Strip time portion from date-time strings like "2025-03-04 12:00".
-	// Only strip if the part after the space looks like a time (contains a colon).
-	dateOnly := text
-	if idx := strings.Index(text, " "); idx > 0 {
-		rest := strings.TrimSpace(text[idx+1:])
-		if strings.Contains(rest, ":") {
-			dateOnly = text[:idx]
-		}
+	text := ValueToString(args[0])
+	serial, _, ok := parseDateTimeString(text)
+	if !ok {
+		return ErrorVal(ErrValVALUE), nil
 	}
-
-	layouts := []string{
-		"1/2/2006",
-		"01/02/2006",
-		"2-Jan-2006",
-		"02-Jan-2006",
-		"2006/01/02",
-		"2006-01-02",
-		"January 2, 2006",
+	// DATEVALUE always returns the integer (date-only) serial, even when the
+	// input carried a time component. Translate the 1900-system serial into
+	// whichever date system is active.
+	dateSerial := math.Floor(serial)
+	if date1904 {
+		dateSerial = rebaseSerialTo1904(dateSerial)
 	}
+	return NumberVal(dateSerial), nil
+}
 
-	for _, layout := range layouts {
-		t, err := time.Parse(layout, dateOnly)
-		if err == nil {
-			return NumberVal(math.Floor(timeToSerialForDateSystem(t, date1904))), nil
-		}
-	}
-
-	// Try 2-digit year formats: MM/DD/YY
-	twoDigitLayouts := []string{
-		"1/2/06",
-		"01/02/06",
-	}
-	for _, layout := range twoDigitLayouts {
-		t, err := time.Parse(layout, dateOnly)
-		if err == nil {
-			return NumberVal(math.Floor(timeToSerialForDateSystem(t, date1904))), nil
-		}
-	}
-
-	// Try "Month Day" without year — use current year.
-	if m, d, ok := parseMonthDay(dateOnly); ok {
-		now := time.Now()
-		t := time.Date(now.Year(), m, d, 0, 0, 0, 0, time.UTC)
-		return NumberVal(math.Floor(timeToSerialForDateSystem(t, date1904))), nil
-	}
-
-	return ErrorVal(ErrValVALUE), nil
+// rebaseSerialTo1904 converts a 1900-system date serial into the equivalent
+// 1904-system serial by shifting through a common time.Time representation.
+func rebaseSerialTo1904(serial1900 float64) float64 {
+	t := SerialToTime(serial1900)
+	return timeToSerial1904(t)
 }
 
 func fnTIMEVALUE(args []Value) (Value, error) {
@@ -747,6 +718,13 @@ func fnTIMEVALUE(args []Value) (Value, error) {
 		return args[0], nil
 	}
 	text := strings.TrimSpace(ValueToString(args[0]))
+
+	// Excel's TIMEVALUE accepts full datetime strings and returns just the
+	// fractional-day component. Route through the unified parser first, then
+	// fall back to the bare time parser for inputs like "12:30 PM".
+	if serial, hasTime, ok := parseDateTimeString(text); ok && hasTime {
+		return NumberVal(serial - math.Floor(serial)), nil
+	}
 
 	t, ok := parseTimeString(text)
 	if !ok {
@@ -942,25 +920,22 @@ func fnEOMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
 // parseHolidays extracts a set of truncated serial dates from an optional holiday argument.
 func parseHolidays(arg Value) (map[float64]bool, *Value) {
 	holidays := make(map[float64]bool)
-	if arg.Type == ValueArray {
-		for _, row := range arg.Array {
-			for _, cell := range row {
-				if cell.Type == ValueError {
-					return nil, &cell
-				}
-				n, ce := CoerceNum(cell)
-				if ce != nil {
-					return nil, ce
-				}
-				holidays[math.Trunc(n)] = true
-			}
+	if arg.Type == ValueEmpty {
+		return holidays, nil
+	}
+	if errVal := walkFlattenedValueCells(arg, func(cell Value) *Value {
+		if cell.Type == ValueError {
+			cellErr := cell
+			return &cellErr
 		}
-	} else if arg.Type != ValueEmpty {
-		n, ce := CoerceNum(arg)
+		n, ce := CoerceNum(cell)
 		if ce != nil {
-			return nil, ce
+			return ce
 		}
 		holidays[math.Trunc(n)] = true
+		return nil
+	}); errVal != nil {
+		return nil, errVal
 	}
 	return holidays, nil
 }
@@ -1153,11 +1128,11 @@ func fnYEARFRAC(args []Value) (Value, error) {
 	if len(args) < 2 || len(args) > 3 {
 		return ErrorVal(ErrValVALUE), nil
 	}
-	startSerial, e := CoerceNum(args[0])
+	startSerial, e := coerceDateNum(args[0])
 	if e != nil {
 		return *e, nil
 	}
-	endSerial, e2 := CoerceNum(args[1])
+	endSerial, e2 := coerceDateNum(args[1])
 	if e2 != nil {
 		return *e2, nil
 	}

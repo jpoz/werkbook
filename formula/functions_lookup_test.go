@@ -49,6 +49,88 @@ func TestVLOOKUP(t *testing.T) {
 	}
 }
 
+func TestVLOOKUP_ArrayLookupValueInArrayCtx(t *testing.T) {
+	// When lookup_value is an array and the caller is in array context
+	// (e.g. inside FILTER's include argument), VLOOKUP must fan out per
+	// element and return an array of results — not collapse to a single
+	// lookup. Mixed hits and misses produce values + #N/A per row.
+	lookupValue := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A")},
+			{StringVal("X")},
+			{StringVal("B")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 4,
+		},
+	}
+	lookupTable := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A"), StringVal("east")},
+			{StringVal("B"), StringVal("west")},
+		},
+	}
+	ctx := &EvalContext{CurrentCol: 2, CurrentRow: 2, CurrentSheet: "Sheet1", InheritedArray: true}
+
+	fn := registry[normalizeFuncName("VLOOKUP")]
+	spec, _ := funcSpecForName("VLOOKUP")
+	got, err := callFuncWithSpec("VLOOKUP", fn, spec, []Value{lookupValue, lookupTable, NumberVal(2), BoolVal(false)}, ctx)
+	if err != nil {
+		t.Fatalf("callFuncWithSpec: %v", err)
+	}
+	if got.Type != ValueArray || len(got.Array) != 3 {
+		t.Fatalf("expected 3-row array, got %v", got)
+	}
+	if got.Array[0][0].Type != ValueString || got.Array[0][0].Str != "east" {
+		t.Errorf("[0]: got %v, want east", got.Array[0][0])
+	}
+	if got.Array[1][0].Type != ValueError || got.Array[1][0].Err != ErrValNA {
+		t.Errorf("[1]: got %v, want #N/A", got.Array[1][0])
+	}
+	if got.Array[2][0].Type != ValueString || got.Array[2][0].Str != "west" {
+		t.Errorf("[2]: got %v, want west", got.Array[2][0])
+	}
+}
+
+func TestVLOOKUP_ArrayLookupValueInScalarCtxCollapses(t *testing.T) {
+	// In scalar context (no InheritedArray, no IsArrayFormula), VLOOKUP's
+	// lookup_value array should be intersected to a scalar via
+	// ArgAdaptScalarizeAny — lifting is only active in array context.
+	lookupValue := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A")},
+			{StringVal("B")},
+			{StringVal("C")},
+		},
+		RangeOrigin: &RangeAddr{
+			Sheet: "Sheet1", FromCol: 1, FromRow: 2, ToCol: 1, ToRow: 4,
+		},
+	}
+	lookupTable := Value{
+		Type: ValueArray,
+		Array: [][]Value{
+			{StringVal("A"), StringVal("east")},
+			{StringVal("B"), StringVal("west")},
+			{StringVal("C"), StringVal("north")},
+		},
+	}
+	// Formula at Sheet1!B3 (row 3): implicit intersection of A2:A4 → A3 = "B".
+	ctx := &EvalContext{CurrentCol: 2, CurrentRow: 3, CurrentSheet: "Sheet1"}
+
+	fn := registry[normalizeFuncName("VLOOKUP")]
+	spec, _ := funcSpecForName("VLOOKUP")
+	got, err := callFuncWithSpec("VLOOKUP", fn, spec, []Value{lookupValue, lookupTable, NumberVal(2), BoolVal(false)}, ctx)
+	if err != nil {
+		t.Fatalf("callFuncWithSpec: %v", err)
+	}
+	if got.Type != ValueString || got.Str != "west" {
+		t.Errorf("expected scalar 'west', got %v", got)
+	}
+}
+
 func TestHLOOKUP(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
@@ -3136,8 +3218,10 @@ func TestTrimmedRangeOriginShapeFunctions(t *testing.T) {
 			got: func() (Value, error) {
 				return fnUNIQUE([]Value{trimmedRow})
 			},
+			// UNIQUE normalises anonymous-array blanks to empty strings so
+			// downstream COUNTA/COUNT match Excel's spill semantics.
 			want: Value{Type: ValueArray, Array: [][]Value{{
-				NumberVal(7), EmptyVal(), EmptyVal(),
+				NumberVal(7), StringVal(""), StringVal(""),
 			}}},
 		},
 		{
@@ -3792,6 +3876,124 @@ func TestINDIRECTRowRangeWithROW(t *testing.T) {
 	}
 }
 
+func TestINDIRECTFullAxisLegacyBoundaryShape(t *testing.T) {
+	t.Run("full column stays 1x1 at legacy boundary", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+		}}
+		ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+		got, err := Eval(evalCompile(t, `INDIRECT("A:A")`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("INDIRECT(A:A): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 1 || len(got.Array[0]) != 1 {
+			t.Fatalf("INDIRECT(A:A): legacy boundary dims = %dx%d, want 1x1", len(got.Array), len(got.Array[0]))
+		}
+		if got.RangeOrigin == nil || got.RangeOrigin.FromCol != 1 || got.RangeOrigin.ToCol != 1 ||
+			got.RangeOrigin.FromRow != 1 || got.RangeOrigin.ToRow != maxRows {
+			t.Fatalf("INDIRECT(A:A): RangeOrigin = %+v, want full column A:A", got.RangeOrigin)
+		}
+	})
+
+	t.Run("full row keeps row count but placeholder width", func(t *testing.T) {
+		resolver := &mockResolver{}
+		ctx := &EvalContext{Resolver: resolver, IsArrayFormula: true}
+
+		got, err := Eval(evalCompile(t, `INDIRECT("1:3")`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueArray {
+			t.Fatalf("INDIRECT(1:3): expected array, got %v", got.Type)
+		}
+		if len(got.Array) != 3 || len(got.Array[0]) != 1 {
+			t.Fatalf("INDIRECT(1:3): legacy boundary dims = %dx%d, want 3x1", len(got.Array), len(got.Array[0]))
+		}
+	})
+}
+
+func TestINDIRECTNestedINDEXUsesInternalRef(t *testing.T) {
+	t.Run("rectangular ref", func(t *testing.T) {
+		resolver := &mockResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 2, Row: 1}: NumberVal(2),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 2, Row: 2}: NumberVal(4),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("A1:B2"),2,2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 4 {
+			t.Fatalf("INDEX(INDIRECT(A1:B2),2,2) = %#v, want 4", got)
+		}
+	})
+
+	t.Run("full column ref", func(t *testing.T) {
+		resolver := &sparseResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 1, Row: 2}: NumberVal(20),
+			{Col: 1, Row: 3}: NumberVal(30),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("A:A"),2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Fatalf("INDEX(INDIRECT(A:A),2) = %#v, want 20", got)
+		}
+	})
+
+	t.Run("full row ref", func(t *testing.T) {
+		resolver := &sparseResolver{cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(10),
+			{Col: 2, Row: 1}: NumberVal(20),
+			{Col: 3, Row: 1}: NumberVal(30),
+		}}
+		ctx := &EvalContext{Resolver: resolver}
+
+		got, err := Eval(evalCompile(t, `INDEX(INDIRECT("1:1"),1,2)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 20 {
+			t.Fatalf("INDEX(INDIRECT(1:1),1,2) = %#v, want 20", got)
+		}
+	})
+}
+
+func TestINDIRECTSingleCellBoundaryPreservesCOLUMNAndISREFBehavior(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 2, Row: 7}: NumberVal(99),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `COLUMN(INDIRECT("B7"))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Fatalf("COLUMN(INDIRECT(B7)) = %#v, want 2", got)
+	}
+
+	got, err = Eval(evalCompile(t, `ISREF(INDIRECT("B7"))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Fatalf("ISREF(INDIRECT(B7)) = %#v, want TRUE", got)
+	}
+}
+
 func TestINDIRECTEmptyString(t *testing.T) {
 	resolver := &mockResolver{}
 	ctx := &EvalContext{Resolver: resolver}
@@ -3854,6 +4056,75 @@ func TestINDIRECTDynamic(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 55 {
 		t.Errorf(`INDIRECT("A"&"1"): got %v, want 55`, got)
+	}
+}
+
+func TestINDIRECTDefinedNames(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}:    NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 2}:    NumberVal(20),
+			{Sheet: "data", Col: 1, Row: 3}:    NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 4}:    NumberVal(40),
+			{Sheet: "data", Col: 1, Row: 5}:    NumberVal(50),
+			{Sheet: "data", Col: 3, Row: 1}:    StringVal("my_range"),
+			{Col: 2, Row: 2}:                   StringVal("my_range"),
+			{Sheet: "results", Col: 2, Row: 2}: StringVal("my_range"),
+		},
+		definedNames: map[string]Value{
+			"\x00my_range": {
+				Type: ValueArray,
+				Array: [][]Value{
+					{NumberVal(10)},
+					{NumberVal(20)},
+					{NumberVal(30)},
+					{NumberVal(40)},
+					{NumberVal(50)},
+				},
+				RangeOrigin: &RangeAddr{Sheet: "data", FromCol: 1, FromRow: 1, ToCol: 1, ToRow: 5},
+			},
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    Value
+	}{
+		{name: "literal", formula: `SUM(INDIRECT("my_range"))`, want: NumberVal(150)},
+		{name: "cell_text", formula: `SUM(INDIRECT(B2))`, want: NumberVal(150)},
+		{name: "nested", formula: `SUM(INDIRECT(INDIRECT("data!C1")))`, want: NumberVal(150)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
+func TestMATCHWithWholeColumnINDIRECTUsesLiveRef(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: StringVal("x"),
+			{Sheet: "data", Col: 1, Row: 2}: StringVal("a"),
+			{Sheet: "data", Col: 1, Row: 3}: StringVal("b"),
+			{Sheet: "data", Col: 1, Row: 4}: StringVal("c"),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	got, err := Eval(evalCompile(t, `MATCH("c",INDIRECT("data!A:A"),0)`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Fatalf(`MATCH("c",INDIRECT("data!A:A"),0) = %#v, want 4`, got)
 	}
 }
 
@@ -3936,6 +4207,39 @@ func TestINDIRECT_R1C1_CaseInsensitive(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 42 {
 		t.Errorf(`INDIRECT("r1c1",FALSE): got %v, want 42`, got)
+	}
+}
+
+// TestSplitSheetPrefix locks down the quote-aware sheet-prefix split used
+// by r1c1ToA1. Naive strings.LastIndex(ref, "!") breaks whenever a sheet
+// name is quoted and contains its own '!' or escaped ” character.
+func TestSplitSheetPrefix(t *testing.T) {
+	cases := []struct {
+		in         string
+		wantPrefix string
+		wantRest   string
+	}{
+		{"A1", "", "A1"},
+		{"Sheet1!A1", "Sheet1!", "A1"},
+		{"Sheet1!R1C1", "Sheet1!", "R1C1"},
+		{"'Sheet Name'!R1C1", "'Sheet Name'!", "R1C1"},
+		// Quoted sheet name with embedded '!': the naive LastIndex
+		// would split at the inner '!' and corrupt the sheet name.
+		{"'Sheet!Name'!R1C1", "'Sheet!Name'!", "R1C1"},
+		{"'a!b!c'!R2C3", "'a!b!c'!", "R2C3"},
+		// Quoted sheet name with escaped '' inside the quotes.
+		{"'Bob''s Sheet'!R1C1", "'Bob''s Sheet'!", "R1C1"},
+		{"'Bob''s!Sheet'!R1C1", "'Bob''s!Sheet'!", "R1C1"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			prefix, rest := splitSheetPrefix(tc.in)
+			if prefix != tc.wantPrefix || rest != tc.wantRest {
+				t.Errorf("splitSheetPrefix(%q) = (%q, %q), want (%q, %q)",
+					tc.in, prefix, rest, tc.wantPrefix, tc.wantRest)
+			}
+		})
 	}
 }
 
@@ -5497,7 +5801,9 @@ func TestUNIQUE_Booleans(t *testing.T) {
 }
 
 func TestUNIQUE_EmptyHandling(t *testing.T) {
-	// UNIQUE with empty values — empties are equal to each other
+	// UNIQUE with empty values — empties dedup together and render as
+	// empty strings in the spill output, matching Excel's behavior where
+	// COUNTA counts them but COUNT does not.
 	got, err := fnUNIQUE([]Value{{
 		Type:  ValueArray,
 		Array: [][]Value{{EmptyVal()}, {NumberVal(1)}, {EmptyVal()}, {NumberVal(2)}},
@@ -5508,8 +5814,8 @@ func TestUNIQUE_EmptyHandling(t *testing.T) {
 	if got.Type != ValueArray || len(got.Array) != 3 {
 		t.Fatalf("expected 3 rows, got %v (rows=%d)", got.Type, len(got.Array))
 	}
-	if got.Array[0][0].Type != ValueEmpty {
-		t.Errorf("[0]: got type %v, want empty", got.Array[0][0].Type)
+	if got.Array[0][0].Type != ValueString || got.Array[0][0].Str != "" {
+		t.Errorf("[0]: got %v, want empty string", got.Array[0][0])
 	}
 	if got.Array[1][0].Num != 1 {
 		t.Errorf("[1]: got %v, want 1", got.Array[1][0])
@@ -5799,6 +6105,55 @@ func TestUNIQUE_FromRange(t *testing.T) {
 	}
 }
 
+func TestUNIQUE_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnUNIQUE([]Value{
+		trimmedRangeValue([][]Value{
+			{StringVal("alpha")},
+			{StringVal("beta")},
+			{StringVal("alpha")},
+		}, 1, 1, 1, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnUNIQUE: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("alpha")},
+		{StringVal("beta")},
+	}})
+}
+
+func TestUNIQUE_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: StringVal("cat"),
+			{Col: 1, Row: 2}: StringVal("dog"),
+			{Col: 1, Row: 3}: StringVal("cat"),
+			{Col: 1, Row: 4}: EmptyVal(),
+			{Col: 1, Row: 5}: EmptyVal(),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: "INDEX(UNIQUE(A1:A5),3,1)", want: StringVal("")},
+		{formula: "ROWS(UNIQUE(A1:A5))", want: NumberVal(3)},
+		{formula: "COLUMNS(UNIQUE(A1:A5))", want: NumberVal(1)},
+		{formula: "COUNTA(UNIQUE(A1:A5))", want: NumberVal(3)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 // ── FILTER tests ──────────────────────────────────────────────────────
 
 func TestFILTER_BasicBoolean(t *testing.T) {
@@ -5889,6 +6244,26 @@ func TestFILTER_NoneMatchWithIfEmpty(t *testing.T) {
 	}
 }
 
+func TestFILTER_ErrorInCriterionPropagatesScalar(t *testing.T) {
+	// FILTER({1;2;3}, {TRUE;#N/A;TRUE}) returns a single #N/A — Excel
+	// propagates the first error from the include argument as a scalar
+	// and does not spill across the value shape. See issue #70.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{BoolVal(true)}, {ErrorVal(ErrValNA)}, {BoolVal(true)},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("got %v, want scalar #N/A", got)
+	}
+}
+
 func TestFILTER_NoneMatchWithoutIfEmpty(t *testing.T) {
 	// FILTER({1;2;3}, {0;0;0}) = #CALC!
 	got, err := fnFILTER([]Value{
@@ -5973,7 +6348,9 @@ func TestFILTER_StringValues(t *testing.T) {
 }
 
 func TestFILTER_ErrorInInclude(t *testing.T) {
-	// Error in include array propagates immediately.
+	// Excel propagates the first error in the include argument as a
+	// single scalar — the result does not spill across the value shape.
+	// See issue #70.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
@@ -5986,7 +6363,7 @@ func TestFILTER_ErrorInInclude(t *testing.T) {
 		t.Fatalf("fnFILTER: %v", err)
 	}
 	if got.Type != ValueError || got.Err != ErrValDIV0 {
-		t.Errorf("got %v, want #DIV/0!", got)
+		t.Errorf("got %v, want scalar #DIV/0!", got)
 	}
 }
 
@@ -6181,6 +6558,28 @@ func TestFILTER_ErrorInIncludeArg(t *testing.T) {
 	}
 }
 
+func TestFILTER_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnFILTER([]Value{
+		trimmedRangeValue([][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+			{NumberVal(30)},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{BoolVal(false)},
+			{BoolVal(true)},
+			{BoolVal(true)},
+		}, 2, 1, 2, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{NumberVal(20)},
+		{NumberVal(30)},
+	}})
+}
+
 func TestFILTER_ViaEval(t *testing.T) {
 	// Test through the formula evaluator.
 	resolver := &mockResolver{}
@@ -6209,6 +6608,41 @@ func TestFILTER_ViaEvalIfEmpty(t *testing.T) {
 	}
 	if got.Type != ValueString || got.Str != "none" {
 		t.Errorf("got %v, want string 'none'", got)
+	}
+}
+
+func TestFILTER_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(100),
+			{Col: 1, Row: 2}: NumberVal(200),
+			{Col: 1, Row: 3}: NumberVal(300),
+			{Col: 1, Row: 4}: NumberVal(400),
+			{Col: 2, Row: 1}: StringVal("drop"),
+			{Col: 2, Row: 2}: StringVal("keep"),
+			{Col: 2, Row: 3}: StringVal("drop"),
+			{Col: 2, Row: 4}: StringVal("keep"),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: `INDEX(FILTER(A1:A4,B1:B4="keep"),2,1)`, want: NumberVal(400)},
+		{formula: `ROWS(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(2)},
+		{formula: `COLUMNS(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(1)},
+		{formula: `COUNTA(FILTER(A1:A4,B1:B4="keep"))`, want: NumberVal(2)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
 	}
 }
 
@@ -6263,10 +6697,10 @@ func TestFILTER_ViaEvalStringComparison(t *testing.T) {
 	// FILTER(A1:A4, B1:B4="Yes")
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
-			{Col: 1, Row: 1}: StringVal("Apple"),  {Col: 2, Row: 1}: StringVal("Yes"),
+			{Col: 1, Row: 1}: StringVal("Apple"), {Col: 2, Row: 1}: StringVal("Yes"),
 			{Col: 1, Row: 2}: StringVal("Banana"), {Col: 2, Row: 2}: StringVal("No"),
 			{Col: 1, Row: 3}: StringVal("Cherry"), {Col: 2, Row: 3}: StringVal("Yes"),
-			{Col: 1, Row: 4}: StringVal("Date"),   {Col: 2, Row: 4}: StringVal("No"),
+			{Col: 1, Row: 4}: StringVal("Date"), {Col: 2, Row: 4}: StringVal("No"),
 		},
 	}
 	cf := evalCompile(t, `FILTER(A1:A4, B1:B4="Yes")`)
@@ -6532,7 +6966,8 @@ func TestFILTER_ColumnFilterIfEmpty(t *testing.T) {
 }
 
 func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
-	// Error in column include array propagates
+	// Excel propagates the first error in the include argument as a
+	// single scalar in column-filter mode as well. See issue #70.
 	got, err := fnFILTER([]Value{
 		{Type: ValueArray, Array: [][]Value{
 			{NumberVal(1), NumberVal(2), NumberVal(3)},
@@ -6545,7 +6980,7 @@ func TestFILTER_ColumnFilterErrorInInclude(t *testing.T) {
 		t.Fatalf("fnFILTER: %v", err)
 	}
 	if got.Type != ValueError || got.Err != ErrValNUM {
-		t.Errorf("got %v, want #NUM!", got)
+		t.Errorf("got %v, want scalar #NUM!", got)
 	}
 }
 
@@ -6895,6 +7330,26 @@ func TestXLOOKUP_WildcardMode(t *testing.T) {
 				t.Errorf("got %v (type %d), want string %q", got, got.Type, tt.want)
 			}
 		})
+	}
+}
+
+func TestXLOOKUP_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnXLOOKUP([]Value{
+		StringVal("beta"),
+		trimmedRangeValue([][]Value{
+			{StringVal("alpha")},
+			{StringVal("beta")},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{NumberVal(10)},
+			{NumberVal(20)},
+		}, 2, 1, 2, maxRows),
+	})
+	if err != nil {
+		t.Fatalf("fnXLOOKUP: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 20 {
+		t.Fatalf("fnXLOOKUP(trimmed full-column) = %#v, want 20", got)
 	}
 }
 
@@ -15041,6 +15496,48 @@ func TestOFFSETRangeResultHasRangeOrigin(t *testing.T) {
 	}
 }
 
+func TestOFFSETNestedINDEXUsesInternalRef(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 2, Row: 2}: NumberVal(1),
+		{Col: 3, Row: 2}: NumberVal(2),
+		{Col: 2, Row: 3}: NumberVal(3),
+		{Col: 3, Row: 3}: NumberVal(4),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `INDEX(OFFSET(A1,1,1,2,2),2,2)`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 4 {
+		t.Fatalf("INDEX(OFFSET(A1,1,1,2,2),2,2) = %#v, want 4", got)
+	}
+}
+
+func TestOFFSETSingleCellBoundaryPreservesCOLUMNAndISREFBehavior(t *testing.T) {
+	resolver := &mockResolver{cells: map[CellAddr]Value{
+		{Col: 1, Row: 1}: NumberVal(10),
+		{Col: 2, Row: 1}: NumberVal(20),
+	}}
+	ctx := &EvalContext{Resolver: resolver}
+
+	got, err := Eval(evalCompile(t, `COLUMN(OFFSET(A1,0,1))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueNumber || got.Num != 2 {
+		t.Fatalf("COLUMN(OFFSET(A1,0,1)) = %#v, want 2", got)
+	}
+
+	got, err = Eval(evalCompile(t, `ISREF(OFFSET(A1,0,1))`), resolver, ctx)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueBool || !got.Bool {
+		t.Fatalf("ISREF(OFFSET(A1,0,1)) = %#v, want TRUE", got)
+	}
+}
+
 func TestOFFSETBooleanCoercionForRows(t *testing.T) {
 	resolver := &mockResolver{
 		cells: map[CellAddr]Value{
@@ -15078,6 +15575,90 @@ func TestOFFSETBooleanCoercionForCols(t *testing.T) {
 	}
 	if got.Type != ValueNumber || got.Num != 20 {
 		t.Errorf("OFFSET(A1,0,TRUE): got %v, want 20", got)
+	}
+}
+
+func TestOFFSETScalarContextScalarizesAnonymousArrayOffsetArgs(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 6}: NumberVal(50),
+			{Sheet: "data", Col: 2, Row: 2}: NumberVal(99),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	t.Run("rows", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,{0;2;4},0)`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,{0;2;4},0) = %#v, want 10", got)
+		}
+	})
+
+	t.Run("cols", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,0,{0,1})`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,0,{0,1}) = %#v, want 10", got)
+		}
+	})
+
+	t.Run("width", func(t *testing.T) {
+		got, err := Eval(evalCompile(t, `OFFSET(data!A2,0,0,1,{1;2})`), resolver, ctx)
+		if err != nil {
+			t.Fatalf("Eval: %v", err)
+		}
+		if got.Type != ValueNumber || got.Num != 10 {
+			t.Fatalf("OFFSET(data!A2,0,0,1,{1;2}) = %#v, want 10", got)
+		}
+	})
+}
+
+func TestOFFSETScalarContextRejectsAnonymousArrayArgsForMultiCellRanges(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Sheet: "data", Col: 1, Row: 1}: NumberVal(10),
+			{Sheet: "data", Col: 1, Row: 2}: NumberVal(20),
+			{Sheet: "data", Col: 1, Row: 3}: NumberVal(30),
+			{Sheet: "data", Col: 1, Row: 4}: NumberVal(40),
+			{Sheet: "data", Col: 1, Row: 5}: NumberVal(50),
+		},
+	}
+	ctx := &EvalContext{Resolver: resolver, CurrentSheet: "results", CurrentCol: 2, CurrentRow: 4}
+
+	tests := []struct {
+		name    string
+		formula string
+		want    string
+	}{
+		{
+			name:    "rows_array_with_height",
+			formula: `IFERROR(SUM(OFFSET(data!A1,{1;3},0,2,1)),"arr_rows_err")`,
+			want:    "arr_rows_err",
+		},
+		{
+			name:    "height_array",
+			formula: `IFERROR(SUM(OFFSET(data!A1,0,0,{2;3},1)),"arr_height_err")`,
+			want:    "arr_height_err",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, ctx)
+			if err != nil {
+				t.Fatalf("Eval(%s): %v", tt.formula, err)
+			}
+			if got.Type != ValueString || got.Str != tt.want {
+				t.Fatalf("%s = %#v, want %q", tt.formula, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -15452,7 +16033,7 @@ func TestMATCH_AdditionalComprehensive(t *testing.T) {
 		{"asc_exact", "MATCH(20,A1:A5,1)", NumberVal(3)},
 
 		// -- approximate ascending: between values → last <= --
-		{"asc_between", "MATCH(25,A1:A5,1)", NumberVal(3)},   // 20 is last <=25
+		{"asc_between", "MATCH(25,A1:A5,1)", NumberVal(3)},    // 20 is last <=25
 		{"asc_between_low", "MATCH(7,A1:A5,1)", NumberVal(1)}, // 5 is last <=7
 
 		// -- approximate ascending: below minimum → #N/A --
@@ -15672,13 +16253,34 @@ func TestMATCH_ErrorPropagation(t *testing.T) {
 	}
 }
 
+// TestMATCH_ErrorLookupValue tests that an error lookup_value propagates
+// instead of being matched against a cell containing the same error.
+func TestMATCH_ErrorLookupValue(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(1),
+			{Col: 1, Row: 2}: NumberVal(2),
+			{Col: 1, Row: 3}: ErrorVal(ErrValNA),
+			{Col: 1, Row: 4}: NumberVal(4),
+		},
+	}
+	cf := evalCompile(t, "MATCH(NA(),A1:A4,0)")
+	got, err := Eval(cf, resolver, nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValNA {
+		t.Errorf("MATCH(NA(),A1:A4,0) = %v, want #N/A", got)
+	}
+}
+
 // TestINDEX_BooleanRowCol tests INDEX with boolean row/col arguments.
 func TestINDEX_BooleanRowCol(t *testing.T) {
 	// TRUE coerces to 1 via CoerceNum.
 	got, err := fnINDEX([]Value{
 		Value{Type: ValueArray, Array: [][]Value{{NumberVal(10), NumberVal(20)}, {NumberVal(30), NumberVal(40)}}},
-		BoolVal(true),  // row = TRUE → 1
-		BoolVal(true),  // col = TRUE → 1
+		BoolVal(true), // row = TRUE → 1
+		BoolVal(true), // col = TRUE → 1
 	})
 	if err != nil {
 		t.Fatalf("fnINDEX: %v", err)
@@ -17709,5 +18311,37 @@ func TestUNIQUE_ThreeColumnByColExactlyOnce(t *testing.T) {
 		if got.Array[r][0].Num != w {
 			t.Errorf("[%d][0] = %g, want %g", r, got.Array[r][0].Num, w)
 		}
+	}
+}
+
+// TestFILTER_Issue70_IncludeWithErrorsCollapsesToScalar pins down the fix
+// from issue #70: when the include argument contains errors (because
+// DATEVALUE was applied to empty/invalid cells), FILTER must propagate
+// the first error as a single scalar, not as a spill grid sized to the
+// value argument. The if_empty argument is also ignored in this case.
+func TestFILTER_Issue70_IncludeWithErrorsCollapsesToScalar(t *testing.T) {
+	// value = {"2026-04-01"; ""; ""; ""}
+	// include = {#VALUE!; #VALUE!; #VALUE!; #VALUE!}
+	// if_empty = "No upcoming fees" — should be ignored, error wins.
+	got, err := fnFILTER([]Value{
+		{Type: ValueArray, Array: [][]Value{
+			{StringVal("2026-04-01")},
+			{StringVal("")},
+			{StringVal("")},
+			{StringVal("")},
+		}},
+		{Type: ValueArray, Array: [][]Value{
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+			{ErrorVal(ErrValVALUE)},
+		}},
+		StringVal("No upcoming fees"),
+	})
+	if err != nil {
+		t.Fatalf("fnFILTER: %v", err)
+	}
+	if got.Type != ValueError || got.Err != ErrValVALUE {
+		t.Fatalf("got %v, want single-cell #VALUE!", got)
 	}
 }

@@ -38,6 +38,14 @@ func TestExpandDefinedNames(t *testing.T) {
 		{"A1+B1", 0, "A1+B1"},
 		// Name at end of formula.
 		{"SUM(A1:A5)+OneRange", 0, "SUM(A1:A5)+Sheet1!$A$10"},
+		// Name appearing as a substring inside a quoted sheet name must
+		// not be expanded — otherwise 'my-OneRange'!A1 would corrupt into
+		// 'my-Sheet1!$A$10'!A1.
+		{"'my-OneRange'!A1", 0, "'my-OneRange'!A1"},
+		{"SUM('my-OneRange'!A:A)", 0, "SUM('my-OneRange'!A:A)"},
+		// Doubled '' inside a quoted sheet name represents a literal quote
+		// and should not end the quoted region early.
+		{"'Bob''s OneRange'!A1", 0, "'Bob''s OneRange'!A1"},
 	}
 
 	for _, tt := range tests {

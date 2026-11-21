@@ -40,6 +40,31 @@ func TestSetFormulaGetFormula(t *testing.T) {
 	}
 }
 
+func TestSetFormulaStripsLeadingEquals(t *testing.T) {
+	f := werkbook.New()
+	s := f.Sheet("Sheet1")
+
+	if err := s.SetFormula("A1", "=SUM(1,2,3)"); err != nil {
+		t.Fatalf("SetFormula: %v", err)
+	}
+
+	got, err := s.GetFormula("A1")
+	if err != nil {
+		t.Fatalf("GetFormula: %v", err)
+	}
+	if got != "SUM(1,2,3)" {
+		t.Errorf("GetFormula = %q, want %q (leading '=' should be stripped)", got, "SUM(1,2,3)")
+	}
+
+	v, err := s.GetValue("A1")
+	if err != nil {
+		t.Fatalf("GetValue: %v", err)
+	}
+	if v.Type != werkbook.TypeNumber || v.Number != 6 {
+		t.Errorf("GetValue = %+v, want TypeNumber 6 (formula should evaluate normally)", v)
+	}
+}
+
 func TestFormulaRoundTrip(t *testing.T) {
 	f := werkbook.New()
 	s := f.Sheet("Sheet1")
@@ -489,8 +514,8 @@ func TestDynamicArrayFormulaSerializationIncludesMetadataXML(t *testing.T) {
 		t.Fatalf("A2 cached value = %#v, want #CALC!", val)
 	}
 	val, _ = s.GetValue("D2")
-	if val.Type != werkbook.TypeError || val.String != "#NAME?" {
-		t.Fatalf("D2 cached value = %#v, want #NAME?", val)
+	if val.Type != werkbook.TypeString || val.String != "Outflow" {
+		t.Fatalf("D2 cached value = %#v, want string Outflow", val)
 	}
 
 	dir := t.TempDir()
@@ -503,7 +528,7 @@ func TestDynamicArrayFormulaSerializationIncludesMetadataXML(t *testing.T) {
 	if !strings.Contains(sheetXML, `r="A2"`) || !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `ref="A2" ca="1">_xlfn._xlws.SORT(_xlfn.UNIQUE(_xlfn._xlws.FILTER(`) {
 		t.Fatalf("expected A2 to be written with dynamic-array metadata, XML: %s", sheetXML)
 	}
-	if !strings.Contains(sheetXML, `r="D2" t="e" cm="1"`) || !strings.Contains(sheetXML, `ref="D2" ca="1">_xlfn.SINGLE(`) {
+	if !strings.Contains(sheetXML, `r="D2"`) || !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `ref="D2" ca="1">_xlfn.SINGLE(`) {
 		t.Fatalf("expected D2 SINGLE formula to carry dynamic-array metadata, XML: %s", sheetXML)
 	}
 	if !strings.Contains(sheetXML, `cm="1"`) || !strings.Contains(sheetXML, `<f t="array"`) {
@@ -659,12 +684,17 @@ func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
 		`cm="1"`,
 		`<f t="array"`,
 		`aca="1"`,
-		`ref="A2:A20"`,
 		`ca="1">_xlfn._xlws.FILTER(`,
 	} {
 		if !strings.Contains(dstSheetXML, want) {
 			t.Fatalf("round-trip workbook missing dynamic-array metadata %q\nxml: %s", want, dstSheetXML)
 		}
+	}
+	// FILTER is not re-evaluated on this round-trip (no dependency
+	// was dirtied), so the imported spill ref is preserved verbatim.
+	// Issue #70 tightened this back from a wildcard match.
+	if !strings.Contains(dstSheetXML, `ref="`+spillRef+`"`) {
+		t.Fatalf("round-trip workbook missing preserved spill ref %q\nxml: %s", spillRef, dstSheetXML)
 	}
 
 	workbookRels := string(readSheetXML(t, dstPath, "xl/_rels/workbook.xml.rels"))
@@ -708,8 +738,12 @@ func TestOpenSavePreservesImportedDynamicArrayMetadata(t *testing.T) {
 				if !cd.IsDynamicArray {
 					t.Fatalf("expected %s to remain a dynamic array anchor: %#v", anchorCell, cd)
 				}
+				// FILTER is not re-evaluated on this round-trip,
+				// so the imported spill ref is preserved verbatim.
+				// Issue #70 tightened this back from a wildcard
+				// match.
 				if cd.FormulaRef != spillRef {
-					t.Fatalf("FormulaRef = %q, want %q", cd.FormulaRef, spillRef)
+					t.Fatalf("FormulaRef = %q, want %q (preserved imported value)", cd.FormulaRef, spillRef)
 				}
 			}
 		}

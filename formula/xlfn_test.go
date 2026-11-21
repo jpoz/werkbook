@@ -108,6 +108,7 @@ func TestStripXlfnPrefixes(t *testing.T) {
 		{name: "strip LET param prefixes", in: "_xlfn.LET(_xlpm.x,5,_xlpm.x+1)", want: "LET(x,5,x+1)"},
 		{name: "strip LET long param prefixes", in: "_xlfn.LET(_xlpm.result,5,_xlpm.result+1)", want: "LET(result,5,result+1)"},
 		{name: "strip MAP lambda param prefixes", in: "_xlfn.MAP(A1:A3,_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1))", want: "MAP(A1:A3,LAMBDA(x,x+1))"},
+		{name: "strip LET-bound lambda call prefix", in: "_xlfn.LET(_xlpm.sq,_xlfn.LAMBDA(_xlpm.n,_xlpm.n*_xlpm.n),_xlpm.sq(A1)+_xlpm.sq(A2))", want: "LET(sq,LAMBDA(n,n*n),sq(A1)+sq(A2))"},
 		{name: "legacy unchanged", in: "IF(A1>0,1,0)", want: "IF(A1>0,1,0)"},
 		{name: "IFERROR", in: "_xlfn.IFERROR(A1/B1,0)", want: "IFERROR(A1/B1,0)"},
 	}
@@ -186,6 +187,7 @@ func TestIsDynamicArrayFormula(t *testing.T) {
 		{formula: "BYCOL(A1:B2,LAMBDA(c,SUM(c)))", want: true},
 		{formula: "MAKEARRAY(2,2,LAMBDA(r,c,r+c))", want: true},
 		{formula: "XLOOKUP(A1,B:B,C:C)", want: true},
+		{formula: "TRANSPOSE(A1:C2)", want: true},
 	}
 
 	for _, tt := range tests {

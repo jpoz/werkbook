@@ -47,6 +47,47 @@ func TestImmediateLambdaInvocation(t *testing.T) {
 	}
 }
 
+func TestISOMITTED(t *testing.T) {
+	resolver := &mockResolver{}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		// ISOMITTED returns TRUE for an omitted lambda parameter.
+		{`LET(addOpt, LAMBDA(a,b, IF(ISOMITTED(b), a+10, a+b)), addOpt(5, 3))`, NumberVal(8)},
+		{`LET(addOpt, LAMBDA(a,b, IF(ISOMITTED(b), a+10, a+b)), addOpt(5,))`, NumberVal(15)},
+		// Omitted middle argument.
+		{`LET(greet, LAMBDA(first,mid,last, IF(ISOMITTED(mid), first&" "&last, first&" "&mid&" "&last)), greet("John",, "Doe"))`, StringVal("John Doe")},
+		{`LET(greet, LAMBDA(first,mid,last, IF(ISOMITTED(mid), first&" "&last, first&" "&mid&" "&last)), greet("John", "Q", "Doe"))`, StringVal("John Q Doe")},
+		// Immediate invocation.
+		{`LAMBDA(x, IF(ISOMITTED(x), -1, x*2))(5)`, NumberVal(10)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			cf := evalCompile(t, tt.formula)
+			got, err := Eval(cf, resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			if got.Type != tt.want.Type {
+				t.Fatalf("Eval(%q) type = %v, want %v", tt.formula, got.Type, tt.want.Type)
+			}
+			switch got.Type {
+			case ValueNumber:
+				if got.Num != tt.want.Num {
+					t.Fatalf("Eval(%q) = %v, want %v", tt.formula, got.Num, tt.want.Num)
+				}
+			case ValueString:
+				if got.Str != tt.want.Str {
+					t.Fatalf("Eval(%q) = %q, want %q", tt.formula, got.Str, tt.want.Str)
+				}
+			}
+		})
+	}
+}
+
 func TestImmediateLambdaInvocationErrors(t *testing.T) {
 	resolver := &mockResolver{}
 

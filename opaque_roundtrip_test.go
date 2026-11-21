@@ -37,7 +37,7 @@ func TestOpenSavePreservesOpaqueOOXMLParts(t *testing.T) {
 		`xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"`,
 		`mc:Ignorable="x15"`,
 		`xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"`,
-		`<sheet name="Sheet1" sheetId="1" r:id="rId4"></sheet>`,
+		`<sheet name="Sheet1" sheetId="1" r:id="rId4"/>`,
 	} {
 		if !strings.Contains(workbookXML, want) {
 			t.Fatalf("expected workbook.xml to contain %s: %s", want, workbookXML)
@@ -76,7 +76,7 @@ func TestOpenSavePreservesOpaqueOOXMLParts(t *testing.T) {
 		`<headerFooter><oddFooter>&amp;CConfidential</oddFooter></headerFooter>`,
 		`<drawing r:id="rId2"/>`,
 		`<legacyDrawing r:id="rId3"/>`,
-		`<tablePart r:id="rId5"></tablePart>`,
+		`<tablePart r:id="rId5"/>`,
 	} {
 		if !strings.Contains(sheetXML, want) {
 			t.Fatalf("expected sheet XML to contain %s: %s", want, sheetXML)

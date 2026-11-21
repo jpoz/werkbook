@@ -46,6 +46,64 @@ func TestSORTBY_TrimmedRangeOrigin(t *testing.T) {
 	}})
 }
 
+func TestSORTBY_TrimmedFullColumnRange(t *testing.T) {
+	got, err := fnSORTBY([]Value{
+		trimmedRangeValue([][]Value{
+			{StringVal("b")},
+			{StringVal("a")},
+		}, 1, 1, 1, maxRows),
+		trimmedRangeValue([][]Value{
+			{NumberVal(1)},
+			{NumberVal(2)},
+		}, 2, 1, 2, maxRows),
+		NumberVal(-1),
+	})
+	if err != nil {
+		t.Fatalf("fnSORTBY: %v", err)
+	}
+	assertLookupValueEqual(t, got, Value{Type: ValueArray, Array: [][]Value{
+		{StringVal("a")},
+		{StringVal("b")},
+	}})
+}
+
+func TestSORTBY_IndexRowsColumnsCountaViaEval(t *testing.T) {
+	resolver := &mockResolver{
+		cells: map[CellAddr]Value{
+			{Col: 1, Row: 1}: NumberVal(5),
+			{Col: 1, Row: 2}: NumberVal(3),
+			{Col: 1, Row: 3}: NumberVal(1),
+			{Col: 1, Row: 4}: NumberVal(4),
+			{Col: 1, Row: 5}: NumberVal(2),
+			{Col: 2, Row: 1}: NumberVal(50),
+			{Col: 2, Row: 2}: NumberVal(30),
+			{Col: 2, Row: 3}: NumberVal(10),
+			{Col: 2, Row: 4}: NumberVal(40),
+			{Col: 2, Row: 5}: NumberVal(20),
+		},
+	}
+
+	tests := []struct {
+		formula string
+		want    Value
+	}{
+		{formula: "INDEX(SORTBY(A1:A5,B1:B5),4,1)", want: NumberVal(4)},
+		{formula: "ROWS(SORTBY(A1:A5,B1:B5))", want: NumberVal(5)},
+		{formula: "COLUMNS(SORTBY(A1:A5,B1:B5))", want: NumberVal(1)},
+		{formula: "COUNTA(SORTBY(A1:A5,B1:B5))", want: NumberVal(5)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.formula, func(t *testing.T) {
+			got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+			if err != nil {
+				t.Fatalf("Eval(%q): %v", tt.formula, err)
+			}
+			assertLookupValueEqual(t, got, tt.want)
+		})
+	}
+}
+
 func TestTRUE(t *testing.T) {
 	resolver := &mockResolver{}
 
@@ -941,8 +999,8 @@ func TestNOTComprehensive(t *testing.T) {
 
 	t.Run("error propagation", func(t *testing.T) {
 		tests := []struct {
-			formula  string
-			wantErr  ErrorValue
+			formula string
+			wantErr ErrorValue
 		}{
 			// #N/A propagation
 			{"NOT(NA())", ErrValNA},
@@ -2207,9 +2265,9 @@ func TestSORTBY(t *testing.T) {
 		}
 	})
 
-	t.Run("error in by_array values", func(t *testing.T) {
+	t.Run("error values in by_array sort last", func(t *testing.T) {
 		arr := Value{Type: ValueArray, Array: [][]Value{
-			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")},
 		}}
 		by := Value{Type: ValueArray, Array: [][]Value{
 			{NumberVal(10)}, {ErrorVal(ErrValDIV0)}, {NumberVal(30)},
@@ -2218,8 +2276,9 @@ func TestSORTBY(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Type != ValueError || got.Err != ErrValDIV0 {
-			t.Errorf("SORTBY error in by_array values = %v, want #DIV/0!", got)
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "A" || got.Array[1][0].Str != "C" || got.Array[2][0].Str != "B" {
+			t.Errorf("SORTBY error in by_array = %v, want {A;C;B}", got)
 		}
 	})
 
@@ -2321,8 +2380,7 @@ func TestSORTBY(t *testing.T) {
 		}
 	})
 
-	t.Run("by_array as row vector", func(t *testing.T) {
-		// by_array is a row vector {30, 10, 20} — length 3 matches numRows=3.
+	t.Run("row vector by_array mismatched against column source", func(t *testing.T) {
 		arr := Value{Type: ValueArray, Array: [][]Value{
 			{StringVal("c")}, {StringVal("a")}, {StringVal("b")},
 		}}
@@ -2333,9 +2391,25 @@ func TestSORTBY(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Type != ValueArray || len(got.Array) != 3 ||
-			got.Array[0][0].Str != "a" || got.Array[1][0].Str != "b" || got.Array[2][0].Str != "c" {
-			t.Errorf("SORTBY row vector = %v, want {a;b;c}", got)
+		if got.Type != ValueError || got.Err != ErrValVALUE {
+			t.Errorf("SORTBY row vector mismatch = %v, want #VALUE!", got)
+		}
+	})
+
+	t.Run("row vector by_array sorts columns of row source", func(t *testing.T) {
+		arr := Value{Type: ValueArray, Array: [][]Value{
+			{StringVal("c"), StringVal("a"), StringVal("b")},
+		}}
+		by := Value{Type: ValueArray, Array: [][]Value{
+			{NumberVal(30), NumberVal(10), NumberVal(20)},
+		}}
+		got, err := fnSORTBY([]Value{arr, by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Type != ValueArray || len(got.Array) != 1 || len(got.Array[0]) != 3 ||
+			got.Array[0][0].Str != "a" || got.Array[0][1].Str != "b" || got.Array[0][2].Str != "c" {
+			t.Errorf("SORTBY row source columns = %v, want {a,b,c}", got)
 		}
 	})
 
@@ -2707,22 +2781,23 @@ func TestSORTBY(t *testing.T) {
 		}
 	})
 
-	t.Run("error in second by_array values", func(t *testing.T) {
+	t.Run("error in second by_array sorts last within ties", func(t *testing.T) {
 		arr := Value{Type: ValueArray, Array: [][]Value{
-			{NumberVal(1)}, {NumberVal(2)}, {NumberVal(3)},
+			{StringVal("A")}, {StringVal("B")}, {StringVal("C")},
 		}}
 		by1 := Value{Type: ValueArray, Array: [][]Value{
-			{NumberVal(10)}, {NumberVal(20)}, {NumberVal(30)},
+			{NumberVal(1)}, {NumberVal(1)}, {NumberVal(1)},
 		}}
 		by2 := Value{Type: ValueArray, Array: [][]Value{
-			{NumberVal(1)}, {ErrorVal(ErrValNUM)}, {NumberVal(3)},
+			{NumberVal(2)}, {ErrorVal(ErrValNUM)}, {NumberVal(1)},
 		}}
 		got, err := fnSORTBY([]Value{arr, by1, NumberVal(1), by2, NumberVal(1)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Type != ValueError || got.Err != ErrValNUM {
-			t.Errorf("SORTBY error in second by_array = %v, want #NUM!", got)
+		if got.Type != ValueArray || len(got.Array) != 3 ||
+			got.Array[0][0].Str != "C" || got.Array[1][0].Str != "A" || got.Array[2][0].Str != "B" {
+			t.Errorf("SORTBY error in second by_array = %v, want {C;A;B}", got)
 		}
 	})
 
@@ -2861,6 +2936,68 @@ func TestSORTBY(t *testing.T) {
 		// Sorted by score asc: Bob(70), Carol(80), Alice(90). Row 2 col 1 = Carol.
 		if got.Type != ValueString || got.Str != "Carol" {
 			t.Errorf("INDEX(SORTBY(...),2,1) = %v, want Carol", got)
+		}
+	})
+
+	t.Run("workbook parity for dimension mismatch and error-key sorting", func(t *testing.T) {
+		resolver := &mockResolver{
+			cells: map[CellAddr]Value{
+				{Sheet: "data", Col: 1, Row: 2}: StringVal("a"),
+				{Sheet: "data", Col: 1, Row: 3}: StringVal("b"),
+				{Sheet: "data", Col: 1, Row: 4}: StringVal("c"),
+				{Sheet: "data", Col: 1, Row: 5}: StringVal("d"),
+				{Sheet: "data", Col: 1, Row: 6}: StringVal("e"),
+
+				{Sheet: "data", Col: 2, Row: 2}: NumberVal(97),
+				{Sheet: "data", Col: 2, Row: 3}: NumberVal(98),
+				{Sheet: "data", Col: 2, Row: 4}: NumberVal(99),
+				{Sheet: "data", Col: 2, Row: 5}: NumberVal(100),
+				{Sheet: "data", Col: 2, Row: 6}: NumberVal(101),
+
+				{Sheet: "data", Col: 4, Row: 2}: ErrorVal(ErrValNA),
+				{Sheet: "data", Col: 4, Row: 3}: NumberVal(10),
+				{Sheet: "data", Col: 4, Row: 4}: NumberVal(20),
+				{Sheet: "data", Col: 4, Row: 5}: NumberVal(30),
+				{Sheet: "data", Col: 4, Row: 6}: NumberVal(40),
+
+				{Sheet: "data", Col: 3, Row: 7}: NumberVal(100),
+				{Sheet: "data", Col: 4, Row: 7}: NumberVal(200),
+				{Sheet: "data", Col: 5, Row: 7}: NumberVal(300),
+				{Sheet: "data", Col: 6, Row: 7}: NumberVal(400),
+				{Sheet: "data", Col: 7, Row: 7}: NumberVal(500),
+			},
+		}
+
+		tests := []struct {
+			formula string
+			want    Value
+		}{
+			{
+				formula: `IFERROR(INDEX(SORTBY(data!A2:A6, data!C7:G7), 1), "err")`,
+				want:    StringVal("err"),
+			},
+			{
+				formula: `IFERROR(INDEX(SORTBY(data!A2:A6, data!B2:B6, 1, data!C7:F7, 1), 1), "err")`,
+				want:    StringVal("err"),
+			},
+			{
+				formula: `IFERROR(INDEX(SORTBY(data!A2:A6, data!D2:D6, 1), 5), "err")`,
+				want:    StringVal("a"),
+			},
+			{
+				formula: `IFERROR(INDEX(SORTBY(data!A2:A6, data!Z1:Z5), 1), "err")`,
+				want:    StringVal("a"),
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.formula, func(t *testing.T) {
+				got, err := Eval(evalCompile(t, tt.formula), resolver, nil)
+				if err != nil {
+					t.Fatalf("Eval(%q): %v", tt.formula, err)
+				}
+				assertLookupValueEqual(t, got, tt.want)
+			})
 		}
 	})
 

@@ -27,6 +27,7 @@ type File struct {
 	opaqueDefaults        []ooxml.OpaqueDefault
 	corePropsDirty        bool
 	calcGen               uint64            // incremented on any cell mutation; starts at 1
+	batchWrites           int               // >0 while inside BeginBatchWrite/EndBatchWrite
 	evaluating            map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
 	deps                  *formula.DepGraph // cell dependency graph for incremental recalculation
 	tableDefs             []Table
@@ -202,6 +203,7 @@ func (f *File) SetSheetName(old, new string) error {
 		}
 	}
 
+	f.rewriteSheetNameRefs(old, new)
 	f.rebuildFormulaState()
 	return nil
 }
@@ -232,8 +234,21 @@ func (f *File) SaveAs(name string) error {
 }
 
 // WriteTo serializes the workbook to the given writer.
-func (f *File) WriteTo(w io.Writer) error {
-	return ooxml.WriteWorkbook(w, f.buildWorkbookData())
+func (f *File) WriteTo(w io.Writer) (int64, error) {
+	cw := &countingWriter{w: w}
+	err := ooxml.WriteWorkbook(cw, f.buildWorkbookData())
+	return cw.n, err
+}
+
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	w.n += int64(n)
+	return n, err
 }
 
 // ClearSpillShadowValues removes OOXML-cached spill shadow cell values. This
@@ -263,8 +278,15 @@ func (f *File) ClearSpillShadowValues() {
 				}
 			}
 		}
+		// Clear shadow cells within the FormulaRef range, and also
+		// clear stale shadow cells below it. When a dynamic array spill
+		// shrinks (e.g. a FILTER that previously returned 14 rows now
+		// returns 8), the OOXML file may still contain cached cell values
+		// from the larger spill. These must be cleared so they don't
+		// contaminate downstream aggregations like SUM or COUNT.
+		sheetMaxRow := s.MaxRow()
 		for _, sr := range ranges {
-			for row := sr.anchorRow; row <= sr.toRow; row++ {
+			for row := sr.anchorRow; row <= sheetMaxRow; row++ {
 				r, ok := s.rows[row]
 				if !ok {
 					continue
@@ -478,7 +500,7 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 	for _, dn := range data.DefinedNames {
 		f.definedNames = append(f.definedNames, formula.DefinedNameInfo{
 			Name:         dn.Name,
-			Value:        dn.Value,
+			Value:        formula.StripXlfnPrefixes(dn.Value),
 			LocalSheetID: dn.LocalSheetID,
 		})
 	}
@@ -699,9 +721,36 @@ func (f *File) registerAllFormulas(strict bool) error {
 	return nil
 }
 
+// BeginBatchWrite suspends per-write dependent invalidation until the matching
+// EndBatchWrite. Use it around bulk data loads into a workbook whose formulas
+// are already registered: every SetValue/SetFormula otherwise walks the whole
+// transitive dependent graph, which is O(dependents) per cell and dominates
+// bulk writes on formula-heavy workbooks.
+//
+// Correctness does not depend on the walk: each write still bumps calcGen, and
+// every formula read (Recalculate, GetValue, evaluateFormulaRaw) re-evaluates
+// any cell whose cachedGen is behind calcGen. Skipping the walk only drops the
+// redundant dirty flags. Calls nest; invalidation resumes when the outermost
+// batch ends.
+func (f *File) BeginBatchWrite() {
+	f.batchWrites++
+}
+
+// EndBatchWrite closes the innermost BeginBatchWrite. Unbalanced calls are a
+// no-op rather than a panic so a deferred EndBatchWrite is always safe.
+func (f *File) EndBatchWrite() {
+	if f.batchWrites > 0 {
+		f.batchWrites--
+	}
+}
+
 // invalidateDependents queries the dep graph for all transitive dependents
-// of the given cell and marks them dirty.
+// of the given cell and marks them dirty. Skipped inside a batch write; see
+// BeginBatchWrite for why that is safe.
 func (f *File) invalidateDependents(sheet string, col, row int) {
+	if f.batchWrites > 0 {
+		return
+	}
 	changed := formula.QualifiedCell{Sheet: sheet, Col: col, Row: row}
 	for _, dep := range f.deps.Dependents(changed) {
 		s := f.Sheet(dep.Sheet)

@@ -77,9 +77,12 @@ var infixBP = map[string]bindingPower{
 }
 
 const (
-	colonLeftBP  = 14
-	colonRightBP = 15
-	prefixRBP    = 11 // unary - and + bind tighter than ^ (convention: -2^2 = 4)
+	colonLeftBP      = 14
+	colonRightBP     = 15
+	intersectLeftBP  = 13 // space intersection binds slightly weaker than colon
+	intersectRightBP = 14
+	prefixRBP        = 11 // unary - and + bind tighter than ^ (convention: -2^2 = 4)
+	postfixBP        = 12 // postfix % — above binary ops, below range colon
 
 	maxRow = maxRows // maximum row number
 	maxCol = maxCols // maximum column number (XFD)
@@ -92,14 +95,20 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 		return nil, err
 	}
 
-	// Greedy postfix % — consumed immediately, not in the BP table.
-	for p.peek().Type == TokPercent {
-		p.advance()
-		left = &PostfixExpr{Op: "%", Operand: left}
-	}
-
 	for {
 		tok := p.peek()
+
+		if tok.Type == TokPercent {
+			// Postfix % binds at postfixBP. Gated by minBP so that the RHS
+			// of a colon range (parsed at colonRightBP=15) leaves % to the
+			// surrounding range expression, e.g. A1:A4% parses as (A1:A4)%.
+			if postfixBP < minBP {
+				break
+			}
+			p.advance()
+			left = &PostfixExpr{Op: "%", Operand: left}
+			continue
+		}
 
 		if tok.Type == TokOp {
 			bp, ok := infixBP[tok.Value]
@@ -112,10 +121,19 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 				return nil, err
 			}
 			left = &BinaryExpr{Op: tok.Value, Left: left, Right: right}
-			for p.peek().Type == TokPercent {
-				p.advance()
-				left = &PostfixExpr{Op: "%", Operand: left}
+			continue
+		}
+
+		if tok.Type == TokIntersect {
+			if intersectLeftBP < minBP {
+				break
 			}
+			p.advance()
+			right, err := p.parseExpression(intersectRightBP)
+			if err != nil {
+				return nil, err
+			}
+			left = &IntersectRef{Left: left, Right: right}
 			continue
 		}
 
@@ -144,16 +162,33 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					}
 					fromRef = &CellRef{Col: 0, Row: fromRow}
 					toRef = &CellRef{Col: 0, Row: toRow}
+				} else if fromOK && toIsNum && fromRef.Col == 0 {
+					// Sheet-qualified row-only range like Sheet1!2:3. The
+					// left side is a CellRef with Col==0 (row-only); the
+					// right side parsed as a bare number and needs to be
+					// lifted into a matching CellRef that inherits the
+					// sheet qualifier.
+					toRow := int(toNum.Value)
+					if toRow < 1 || float64(toRow) != toNum.Value {
+						return nil, fmt.Errorf("invalid row range endpoint %s", toNum.Raw)
+					}
+					toRef = &CellRef{Col: 0, Row: toRow}
+					toOK = true
 				} else {
 					// If one side is already an error (e.g. from a cross-sheet
 					// range that produced #VALUE!), propagate it instead of
 					// returning a parse error. This allows COUNT(#VALUE!) to
 					// return 0 instead of failing the entire formula.
 					if _, leftIsErr := left.(*ErrorLit); leftIsErr {
-						for p.peek().Type == TokPercent {
-							p.advance()
-							left = &PostfixExpr{Op: "%", Operand: left}
-						}
+						continue
+					}
+					// Allow ref-returning expressions on either side
+					// (e.g. A1:INDEX(A:A,n) or OFFSET(A1,1,0):B5). Both
+					// endpoints must be reference-producing — cells,
+					// ranges, or functions like INDEX/OFFSET/INDIRECT/
+					// CHOOSE/IF/IFS/SWITCH/ANCHORARRAY.
+					if isRefProducingNode(left) && isRefProducingNode(right) {
+						left = &DynamicRangeRef{From: left, To: right}
 						continue
 					}
 					if !fromOK {
@@ -169,10 +204,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 			// Note: Sheet1!A1:B5 is valid — B5 has no sheet and inherits Sheet1.
 			if toRef.Sheet != "" && toRef.Sheet != fromRef.Sheet {
 				left = &ErrorLit{Code: ErrVALUE}
-				for p.peek().Type == TokPercent {
-					p.advance()
-					left = &PostfixExpr{Op: "%", Operand: left}
-				}
 				continue
 			}
 
@@ -193,10 +224,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 				toRef.Col = maxCol
 			}
 			left = &RangeRef{From: fromRef, To: toRef}
-			for p.peek().Type == TokPercent {
-				p.advance()
-				left = &PostfixExpr{Op: "%", Operand: left}
-			}
 			continue
 		}
 
@@ -204,6 +231,24 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 	}
 
 	return left, nil
+}
+
+// isRefProducingNode reports whether a node yields a cell or range reference,
+// either statically (CellRef/RangeRef/IntersectRef/UnionRef) or via a
+// reference-returning function call (INDEX/OFFSET/INDIRECT/CHOOSE/IF/IFS/
+// SWITCH/ANCHORARRAY). Used to determine whether `LEFT:RIGHT` should be
+// parsed as a DynamicRangeRef when the static cell-ref form doesn't apply.
+func isRefProducingNode(n Node) bool {
+	switch v := n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef, *DynamicRangeRef:
+		return true
+	case *FuncCall:
+		switch strings.ToUpper(v.Name) {
+		case "INDEX", "OFFSET", "INDIRECT", "CHOOSE", "IF", "IFS", "SWITCH", "ANCHORARRAY":
+			return true
+		}
+	}
+	return false
 }
 
 // parseNud handles prefix parselets (atoms and prefix operators).
@@ -248,10 +293,38 @@ func (p *Parser) parseNud() (Node, error) {
 		if err != nil {
 			return nil, err
 		}
+		// A parenthesized list of references ( A1:A2, C1:C2, ... ) is a union
+		// reference when every element is reference-like.
+		if p.peek().Type == TokComma && isUnionReferenceNode(expr) {
+			areas := []Node{expr}
+			for p.peek().Type == TokComma {
+				p.advance()
+				area, err := p.parseExpression(0)
+				if err != nil {
+					return nil, err
+				}
+				if !isUnionReferenceNode(area) {
+					return nil, fmt.Errorf("union references must contain only direct cell or range references")
+				}
+				areas = append(areas, area)
+			}
+			if _, err := p.expect(TokRParen); err != nil {
+				return nil, fmt.Errorf("expected ')' to close reference list")
+			}
+			return &UnionRef{Areas: areas}, nil
+		}
 		if _, err := p.expect(TokRParen); err != nil {
 			return nil, fmt.Errorf("unmatched '(' at position %d", tok.Pos)
 		}
 		return expr, nil
+
+	case TokAt:
+		p.advance()
+		operand, err := p.parseExpression(prefixRBP)
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpr{Op: "@", Operand: operand}, nil
 
 	case TokArrayOpen:
 		return p.parseArray()
@@ -430,6 +503,17 @@ func isAREASReferenceNode(n Node) bool {
 	default:
 		return false
 	}
+}
+
+// isUnionReferenceNode reports whether a node can appear inside a
+// parenthesized union reference list. Matches AREAS's rules plus allows
+// nested intersections and unions.
+func isUnionReferenceNode(n Node) bool {
+	switch n.(type) {
+	case *CellRef, *RangeRef, *IntersectRef, *UnionRef:
+		return true
+	}
+	return false
 }
 
 func (p *Parser) parseCallArgs() ([]Node, error) {
@@ -838,9 +922,43 @@ func desugarMAKEARRAY(args []Node) (Node, error) {
 	}, nil
 }
 
+// inlineBoundLambdaCall checks whether funcName refers to a name in subst that
+// is bound to a LAMBDA. If so, it desugars the invocation into the lambda's
+// body with callArgs substituted for its parameters. Returns (node, true) on a
+// successful inline.
+func inlineBoundLambdaCall(funcName string, callArgs []Node, subst map[string]Node) (Node, bool) {
+	key := strings.ToUpper(funcName)
+	key = strings.TrimPrefix(key, "_XLFN._XLWS.")
+	key = strings.TrimPrefix(key, "_XLFN.")
+	key = strings.TrimPrefix(key, "_XLPM.")
+	repl, ok := subst[key]
+	if !ok {
+		return nil, false
+	}
+	lambdaCall, ok := repl.(*FuncCall)
+	if !ok || !isLambdaFuncName(lambdaCall.Name) {
+		return nil, false
+	}
+	lambdaArgs := make([]Node, len(lambdaCall.Args))
+	for i, a := range lambdaCall.Args {
+		lambdaArgs[i] = cloneNode(a)
+	}
+	node, err := desugarLambdaInvocation(lambdaArgs, callArgs)
+	if err != nil {
+		return nil, false
+	}
+	return node, true
+}
+
 func lambdaParamName(n Node) (string, bool) {
 	ref, ok := n.(*CellRef)
-	if !ok || ref.Row != 0 || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+	if !ok || ref.Sheet != "" || ref.SheetEnd != "" || ref.AbsCol || ref.AbsRow || ref.DotNotation {
+		return "", false
+	}
+	if ref.Name != "" {
+		return strings.ToUpper(ref.Name), true
+	}
+	if ref.Row != 0 {
 		return "", false
 	}
 	return strings.ToUpper(ColNumberToLetters(ref.Col)), true
@@ -849,9 +967,15 @@ func lambdaParamName(n Node) (string, bool) {
 func substituteLambdaNames(n Node, subst map[string]Node) Node {
 	switch v := n.(type) {
 	case *CellRef:
-		if v.Row == 0 && v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
-			if repl, ok := subst[strings.ToUpper(ColNumberToLetters(v.Col))]; ok {
-				return cloneNode(repl)
+		if v.Sheet == "" && v.SheetEnd == "" && !v.AbsCol && !v.AbsRow && !v.DotNotation {
+			if v.Name != "" {
+				if repl, ok := subst[strings.ToUpper(v.Name)]; ok {
+					return cloneNode(repl)
+				}
+			} else if v.Row == 0 {
+				if repl, ok := subst[strings.ToUpper(ColNumberToLetters(v.Col))]; ok {
+					return cloneNode(repl)
+				}
 			}
 		}
 		return cloneNode(v)
@@ -874,6 +998,11 @@ func substituteLambdaNames(n Node, subst map[string]Node) Node {
 		args := make([]Node, len(v.Args))
 		for i, arg := range v.Args {
 			args[i] = substituteLambdaNames(arg, subst)
+		}
+		// If the function name itself refers to a LET-bound LAMBDA, inline
+		// the invocation (e.g. LET(sq, LAMBDA(n,n*n), sq(A1)) → (n*n)[n:=A1]).
+		if inlined, ok := inlineBoundLambdaCall(v.Name, args, subst); ok {
+			return inlined
 		}
 		return &FuncCall{Name: v.Name, Args: args}
 	case *UnionRef:

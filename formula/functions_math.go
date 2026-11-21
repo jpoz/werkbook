@@ -1244,66 +1244,18 @@ func fnMMULT(args []Value) (Value, error) {
 		a2 = Value{Type: ValueArray, Array: [][]Value{{a2}}}
 	}
 
-	m := len(a1.Array) // rows of array1
-	if m == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	mat1, m, n, errVal := coerceNumericMatrix(a1)
+	if errVal != nil {
+		return *errVal, nil
 	}
-	n := len(a1.Array[0]) // cols of array1
-	if n == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-
-	n2 := len(a2.Array) // rows of array2
-	if n2 == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	p := len(a2.Array[0]) // cols of array2
-	if p == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	mat2, n2, p, errVal := coerceNumericMatrix(a2)
+	if errVal != nil {
+		return *errVal, nil
 	}
 
 	// Columns of array1 must equal rows of array2.
 	if n != n2 {
 		return ErrorVal(ErrValVALUE), nil
-	}
-
-	// Validate all values are numeric and extract into float64 slices.
-	mat1 := make([][]float64, m)
-	for r := 0; r < m; r++ {
-		if len(a1.Array[r]) != n {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		mat1[r] = make([]float64, n)
-		for c := 0; c < n; c++ {
-			v := a1.Array[r][c]
-			if v.Type == ValueEmpty || v.Type == ValueString {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			num, e := CoerceNum(v)
-			if e != nil {
-				return *e, nil
-			}
-			mat1[r][c] = num
-		}
-	}
-
-	mat2 := make([][]float64, n2)
-	for r := 0; r < n2; r++ {
-		if len(a2.Array[r]) != p {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		mat2[r] = make([]float64, p)
-		for c := 0; c < p; c++ {
-			v := a2.Array[r][c]
-			if v.Type == ValueEmpty || v.Type == ValueString {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			num, e := CoerceNum(v)
-			if e != nil {
-				return *e, nil
-			}
-			mat2[r][c] = num
-		}
 	}
 
 	// Compute matrix product: result[i][j] = sum(mat1[i][k] * mat2[k][j]).
@@ -1586,20 +1538,25 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 		if sheet == "" && ctx != nil {
 			sheet = ctx.CurrentSheet
 		}
-
-		// Build a filtered copy of the array, replacing SUBTOTAL cells
-		// and hidden-row cells with empty.
-		var filtered [][]Value
-		initFiltered := func(upTo int) {
-			filtered = make([][]Value, len(arg.Array))
-			for k := 0; k < upTo; k++ {
-				filtered[k] = arg.Array[k]
+		source, errVal := normalizeValueGridSource(arg)
+		if errVal != nil {
+			if out != nil {
+				out[i] = arg
 			}
+			continue
 		}
-		for ri, row := range arg.Array {
+		rows, cols := source.dims()
+		if rows == 0 || cols == 0 {
+			if out != nil {
+				out[i] = arg
+			}
+			continue
+		}
+
+		needsFilter := false
+		for ri := 0; ri < rows && !needsFilter; ri++ {
 			rowNum := origin.FromRow + ri
-			// Determine if this row should be excluded based on hidden state.
-			var rowExcluded bool
+			rowExcluded := false
 			if hiddenChecker != nil {
 				if excludeAllHidden {
 					rowExcluded = hiddenChecker.IsRowHidden(sheet, rowNum)
@@ -1608,44 +1565,69 @@ func subtotalFilterArgs(args []Value, ctx *EvalContext, excludeAllHidden bool) [
 				}
 			}
 			if rowExcluded {
-				if filtered == nil {
-					initFiltered(ri)
-				}
-				filtered[ri] = make([]Value, len(row))
-				continue
+				needsFilter = true
+				break
 			}
-			// Check individual cells for SUBTOTAL formulas.
-			var filteredRow []Value
 			if checker != nil {
-				for ci := range row {
+				for ci := 0; ci < cols; ci++ {
 					colNum := origin.FromCol + ci
 					if checker.IsSubtotalCell(sheet, colNum, rowNum) {
-						if filteredRow == nil {
-							filteredRow = make([]Value, len(row))
-							copy(filteredRow, row)
-						}
-						filteredRow[ci] = EmptyVal()
+						needsFilter = true
+						break
 					}
 				}
 			}
-			if filteredRow != nil {
-				if filtered == nil {
-					initFiltered(ri)
+		}
+		if !needsFilter {
+			if out != nil {
+				out[i] = arg
+			}
+			continue
+		}
+
+		// Materialize through the shared grid seam so placeholder-backed refs
+		// still expose their populated extent before we blank hidden rows and
+		// nested SUBTOTAL cells.
+		filtered := newValueMatrix(rows, cols)
+		for ri := 0; ri < rows; ri++ {
+			for ci := 0; ci < cols; ci++ {
+				filtered[ri][ci] = source.cell(ri, ci)
+			}
+		}
+		for ri := 0; ri < rows; ri++ {
+			rowNum := origin.FromRow + ri
+			rowExcluded := false
+			if hiddenChecker != nil {
+				if excludeAllHidden {
+					rowExcluded = hiddenChecker.IsRowHidden(sheet, rowNum)
+				} else {
+					rowExcluded = hiddenChecker.IsRowFilteredByAutoFilter(sheet, rowNum)
 				}
-				filtered[ri] = filteredRow
-			} else if filtered != nil {
-				filtered[ri] = row
+			}
+			if rowExcluded {
+				for ci := 0; ci < cols; ci++ {
+					filtered[ri][ci] = EmptyVal()
+				}
+				continue
+			}
+			if checker != nil {
+				for ci := 0; ci < cols; ci++ {
+					colNum := origin.FromCol + ci
+					if checker.IsSubtotalCell(sheet, colNum, rowNum) {
+						filtered[ri][ci] = EmptyVal()
+					}
+				}
 			}
 		}
-		if filtered != nil {
-			if out == nil {
-				out = make([]Value, len(args))
-				copy(out[:i], args[:i])
-			}
-			out[i] = Value{Type: ValueArray, Array: filtered}
-		} else if out != nil {
-			out[i] = arg
+		if out == nil {
+			out = make([]Value, len(args))
+			copy(out[:i], args[:i])
 		}
+		next := arg
+		next.Array = filtered
+		next.RangeOrigin = ptrRange(*origin)
+		next.evalRef = nil
+		out[i] = next
 	}
 	if out == nil {
 		return args
@@ -1829,14 +1811,7 @@ func fnSERIESSUM(args []Value) (Value, error) {
 	}
 
 	// Flatten coefficients from arg[3].
-	var coeffs []Value
-	if args[3].Type == ValueArray {
-		for _, row := range args[3].Array {
-			coeffs = append(coeffs, row...)
-		}
-	} else {
-		coeffs = []Value{args[3]}
-	}
+	coeffs := valueFlattenRowMajor(args[3])
 
 	var sum float64
 	for i, cv := range coeffs {
@@ -1852,6 +1827,43 @@ func fnSERIESSUM(args []Value) (Value, error) {
 		sum += c * math.Pow(x, exp)
 	}
 	return NumberVal(sum), nil
+}
+
+// coerceNumericMatrix extracts a dense numeric matrix from an array-like Value.
+// It preserves bounded range dimensions, treats missing/jagged cells as empty,
+// rejects empty/text cells, and propagates embedded errors.
+func coerceNumericMatrix(v Value) ([][]float64, int, int, *Value) {
+	rows, cols := arrayOpBounds(v)
+	if rows == 0 || cols == 0 {
+		errVal := ErrorVal(ErrValVALUE)
+		return nil, 0, 0, &errVal
+	}
+
+	mat := make([][]float64, rows)
+	cells := make([]float64, rows*cols)
+	grid, hasLiveRef := liveRefGrid(v)
+	for r := 0; r < rows; r++ {
+		row := cells[r*cols : (r+1)*cols]
+		for c := 0; c < cols; c++ {
+			cell := EmptyVal()
+			if hasLiveRef {
+				cell = EvalValueToValue(grid.Cell(r, c))
+			} else if r < len(v.Array) && c < len(v.Array[r]) {
+				cell = v.Array[r][c]
+			}
+			if cell.Type == ValueEmpty || cell.Type == ValueString {
+				errVal := ErrorVal(ErrValVALUE)
+				return nil, 0, 0, &errVal
+			}
+			num, errVal := CoerceNum(cell)
+			if errVal != nil {
+				return nil, 0, 0, errVal
+			}
+			row[c] = num
+		}
+		mat[r] = row
+	}
+	return mat, rows, cols, nil
 }
 
 func fnMDETERM(args []Value) (Value, error) {
@@ -1875,13 +1887,9 @@ func fnMDETERM(args []Value) (Value, error) {
 		return NumberVal(n), nil
 	}
 
-	rows := len(a.Array)
-	if rows == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	cols := len(a.Array[0])
-	if cols == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	mat, rows, cols, errVal := coerceNumericMatrix(a)
+	if errVal != nil {
+		return *errVal, nil
 	}
 
 	// Must be square.
@@ -1889,30 +1897,8 @@ func fnMDETERM(args []Value) (Value, error) {
 		return ErrorVal(ErrValVALUE), nil
 	}
 
-	n := rows
-
-	// Extract numeric matrix, rejecting empty/string values.
-	mat := make([][]float64, n)
-	for r := 0; r < n; r++ {
-		if len(a.Array[r]) != cols {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		mat[r] = make([]float64, n)
-		for c := 0; c < n; c++ {
-			v := a.Array[r][c]
-			if v.Type == ValueEmpty || v.Type == ValueString {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			num, e := CoerceNum(v)
-			if e != nil {
-				return *e, nil
-			}
-			mat[r][c] = num
-		}
-	}
-
 	// Compute determinant via LU decomposition with partial pivoting.
-	det := luDet(mat, n)
+	det := luDet(mat, rows)
 	return NumberVal(det), nil
 }
 
@@ -1992,13 +1978,9 @@ func fnMINVERSE(args []Value) (Value, error) {
 		return NumberVal(1 / n), nil
 	}
 
-	rows := len(a.Array)
-	if rows == 0 {
-		return ErrorVal(ErrValVALUE), nil
-	}
-	cols := len(a.Array[0])
-	if cols == 0 {
-		return ErrorVal(ErrValVALUE), nil
+	mat, rows, cols, errVal := coerceNumericMatrix(a)
+	if errVal != nil {
+		return *errVal, nil
 	}
 
 	// Must be square.
@@ -2007,26 +1989,6 @@ func fnMINVERSE(args []Value) (Value, error) {
 	}
 
 	n := rows
-
-	// Extract numeric matrix, rejecting empty/string values.
-	mat := make([][]float64, n)
-	for r := 0; r < n; r++ {
-		if len(a.Array[r]) != cols {
-			return ErrorVal(ErrValVALUE), nil
-		}
-		mat[r] = make([]float64, n)
-		for c := 0; c < n; c++ {
-			v := a.Array[r][c]
-			if v.Type == ValueEmpty || v.Type == ValueString {
-				return ErrorVal(ErrValVALUE), nil
-			}
-			num, e := CoerceNum(v)
-			if e != nil {
-				return *e, nil
-			}
-			mat[r][c] = num
-		}
-	}
 
 	// Compute inverse using Gauss-Jordan elimination with partial pivoting.
 	// Augment with identity matrix.

@@ -105,6 +105,32 @@ func ExpandDefinedNamesBounded(src string, names []DefinedNameInfo, currentSheet
 			continue
 		}
 
+		// Skip quoted sheet names like 'my-sheet'!A1. Without this guard, a
+		// defined name whose identifier appears as a substring of the sheet
+		// name (e.g. a "Distributions" name inside 'venture-distributions')
+		// would be expanded inside the quotes and corrupt the reference.
+		// Single quotes in Excel formulas are only used for quoted sheet
+		// qualifiers, so skipping content between matching ''-pairs is safe.
+		if src[i] == '\'' {
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\'' {
+					if j+1 < len(src) && src[j+1] == '\'' {
+						j += 2 // escaped quote inside the sheet name
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			if err := writeExpandedString(&result, &written, src[i:j], maxBytes); err != nil {
+				return "", err
+			}
+			i = j
+			continue
+		}
+
 		// Look for identifiers.
 		if isIdentStartByte(src[i]) {
 			nameStart := i
@@ -114,7 +140,18 @@ func ExpandDefinedNamesBounded(src string, names []DefinedNameInfo, currentSheet
 			ident := src[nameStart:i]
 
 			// Don't replace if followed by '(' — it's a function call.
+			// Exception: workbook-level named LAMBDAs are referenced by name
+			// as though they were functions (e.g. CUBE(A1) where CUBE is a
+			// defined name bound to LAMBDA(n,n*n*n)). Expanding inline turns
+			// CUBE(A1) into LAMBDA(n,n*n*n)(A1), which the parser desugars
+			// as an immediate lambda invocation.
 			if i < len(src) && src[i] == '(' {
+				if val, ok := lookup[strings.ToLower(ident)]; ok && isLambdaValue(val) {
+					if err := writeExpandedString(&result, &written, val, maxBytes); err != nil {
+						return "", err
+					}
+					continue
+				}
 				if err := writeExpandedString(&result, &written, ident, maxBytes); err != nil {
 					return "", err
 				}
@@ -158,6 +195,17 @@ func ExpandDefinedNamesBounded(src string, names []DefinedNameInfo, currentSheet
 		i++
 	}
 	return result.String(), nil
+}
+
+// isLambdaValue reports whether a defined name's value is a LAMBDA definition
+// (and therefore callable like a function). Accepts the stripped form
+// `LAMBDA(...)` as well as the raw OOXML form `_xlfn.LAMBDA(...)`.
+func isLambdaValue(val string) bool {
+	s := strings.TrimLeft(val, " \t")
+	if len(s) >= 6 && strings.EqualFold(s[:6], "_xlfn.") {
+		s = s[6:]
+	}
+	return len(s) >= len("LAMBDA(") && strings.EqualFold(s[:len("LAMBDA(")], "LAMBDA(")
 }
 
 func qualifiedDefinedNameKey(sheet, name string) string {

@@ -1016,9 +1016,24 @@ func TestTokenizeUnknownErrorLiteral(t *testing.T) {
 }
 
 func TestTokenizeUnexpectedChar(t *testing.T) {
-	_, err := Tokenize("A1 @ B1")
+	_, err := Tokenize("A1 ¤ B1")
 	if err == nil {
 		t.Fatal("expected error for unexpected character")
+	}
+}
+
+func TestTokenizeAtPrefix(t *testing.T) {
+	got, err := Tokenize("@A1")
+	if err != nil {
+		t.Fatalf("Tokenize(@A1) error: %v", err)
+	}
+	want := []Token{
+		tok(TokAt, "@"),
+		tok(TokCellRef, "A1"),
+		tok(TokEOF, ""),
+	}
+	if !tokensEqual(got, want) {
+		t.Fatalf("Tokenize(@A1)\n  got:  %v\n  want: %v", got, want)
 	}
 }
 

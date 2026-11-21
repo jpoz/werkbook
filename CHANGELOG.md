@@ -1,5 +1,167 @@
 # Changelog
 
+## Unreleased
+
+### API
+
+- **`File.BeginBatchWrite` / `File.EndBatchWrite`**: suspend per-write
+  dependent invalidation around bulk data loads. Each `SetValue`/`SetFormula`
+  otherwise walks the whole transitive dependent graph, which made loading a
+  few hundred rows into a formula-heavy workbook take minutes; batched, the
+  same load takes milliseconds. Writes still bump `calcGen`, so formulas
+  re-evaluate on the next `Recalculate` or `GetValue` exactly as before.
+
+### Formula engine
+
+- **`FILTER` now propagates errors in the `include` argument as a single
+  scalar** (matches Excel). Previously the error spilled across the value
+  shape, producing an N-row `#VALUE!` grid (e.g. `A2:A41`) and ignoring
+  Excel's documented short-circuit behavior. The `if_empty` argument is also
+  ignored in this case, with the error winning. Fixes #70.
+
+## v0.11.0
+
+### CLI
+
+- **`wb serve` command**: New NDJSON-over-stdin/stdout interface for stateful,
+  long-running workbook sessions. Avoids the per-command cost of opening and
+  saving a file, letting external agents perform multiple operations on a
+  single in-memory workbook.
+- **`--dry-run` / `--validate-only` flags on `create`**: Build workbooks in
+  memory without disk I/O so callers can verify complex specifications
+  independently of filesystem side effects.
+- **Embedded input JSON schemas in `capabilities`**: Capabilities output now
+  includes formal JSON schemas for every structured input, giving agents a
+  machine-readable contract to validate payloads against.
+- **Formula discovery metadata**: Formula listings expose argument counts and
+  types so callers can introspect what each function accepts.
+- **Typed date/time cell support**: Cell operations accept an optional `type`
+  field for `date`, `datetime`, and `time` values. Strings are parsed and
+  converted to Excel serials with appropriate default number formats applied,
+  preventing Excel from displaying raw serial numbers.
+- **Inline typed row values**: Row data elements accept `{type, value, formula,
+  style}` objects alongside scalar entries.
+- **Duplicate-write detection**: `wb` warns when multiple operations target the
+  same cell (e.g. a later row write clobbering an earlier formula).
+
+### Compatibility
+
+- **Cached spill values for dynamic array followers**: Saved files now persist
+  cached values for spill follower cells and emit `<f ca="1"/>` tags. Excel
+  re-evaluates on load and doesn't need this, but Apple Numbers and other
+  consumers that cannot evaluate `_xlfn._xlws.FILTER` and friends now display
+  spilled results correctly.
+
+### Formula engine
+
+- **`TRANSPOSE` registered as a dynamic array function**: The engine now
+  correctly identifies and spills `TRANSPOSE` results.
+- **Date-text operands in criteria**: `COUNTIF` / `SUMIF` / `AVERAGEIF`
+  families coerce date-formatted text operands like `">=2026-01-01"` to
+  numeric serials before comparison, matching Excel. ISO dash, US slash, and
+  ISO slash formats are recognized.
+- **`INDEX(range, 0)` implicit intersection**: In non-array context,
+  `INDEX(range, 0)` now performs implicit intersection at the formula cell's
+  row instead of returning `#VALUE!`.
+- **`REGEXEXTRACT` mode 1 layout**: Returns a horizontal `1×n` array instead
+  of a vertical `n×1` array, matching Excel.
+- **Implicit intersection for range-origin arrays**: Array results that carry
+  a range origin now collapse to a single cell correctly when used in
+  non-array context (e.g. `INDEX` returning a vector).
+- **Argument validation alignment**: `XLOOKUP`, `MATCH`, `TAKE`, and `DROP`
+  argument validation matches Excel for omitted parameters and dimension
+  constraints.
+- **`COUNTA` / `SORT`**: Empty values and errors are processed correctly
+  across argument types.
+
+## v0.10.0
+
+### Formula Engine v2
+
+A large internal restructuring of the formula evaluator. Public APIs remain
+compatible; the migration separates scalars, computed arrays, and worksheet
+references into distinct runtime types so dynamic arrays, spill behavior, and
+range semantics can be reasoned about explicitly.
+
+- **`EvalValue` runtime model**: New internal envelope with `EvalScalar`,
+  `EvalArray`, `EvalRef`, and `EvalKindError` kinds. Worksheet ranges and
+  computed arrays no longer share a single `ValueArray` representation.
+- **`RefValue` with bounds and 3D support**: Reference identity is preserved
+  through `OFFSET`, `INDIRECT`, and selector functions instead of being
+  flattened into anonymous arrays.
+- **`ArrayValue` with explicit shape and `SpillClass`**: Replaces broad
+  reliance on the legacy `NoSpill` flag with `SpillNone` / `SpillBounded` /
+  `SpillUnbounded` / `SpillScalarOnly`.
+- **Lazy `Grid` iteration**: Reducers and scans iterate references and arrays
+  without eagerly materializing full-column / full-row inputs.
+- **Unified `FuncSpec` contracts**: Argument loading, adaptation, and array
+  lifting policy live on each function's spec instead of in scattered global
+  maps. The old `funcMetaByName` semantic map has been removed; `RegisterWithMeta`
+  is now a compatibility shim that produces a `FuncSpec`.
+- **`CellEvalOutcome` (raw / display / spill split)**: The workbook layer now
+  tracks raw evaluation result, displayed anchor value, and spill plan
+  separately, so blocked spills cleanly expose `#SPILL!` while preserving the
+  underlying array.
+- **Eval-aware criteria & reducer paths**: `COUNTIF` / `SUMIF` / `AVERAGEIF`
+  families and `SUM` / `COUNT` / `AVERAGE` / `MIN` / `MAX` consume `EvalValue`
+  and `Grid` directly with far less adapter churn.
+
+### New formula functions
+
+- **Regex (3)**: `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE` (Excel 2024).
+  Cached pattern compiler, Excel-style `$N` replacement expansion, and
+  `instance_num` support. Patterns requiring backreferences/lookarounds (not
+  supported by Go's RE2) return `#VALUE!`.
+
+### Features
+
+- **Intersection & union operators**: Space-separated range intersection
+  (`A1:C3 B2:D4`) returns the rectangular overlap or `#NULL!`; parenthesized
+  union references (`(A1:A2,C1:C2)`) flatten constituent areas.
+- **Dynamic range references**: `A1:INDEX(A:A,n)` and similar reference-
+  producing function calls are accepted on either side of `:` and built at
+  runtime via `OpBuildRange`.
+- **LAMBDA improvements**: `CellRef` accepts bare identifiers as parameter
+  names (e.g. `running_sum`); `_xlpm.` prefixes are stripped on serialization;
+  workbook-level named LAMBDAs can be invoked like functions; `ISOMITTED` is
+  supported.
+- **Sheet-qualified full-row ranges**: `Sheet1!2:3` and `'venture-dist'!2:3`
+  now parse, mirroring the long-supported column-only form.
+
+### Bug fixes
+
+- **Error classification**: `evaluateFormula` no longer collapses every
+  failure to `#NAME?`. Parse/compile failures produce `#NAME?`; expansion
+  overflow and runtime engine errors produce `#VALUE!`.
+- **Quoted sheet names in rewriters**: `ExpandTableRefs`, defined name
+  expansion, `r1c1ToA1`, and `INDIRECT`'s sheet-prefix extraction are now
+  quote-aware and correctly handle escaped `''` within sheet names.
+- **Implicit intersection for mixed operands**: When one operand is a
+  range-derived scalar and the other an anonymous array, the anonymous array
+  is collapsed to its top-left element, matching Excel.
+- **`IFERROR`/`IFNA` under legacy array context**: Nested under
+  `SUMPRODUCT`-style array forcers, these apply implicit intersection;
+  dynamic-array natives (`FILTER`, `SORT`, `UNIQUE`, …) still lift arrays.
+- **`SUMIFS` error propagation**: Errors from referenced cells now propagate
+  instead of being silently ignored.
+- **`BYCOL`/`BYROW`**: Return `#VALUE!` (not `#CALC!`) when the lambda yields
+  an array.
+- **Element-wise lifting**: Financial scalar functions `DB`, `DDB`, `SLN`,
+  `SYD` are registered as element-wise.
+
+## v0.9.3
+
+### Bug fixes
+
+- **VLOOKUP/HLOOKUP approximate match**: Switched approximate match (`range_lookup=TRUE`) from linear scan to binary search, matching Excel's behavior on sorted data
+- **XLOOKUP multi-column return arrays**: Return-array orientation logic now distinguishes row- vs column-oriented lookups, so multi-column returns select the matching column instead of flattening all return values
+
+## v0.9.2
+
+### Bug fixes
+
+- **Tolerate leading `=` in `SetFormula`**: Formulas passed with a leading `=` (as typed in Excel) are now stripped at the public-API boundary. Previously the `=` nested inside the OOXML `<f>` element and saved as a `#NAME?` error cell.
+
 ## v0.9.1
 
 ### Features
