@@ -11,6 +11,19 @@
   same load takes milliseconds. Writes still bump `calcGen`, so formulas
   re-evaluate on the next `Recalculate` or `GetValue` exactly as before.
 
+### OOXML
+
+- **Unparsed OOXML now survives open/save round-trips.** Charts, drawings,
+  images, themes and other package parts that werkbook does not parse are
+  kept as opaque entries, together with their relationships and content
+  types. Unrecognized workbook and worksheet elements (conditional
+  formatting, data validations, hyperlinks, sheet views, page setup, and so
+  on) and root attributes are re-emitted in schema order. The unmodeled
+  parts of `xl/styles.xml` (`dxfs`, `tableStyles`, `colors`, `extLst`) and
+  the attributes of `<workbookPr>` are preserved too, so preserved sheet XML
+  keeps valid style references. `CopySheet` / `CloneSheetFrom` carry this
+  metadata to the new sheet.
+
 ### Formula engine
 
 - **`FILTER` now propagates errors in the `include` argument as a single

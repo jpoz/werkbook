@@ -15,9 +15,12 @@ const (
 	RelTypeTable = NSOfficeDocument + "/table"
 
 	// Strict OOXML namespaces (ISO/IEC 29500 Strict).
-	NSOfficeDocumentStrict = "http://purl.oclc.org/ooxml/officeDocument/relationships"
-	RelTypeWorksheetStrict = NSOfficeDocumentStrict + "/worksheet"
-	RelTypeTableStrict     = NSOfficeDocumentStrict + "/table"
+	NSOfficeDocumentStrict     = "http://purl.oclc.org/ooxml/officeDocument/relationships"
+	RelTypeWorksheetStrict     = NSOfficeDocumentStrict + "/worksheet"
+	RelTypeStylesStrict        = NSOfficeDocumentStrict + "/styles"
+	RelTypeSharedStrStrict     = NSOfficeDocumentStrict + "/sharedStrings"
+	RelTypeSheetMetadataStrict = NSOfficeDocumentStrict + "/sheetMetadata"
+	RelTypeTableStrict         = NSOfficeDocumentStrict + "/table"
 )
 
 type xlsxRelationships struct {
@@ -27,7 +30,8 @@ type xlsxRelationships struct {
 }
 
 type xlsxRelationship struct {
-	ID     string `xml:"Id,attr"`
-	Type   string `xml:"Type,attr"`
-	Target string `xml:"Target,attr"`
+	ID         string `xml:"Id,attr"`
+	Type       string `xml:"Type,attr"`
+	Target     string `xml:"Target,attr"`
+	TargetMode string `xml:"TargetMode,attr,omitempty"`
 }
