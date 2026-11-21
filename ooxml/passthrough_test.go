@@ -567,6 +567,182 @@ func TestCaptureRootAttrsAndExtras_Worksheet(t *testing.T) {
 // isRecognizedRootRelType
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// workbookPr is preserved and reconciled with Date1904
+// ---------------------------------------------------------------------------
+
+func TestWorkbookPrFragment(t *testing.T) {
+	raw := func(xml string) []RawElement {
+		return []RawElement{{Name: "workbookPr", XML: xml, OrderKey: workbookElementOrder["workbookPr"]}}
+	}
+	tests := []struct {
+		name     string
+		extras   []RawElement
+		date1904 bool
+		want     string
+	}{
+		{"no element, 1900 system", nil, false, ""},
+		{"no element, 1904 system", nil, true, `<workbookPr date1904="1"/>`},
+		{"preserved verbatim", raw(`<workbookPr defaultThemeVersion="166925" filterPrivacy="1"/>`), false, `<workbookPr defaultThemeVersion="166925" filterPrivacy="1"/>`},
+		{"preserved verbatim with date1904", raw(`<workbookPr date1904="true" codeName="ThisWorkbook"/>`), true, `<workbookPr date1904="true" codeName="ThisWorkbook"/>`},
+		{"explicit date1904=0 agrees", raw(`<workbookPr date1904="0"/>`), false, `<workbookPr date1904="0"/>`},
+		{"date1904 switched on", raw(`<workbookPr defaultThemeVersion="166925"/>`), true, `<workbookPr date1904="1" defaultThemeVersion="166925"/>`},
+		{"date1904 switched off", raw(`<workbookPr date1904="1" defaultThemeVersion="166925"/>`), false, `<workbookPr defaultThemeVersion="166925"/>`},
+		{"date1904 switched off, no other attrs", raw(`<workbookPr date1904="1"/>`), false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := workbookPrFragment(tt.extras, tt.date1904)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("workbookPrFragment = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRoundTrip_WorkbookPrPreserved(t *testing.T) {
+	data := &WorkbookData{
+		Styles: []StyleData{{}},
+		Sheets: []SheetData{{Name: "Sheet1"}},
+		ExtraElements: []RawElement{{
+			Name:     "workbookPr",
+			XML:      `<workbookPr defaultThemeVersion="166925"/>`,
+			OrderKey: workbookElementOrder["workbookPr"],
+		}},
+	}
+
+	got := writeAndRead(t, data)
+	if got.Date1904 {
+		t.Error("Date1904 = true, want false")
+	}
+	if !hasExtraElementName(got.ExtraElements, "workbookPr") {
+		t.Fatal("workbookPr did not survive round-trip")
+	}
+
+	// Switching the date system keeps the other attributes and writes
+	// exactly one workbookPr element.
+	got.Date1904 = true
+	var buf bytes.Buffer
+	if err := WriteWorkbook(&buf, got); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wbXML := readZipEntry(t, zr, "xl/workbook.xml")
+	if n := strings.Count(wbXML, "<workbookPr"); n != 1 {
+		t.Fatalf("workbookPr count = %d, want 1: %s", n, wbXML)
+	}
+	if !strings.Contains(wbXML, `<workbookPr date1904="1" defaultThemeVersion="166925"/><sheets>`) {
+		t.Fatalf("workbookPr not reconciled with Date1904: %s", wbXML)
+	}
+	again, err := ReadWorkbook(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.Date1904 {
+		t.Error("Date1904 = false after switch, want true")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unparsed styleSheet elements survive round-trip
+// ---------------------------------------------------------------------------
+
+func TestRoundTrip_StyleExtraElements(t *testing.T) {
+	const dxfs = `<dxfs count="1"><dxf><fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf></dxfs>`
+	const extLst = `<extLst><ext uri="{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"><x14:slicerStyles defaultSlicerStyle="SlicerStyleLight1"/></ext></extLst>`
+	data := &WorkbookData{
+		// A styled cell forces numFmts and a second cellXf, so the extras
+		// must sort after every rebuilt element.
+		Styles: []StyleData{{}, {NumFmt: "0.000", FontBold: true}},
+		Sheets: []SheetData{{
+			Name: "Sheet1",
+			Rows: []RowData{{Num: 1, Cells: []CellData{{Ref: "A1", Value: "1", StyleIdx: 1}}}},
+		}},
+		StyleRootAttrs: []RawAttr{
+			{Name: "xmlns", Value: NSSpreadsheetML},
+			{Name: "xmlns:mc", Value: "http://schemas.openxmlformats.org/markup-compatibility/2006"},
+			{Name: "xmlns:x14ac", Value: "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"},
+			{Name: "mc:Ignorable", Value: "x14ac"},
+		},
+		StyleExtraElements: []RawElement{
+			{Name: "dxfs", XML: dxfs, OrderKey: styleSheetElementOrder["dxfs"], Seq: 0},
+			{Name: "extLst", XML: extLst, OrderKey: styleSheetElementOrder["extLst"], Seq: 1},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteWorkbook(&buf, data); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stylesXML := readZipEntry(t, zr, "xl/styles.xml")
+	if !strings.Contains(stylesXML, `mc:Ignorable="x14ac"`) {
+		t.Errorf("styleSheet root attrs not preserved: %s", stylesXML)
+	}
+	if !strings.HasSuffix(stylesXML, "</cellStyles>"+dxfs+extLst+"</styleSheet>") {
+		t.Errorf("style extras not written verbatim after cellStyles: %s", stylesXML)
+	}
+	if strings.Index(stylesXML, "<numFmts") > strings.Index(stylesXML, "<fonts") {
+		t.Errorf("numFmts must precede fonts: %s", stylesXML)
+	}
+
+	got, err := ReadWorkbook(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.StyleExtraElements) != 2 ||
+		got.StyleExtraElements[0].XML != dxfs ||
+		got.StyleExtraElements[1].XML != extLst {
+		t.Errorf("StyleExtraElements = %+v, want dxfs and extLst", got.StyleExtraElements)
+	}
+	if rawAttrValue(got.StyleRootAttrs, "mc:Ignorable") != "x14ac" {
+		t.Errorf("StyleRootAttrs = %+v, want mc:Ignorable preserved", got.StyleRootAttrs)
+	}
+	// The parsed cell style is still rebuilt from the model.
+	if len(got.Styles) < 2 || got.Styles[1].NumFmt != "0.000" || !got.Styles[1].FontBold {
+		t.Errorf("Styles = %+v, want the styled cell format preserved", got.Styles)
+	}
+	for _, entry := range got.OpaqueEntries {
+		if entry.Path == "xl/styles.xml" {
+			t.Error("xl/styles.xml must not also be kept as an opaque entry")
+		}
+	}
+}
+
+func TestWriteStyles_NoPassthroughMatchesModelOnly(t *testing.T) {
+	data := &WorkbookData{
+		Styles: []StyleData{{}},
+		Sheets: []SheetData{{Name: "Sheet1"}},
+	}
+	var buf bytes.Buffer
+	if err := WriteWorkbook(&buf, data); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := readZipEntry(t, zr, "xl/styles.xml")
+
+	var want bytes.Buffer
+	enc := xml.NewEncoder(&want)
+	if err := enc.Encode(NewStyleSheetBuilder().Build()); err != nil {
+		t.Fatal(err)
+	}
+	if wantXML := xmlHeader + string(selfCloseEmptyElements(want.Bytes())); got != wantXML {
+		t.Errorf("styles.xml changed for a workbook with no style passthrough:\n got: %s\nwant: %s", got, wantXML)
+	}
+}
+
 func TestIsRecognizedRootRelType(t *testing.T) {
 	tests := []struct {
 		relType string

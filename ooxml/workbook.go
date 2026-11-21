@@ -10,6 +10,12 @@ type xlsxWorkbookPr struct {
 	Date1904 string `xml:"date1904,attr,omitempty"`
 }
 
+// isDate1904Value reports whether a workbookPr date1904 attribute value
+// selects the 1904 date system.
+func isDate1904Value(v string) bool {
+	return v == "1" || v == "true"
+}
+
 // xlsxExtLst is kept as raw XML because the future-function workbook payload
 // mirrors Excel-authored markup exactly, including x15/xcalcf-prefixed nodes.
 type xlsxExtLst struct {
@@ -121,6 +127,11 @@ type WorkbookData struct {
 	ExtraElements  []RawElement
 	Sheets         []SheetData
 	Styles         []StyleData   // index 0 = default (empty)
+	// StyleRootAttrs and StyleExtraElements preserve the parts of
+	// xl/styles.xml that StyleData does not model (dxfs, tableStyles, colors,
+	// extLst), which sheet passthrough XML refers to by index.
+	StyleRootAttrs     []RawAttr
+	StyleExtraElements []RawElement
 	Tables         []TableDef    // table definitions parsed from xl/tables/table*.xml
 	DefinedNames   []DefinedName // named ranges/formulas from <definedNames>
 	OpaqueEntries  []OpaqueEntry

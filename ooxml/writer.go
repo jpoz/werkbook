@@ -108,7 +108,7 @@ func WriteWorkbook(w io.Writer, data *WorkbookData) error {
 	}
 
 	// xl/styles.xml
-	if err := writeXML(zw, "xl/styles.xml", ssb.Build()); err != nil {
+	if err := writeStyles(zw, data, ssb.Build()); err != nil {
 		return err
 	}
 
@@ -304,11 +304,12 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 	rootAttrs := mergedRootAttrs(data.RootAttrs, requiredAttrs)
 
 	var fragments []xmlFragment
-	if data.Date1904 {
-		frag, err := encodeNamedXMLFragment("workbookPr", &xlsxWorkbookPr{Date1904: "1"})
-		if err != nil {
-			return fmt.Errorf("encode workbookPr: %w", err)
-		}
+	workbookPrFrag, err := workbookPrFragment(data.ExtraElements, data.Date1904)
+	if err != nil {
+		return fmt.Errorf("encode workbookPr: %w", err)
+	}
+	if workbookPrFrag != nil {
+		frag := workbookPrFrag
 		fragments = append(fragments, xmlFragment{
 			OrderKey: workbookElementOrder["workbookPr"],
 			Seq:      writerSeq,
@@ -394,6 +395,10 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 	}
 
 	for _, extra := range data.ExtraElements {
+		if extra.Name == "workbookPr" {
+			// Emitted above through workbookPrFragment.
+			continue
+		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: extra.OrderKey,
 			Seq:      extra.Seq,
@@ -636,6 +641,50 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 	}
 
 	return writePassthroughXML(zw, fmt.Sprintf("xl/worksheets/sheet%d.xml", num), "worksheet", rootAttrs, fragments)
+}
+
+// writeStyles writes xl/styles.xml from the rebuilt style sheet, interleaved
+// with the preserved styleSheet elements that the style model does not parse.
+func writeStyles(zw *zip.Writer, data *WorkbookData, ss xlsxStyleSheet) error {
+	rootAttrs := mergedRootAttrs(data.StyleRootAttrs, map[string]string{
+		"xmlns": spreadsheetNamespace(data.StyleRootAttrs),
+	})
+
+	known := []struct {
+		name string
+		v    any
+	}{
+		{"numFmts", ss.NumFmts},
+		{"fonts", ss.Fonts},
+		{"fills", ss.Fills},
+		{"borders", ss.Borders},
+		{"cellStyleXfs", ss.CellStyleXfs},
+		{"cellXfs", ss.CellXfs},
+		{"cellStyles", ss.CellStyles},
+	}
+	fragments := make([]xmlFragment, 0, len(known)+len(data.StyleExtraElements))
+	for _, k := range known {
+		if k.name == "numFmts" && ss.NumFmts == nil {
+			continue
+		}
+		frag, err := encodeNamedXMLFragment(k.name, k.v)
+		if err != nil {
+			return fmt.Errorf("encode %s: %w", k.name, err)
+		}
+		fragments = append(fragments, xmlFragment{
+			OrderKey: styleSheetElementOrder[k.name],
+			Seq:      writerSeq,
+			XML:      frag,
+		})
+	}
+	for _, extra := range data.StyleExtraElements {
+		fragments = append(fragments, xmlFragment{
+			OrderKey: extra.OrderKey,
+			Seq:      extra.Seq,
+			XML:      []byte(extra.XML),
+		})
+	}
+	return writePassthroughXML(zw, "xl/styles.xml", "styleSheet", rootAttrs, fragments)
 }
 
 func writeSheetRels(zw *zip.Writer, sd *SheetData, sheetNum int, tables []tableWriteInfo, tableRelIDs []string) error {

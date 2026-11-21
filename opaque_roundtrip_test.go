@@ -33,7 +33,8 @@ func TestOpenSavePreservesOpaqueOOXMLParts(t *testing.T) {
 
 	workbookXML := string(readSheetXML(t, dstPath, "xl/workbook.xml"))
 	for _, want := range []string{
-		`<bookViews><workbookView activeTab="0"/></bookViews>`,
+		// workbookPr keeps its attributes and its position before bookViews.
+		`<workbookPr defaultThemeVersion="166925" filterPrivacy="1"/><bookViews><workbookView activeTab="0"/></bookViews>`,
 		`xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"`,
 		`mc:Ignorable="x15"`,
 		`xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"`,
@@ -41,6 +42,19 @@ func TestOpenSavePreservesOpaqueOOXMLParts(t *testing.T) {
 	} {
 		if !strings.Contains(workbookXML, want) {
 			t.Fatalf("expected workbook.xml to contain %s: %s", want, workbookXML)
+		}
+	}
+
+	// The sheet keeps a cfRule with dxfId="0", so the dxfs it indexes must
+	// survive in styles.xml, after the rebuilt cell style elements.
+	stylesXML := string(readSheetXML(t, dstPath, "xl/styles.xml"))
+	for _, want := range []string{
+		`xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"`,
+		`mc:Ignorable="x14ac"`,
+		`</cellStyles><dxfs count="1"><dxf><font><b/><color rgb="FF9C0006"/></font></dxf></dxfs><tableStyles count="0" defaultTableStyle="TableStyleMedium2"/></styleSheet>`,
+	} {
+		if !strings.Contains(stylesXML, want) {
+			t.Fatalf("expected styles.xml to contain %s: %s", want, stylesXML)
 		}
 	}
 
@@ -189,6 +203,7 @@ func writeOpaquePassthroughFixture(t *testing.T, path string) {
 </Relationships>`)
 
 	writeEntry("xl/workbook.xml", testXMLHeader+`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main" mc:Ignorable="x15">
+  <workbookPr defaultThemeVersion="166925" filterPrivacy="1"/>
   <bookViews><workbookView activeTab="0"/></bookViews>
   <sheets>
     <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
@@ -201,12 +216,14 @@ func writeOpaquePassthroughFixture(t *testing.T, path string) {
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
 </Relationships>`)
 
-	writeEntry("xl/styles.xml", testXMLHeader+`<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+	writeEntry("xl/styles.xml", testXMLHeader+`<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" mc:Ignorable="x14ac">
   <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
   <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
   <borders count="1"><border/></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
   <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+  <dxfs count="1"><dxf><font><b/><color rgb="FF9C0006"/></font></dxf></dxfs>
+  <tableStyles count="0" defaultTableStyle="TableStyleMedium2"/>
 </styleSheet>`)
 
 	writeEntry("xl/worksheets/sheet1.xml", testXMLHeader+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" mc:Ignorable="x14ac">

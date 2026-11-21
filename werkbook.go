@@ -21,6 +21,8 @@ type File struct {
 	corePropsRaw          []byte
 	workbookRootAttrs     []ooxml.RawAttr
 	workbookExtraElements []ooxml.RawElement
+	styleRootAttrs        []ooxml.RawAttr
+	styleExtraElements    []ooxml.RawElement
 	opaqueEntries         []ooxml.OpaqueEntry
 	extraWorkbookRels     []ooxml.OpaqueRel
 	extraRootRels         []ooxml.OpaqueRel
@@ -384,6 +386,8 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 		corePropsRaw:          append([]byte(nil), data.CorePropsRaw...),
 		workbookRootAttrs:     cloneRawAttrs(data.RootAttrs),
 		workbookExtraElements: cloneRawElements(data.ExtraElements),
+		styleRootAttrs:        cloneRawAttrs(data.StyleRootAttrs),
+		styleExtraElements:    cloneRawElements(data.StyleExtraElements),
 		opaqueEntries:         cloneOpaqueEntries(data.OpaqueEntries),
 		extraWorkbookRels:     cloneOpaqueRels(data.ExtraRels),
 		extraRootRels:         cloneOpaqueRels(data.ExtraRootRels),
@@ -590,15 +594,17 @@ func isFormulaErrorString(v string) bool {
 
 func (f *File) buildWorkbookData() *ooxml.WorkbookData {
 	data := &ooxml.WorkbookData{
-		Date1904:       f.date1904,
-		CalcProps:      f.calcProps.toData(),
-		CoreProps:      f.coreProps.toData(),
-		RootAttrs:      cloneRawAttrs(f.workbookRootAttrs),
-		ExtraElements:  cloneRawElements(f.workbookExtraElements),
-		OpaqueEntries:  cloneOpaqueEntries(f.opaqueEntries),
-		ExtraRels:      cloneOpaqueRels(f.extraWorkbookRels),
-		ExtraRootRels:  cloneOpaqueRels(f.extraRootRels),
-		OpaqueDefaults: cloneOpaqueDefaults(f.opaqueDefaults),
+		Date1904:           f.date1904,
+		CalcProps:          f.calcProps.toData(),
+		CoreProps:          f.coreProps.toData(),
+		RootAttrs:          cloneRawAttrs(f.workbookRootAttrs),
+		ExtraElements:      cloneRawElements(f.workbookExtraElements),
+		StyleRootAttrs:     cloneRawAttrs(f.styleRootAttrs),
+		StyleExtraElements: cloneRawElements(f.styleExtraElements),
+		OpaqueEntries:      cloneOpaqueEntries(f.opaqueEntries),
+		ExtraRels:          cloneOpaqueRels(f.extraWorkbookRels),
+		ExtraRootRels:      cloneOpaqueRels(f.extraRootRels),
+		OpaqueDefaults:     cloneOpaqueDefaults(f.opaqueDefaults),
 	}
 	if !f.corePropsDirty && len(f.corePropsRaw) > 0 {
 		data.CorePropsRaw = append([]byte(nil), f.corePropsRaw...)

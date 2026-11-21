@@ -98,6 +98,24 @@ var workbookElementOrder = map[string]int{
 	"extLst":              36,
 }
 
+var styleSheetElementOrder = map[string]int{
+	"numFmts":      0,
+	"fonts":        2,
+	"fills":        4,
+	"borders":      6,
+	"cellStyleXfs": 8,
+	"cellXfs":      10,
+	"cellStyles":   12,
+	"dxfs":         14,
+	"tableStyles":  16,
+	"colors":       18,
+	"extLst":       20,
+}
+
+func styleSheetOrderKey(name string, lastKnown int) int {
+	return passthroughOrderKey(styleSheetElementOrder, name, lastKnown)
+}
+
 func worksheetOrderKey(name string, lastKnown int) int {
 	return passthroughOrderKey(worksheetElementOrder, name, lastKnown)
 }
@@ -265,6 +283,49 @@ func relationshipsNamespace(attrs []RawAttr) string {
 		return NSOfficeDocumentStrict
 	}
 	return NSOfficeDocument
+}
+
+// rawWorkbookPr is the minimal view of a preserved <workbookPr> element that
+// the writer needs to reconcile it with WorkbookData.Date1904.
+type rawWorkbookPr struct {
+	Attrs []xml.Attr `xml:",any,attr"`
+}
+
+// workbookPrFragment returns the <workbookPr> XML to write. A preserved
+// element is emitted verbatim when its date1904 attribute already agrees with
+// date1904. Otherwise the element is re-encoded with its other attributes
+// kept and date1904 corrected, so a SetDate1904 call after open is honored.
+// It returns nil when no element is needed.
+func workbookPrFragment(extras []RawElement, date1904 bool) ([]byte, error) {
+	var attrs []xml.Attr
+	for _, extra := range extras {
+		if extra.Name != "workbookPr" {
+			continue
+		}
+		var pr rawWorkbookPr
+		if err := xml.Unmarshal([]byte(extra.XML), &pr); err != nil {
+			break
+		}
+		rawDate1904 := false
+		for _, attr := range pr.Attrs {
+			if attr.Name.Space == "" && attr.Name.Local == "date1904" {
+				rawDate1904 = isDate1904Value(attr.Value)
+				continue
+			}
+			attrs = append(attrs, attr)
+		}
+		if rawDate1904 == date1904 {
+			return []byte(extra.XML), nil
+		}
+		break
+	}
+	if date1904 {
+		attrs = append([]xml.Attr{{Name: xml.Name{Local: "date1904"}, Value: "1"}}, attrs...)
+	}
+	if len(attrs) == 0 {
+		return nil, nil
+	}
+	return encodeNamedXMLFragment("workbookPr", &rawWorkbookPr{Attrs: attrs})
 }
 
 func hasExtraElementName(extras []RawElement, name string) bool {

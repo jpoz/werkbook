@@ -3,6 +3,7 @@ package werkbook
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/jpoz/werkbook/formula"
@@ -134,22 +135,15 @@ func formulaExpansionError(sheet string, col, row int, err error) error {
 	return fmt.Errorf("sheet %q cell %s: %w", sheet, cell, err)
 }
 
-// resolveRelTarget resolves a relative rel target from the standard sheet
-// directory (xl/worksheets) to an absolute zip path.
+// resolveRelTarget resolves a sheet relationship target to a zip path.
+// Relative targets resolve against the standard sheet directory
+// (xl/worksheets); targets with a leading "/" are already rooted at the
+// package. The result never climbs above the package root.
 func resolveRelTarget(target string) string {
-	base := "xl/worksheets"
-	for strings.HasPrefix(target, "../") {
-		target = target[3:]
-		if idx := strings.LastIndex(base, "/"); idx >= 0 {
-			base = base[:idx]
-		} else {
-			base = ""
-		}
+	if !strings.HasPrefix(target, "/") {
+		target = "/xl/worksheets/" + target
 	}
-	if base == "" {
-		return target
-	}
-	return base + "/" + target
+	return strings.TrimPrefix(path.Clean(target), "/")
 }
 
 // absoluteToRelTarget converts an absolute zip path back to a relative target

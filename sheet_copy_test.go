@@ -510,3 +510,26 @@ func TestCopySheetErrors(t *testing.T) {
 		t.Fatal("CloneSheetFrom should reject nil source sheets")
 	}
 }
+
+func TestResolveRelTarget(t *testing.T) {
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{"../drawings/drawing1.xml", "xl/drawings/drawing1.xml"},
+		{"../../customXml/item1.xml", "customXml/item1.xml"},
+		{"comments1.xml", "xl/worksheets/comments1.xml"},
+		{"./comments1.xml", "xl/worksheets/comments1.xml"},
+		// Targets rooted at the package.
+		{"/xl/drawings/drawing1.xml", "xl/drawings/drawing1.xml"},
+		{"/xl/drawings/../media/image1.png", "xl/media/image1.png"},
+		// A target must not climb above the package root.
+		{"../../../../etc/passwd", "etc/passwd"},
+		{"/../xl/media/image1.png", "xl/media/image1.png"},
+	}
+	for _, tt := range tests {
+		if got := resolveRelTarget(tt.target); got != tt.want {
+			t.Errorf("resolveRelTarget(%q) = %q, want %q", tt.target, got, tt.want)
+		}
+	}
+}

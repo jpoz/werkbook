@@ -86,7 +86,10 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 		wbRaw,
 		func(name string) bool {
 			switch name {
-			case "workbookPr", "sheets", "definedNames", "calcPr":
+			// workbookPr is not in this list: it is kept as a raw element so
+			// that its other attributes survive, and the writer reconciles
+			// its date1904 attribute with WorkbookData.Date1904.
+			case "sheets", "definedNames", "calcPr":
 				return true
 			default:
 				return false
@@ -109,12 +112,15 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 
 	// Parse styles (may not exist).
 	styles := readStyles(files)
+	styleRootAttrs, styleExtraElements := readStylePassthrough(files)
 
 	data := &WorkbookData{
-		Styles:        styles,
-		RootAttrs:     workbookRootAttrs,
-		ExtraElements: workbookExtraElements,
-		ExtraRels:     extraWorkbookRels,
+		Styles:             styles,
+		StyleRootAttrs:     styleRootAttrs,
+		StyleExtraElements: styleExtraElements,
+		RootAttrs:          workbookRootAttrs,
+		ExtraElements:      workbookExtraElements,
+		ExtraRels:          extraWorkbookRels,
 	}
 	if corePropsRaw, err := readFile(files, "docProps/core.xml"); err == nil {
 		recognizedPaths["docProps/core.xml"] = struct{}{}
@@ -148,8 +154,7 @@ func ReadWorkbook(r io.ReaderAt, size int64) (*WorkbookData, error) {
 
 	// Check for the 1904 date system.
 	if wb.WorkbookPr != nil {
-		v := wb.WorkbookPr.Date1904
-		data.Date1904 = v == "1" || v == "true"
+		data.Date1904 = isDate1904Value(wb.WorkbookPr.Date1904)
 	}
 	if wb.CalcPr != nil {
 		data.CalcProps = CalcPropertiesData{
@@ -390,6 +395,35 @@ func sharedIndex(fe *xlsxF) int {
 
 // readStyles parses xl/styles.xml and returns a []StyleData indexed by cellXfs position.
 // Returns a single empty StyleData if styles.xml is missing or unparseable.
+// readStylePassthrough captures the styleSheet root attributes and the child
+// elements that the style model does not parse (dxfs, tableStyles, colors,
+// extLst). Sheet-level passthrough XML refers to these by index, for example
+// a conditional formatting rule's dxfId, so they must survive a round-trip
+// together. A styles part that is missing or malformed yields no passthrough,
+// which matches the tolerance of readStyles.
+func readStylePassthrough(files map[string]*zip.File) ([]RawAttr, []RawElement) {
+	raw, err := readFile(files, "xl/styles.xml")
+	if err != nil {
+		return nil, nil
+	}
+	rootAttrs, extras, err := captureRootAttrsAndExtras(
+		raw,
+		func(name string) bool {
+			switch name {
+			case "numFmts", "fonts", "fills", "borders", "cellStyleXfs", "cellXfs", "cellStyles":
+				return true
+			default:
+				return false
+			}
+		},
+		styleSheetOrderKey,
+	)
+	if err != nil {
+		return nil, nil
+	}
+	return rootAttrs, extras
+}
+
 func readStyles(files map[string]*zip.File) []StyleData {
 	ss, err := readXML[xlsxStyleSheet](files, "xl/styles.xml")
 	if err != nil {
