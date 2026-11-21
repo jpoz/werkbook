@@ -2,7 +2,6 @@
 
 [![Go](https://github.com/jpoz/werkbook/actions/workflows/go.yml/badge.svg)](https://github.com/jpoz/werkbook/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jpoz/werkbook.svg)](https://pkg.go.dev/github.com/jpoz/werkbook)
-[![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/werkbook)](https://goreportcard.com/report/github.com/jpoz/werkbook)
 [![Latest Release](https://img.shields.io/github/v/release/jpoz/werkbook)](https://github.com/jpoz/werkbook/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/jpoz/werkbook)](https://github.com/jpoz/werkbook)
 
