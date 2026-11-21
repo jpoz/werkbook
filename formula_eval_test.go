@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/jpoz/werkbook"
 )
@@ -915,11 +916,17 @@ func TestFILTER_FullColumnWithDATEVALUE(t *testing.T) {
 	f.SetSheetName("Sheet1", "Data")
 	data = f.Sheet("Data")
 
+	// The formula compares against TODAY(), so the dates must be relative to
+	// the current date. Fixed dates make the test fail when they pass.
+	now := time.Now()
+	future1 := now.AddDate(1, 0, 0).Format("2006-01-02")
+	future2 := now.AddDate(2, 0, 0).Format("2006-01-02")
+
 	data.SetValue("E1", "Accrued On")
 	data.SetValue("I1", "Amount")
-	data.SetValue("E2", "2026-07-01")
+	data.SetValue("E2", future1)
 	data.SetValue("I2", 216994.0)
-	data.SetValue("E3", "2026-10-01")
+	data.SetValue("E3", future2)
 	data.SetValue("I3", 216994.0)
 	data.SetValue("E4", "2022-01-01")
 	data.SetValue("I4", 50000.0)
