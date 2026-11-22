@@ -1,6 +1,9 @@
 package ooxml
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"fmt"
+)
 
 const (
 	NSRelationships      = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -34,4 +37,30 @@ type xlsxRelationship struct {
 	Type       string `xml:"Type,attr"`
 	Target     string `xml:"Target,attr"`
 	TargetMode string `xml:"TargetMode,attr,omitempty"`
+}
+
+// ParseRelationships parses a relationships part (a .rels file).
+func ParseRelationships(data []byte) ([]OpaqueRel, error) {
+	var parsed xlsxRelationships
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("unmarshal relationships: %w", err)
+	}
+	rels := make([]OpaqueRel, len(parsed.Relationships))
+	for i, rel := range parsed.Relationships {
+		rels[i] = opaqueRelFromXML(rel)
+	}
+	return rels, nil
+}
+
+// MarshalRelationships serializes a relationships part (a .rels file).
+func MarshalRelationships(rels []OpaqueRel) ([]byte, error) {
+	out := xlsxRelationships{Xmlns: NSRelationships}
+	for _, rel := range rels {
+		out.Relationships = append(out.Relationships, xlsxRelationship(rel))
+	}
+	body, err := xml.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("marshal relationships: %w", err)
+	}
+	return append([]byte(xmlHeader), selfCloseEmptyElements(body)...), nil
 }

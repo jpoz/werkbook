@@ -1,9 +1,13 @@
 package werkbook
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
+	"io"
+	"path"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jpoz/werkbook/ooxml"
@@ -531,5 +535,300 @@ func TestResolveRelTarget(t *testing.T) {
 		if got := resolveRelTarget(tt.target); got != tt.want {
 			t.Errorf("resolveRelTarget(%q) = %q, want %q", tt.target, got, tt.want)
 		}
+	}
+}
+
+const (
+	testRelTypeDrawing = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+	testRelTypeChart   = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+	testRelTypeImage   = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+	testRelTypeStyle   = "http://schemas.microsoft.com/office/2011/relationships/chartStyle"
+
+	testDrawingXML = `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>`
+)
+
+func testRelsXML(t *testing.T, rels ...ooxml.OpaqueRel) []byte {
+	t.Helper()
+	data, err := ooxml.MarshalRelationships(rels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// drawingWorkbook returns a workbook whose first sheet has a drawing with a
+// chart (which has a style part) and an image. tag makes the content of the
+// chart, the style, and the image different between workbooks.
+func drawingWorkbook(t *testing.T, sheetName, tag string) *File {
+	t.Helper()
+	f := New(FirstSheet(sheetName))
+	s := f.Sheet(sheetName)
+	if err := s.SetValue("A1", tag); err != nil {
+		t.Fatal(err)
+	}
+	s.rootAttrs = []ooxml.RawAttr{
+		{Name: "xmlns", Value: ooxml.NSSpreadsheetML},
+		{Name: "xmlns:r", Value: ooxml.NSOfficeDocument},
+	}
+	s.extraElements = []ooxml.RawElement{
+		{Name: "drawing", XML: `<drawing r:id="rId1"/>`, OrderKey: 58},
+	}
+	s.extraRels = []ooxml.OpaqueRel{
+		{ID: "rId1", Type: testRelTypeDrawing, Target: "../drawings/drawing1.xml"},
+	}
+	f.opaqueEntries = []ooxml.OpaqueEntry{
+		{
+			Path:        "xl/drawings/drawing1.xml",
+			ContentType: "application/vnd.openxmlformats-officedocument.drawing+xml",
+			Data:        []byte(testDrawingXML),
+		},
+		{
+			Path: "xl/drawings/_rels/drawing1.xml.rels",
+			Data: testRelsXML(t,
+				ooxml.OpaqueRel{ID: "rId1", Type: testRelTypeChart, Target: "../charts/chart1.xml"},
+				ooxml.OpaqueRel{ID: "rId2", Type: testRelTypeImage, Target: "/xl/media/image1.png"},
+				ooxml.OpaqueRel{ID: "rId3", Type: "hyperlink", Target: "https://example.com/", TargetMode: "External"},
+			),
+		},
+		{
+			Path:        "xl/charts/chart1.xml",
+			ContentType: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+			Data:        []byte("<chart>" + tag + "</chart>"),
+		},
+		{
+			Path: "xl/charts/_rels/chart1.xml.rels",
+			Data: testRelsXML(t,
+				ooxml.OpaqueRel{ID: "rId1", Type: testRelTypeStyle, Target: "style1.xml"},
+			),
+		},
+		{
+			Path:        "xl/charts/style1.xml",
+			ContentType: "application/vnd.ms-office.chartstyle+xml",
+			Data:        []byte("<style>" + tag + "</style>"),
+		},
+		{Path: "xl/media/image1.png", Data: []byte("png-" + tag)},
+	}
+	f.opaqueDefaults = []ooxml.OpaqueDefault{{Extension: "png", ContentType: "image/png"}}
+	return f
+}
+
+// savedParts saves the workbook and returns the content of each zip entry.
+func savedParts(t *testing.T, f *File) map[string][]byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := make(map[string][]byte, len(zr.File))
+	for _, zf := range zr.File {
+		rc, err := zf.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, dup := parts[zf.Name]; dup {
+			t.Fatalf("zip has two entries with the name %s", zf.Name)
+		}
+		parts[zf.Name] = data
+	}
+	return parts
+}
+
+// relTargetsOf returns the package paths of the internal relationship targets
+// of a part, by relationship ID.
+func relTargetsOf(t *testing.T, parts map[string][]byte, partPath string) map[string]string {
+	t.Helper()
+	data, ok := parts[partRelsPath(partPath)]
+	if !ok {
+		t.Fatalf("%s has no relationships file", partPath)
+	}
+	rels, err := ooxml.ParseRelationships(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := make(map[string]string)
+	for _, rel := range rels {
+		if rel.TargetMode == "External" {
+			continue
+		}
+		targets[rel.ID] = resolvePartRelTarget(partPath, rel.Target)
+	}
+	return targets
+}
+
+// requireRelationshipsResolve fails if a relationships file in the saved
+// package refers to a part that is not in the package.
+func requireRelationshipsResolve(t *testing.T, parts map[string][]byte) {
+	t.Helper()
+	for name, data := range parts {
+		dir, base := path.Split(name)
+		if !strings.HasSuffix(dir, "_rels/") || !strings.HasSuffix(base, ".rels") {
+			continue
+		}
+		owner := strings.TrimSuffix(dir, "_rels/") + strings.TrimSuffix(base, ".rels")
+		rels, err := ooxml.ParseRelationships(data)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, rel := range rels {
+			if rel.TargetMode == "External" {
+				continue
+			}
+			target := resolvePartRelTarget(owner, rel.Target)
+			if _, ok := parts[target]; !ok {
+				t.Errorf("%s: relationship %s refers to %s, which is not in the package", name, rel.ID, target)
+			}
+		}
+	}
+}
+
+// requireSheetDrawingGraph follows the drawing of the given sheet part in the
+// saved package and checks the content of its chart, chart style, and image.
+func requireSheetDrawingGraph(t *testing.T, parts map[string][]byte, sheetPart, tag string) {
+	t.Helper()
+	drawing := relTargetsOf(t, parts, sheetPart)["rId1"]
+	if string(parts[drawing]) != testDrawingXML {
+		t.Fatalf("%s: drawing %s = %q", sheetPart, drawing, parts[drawing])
+	}
+	drawingTargets := relTargetsOf(t, parts, drawing)
+	chart := drawingTargets["rId1"]
+	if got, want := string(parts[chart]), "<chart>"+tag+"</chart>"; got != want {
+		t.Errorf("%s: chart %s = %q, want %q", sheetPart, chart, got, want)
+	}
+	image := drawingTargets["rId2"]
+	if got, want := string(parts[image]), "png-"+tag; got != want {
+		t.Errorf("%s: image %s = %q, want %q", sheetPart, image, got, want)
+	}
+	style := relTargetsOf(t, parts, chart)["rId1"]
+	if got, want := string(parts[style]), "<style>"+tag+"</style>"; got != want {
+		t.Errorf("%s: chart style %s = %q, want %q", sheetPart, style, got, want)
+	}
+}
+
+func TestCloneSheetFromCopiesDrawingRelationshipGraph(t *testing.T) {
+	src := drawingWorkbook(t, "Source", "src")
+	dst := New(FirstSheet("Existing"))
+
+	if _, err := dst.CloneSheetFrom(src.Sheet("Source"), "Imported"); err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	parts := savedParts(t, dst)
+	requireRelationshipsResolve(t, parts)
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet2.xml", "src")
+	// With no collision, the parts keep their paths.
+	for _, name := range []string{
+		"xl/drawings/drawing1.xml",
+		"xl/charts/chart1.xml",
+		"xl/charts/style1.xml",
+		"xl/media/image1.png",
+	} {
+		if _, ok := parts[name]; !ok {
+			t.Errorf("%s is not in the saved package", name)
+		}
+	}
+}
+
+// The two workbooks have charts and images at the same paths with different
+// content. The parts of the two sheets must stay apart.
+func TestCloneSheetFromRemapsCollidingDrawingGraph(t *testing.T) {
+	src := drawingWorkbook(t, "Source", "src")
+	dst := drawingWorkbook(t, "Existing", "dst")
+
+	if _, err := dst.CloneSheetFrom(src.Sheet("Source"), "Imported"); err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	parts := savedParts(t, dst)
+	requireRelationshipsResolve(t, parts)
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet1.xml", "dst")
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet2.xml", "src")
+
+	// The drawing XML is the same in the two workbooks, but its assets are
+	// not. The imported sheet must not use the drawing of the destination.
+	existing := relTargetsOf(t, parts, "xl/worksheets/sheet1.xml")["rId1"]
+	imported := relTargetsOf(t, parts, "xl/worksheets/sheet2.xml")["rId1"]
+	if existing == imported {
+		t.Fatalf("the two sheets use the same drawing part %s", existing)
+	}
+
+	// The saved file opens, and a second save keeps the graph.
+	var buf bytes.Buffer
+	if _, err := dst.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenReader(&buf)
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	parts = savedParts(t, reopened)
+	requireRelationshipsResolve(t, parts)
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet1.xml", "dst")
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet2.xml", "src")
+}
+
+// A graph that is the same in the two workbooks is not copied again.
+func TestCloneSheetFromReusesIdenticalDrawingGraph(t *testing.T) {
+	src := drawingWorkbook(t, "Source", "same")
+	dst := drawingWorkbook(t, "Existing", "same")
+	before := len(dst.opaqueEntries)
+
+	cloned, err := dst.CloneSheetFrom(src.Sheet("Source"), "Imported")
+	if err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+	if len(dst.opaqueEntries) != before {
+		t.Fatalf("opaque entries = %d, want %d", len(dst.opaqueEntries), before)
+	}
+	if got := cloned.extraRels[0].Target; got != "../drawings/drawing1.xml" {
+		t.Fatalf("drawing target = %q", got)
+	}
+	parts := savedParts(t, dst)
+	requireRelationshipsResolve(t, parts)
+}
+
+// Only one asset is different. The parts that are the same are used again,
+// and the parts on the path to the different asset get new names.
+func TestCloneSheetFromRemapsOnlyChangedParts(t *testing.T) {
+	src := drawingWorkbook(t, "Source", "same")
+	dst := drawingWorkbook(t, "Existing", "same")
+	for i := range src.opaqueEntries {
+		if src.opaqueEntries[i].Path == "xl/charts/style1.xml" {
+			src.opaqueEntries[i].Data = []byte("<style>other</style>")
+		}
+	}
+
+	if _, err := dst.CloneSheetFrom(src.Sheet("Source"), "Imported"); err != nil {
+		t.Fatalf("CloneSheetFrom: %v", err)
+	}
+
+	parts := savedParts(t, dst)
+	requireRelationshipsResolve(t, parts)
+	requireSheetDrawingGraph(t, parts, "xl/worksheets/sheet1.xml", "same")
+
+	drawing := relTargetsOf(t, parts, "xl/worksheets/sheet2.xml")["rId1"]
+	drawingTargets := relTargetsOf(t, parts, drawing)
+	chart := drawingTargets["rId1"]
+	style := relTargetsOf(t, parts, chart)["rId1"]
+	if got := string(parts[style]); got != "<style>other</style>" {
+		t.Fatalf("imported chart style %s = %q", style, got)
+	}
+	if drawing == "xl/drawings/drawing1.xml" || chart == "xl/charts/chart1.xml" || style == "xl/charts/style1.xml" {
+		t.Fatalf("the imported graph uses parts of the destination: %s, %s, %s", drawing, chart, style)
+	}
+	// The image is the same, so there is one copy.
+	if image := drawingTargets["rId2"]; image != "xl/media/image1.png" {
+		t.Fatalf("image = %s, want the image of the destination", image)
+	}
+	if _, ok := parts["xl/media/image1_2.png"]; ok {
+		t.Fatal("the image was copied, but it is the same in the two workbooks")
 	}
 }
