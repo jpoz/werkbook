@@ -817,7 +817,7 @@ func (s *Sheet) adjustMergedRows(deletedRow int) {
 // dirty is the primary signal from the dep graph; cachedGen is a safety net
 // for formulas not yet registered in the dep graph.
 func (s *Sheet) resolveCell(c *Cell, col, row int) {
-	if c.formula != "" && (c.dirty || c.cachedGen < s.file.calcGen) {
+	if c.needsEval(s.file.calcGen) {
 		c.value = s.evaluateFormula(c, col, row)
 		c.cachedGen = s.file.calcGen
 		c.dirty = false
@@ -954,6 +954,9 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	}
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
+	if len(f.evaluating) > maxEvalRecursionDepth {
+		f.resolvePrecedentsIteratively(s, c, col, row)
+	}
 
 	outcome, err := s.evalCellOutcome(c, col, row)
 	if err != nil {
@@ -988,6 +991,9 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	}
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
+	if len(f.evaluating) > maxEvalRecursionDepth {
+		f.resolvePrecedentsIteratively(s, c, col, row)
+	}
 
 	outcome, err := s.evalCellOutcome(c, col, row)
 	if err != nil {
