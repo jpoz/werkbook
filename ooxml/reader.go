@@ -769,12 +769,7 @@ func isRecognizedRootRelType(t string) bool {
 }
 
 func opaqueRelFromXML(rel xlsxRelationship) OpaqueRel {
-	return OpaqueRel{
-		ID:         rel.ID,
-		Type:       rel.Type,
-		Target:     rel.Target,
-		TargetMode: rel.TargetMode,
-	}
+	return OpaqueRel(rel)
 }
 
 func readContentTypeMaps(files map[string]*zip.File) (map[string]string, map[string]string) {
@@ -803,7 +798,7 @@ func readFile(files map[string]*zip.File, name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	data, err := io.ReadAll(rc)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", name, err)

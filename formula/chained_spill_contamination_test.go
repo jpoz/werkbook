@@ -132,67 +132,6 @@ func evalFormula(t *testing.T, resolver *contaminationResolver, sheet, atCell, e
 	return v
 }
 
-// evalScalarFormula is like evalFormula but uses the regular Compile (not
-// spill-probe), so implicit intersection fires at the outer level.
-func evalScalarFormula(t *testing.T, resolver *contaminationResolver, sheet, atCell, expr string) Value {
-	t.Helper()
-	col, row, err := cellNameToColRow(atCell)
-	if err != nil {
-		t.Fatalf("bad cell %q: %v", atCell, err)
-	}
-	node, err := Parse(expr)
-	if err != nil {
-		t.Fatalf("Parse(%q): %v", expr, err)
-	}
-	cf, err := Compile(expr, node)
-	if err != nil {
-		t.Fatalf("Compile(%q): %v", expr, err)
-	}
-	ctx := &EvalContext{CurrentSheet: sheet, CurrentCol: col, CurrentRow: row}
-	v, err := Eval(cf, resolver, ctx)
-	if err != nil {
-		t.Fatalf("Eval(%q): %v", expr, err)
-	}
-	return v
-}
-
-func describeValue(v Value) string {
-	switch v.Type {
-	case ValueArray:
-		s := "["
-		for i, row := range v.Array {
-			if i > 0 {
-				s += "; "
-			}
-			s += "["
-			for j, c := range row {
-				if j > 0 {
-					s += ", "
-				}
-				s += describeValue(c)
-			}
-			s += "]"
-		}
-		s += "]"
-		if v.NoSpill {
-			s += "{NoSpill}"
-		}
-		return s
-	case ValueNumber:
-		return fmt.Sprintf("%g", v.Num)
-	case ValueString:
-		return fmt.Sprintf("%q", v.Str)
-	case ValueBool:
-		return fmt.Sprintf("%v", v.Bool)
-	case ValueError:
-		return v.Err.String()
-	case ValueEmpty:
-		return "<empty>"
-	default:
-		return fmt.Sprintf("type=%d", v.Type)
-	}
-}
-
 func setSrc01(r *contaminationResolver) {
 	// src!A1:C1 = headers; rows are (region, product, sales)
 	r.set("src", "A1", StringVal("region"))

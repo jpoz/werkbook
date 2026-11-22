@@ -381,7 +381,7 @@ func formatDepMarkdown(data depData) string {
 			sb.WriteString("\n")
 		}
 		sb.WriteString("Value: ")
-		sb.WriteString(fmt.Sprintf("%v", cell.Value))
+		fmt.Fprintf(&sb, "%v", cell.Value)
 		sb.WriteString("\n")
 
 		if len(cell.Precedents) > 0 || len(cell.PrecRanges) > 0 {
@@ -392,7 +392,7 @@ func formatDepMarkdown(data depData) string {
 				sb.WriteString("!")
 				sb.WriteString(p.Ref)
 				sb.WriteString(" = ")
-				sb.WriteString(fmt.Sprintf("%v", p.Value))
+				fmt.Fprintf(&sb, "%v", p.Value)
 				if p.Formula != "" {
 					sb.WriteString(" (formula: =")
 					sb.WriteString(p.Formula)
@@ -408,7 +408,7 @@ func formatDepMarkdown(data depData) string {
 					sb.WriteString("  - ")
 					sb.WriteString(c.Ref)
 					sb.WriteString(" = ")
-					sb.WriteString(fmt.Sprintf("%v", c.Value))
+					fmt.Fprintf(&sb, "%v", c.Value)
 					if c.Formula != "" {
 						sb.WriteString(" (formula: =")
 						sb.WriteString(c.Formula)
@@ -427,7 +427,7 @@ func formatDepMarkdown(data depData) string {
 				sb.WriteString("!")
 				sb.WriteString(d.Ref)
 				sb.WriteString(" = ")
-				sb.WriteString(fmt.Sprintf("%v", d.Value))
+				fmt.Fprintf(&sb, "%v", d.Value)
 				if d.Formula != "" {
 					sb.WriteString(" (formula: =")
 					sb.WriteString(d.Formula)

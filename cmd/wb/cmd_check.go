@@ -67,10 +67,10 @@ func (c *checkConfig) shouldIgnoreFormula(formula string) bool {
 }
 
 type checkDiff struct {
-	Sheet   string `json:"sheet"`
-	Cell    string `json:"cell"`
-	Formula string `json:"formula"`
-	Cached  any    `json:"cached"`
+	Sheet    string `json:"sheet"`
+	Cell     string `json:"cell"`
+	Formula  string `json:"formula"`
+	Cached   any    `json:"cached"`
 	Computed any    `json:"computed"`
 }
 
@@ -624,18 +624,18 @@ func parseInt(s string) (int, error) {
 
 func renderCheckMultiText(data checkMultiData) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Files: %d", data.Files))
+	fmt.Fprintf(&sb, "Files: %d", data.Files)
 	if data.Skipped > 0 {
-		sb.WriteString(fmt.Sprintf("\nSkipped (uncached): %d", data.Skipped))
+		fmt.Fprintf(&sb, "\nSkipped (uncached): %d", data.Skipped)
 		for _, fp := range data.SkippedFiles {
-			sb.WriteString(fmt.Sprintf("\n  - %s", fp))
+			fmt.Fprintf(&sb, "\n  - %s", fp)
 		}
 	}
-	sb.WriteString(fmt.Sprintf("\nFormulas: %d", data.Formulas))
-	sb.WriteString(fmt.Sprintf("\nMatches: %d", data.Matches))
-	sb.WriteString(fmt.Sprintf("\nMismatches: %d", data.Mismatches))
+	fmt.Fprintf(&sb, "\nFormulas: %d", data.Formulas)
+	fmt.Fprintf(&sb, "\nMatches: %d", data.Matches)
+	fmt.Fprintf(&sb, "\nMismatches: %d", data.Mismatches)
 	if data.Errors > 0 {
-		sb.WriteString(fmt.Sprintf("\nFile errors: %d", data.Errors))
+		fmt.Fprintf(&sb, "\nFile errors: %d", data.Errors)
 	}
 
 	// Show files with mismatches.
@@ -643,8 +643,8 @@ func renderCheckMultiText(data checkMultiData) string {
 		if r.Mismatches == 0 {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("\n\n--- %s ---", r.File))
-		sb.WriteString(fmt.Sprintf("\nFormulas: %d  Matches: %d  Mismatches: %d", r.Formulas, r.Matches, r.Mismatches))
+		fmt.Fprintf(&sb, "\n\n--- %s ---", r.File)
+		fmt.Fprintf(&sb, "\nFormulas: %d  Matches: %d  Mismatches: %d", r.Formulas, r.Matches, r.Mismatches)
 		if len(r.Diffs) > 0 {
 			sb.WriteString("\n")
 			rows := make([][]string, 0, len(r.Diffs))
@@ -666,8 +666,8 @@ func renderCheckMultiText(data checkMultiData) string {
 
 	// Show file errors.
 	for _, fe := range data.FileErrors {
-		sb.WriteString(fmt.Sprintf("\n\n--- %s ---", fe.File))
-		sb.WriteString(fmt.Sprintf("\nError: %s", fe.Error))
+		fmt.Fprintf(&sb, "\n\n--- %s ---", fe.File)
+		fmt.Fprintf(&sb, "\nError: %s", fe.Error)
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
@@ -677,9 +677,9 @@ func renderCheckText(data checkData) string {
 	var sb strings.Builder
 	sb.WriteString("File: ")
 	sb.WriteString(data.File)
-	sb.WriteString(fmt.Sprintf("\nFormulas: %d", data.Formulas))
-	sb.WriteString(fmt.Sprintf("\nMatches: %d", data.Matches))
-	sb.WriteString(fmt.Sprintf("\nMismatches: %d", data.Mismatches))
+	fmt.Fprintf(&sb, "\nFormulas: %d", data.Formulas)
+	fmt.Fprintf(&sb, "\nMatches: %d", data.Matches)
+	fmt.Fprintf(&sb, "\nMismatches: %d", data.Mismatches)
 
 	if len(data.Diffs) > 0 {
 		sb.WriteString("\n\nDifferences\n")

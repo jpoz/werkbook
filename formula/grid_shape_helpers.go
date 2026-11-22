@@ -108,16 +108,6 @@ func (s gridValueSource) dims() (rows, cols int) {
 	return s.grid.Rows(), s.grid.Cols()
 }
 
-func (s gridValueSource) materializedDims() (rows, cols int) {
-	if s.scalar != nil {
-		return 1, 1
-	}
-	if s.grid == nil {
-		return 0, 0
-	}
-	return s.matRows, s.matCols
-}
-
 func (s gridValueSource) cell(row, col int) Value {
 	rows, cols := s.dims()
 	if row < 0 || col < 0 || row >= rows || col >= cols {

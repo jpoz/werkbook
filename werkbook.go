@@ -229,7 +229,7 @@ func (f *File) SaveAs(name string) error {
 
 	data := f.buildWorkbookData()
 	if err := ooxml.WriteWorkbook(out, data); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()
@@ -343,7 +343,7 @@ func Open(name string, opts ...OpenOption) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer osf.Close()
+	defer func() { _ = osf.Close() }()
 
 	info, err := osf.Stat()
 	if err != nil {
@@ -580,15 +580,6 @@ func cellDataToValue(cd ooxml.CellData, _ []*Style, date1904 bool) Value {
 			return Value{Type: TypeString, String: cd.Value}
 		}
 		return Value{Type: TypeNumber, Number: n}
-	}
-}
-
-func isFormulaErrorString(v string) bool {
-	switch v {
-	case "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!", "#SPILL!", "#CALC!", "#GETTING_DATA":
-		return true
-	default:
-		return false
 	}
 }
 

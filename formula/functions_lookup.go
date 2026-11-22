@@ -390,10 +390,10 @@ func vlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	// Determine if wildcard matching is needed (only for string lookups).
 	useWildcard := false
 	if lookup.Type == ValueString {
-		wm := classifyWildcard(lookup.Str)
-		if wm == wildcardFull {
+		switch classifyWildcard(lookup.Str) {
+		case wildcardFull:
 			useWildcard = true
-		} else if wm == wildcardEscape {
+		case wildcardEscape:
 			// Tilde escapes with no unescaped wildcards: compare against
 			// the unescaped literal string.
 			lookup = StringVal(unescapePattern(lookup.Str))
@@ -485,10 +485,10 @@ func hlookupCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	// Determine if wildcard matching is needed (only for string lookups).
 	useWildcard := false
 	if lookup.Type == ValueString {
-		wm := classifyWildcard(lookup.Str)
-		if wm == wildcardFull {
+		switch classifyWildcard(lookup.Str) {
+		case wildcardFull:
 			useWildcard = true
-		} else if wm == wildcardEscape {
+		case wildcardEscape:
 			// Tilde escapes with no unescaped wildcards: compare against
 			// the unescaped literal string.
 			lookup = StringVal(unescapePattern(lookup.Str))
@@ -543,13 +543,6 @@ func normalizeIndexSelector(idx, max int) (int, *Value) {
 	return idx, nil
 }
 
-func indexArrayValue(arr Value, rowIdx, colIdx int) Value {
-	if rowIdx >= 0 && rowIdx < len(arr.Array) && colIdx >= 0 && colIdx < len(arr.Array[rowIdx]) {
-		return arr.Array[rowIdx][colIdx]
-	}
-	return EmptyVal()
-}
-
 func fnMATCH(args []Value) (Value, error) {
 	return matchCore(args, nil)
 }
@@ -592,10 +585,10 @@ func matchCore(args []Value, evalArgs []EvalValue) (Value, error) {
 	// For exact match, support wildcard matching on string lookups.
 	useWildcard := false
 	if matchType == 0 && lookup.Type == ValueString {
-		wm := classifyWildcard(lookup.Str)
-		if wm == wildcardFull {
+		switch classifyWildcard(lookup.Str) {
+		case wildcardFull:
 			useWildcard = true
-		} else if wm == wildcardEscape {
+		case wildcardEscape:
 			lookup = StringVal(unescapePattern(lookup.Str))
 		}
 	}
@@ -1131,12 +1124,6 @@ func indirectParseRange(left, right, sheet string) (RangeAddr, error) {
 	}, nil
 }
 
-// parseR1C1Cell parses a single absolute R1C1-style cell reference like
-// "R1C1" or "R5C3" and returns (col, row). The input is case-insensitive.
-func parseR1C1Cell(s string) (col, row int, err error) {
-	return parseR1C1CellAt(s, 0, 0)
-}
-
 func parseR1C1CellAt(s string, currentRow, currentCol int) (col, row int, err error) {
 	s = strings.ToUpper(s)
 	if len(s) < 4 || s[0] != 'R' {
@@ -1456,33 +1443,6 @@ func normalizeToGrid(v Value) ([][]Value, *Value) {
 	}
 }
 
-// spilledErrorMatchingGrid returns a Value whose shape matches the given
-// grid, with every cell set to err. Used by FILTER when the include argument
-// has errors: Excel propagates one error cell per value-row so that COUNTA
-// counts them and SUM propagates the first error — returning a bare scalar
-// error collapses both downstream consumers to a single cell.
-func spilledErrorMatchingGrid(grid [][]Value, err Value) Value {
-	if len(grid) == 0 {
-		return err
-	}
-	out := make([][]Value, len(grid))
-	for r, row := range grid {
-		cols := len(row)
-		if cols == 0 {
-			cols = 1
-		}
-		cells := make([]Value, cols)
-		for c := range cells {
-			cells[c] = err
-		}
-		out[r] = cells
-	}
-	if len(out) == 1 && len(out[0]) == 1 {
-		return out[0][0]
-	}
-	return Value{Type: ValueArray, Array: out}
-}
-
 // gridDims returns (rows, maxCols) for a 2D grid.
 func gridDims(grid [][]Value) (int, int) {
 	rows := len(grid)
@@ -1702,36 +1662,6 @@ func torowCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return flat[0], nil
 	}
 	return Value{Type: ValueArray, Array: [][]Value{flat}}, nil
-}
-
-// flattenArrayGrid flattens a grid into a 1D slice, optionally scanning by
-// column and filtering based on ignore flags (0=keep all, 1=ignore blanks,
-// 2=ignore errors, 3=ignore blanks and errors).
-func flattenArrayGrid(grid arrayGrid, scanByCol bool, ignore int) []Value {
-	numCols := grid.colCount
-	numRows := grid.rowCount
-
-	var flat []Value
-	if scanByCol {
-		for c := 0; c < numCols; c++ {
-			for r := 0; r < numRows; r++ {
-				v := grid.cell(r, c)
-				if shouldInclude(v, ignore) {
-					flat = append(flat, v)
-				}
-			}
-		}
-	} else {
-		for r := 0; r < numRows; r++ {
-			for c := 0; c < numCols; c++ {
-				v := grid.cell(r, c)
-				if shouldInclude(v, ignore) {
-					flat = append(flat, v)
-				}
-			}
-		}
-	}
-	return flat
 }
 
 // shouldInclude returns true if the value should be kept given the ignore flag.
@@ -1983,34 +1913,6 @@ func vstackCore(args []Value, evalArgs []EvalValue) (Value, error) {
 		return result[0][0], nil
 	}
 	return Value{Type: ValueArray, Array: result}, nil
-}
-
-// transposeGrid transposes a 2D grid of Values.
-func transposeGrid(grid [][]Value) [][]Value {
-	if len(grid) == 0 {
-		return nil
-	}
-	cols := 0
-	for _, row := range grid {
-		if len(row) > cols {
-			cols = len(row)
-		}
-	}
-	if cols == 0 {
-		return nil
-	}
-	result := make([][]Value, cols)
-	for c := 0; c < cols; c++ {
-		result[c] = make([]Value, len(grid))
-		for r := 0; r < len(grid); r++ {
-			if c < len(grid[r]) {
-				result[c][r] = grid[r][c]
-			} else {
-				result[c][r] = EmptyVal()
-			}
-		}
-	}
-	return result
 }
 
 // fnXMATCH implements XMATCH(lookup_value, lookup_array, [match_mode], [search_mode]).

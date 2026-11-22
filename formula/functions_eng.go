@@ -691,11 +691,12 @@ func fnComplex(args []Value) (Value, error) {
 			// For iNum < 0, the minus sign comes from formatting.
 		}
 
-		if iNum == 1 {
+		switch iNum {
+		case 1:
 			result += suffix
-		} else if iNum == -1 {
+		case -1:
 			result += "-" + suffix
-		} else {
+		default:
 			result += formatComplexNum(iNum) + suffix
 		}
 	}
@@ -1771,11 +1772,12 @@ func parseComplex(s string) (real, imag float64, fail bool) {
 
 	// imagStr may be just "+" or "-" meaning coefficient of 1 or -1.
 	var im float64
-	if imagStr == "+" {
+	switch imagStr {
+	case "+":
 		im = 1
-	} else if imagStr == "-" {
+	case "-":
 		im = -1
-	} else {
+	default:
 		im, err = strconv.ParseFloat(imagStr, 64)
 		if err != nil {
 			return 0, 0, true
@@ -2063,11 +2065,12 @@ func formatComplex(real, imag float64, suffix string) string {
 			}
 		}
 
-		if imag == 1 {
+		switch imag {
+		case 1:
 			result += suffix
-		} else if imag == -1 {
+		case -1:
 			result += "-" + suffix
-		} else {
+		default:
 			result += formatComplexNum(imag) + suffix
 		}
 	}

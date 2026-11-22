@@ -56,7 +56,7 @@ func cmdServe(args []string, globals globalFlags) int {
 
 	in := bufio.NewReader(os.Stdin)
 	out := bufio.NewWriter(os.Stdout)
-	defer out.Flush()
+	defer func() { _ = out.Flush() }()
 
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)

@@ -659,14 +659,15 @@ func fnDB(args []Value) (Value, error) {
 	totalDepreciation := 0.0
 	var dep float64
 	for p := 1.0; p <= period; p++ {
-		if p == 1 {
+		switch p {
+		case 1:
 			// First period: cost * rate * month / 12
 			dep = cost * rate * month / 12
-		} else if p == life+1 {
+		case life + 1:
 			// Last fractional period (only when month < 12):
 			// (cost - totalDepreciation) * rate * (12 - month) / 12
 			dep = (cost - totalDepreciation) * rate * (12 - month) / 12
-		} else {
+		default:
 			// Intermediate periods:
 			// (cost - totalDepreciation) * rate
 			dep = (cost - totalDepreciation) * rate
@@ -760,7 +761,6 @@ func fnDDB(args []Value) (Value, error) {
 			fullDep = 0
 		}
 		dep = fullDep * frac
-		totalDepreciation += dep
 	}
 
 	return NumberVal(dep), nil
@@ -3365,8 +3365,8 @@ func fnAmordegrc(args []Value) (Value, error) {
 	fCost := cost - dep0 // remaining cost after period 0
 
 	for p := 1; p <= period; p++ {
-		switch {
-		case p == nper-2:
+		switch p {
+		case nper - 2:
 			// Second-to-last period: 50% of remaining cost.
 			half := amordegrcRound(fCost * 0.5)
 			if p == period {
@@ -3374,7 +3374,7 @@ func fnAmordegrc(args []Value) (Value, error) {
 			}
 			fCost -= half
 
-		case p == nper-1:
+		case nper - 1:
 			// Last period: the rest of remaining cost.
 			// If the rest is less than salvage, return 0.
 			if fCost <= salvage {

@@ -532,9 +532,8 @@ func newFilteredLookupSpill(keys []string, values []float64) (*werkbook.File, *w
 // spill, not just the anchor cell.
 func TestSUM_IncludesSpillRows_FullColumn(t *testing.T) {
 	f := werkbook.New()
-	data := f.Sheet("Sheet1")
 	f.SetSheetName("Sheet1", "Data")
-	data = f.Sheet("Data")
+	data := f.Sheet("Data")
 
 	data.SetValue("A1", "Include")
 	data.SetValue("B1", "Amount")
@@ -574,9 +573,8 @@ func TestSUM_IncludesSpillRows_FullColumn(t *testing.T) {
 // range that extends beyond the last physical row still picks up spill values.
 func TestSUM_IncludesSpillRows_BoundedRange(t *testing.T) {
 	f := werkbook.New()
-	data := f.Sheet("Sheet1")
 	f.SetSheetName("Sheet1", "Data")
-	data = f.Sheet("Data")
+	data := f.Sheet("Data")
 
 	data.SetValue("A1", "Include")
 	data.SetValue("B1", "Amount")
@@ -912,9 +910,8 @@ func TestSUM_FullColumnSkipsUnrelatedSpillEval(t *testing.T) {
 // through nested non-array functions.
 func TestFILTER_FullColumnWithDATEVALUE(t *testing.T) {
 	f := werkbook.New()
-	data := f.Sheet("Sheet1")
 	f.SetSheetName("Sheet1", "Data")
-	data = f.Sheet("Data")
+	data := f.Sheet("Data")
 
 	// The formula compares against TODAY(), so the dates must be relative to
 	// the current date. Fixed dates make the test fail when they pass.

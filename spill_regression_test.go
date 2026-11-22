@@ -1019,13 +1019,6 @@ func TestSpillArrayContextInheritance(t *testing.T) {
 	})
 }
 
-func absDiff(a, b float64) float64 {
-	if a > b {
-		return a - b
-	}
-	return b - a
-}
-
 // TestSpillFullColumnSiblingFilters locks down the exact shape that
 // regressed in PR #50 (jpoz/fix-spill-reads): a defined name that points
 // at a full-column block (Out!$A:$H) where each column is a sibling

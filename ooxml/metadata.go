@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-func writeRawXML(zw *zip.Writer, name, body string) error {
-	return writeRawFile(zw, name, []byte(xmlHeader+body))
-}
-
 func writeRawFile(zw *zip.Writer, name string, body []byte) error {
 	w, err := zw.Create(name)
 	if err != nil {
