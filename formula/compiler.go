@@ -619,10 +619,7 @@ func functionCanReturnArrayFromArrayArgs(name string) bool {
 	case "COUNTIF", "SUMIF", "AVERAGEIF", "COUNTIFS", "SUMIFS", "AVERAGEIFS":
 		return true
 	}
-	if functionUsesElementwiseContract(name) {
-		return true
-	}
-	return false
+	return functionUsesElementwiseContract(name)
 }
 
 func (c *compiler) compileFuncCall(n *FuncCall, inArrayCtx bool) error {

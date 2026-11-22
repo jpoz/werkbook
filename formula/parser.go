@@ -173,7 +173,6 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 						return nil, fmt.Errorf("invalid row range endpoint %s", toNum.Raw)
 					}
 					toRef = &CellRef{Col: 0, Row: toRow}
-					toOK = true
 				} else {
 					// If one side is already an error (e.g. from a cross-sheet
 					// range that produced #VALUE!), propagate it instead of

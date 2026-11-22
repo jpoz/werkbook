@@ -190,9 +190,9 @@ func renderEditText(data editData) string {
 	}
 
 	sb.WriteString("\nApplied: ")
-	sb.WriteString(fmt.Sprintf("%d", data.Applied))
+	fmt.Fprintf(&sb, "%d", data.Applied)
 	sb.WriteString("\nFailed: ")
-	sb.WriteString(fmt.Sprintf("%d", data.Failed))
+	fmt.Fprintf(&sb, "%d", data.Failed)
 	sb.WriteString("\nSaved: ")
 	sb.WriteString(yesNo(data.Saved))
 
@@ -261,11 +261,11 @@ func renderCreateText(data createData) string {
 		sb.WriteString(data.File)
 	}
 	sb.WriteString("\nSheets: ")
-	sb.WriteString(fmt.Sprintf("%d", data.Sheets))
+	fmt.Fprintf(&sb, "%d", data.Sheets)
 	sb.WriteString("\nCells applied: ")
-	sb.WriteString(fmt.Sprintf("%d", data.Applied))
+	fmt.Fprintf(&sb, "%d", data.Applied)
 	sb.WriteString("\nFailed: ")
-	sb.WriteString(fmt.Sprintf("%d", data.Failed))
+	fmt.Fprintf(&sb, "%d", data.Failed)
 	sb.WriteString("\nSaved: ")
 	sb.WriteString(yesNo(data.Saved))
 	if data.DryRun {
@@ -292,7 +292,7 @@ func renderCreateText(data createData) string {
 
 func renderFormulaListText(data formulaListData) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%d %s\n", data.Count, pluralize(data.Count, "function", "functions")))
+	fmt.Fprintf(&sb, "%d %s\n", data.Count, pluralize(data.Count, "function", "functions"))
 	for _, fn := range data.Functions {
 		var args string
 		if fn.Kind == "unknown" {
@@ -303,7 +303,7 @@ func renderFormulaListText(data formulaListData) string {
 				args += "+"
 			}
 		}
-		sb.WriteString(fmt.Sprintf("  %-20s %-18s args=%s\n", fn.Name, fn.Kind, args))
+		fmt.Fprintf(&sb, "  %-20s %-18s args=%s\n", fn.Name, fn.Kind, args)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }

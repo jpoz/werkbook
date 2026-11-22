@@ -5829,8 +5829,10 @@ func fnGROWTH(args []Value) (Value, error) {
 
 	// ---- 3. new_x's ----
 	var newX []float64
-	newXRows, newXCols := 1, 1
-	isNewXScalar := true
+	var (
+		newXRows, newXCols int
+		isNewXScalar       bool
+	)
 	if len(args) >= 3 && args[2].Type != ValueEmpty {
 		newX, ev = flattenNums(args[2])
 		if ev != nil {
@@ -6017,8 +6019,10 @@ func fnTREND(args []Value) (Value, error) {
 
 	// ---- 3. new_x's ----
 	var newX []float64
-	newXRows, newXCols := 1, 1
-	isNewXScalar := true
+	var (
+		newXRows, newXCols int
+		isNewXScalar       bool
+	)
 	if len(args) >= 3 && args[2].Type != ValueEmpty {
 		newX, ev = flattenNums(args[2])
 		if ev != nil {

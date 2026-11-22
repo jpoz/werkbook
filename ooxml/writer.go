@@ -215,10 +215,7 @@ func writeContentTypes(
 			continue
 		}
 		defaults[ext] = def.ContentType
-		ct.Defaults = append(ct.Defaults, xlsxDefault{
-			Extension:   def.Extension,
-			ContentType: def.ContentType,
-		})
+		ct.Defaults = append(ct.Defaults, xlsxDefault(def))
 	}
 
 	seenOverrides := make(map[string]struct{}, len(ct.Overrides))
@@ -258,12 +255,7 @@ func writeRootRels(zw *zip.Writer, extra []OpaqueRel, hasCoreProps bool) error {
 		Xmlns: NSRelationships,
 	}
 	for _, rel := range extra {
-		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:         rel.ID,
-			Type:       rel.Type,
-			Target:     rel.Target,
-			TargetMode: rel.TargetMode,
-		})
+		rels.Relationships = append(rels.Relationships, xlsxRelationship(rel))
 	}
 	ids := nextRelationshipIDs(extra, 1+boolInt(hasCoreProps)+1)
 	idx := 0
@@ -440,12 +432,7 @@ func writeWorkbookRels(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string,
 		Xmlns: NSRelationships,
 	}
 	for _, rel := range data.ExtraRels {
-		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:         rel.ID,
-			Type:       rel.Type,
-			Target:     rel.Target,
-			TargetMode: rel.TargetMode,
-		})
+		rels.Relationships = append(rels.Relationships, xlsxRelationship(rel))
 	}
 	relNS := relationshipsNamespace(data.RootAttrs)
 	worksheetType := strictRelationshipType(relNS, RelTypeWorksheet, RelTypeWorksheetStrict)
@@ -690,12 +677,7 @@ func writeStyles(zw *zip.Writer, data *WorkbookData, ss xlsxStyleSheet) error {
 func writeSheetRels(zw *zip.Writer, sd *SheetData, sheetNum int, tables []tableWriteInfo, tableRelIDs []string) error {
 	rels := xlsxRelationships{Xmlns: NSRelationships}
 	for _, rel := range sd.ExtraRels {
-		rels.Relationships = append(rels.Relationships, xlsxRelationship{
-			ID:         rel.ID,
-			Type:       rel.Type,
-			Target:     rel.Target,
-			TargetMode: rel.TargetMode,
-		})
+		rels.Relationships = append(rels.Relationships, xlsxRelationship(rel))
 	}
 	tableType := strictRelationshipType(relationshipsNamespace(sd.RootAttrs), RelTypeTable, RelTypeTableStrict)
 	for i, tw := range tables {

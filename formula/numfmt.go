@@ -672,18 +672,18 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 		uCh := upper[i]
 
 		// Date/time tokens.
-		switch {
-		case uCh == 'Y':
+		switch uCh {
+		case 'Y':
 			count := countRun(upper, i, 'Y')
 			if count >= 3 {
-				result.WriteString(fmt.Sprintf("%04d", year))
+				fmt.Fprintf(&result, "%04d", year)
 			} else {
-				result.WriteString(fmt.Sprintf("%02d", year%100))
+				fmt.Fprintf(&result, "%02d", year%100)
 			}
 			i += count
 			continue
 
-		case uCh == 'M':
+		case 'M':
 			count := countRun(upper, i, 'M')
 			isMinute := false
 			if mIndex < len(mContexts) {
@@ -692,7 +692,7 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 			}
 			if isMinute {
 				if count >= 2 {
-					result.WriteString(fmt.Sprintf("%02d", minute))
+					fmt.Fprintf(&result, "%02d", minute)
 				} else {
 					result.WriteString(strconv.Itoa(minute))
 				}
@@ -701,7 +701,7 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 				case 1:
 					result.WriteString(strconv.Itoa(month))
 				case 2:
-					result.WriteString(fmt.Sprintf("%02d", month))
+					fmt.Fprintf(&result, "%02d", month)
 				case 3:
 					if month >= 1 && month <= 12 {
 						result.WriteString(shortMonths[month])
@@ -719,13 +719,13 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 			i += count
 			continue
 
-		case uCh == 'D':
+		case 'D':
 			count := countRun(upper, i, 'D')
 			switch count {
 			case 1:
 				result.WriteString(strconv.Itoa(day))
 			case 2:
-				result.WriteString(fmt.Sprintf("%02d", day))
+				fmt.Fprintf(&result, "%02d", day)
 			case 3:
 				if weekday >= 1 && weekday <= 7 {
 					result.WriteString(shortDays[weekday])
@@ -738,24 +738,24 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 			i += count
 			continue
 
-		case uCh == 'H':
+		case 'H':
 			count := countRun(upper, i, 'H')
 			h := hour
 			if hasAMPM {
 				h = hour12
 			}
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", h))
+				fmt.Fprintf(&result, "%02d", h)
 			} else {
 				result.WriteString(strconv.Itoa(h))
 			}
 			i += count
 			continue
 
-		case uCh == 'S':
+		case 'S':
 			count := countRun(upper, i, 'S')
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", second))
+				fmt.Fprintf(&result, "%02d", second)
 			} else {
 				result.WriteString(strconv.Itoa(second))
 			}
@@ -782,7 +782,7 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 			i += count
 			continue
 
-		case uCh == 'A':
+		case 'A':
 			// AM/PM or A/P marker.
 			if i+4 <= len(upper) && upper[i:i+4] == "AM/P" && i+5 <= len(upper) && upper[i+5-1] == 'M' {
 				result.WriteString(ampm)
@@ -799,7 +799,7 @@ func formatDateTime(serial float64, format string, date1904 bool) string {
 			i++
 			continue
 
-		case uCh == '0' || uCh == '#':
+		case '0', '#':
 			// Number-like codes in a date format (unusual but possible).
 			// E.g. ".00" for fractional seconds when preceded by s — already handled above.
 			// For other cases, just pass them through.
@@ -1035,17 +1035,17 @@ func formatElapsedTime(serial float64, format string) string {
 			case "H":
 				result.WriteString(strconv.Itoa(totalHours))
 			case "HH":
-				result.WriteString(fmt.Sprintf("%02d", totalHours))
+				fmt.Fprintf(&result, "%02d", totalHours)
 			case "M":
 				result.WriteString(strconv.Itoa(totalMinutes))
 			case "MM":
-				result.WriteString(fmt.Sprintf("%02d", totalMinutes))
+				fmt.Fprintf(&result, "%02d", totalMinutes)
 			case "S":
 				result.WriteString(strconv.Itoa(int(totalSeconds)))
 				// Handle fractional seconds after [s].
 				i = writeElapsedFracSeconds(format, i, totalSeconds, &result)
 			case "SS":
-				result.WriteString(fmt.Sprintf("%02d", int(totalSeconds)))
+				fmt.Fprintf(&result, "%02d", int(totalSeconds))
 				// Handle fractional seconds after [ss].
 				i = writeElapsedFracSeconds(format, i, totalSeconds, &result)
 			}
@@ -1061,7 +1061,7 @@ func formatElapsedTime(serial float64, format string) string {
 				mv = totalMinutes
 			}
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", mv))
+				fmt.Fprintf(&result, "%02d", mv)
 			} else {
 				result.WriteString(strconv.Itoa(mv))
 			}
@@ -1082,7 +1082,7 @@ func formatElapsedTime(serial float64, format string) string {
 				fracSec = seconds - float64(sv)
 			}
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", sv))
+				fmt.Fprintf(&result, "%02d", sv)
 			} else {
 				result.WriteString(strconv.Itoa(sv))
 			}
@@ -1111,7 +1111,7 @@ func formatElapsedTime(serial float64, format string) string {
 		if uCh == 'H' {
 			count := countRun(upper, i, 'H')
 			if count >= 2 {
-				result.WriteString(fmt.Sprintf("%02d", totalHours))
+				fmt.Fprintf(&result, "%02d", totalHours)
 			} else {
 				result.WriteString(strconv.Itoa(totalHours))
 			}
@@ -1784,18 +1784,20 @@ func formatNumberSection(n float64, format string) string {
 		}
 		if tok.kind == tokDigit || tok.kind == tokDigitOpt || tok.kind == tokDigitSpace {
 			if inDecimal {
-				if tok.kind == tokDigit {
+				switch tok.kind {
+				case tokDigit:
 					decZeros++
-				} else if tok.kind == tokDigitSpace {
+				case tokDigitSpace:
 					decSpaces++
-				} else {
+				default:
 					decHashes++
 				}
 			} else {
 				intDigits++
-				if tok.kind == tokDigit {
+				switch tok.kind {
+				case tokDigit:
 					intZeros++
-				} else if tok.kind == tokDigitSpace {
+				case tokDigitSpace:
 					intSpaces++
 				}
 			}
@@ -1885,14 +1887,8 @@ func formatNumberSection(n float64, format string) string {
 			}
 			// Replace leading zeros (and their adjacent commas) with spaces.
 			buf := []byte(padded)
-			for i := 0; i < len(buf); i++ {
-				if buf[i] == '0' {
-					buf[i] = ' '
-				} else if buf[i] == ',' {
-					buf[i] = ' '
-				} else {
-					break
-				}
+			for i := 0; i < len(buf) && (buf[i] == '0' || buf[i] == ','); i++ {
+				buf[i] = ' '
 			}
 			intStr = string(buf)
 		}
@@ -1952,11 +1948,12 @@ func formatNumberSection(n float64, format string) string {
 			} else {
 				// No more digits; use '0' for tokDigit, skip for tokDigitOpt.
 				tok := tokens[digitTokenIdxs[pi]]
-				if tok.kind == tokDigit {
+				switch tok.kind {
+				case tokDigit:
 					digitChars[pi] = '0'
-				} else if tok.kind == tokDigitSpace {
+				case tokDigitSpace:
 					digitChars[pi] = ' '
-				} else {
+				default:
 					digitChars[pi] = 0 // skip
 				}
 			}
@@ -2567,22 +2564,13 @@ func formatScientific(n float64, tokens []numFmtToken, sciIdx int) string {
 		}
 	}
 	for i := lastExpDigit + 1; i < len(tokens); i++ {
-		if tokens[i].kind == tokLiteral {
+		switch tokens[i].kind {
+		case tokLiteral:
 			result.WriteString(tokens[i].value)
-		} else if tokens[i].kind == tokPercent {
+		case tokPercent:
 			result.WriteByte('%')
 		}
 	}
 
 	return result.String()
-}
-
-// ---------------------------------------------------------------------------
-// Time helpers
-// ---------------------------------------------------------------------------
-
-// daysSinceEpoch converts a time.Time to serial days (for internal elapsed time).
-func daysSinceEpoch(t time.Time) float64 {
-	duration := t.Sub(Epoch1900)
-	return duration.Hours() / 24
 }

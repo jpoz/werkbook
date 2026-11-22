@@ -151,10 +151,6 @@ func fnDATECtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnDATEWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnDATE(args []Value) (Value, error) {
-	return fnDATEWithDateSystem(args, false)
-}
-
 func fnDATEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 3 {
 		return ErrorVal(ErrValVALUE), nil
@@ -226,10 +222,6 @@ func fnDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnDAY(args []Value) (Value, error) {
-	return fnDAYWithDateSystem(args, false)
-}
-
 func fnDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -247,10 +239,6 @@ func fnDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 
 func fnMONTHCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnMONTHWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnMONTH(args []Value) (Value, error) {
-	return fnMONTHWithDateSystem(args, false)
 }
 
 func fnMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -286,10 +274,6 @@ func fnTODAY(args []Value) (Value, error) {
 
 func fnYEARCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnYEARWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnYEAR(args []Value) (Value, error) {
-	return fnYEARWithDateSystem(args, false)
 }
 
 func fnYEARWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -587,10 +571,6 @@ func fnWEEKDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnWEEKDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnWEEKDAY(args []Value) (Value, error) {
-	return fnWEEKDAYWithDateSystem(args, false)
-}
-
 func fnWEEKDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -650,10 +630,6 @@ func fnISOWEEKNUMCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnISOWEEKNUMWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnISOWEEKNUM(args []Value) (Value, error) {
-	return fnISOWEEKNUMWithDateSystem(args, false)
-}
-
 func fnISOWEEKNUMWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 1 {
 		return ErrorVal(ErrValVALUE), nil
@@ -669,10 +645,6 @@ func fnISOWEEKNUMWithDateSystem(args []Value, date1904 bool) (Value, error) {
 
 func fnDATEVALUECtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnDATEVALUEWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnDATEVALUE(args []Value) (Value, error) {
-	return fnDATEVALUEWithDateSystem(args, false)
 }
 
 func fnDATEVALUEWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -855,10 +827,6 @@ func fnEDATECtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnEDATEWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnEDATE(args []Value) (Value, error) {
-	return fnEDATEWithDateSystem(args, false)
-}
-
 func fnEDATEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) != 2 {
 		return ErrorVal(ErrValVALUE), nil
@@ -893,10 +861,6 @@ func fnEDATEWithDateSystem(args []Value, date1904 bool) (Value, error) {
 
 func fnEOMONTHCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnEOMONTHWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnEOMONTH(args []Value) (Value, error) {
-	return fnEOMONTHWithDateSystem(args, false)
 }
 
 func fnEOMONTHWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -942,10 +906,6 @@ func parseHolidays(arg Value) (map[float64]bool, *Value) {
 
 func fnNETWORKDAYSCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnNETWORKDAYSWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnNETWORKDAYS(args []Value) (Value, error) {
-	return fnNETWORKDAYSWithDateSystem(args, false)
 }
 
 func fnNETWORKDAYSWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -998,10 +958,6 @@ func fnNETWORKDAYSWithDateSystem(args []Value, date1904 bool) (Value, error) {
 
 func fnNETWORKDAYSINTLCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnNetworkdaysIntlWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnNetworkdaysIntl(args []Value) (Value, error) {
-	return fnNetworkdaysIntlWithDateSystem(args, false)
 }
 
 func fnNetworkdaysIntlWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -1064,10 +1020,6 @@ func fnNetworkdaysIntlWithDateSystem(args []Value, date1904 bool) (Value, error)
 
 func fnWEEKNUMCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnWEEKNUMWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnWEEKNUM(args []Value) (Value, error) {
-	return fnWEEKNUMWithDateSystem(args, false)
 }
 
 func fnWEEKNUMWithDateSystem(args []Value, date1904 bool) (Value, error) {
@@ -1278,10 +1230,6 @@ func fnWORKDAYINTLCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnWorkdayIntlWithDateSystem(args, ctx != nil && ctx.Date1904)
 }
 
-func fnWorkdayIntl(args []Value) (Value, error) {
-	return fnWorkdayIntlWithDateSystem(args, false)
-}
-
 func fnWorkdayIntlWithDateSystem(args []Value, date1904 bool) (Value, error) {
 	if len(args) < 2 || len(args) > 4 {
 		return ErrorVal(ErrValVALUE), nil
@@ -1352,10 +1300,6 @@ func fnWorkdayIntlWithDateSystem(args []Value, date1904 bool) (Value, error) {
 
 func fnWORKDAYCtx(args []Value, ctx *EvalContext) (Value, error) {
 	return fnWORKDAYWithDateSystem(args, ctx != nil && ctx.Date1904)
-}
-
-func fnWORKDAY(args []Value) (Value, error) {
-	return fnWORKDAYWithDateSystem(args, false)
 }
 
 func fnWORKDAYWithDateSystem(args []Value, date1904 bool) (Value, error) {

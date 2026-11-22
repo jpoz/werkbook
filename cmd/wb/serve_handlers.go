@@ -94,7 +94,9 @@ func serveCreate(s *session, raw json.RawMessage) (any, *ErrorInfo) {
 	if len(spec.Sheets) > 0 {
 		f = werkbook.New(werkbook.FirstSheet(spec.Sheets[0]))
 		for _, name := range spec.Sheets[1:] {
-			f.NewSheet(name)
+			if _, err := f.NewSheet(name); err != nil {
+				return nil, &ErrorInfo{Code: ErrCodeInvalidSpec, Message: err.Error()}
+			}
 		}
 	} else {
 		f = werkbook.New()

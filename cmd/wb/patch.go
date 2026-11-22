@@ -149,7 +149,7 @@ func applyOnePatch(f *werkbook.File, op patchOp, defaultSheet string, index int)
 	}
 
 	// Style on a range (contains colon).
-	if op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null" {
+	if len(op.Style) > 0 && string(op.Style) != "null" {
 		style, err := jsonToStyle(op.Style)
 		if err != nil {
 			return opResult{Index: index, Cell: op.Cell, Action: "set_style", Status: "error", Error: err.Error()}
@@ -274,11 +274,11 @@ func planPatchAction(op patchOp) string {
 		return "set_column_width"
 	case op.Clear:
 		return "clear"
-	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null" && op.Formula != nil:
+	case len(op.Style) > 0 && string(op.Style) != "null" && op.Formula != nil:
 		return "set_style+set_formula"
-	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null" && op.Value != nil:
+	case len(op.Style) > 0 && string(op.Style) != "null" && op.Value != nil:
 		return "set_style+set_value"
-	case op.Style != nil && len(op.Style) > 0 && string(op.Style) != "null":
+	case len(op.Style) > 0 && string(op.Style) != "null":
 		return "set_style"
 	case op.Formula != nil:
 		return "set_formula"

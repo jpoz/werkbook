@@ -426,24 +426,3 @@ func spillStateFormulaRef(state *spillAnchorState, anchorCol, anchorRow int) (st
 	}
 	return anchorRef + ":" + endRef, true
 }
-
-func (s *Sheet) spillAttemptedRect(anchorCol, anchorRow int) (toCol, toRow int, ok bool) {
-	state, ok := s.spillState(anchorCol, anchorRow)
-	if !ok || state == nil {
-		return 0, 0, false
-	}
-	if state.gen != 0 && (state.attemptedToCol > anchorCol || state.attemptedToRow > anchorRow) {
-		return state.attemptedToCol, state.attemptedToRow, true
-	}
-	if state.formulaRef == "" {
-		return 0, 0, false
-	}
-	_, _, toCol, toRow, err := RangeToCoordinates(state.formulaRef)
-	if err != nil {
-		return 0, 0, false
-	}
-	if toCol <= anchorCol && toRow <= anchorRow {
-		return 0, 0, false
-	}
-	return toCol, toRow, true
-}

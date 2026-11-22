@@ -17887,7 +17887,6 @@ func TestBINOM_DIST_argcount(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBINOM_DIST_RANGE(t *testing.T) {
-	const tol = 1e-9
 	resolver := &mockResolver{}
 
 	tests := []struct {
@@ -32535,7 +32534,6 @@ func TestFTEST_SymmetryProperty(t *testing.T) {
 
 func TestFTEST_FractionalValues(t *testing.T) {
 	resolver := &mockResolver{}
-	const tol = 1e-4
 	// Fractional values with different variances.
 	cf := evalCompile(t, "F.TEST({0.1,0.2,0.3,0.4,0.5},{1.0,2.0,3.0,4.0,5.0})")
 	got, err := Eval(cf, resolver, nil)
@@ -32645,7 +32643,6 @@ func TestFTEST_ErrorPropagation_NAME(t *testing.T) {
 
 func TestFTEST_MixedPositiveNegative(t *testing.T) {
 	resolver := &mockResolver{}
-	const tol = 1e-4
 	// Array1 crosses zero, array2 is all positive.
 	cf := evalCompile(t, "F.TEST({-3,-1,1,3},{10,20,30,40})")
 	got, err := Eval(cf, resolver, nil)
@@ -32761,7 +32758,6 @@ func TestFTEST_UnequalSizesSmallLarge(t *testing.T) {
 
 func TestFTEST_ScaledArrays(t *testing.T) {
 	resolver := &mockResolver{}
-	const tol = 1e-4
 	// Arrays that are exact multiples of each other: variance ratio = k^2.
 	// {1,2,3,4,5} var=2.5, {10,20,30,40,50} var=250 → F=0.01 (or 100).
 	cf := evalCompile(t, "F.TEST({1,2,3,4,5},{10,20,30,40,50})")

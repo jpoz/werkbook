@@ -276,8 +276,7 @@ func evalOFFSET(args []EvalValue, ctx *EvalContext) (EvalValue, error) {
 
 	newFromRow := fromRow + rowsOff
 	newFromCol := fromCol + colsOff
-	newToRow := newFromRow
-	newToCol := newFromCol
+	var newToRow, newToCol int
 	if height > 0 {
 		newToRow = newFromRow + height - 1
 	} else {

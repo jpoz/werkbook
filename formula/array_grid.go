@@ -319,59 +319,6 @@ func (g arrayGrid) cell(row, col int) Value {
 	return EmptyVal()
 }
 
-func (g arrayGrid) hasMaterializedCell(row, col int) bool {
-	return row >= 0 && row < len(g.cells) && col >= 0 && col < len(g.cells[row])
-}
-
-func (g arrayGrid) row(row int) []Value {
-	values := make([]Value, g.colCount)
-	for col := 0; col < g.colCount; col++ {
-		values[col] = g.cell(row, col)
-	}
-	return values
-}
-
-func (g arrayGrid) col(col int) []Value {
-	values := make([]Value, g.rowCount)
-	for row := 0; row < g.rowCount; row++ {
-		values[row] = g.cell(row, col)
-	}
-	return values
-}
-
-func (g arrayGrid) flattenRowMajor() []Value {
-	values := make([]Value, 0, g.rowCount*g.colCount)
-	for row := 0; row < g.rowCount; row++ {
-		values = append(values, g.row(row)...)
-	}
-	return values
-}
-
-func (g arrayGrid) projectRow(row int) Value {
-	if row < 0 || row >= g.rowCount {
-		return ErrorVal(ErrValNA)
-	}
-	if g.colCount <= 1 {
-		return g.cell(row, 0)
-	}
-	return Value{Type: ValueArray, Array: [][]Value{g.row(row)}}
-}
-
-func (g arrayGrid) projectCol(col int) Value {
-	if col < 0 || col >= g.colCount {
-		return ErrorVal(ErrValNA)
-	}
-	if g.rowCount <= 1 {
-		return g.cell(0, col)
-	}
-	values := g.col(col)
-	rows := make([][]Value, len(values))
-	for i, v := range values {
-		rows[i] = []Value{v}
-	}
-	return Value{Type: ValueArray, Array: rows}
-}
-
 func (g arrayGrid) subgrid(rowStart, rowEnd, colStart, colEnd int) [][]Value {
 	if rowStart >= rowEnd || colStart >= colEnd {
 		return nil

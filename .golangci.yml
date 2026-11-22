@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  settings:
+    staticcheck:
+      checks:
+        # The golangci-lint defaults.
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # De Morgan rewrites make character-class checks such as
+        # !(c >= 'A' && c <= 'Z' || c == '_') harder to read.
+        - -QF1001
+    errcheck:
+      exclude-functions:
+        # Output to a CLI stream or to an in-memory builder. A failure here
+        # cannot be handled in a useful way.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    rules:
+      # Test setup calls (SetValue, SetFormula, Close) fail the assertions
+      # that follow them, so an unchecked error does not hide a defect.
+      - path: _test\.go
+        linters:
+          - errcheck

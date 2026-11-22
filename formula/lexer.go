@@ -534,12 +534,6 @@ func (l *Lexer) consumeDigits() {
 	}
 }
 
-func (l *Lexer) skipWhitespace() {
-	for l.pos < len(l.src) && (l.src[l.pos] == ' ' || l.src[l.pos] == '\t' || l.src[l.pos] == '\n' || l.src[l.pos] == '\r') {
-		l.pos++
-	}
-}
-
 // skipWhitespaceTracking skips whitespace like skipWhitespace but records a
 // pending intersect hint if any whitespace was consumed.
 func (l *Lexer) skipWhitespaceTracking() {

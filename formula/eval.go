@@ -1295,14 +1295,6 @@ func roundTo15SigFigs(f float64) float64 {
 	return rounded
 }
 
-// roundArithResult rounds a numeric Value to 15 significant digits.
-func roundArithResult(v Value) Value {
-	if v.Type == ValueNumber {
-		return NumberVal(roundTo15SigFigs(v.Num))
-	}
-	return v
-}
-
 func cmpFloat(a, b float64) int {
 	// Numbers are compared after rounding both to 15 significant digits.
 	// This makes (1/3*3)=1 evaluate to TRUE while (1-1e-15)=1 is FALSE.

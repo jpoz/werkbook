@@ -39,12 +39,6 @@ type rangeSpillAnchor struct {
 	raw   formula.Value
 }
 
-type rangeMaterializationGrid struct {
-	maxRow int
-	maxCol int
-	cells  []rangeMaterializationCell
-}
-
 type sheetRangeGrid struct {
 	sheet  *Sheet
 	maxRow int
@@ -56,43 +50,6 @@ type rangeMaterializationCell struct {
 	row      int
 	value    formula.Value
 	occupies bool
-}
-
-type rangeMaterializationSpills struct {
-	anchors []rangeSpillAnchor
-}
-
-func (g *rangeMaterializationGrid) MaxRow(string) int {
-	if g == nil {
-		return 0
-	}
-	return g.maxRow
-}
-
-func (g *rangeMaterializationGrid) MaxCol(string) int {
-	if g == nil {
-		return 0
-	}
-	return g.maxCol
-}
-
-func (g *rangeMaterializationGrid) ForEachCell(
-	_ string,
-	fromCol, fromRow, toCol, toRow int,
-	fn func(col, row int, value formula.Value, occupies bool),
-) {
-	if g == nil || fn == nil {
-		return
-	}
-	for _, cell := range g.cells {
-		if cell.col < fromCol || cell.col > toCol {
-			continue
-		}
-		if cell.row < fromRow || cell.row > toRow {
-			continue
-		}
-		fn(cell.col, cell.row, cell.value, cell.occupies)
-	}
 }
 
 func (g sheetRangeGrid) MaxRow(string) int {
@@ -123,13 +80,6 @@ func (g sheetRangeGrid) ForEachCell(
 			fn(colNum, rowNum, valueToFormulaValue(cell.value), cellOccupiesSpillSlot(cell))
 		}
 	}
-}
-
-func (s *rangeMaterializationSpills) Anchors(string) []rangeSpillAnchor {
-	if s == nil {
-		return nil
-	}
-	return s.anchors
 }
 
 func clampMaterializedRange(req rangeMaterializationRequest, maxRow, maxCol int) (toRow, toCol int) {
