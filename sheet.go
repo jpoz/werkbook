@@ -818,6 +818,9 @@ func (s *Sheet) adjustMergedRows(deletedRow int) {
 // for formulas not yet registered in the dep graph.
 func (s *Sheet) resolveCell(c *Cell, col, row int) {
 	if c.needsEval(s.file.calcGen) {
+		if s.file.deferEval(s, c, col, row, false) {
+			return
+		}
 		c.value = s.evaluateFormula(c, col, row)
 		c.cachedGen = s.file.calcGen
 		c.dirty = false
@@ -954,21 +957,10 @@ func (s *Sheet) evaluateFormula(c *Cell, col, row int) Value {
 	}
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
-	if len(f.evaluating) > maxEvalRecursionDepth {
-		f.resolvePrecedentsIteratively(s, c, col, row)
-	}
 
-	outcome, err := s.evalCellOutcome(c, col, row)
+	outcome, err := s.evalCellOutcomeBounded(c, col, row)
 	if err != nil {
-		// Classify the failure (parse/compile → #NAME?; expansion overflow
-		// or runtime engine failure → #VALUE!) instead of collapsing every
-		// error to #NAME?. The underlying message stays reachable via
-		// errors.Is / errors.As on an *formula.EvalError.
-		code := formula.ErrorValueFromErr(err).String()
-		if c.value.Type == TypeString {
-			return Value{Type: TypeString, String: code}
-		}
-		return Value{Type: TypeError, String: code}
+		return evalErrorValue(c, err)
 	}
 	s.applyCellOutcome(c, col, row, outcome)
 	return c.value
@@ -982,6 +974,9 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	if !c.dirty && c.rawCachedGen == f.calcGen {
 		return c.rawValue
 	}
+	if f.deferEval(s, c, col, row, true) {
+		return c.rawValue
+	}
 	if f.evaluating == nil {
 		f.evaluating = make(map[cellKey]bool)
 	}
@@ -991,11 +986,8 @@ func (s *Sheet) evaluateFormulaRaw(c *Cell, col, row int) formula.Value {
 	}
 	f.evaluating[key] = true
 	defer delete(f.evaluating, key)
-	if len(f.evaluating) > maxEvalRecursionDepth {
-		f.resolvePrecedentsIteratively(s, c, col, row)
-	}
 
-	outcome, err := s.evalCellOutcome(c, col, row)
+	outcome, err := s.evalCellOutcomeBounded(c, col, row)
 	if err != nil {
 		return formula.ErrorVal(formula.ErrValVALUE)
 	}
@@ -1041,6 +1033,7 @@ func (fr *fileResolver) resolveSheet(name string) *Sheet {
 }
 
 func (fr *fileResolver) GetCellValue(addr formula.CellAddr) formula.Value {
+	fr.file.beginResolverRead()
 	s := fr.resolveSheet(addr.Sheet)
 	if s == nil {
 		return formula.ErrorVal(formula.ErrValREF)
@@ -1084,6 +1077,7 @@ func newFormulaValueMatrix(nRows, nCols int) [][]formula.Value {
 }
 
 func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value {
+	fr.file.beginResolverRead()
 	s := fr.resolveSheet(addr.Sheet)
 	if s == nil {
 		res := materializeRange(rangeMaterializationRequest{
@@ -1124,6 +1118,7 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 }
 
 func (fr *fileResolver) ResolveDefinedNameValue(name, scopeSheet string) (formula.Value, bool) {
+	fr.file.beginResolverRead()
 	sheetIdx := -1
 	if scopeSheet != "" {
 		sheetIdx = fr.file.SheetIndex(scopeSheet)
@@ -1254,6 +1249,7 @@ func (fr *fileResolver) IsRowFilteredByAutoFilter(sheet string, row int) bool {
 // returns the complete ValueArray. If the cell has no formula, it returns the
 // cell's scalar value.
 func (fr *fileResolver) EvalCellFormula(sheet string, col, row int) formula.Value {
+	fr.file.beginResolverRead()
 	s := fr.resolveSheet(sheet)
 	if s == nil {
 		return formula.ErrorVal(formula.ErrValREF)

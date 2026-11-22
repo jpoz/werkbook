@@ -31,6 +31,7 @@ type File struct {
 	calcGen               uint64            // incremented on any cell mutation; starts at 1
 	batchWrites           int               // >0 while inside BeginBatchWrite/EndBatchWrite
 	evaluating            map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
+	probe                 *evalProbe        // non-nil during an attempt of evalDeferred
 	deps                  *formula.DepGraph // cell dependency graph for incremental recalculation
 	tableDefs             []Table
 	tables                []formula.TableInfo       // table definitions for structured reference expansion
