@@ -273,6 +273,11 @@ func (s *Sheet) refreshSpillState(c *Cell, col, row int) {
 	if s.file.isEvaluatingCell(s.name, col, row) {
 		return
 	}
+	gen := s.file.calcGen
+	if (c.needsEval(gen) || c.rawStale(gen)) && s.file.deferEval(s, c, col, row, true) {
+		// The anchor is evaluated later, and this refresh runs again.
+		return
+	}
 	s.resolveCell(c, col, row)
 	var plan *SpillPlan
 	if c.rawCachedGen != s.file.calcGen {
