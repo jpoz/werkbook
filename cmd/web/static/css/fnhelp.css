@@ -1,0 +1,63 @@
+/* Styles of js/fnhelp.js: function list and argument hint. Owner: fe-b. */
+
+#fn-popup,
+#fn-hint {
+  position: fixed;
+  z-index: 15;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#fn-popup {
+  --fn-row-h: 24px;
+  width: min(420px, calc(100vw - 8px));
+  /* At most 8 rows are in view; the list scrolls. */
+  max-height: calc(8 * var(--fn-row-h) + 2px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.fn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--fn-row-h);
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fn-row:hover { background: var(--header-bg); }
+.fn-row[aria-selected="true"] { background: var(--accent-soft); }
+
+.fn-name {
+  flex: none;
+  font-weight: 600;
+}
+.fn-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+}
+
+#fn-hint {
+  max-width: min(560px, calc(100vw - 8px));
+  padding: 4px 8px;
+  color: var(--muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#fn-hint .fn-hint-name { color: var(--text); }
+#fn-hint .fn-arg.current {
+  color: var(--text);
+  font-weight: 700;
+}

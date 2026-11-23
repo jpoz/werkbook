@@ -29,6 +29,7 @@ type File struct {
 	opaqueDefaults        []ooxml.OpaqueDefault
 	corePropsDirty        bool
 	calcGen               uint64            // incremented on any cell mutation; starts at 1
+	changes               uint64            // incremented by each mutating method; see ChangeMark
 	batchWrites           int               // >0 while inside BeginBatchWrite/EndBatchWrite
 	evaluating            map[cellKey]bool  // tracks cells being evaluated (circular ref detection)
 	probe                 *evalProbe        // non-nil during an attempt of evalDeferred
@@ -77,6 +78,24 @@ func New(opts ...Option) *File {
 	f := &File{calcGen: 1, date1904: o.date1904, deps: formula.NewDepGraph()}
 	f.addSheet(o.firstSheet)
 	return f
+}
+
+// ChangeMark returns a mark of the current state of the workbook. Each
+// method that changes the workbook gives it a new mark; methods that only
+// read (and Recalculate) do not. A StructuralUndo uses the mark to refuse an
+// Undo when the workbook changed after its edit.
+func (f *File) ChangeMark() uint64 {
+	return f.changes
+}
+
+// RestoreChangeMark sets the mark of the workbook. It is for a caller that
+// keeps an undo history: after the caller has reversed its changes (for
+// example with RestoreCell), the workbook is in the state of an older mark
+// again, and the caller says so with this method. A StructuralUndo from
+// before those changes is then valid again. A mark that does not describe
+// the state of the workbook makes that check useless.
+func (f *File) RestoreChangeMark(mark uint64) {
+	f.changes = mark
 }
 
 // Date1904 reports whether the workbook uses the 1904 date system.
@@ -171,6 +190,7 @@ func (f *File) DeleteSheet(name string) error {
 }
 
 func (f *File) addSheet(name string) *Sheet {
+	f.changes++
 	s := newSheet(name, f)
 	f.sheets = append(f.sheets, s)
 	f.sheetNames = append(f.sheetNames, name)
@@ -218,6 +238,7 @@ func (f *File) SetSheetVisible(name string, visible bool) error {
 		return ErrSheetNotFound
 	}
 	s.visible = visible
+	f.changes++
 	return nil
 }
 
@@ -411,6 +432,8 @@ func fileFromData(data *ooxml.WorkbookData, cfg openConfig) (*File, error) {
 		s.rootAttrs = cloneRawAttrs(sd.RootAttrs)
 		s.extraElements = cloneRawElements(sd.ExtraElements)
 		s.extraRels = cloneOpaqueRels(sd.ExtraRels)
+		pane := ooxml.FrozenPane(sd.ExtraElements)
+		s.frozenRows, s.frozenCols = pane.Rows, pane.Cols
 
 		// Restore column widths.
 		for _, cw := range sd.ColWidths {
@@ -685,6 +708,8 @@ func cloneOpaqueEntries(in []ooxml.OpaqueEntry) []ooxml.OpaqueEntry {
 // the dependency graph. Called at the end of fileFromData.
 func (f *File) rebuildFormulaState() {
 	f.calcGen++
+	// Each caller changed sheets, names, tables or the structure of a sheet.
+	f.changes++
 	f.deps = formula.NewDepGraph()
 	for _, s := range f.sheets {
 		for _, r := range s.rows {

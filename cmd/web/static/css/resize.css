@@ -1,0 +1,52 @@
+/* Styles of js/resize.js. Owner: fe-a. */
+
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.row-resize {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.col-resize:hover,
+.row-resize:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+#grid[data-resizing="col"],
+#grid[data-resizing="col"] .col-header,
+#grid[data-resizing="col"] .row-header { cursor: col-resize; }
+#grid[data-resizing="row"],
+#grid[data-resizing="row"] .col-header,
+#grid[data-resizing="row"] .row-header { cursor: row-resize; }
+
+#resize-guide {
+  position: absolute;
+  background: var(--accent);
+}
+
+/* The size label. */
+#resize-guide::after {
+  content: attr(data-size) " px";
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+}

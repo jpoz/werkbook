@@ -1,0 +1,55 @@
+/* Styles of js/freeze.js and of the frozen panes in js/grid.js. Owner: fe-a. */
+
+/* The panes are sticky nodes with no size. Their cell nodes are positioned
+   from the pane origin, which is the top-left corner of cell A1. They show
+   above #cells and below the headers and #overlay. */
+#pane-top,
+#pane-left,
+#pane-corner {
+  position: sticky;
+  height: 0;
+  z-index: 1;
+}
+#pane-top {
+  top: var(--hh);
+  margin-left: var(--rw);
+}
+#pane-left {
+  left: var(--rw);
+  width: 0;
+}
+#pane-corner {
+  top: var(--hh);
+  left: var(--rw);
+  width: 0;
+}
+
+/* A frozen cell hides the cells that scroll below it. A fill color of the
+   cell (inline style) has priority. */
+#pane-top .cell,
+#pane-left .cell,
+#pane-corner .cell {
+  background-color: var(--sheet-bg);
+}
+
+/* The line at the end of the frozen rows and columns. */
+.cell.freeze-edge-row { border-bottom-color: var(--muted); }
+.cell.freeze-edge-col { border-right-color: var(--muted); }
+
+/* Headers of frozen rows and columns: a sticky node in the header bar. */
+.frozen-heads {
+  position: sticky;
+  width: 0;
+  height: 0;
+  z-index: 1;
+}
+#col-headers .frozen-heads { left: var(--rw); }
+#row-headers .frozen-heads { top: var(--hh); }
+.frozen-heads .col-header,
+.frozen-heads .row-header {
+  background: var(--header-bg);
+}
+.frozen-heads .col-header.sel,
+.frozen-heads .row-header.sel {
+  background: var(--header-sel-bg);
+}

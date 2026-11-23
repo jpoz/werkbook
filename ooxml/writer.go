@@ -599,12 +599,32 @@ func writeSheet(zw *zip.Writer, num int, sd *SheetData, styleIndexMap []int, tab
 		})
 	}
 
+	// <sheetViews> is a preserved element, except for its frozen pane, which
+	// the caller can model through sd.Freeze. See sheetViewsFragment.
+	sheetViewsWritten := false
 	for _, extra := range sd.ExtraElements {
+		data := []byte(extra.XML)
+		if extra.Name == "sheetViews" {
+			if sheetViewsWritten {
+				continue
+			}
+			sheetViewsWritten = true
+			data = sheetViewsFragment(sd.ExtraElements, sd.Freeze)
+		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: extra.OrderKey,
 			Seq:      extra.Seq,
-			XML:      []byte(extra.XML),
+			XML:      data,
 		})
+	}
+	if !sheetViewsWritten {
+		if frag := sheetViewsFragment(sd.ExtraElements, sd.Freeze); frag != nil {
+			fragments = append(fragments, xmlFragment{
+				OrderKey: worksheetElementOrder["sheetViews"],
+				Seq:      writerSeq,
+				XML:      frag,
+			})
+		}
 	}
 
 	if len(tables) > 0 {

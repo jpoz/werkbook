@@ -1,0 +1,45 @@
+/* Styles of js/refcolor.js: colored reference outlines. Owner: fe-b. */
+
+:root {
+  --ref-0: #2563eb;
+  --ref-1: #c2410c;
+  --ref-2: #7c3aed;
+  --ref-3: #15803d;
+  --ref-4: #be185d;
+  --ref-5: #a16207;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ref-0: #6ea8fe;
+    --ref-1: #fb923c;
+    --ref-2: #b197fc;
+    --ref-3: #4ade80;
+    --ref-4: #f472b6;
+    --ref-5: #facc15;
+  }
+}
+
+#ref-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ref-outline {
+  position: absolute;
+  border: 2px solid var(--ref-color, var(--point));
+}
+
+.ref-outline[data-color="0"], #point-range[data-color="0"] { --ref-color: var(--ref-0); }
+.ref-outline[data-color="1"], #point-range[data-color="1"] { --ref-color: var(--ref-1); }
+.ref-outline[data-color="2"], #point-range[data-color="2"] { --ref-color: var(--ref-2); }
+.ref-outline[data-color="3"], #point-range[data-color="3"] { --ref-color: var(--ref-3); }
+.ref-outline[data-color="4"], #point-range[data-color="4"] { --ref-color: var(--ref-4); }
+.ref-outline[data-color="5"], #point-range[data-color="5"] { --ref-color: var(--ref-5); }
+
+/* The point-mode outline takes the color of its reference. */
+#point-range[data-color] {
+  border-color: var(--ref-color);
+  background: color-mix(in srgb, var(--ref-color) 8%, transparent);
+}

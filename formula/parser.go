@@ -162,6 +162,13 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 					}
 					fromRef = &CellRef{Col: 0, Row: fromRow}
 					toRef = &CellRef{Col: 0, Row: toRow}
+				} else if fromIsNum && toOK && isRowOnlyRef(toRef) && toRef.Sheet == "" && toRef.SheetEnd == "" {
+					// Row range with an absolute second endpoint: 1:$3.
+					fromRow := int(fromNum.Value)
+					if fromRow < 1 || float64(fromRow) != fromNum.Value {
+						return nil, fmt.Errorf("invalid row range endpoint %s", fromNum.Raw)
+					}
+					fromRef = &CellRef{Col: 0, Row: fromRow}
 				} else if fromOK && toIsNum && fromRef.Col == 0 {
 					// Sheet-qualified row-only range like Sheet1!2:3. The
 					// left side is a CellRef with Col==0 (row-only); the
@@ -206,6 +213,26 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 				continue
 			}
 
+			// An absolute row-only endpoint ($3) pairs only with a second
+			// row-only endpoint. A1:$3 is not a reference.
+			if (isAbsRowOnlyRef(fromRef) && !isRowOnlyRef(toRef)) || (isAbsRowOnlyRef(toRef) && !isRowOnlyRef(fromRef)) {
+				return nil, fmt.Errorf("a row-only reference needs a row-only reference on the other side of ':'")
+			}
+
+			// A range can be written with its corners in any order: A5:A1 is
+			// the range A1:A5 and C1:A3 is A1:C3. Order each axis
+			// independently, as Excel does; each absolute flag stays with
+			// its row or column. Without this, a reversed range was read as
+			// its first row or column only.
+			if fromRef.Col > 0 && toRef.Col > 0 && fromRef.Col > toRef.Col {
+				fromRef.Col, toRef.Col = toRef.Col, fromRef.Col
+				fromRef.AbsCol, toRef.AbsCol = toRef.AbsCol, fromRef.AbsCol
+			}
+			if fromRef.Row > 0 && toRef.Row > 0 && fromRef.Row > toRef.Row {
+				fromRef.Row, toRef.Row = toRef.Row, fromRef.Row
+				fromRef.AbsRow, toRef.AbsRow = toRef.AbsRow, fromRef.AbsRow
+			}
+
 			// Expand column-only references (Row==0) into full-column ranges.
 			// F:F becomes F1:F1048576.
 			if fromRef.Row == 0 {
@@ -230,6 +257,16 @@ func (p *Parser) parseExpression(minBP int) (Node, error) {
 	}
 
 	return left, nil
+}
+
+// isRowOnlyRef reports whether ref is a row-only endpoint (2, $2, Sheet1!2).
+func isRowOnlyRef(ref *CellRef) bool {
+	return ref != nil && ref.Name == "" && ref.Col == 0 && ref.Row > 0
+}
+
+// isAbsRowOnlyRef reports whether ref is an absolute row-only endpoint ($2).
+func isAbsRowOnlyRef(ref *CellRef) bool {
+	return isRowOnlyRef(ref) && ref.AbsRow
 }
 
 // isRefProducingNode reports whether a node yields a cell or range reference,
@@ -280,6 +317,14 @@ func (p *Parser) parseNud() (Node, error) {
 		ref, err := parseCellRefToken(tok.Value)
 		if err != nil {
 			return nil, fmt.Errorf("invalid cell reference %q at position %d: %w", tok.Value, tok.Pos, err)
+		}
+		// An absolute row-only reference ($3) has a meaning only as an
+		// endpoint of a row range. Alone it stays a syntax error.
+		if isAbsRowOnlyRef(ref) && ref.Sheet == "" && ref.SheetEnd == "" {
+			afterColon := p.pos >= 2 && p.tokens[p.pos-2].Type == TokColon
+			if !afterColon && p.peek().Type != TokColon {
+				return nil, fmt.Errorf("unexpected '$' at position %d", tok.Pos)
+			}
 		}
 		return ref, nil
 

@@ -1,0 +1,9 @@
+/* Styles of js/history.js. Owner: fe-a. */
+
+#tb-history .btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#tb-history .btn:disabled:hover {
+  border-color: var(--border);
+}

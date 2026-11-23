@@ -2,8 +2,58 @@
 
 ## Unreleased
 
+### Behavior changes of methods that exist
+
+Callers of these three methods can see a different result than before.
+
+- **`Sheet.RemoveRow(row)` now adjusts the workbook, and can fail.**
+  - Before: it moved the cells and the merged ranges of the sheet. Formulas,
+    defined names and tables kept their old text, so a formula such as
+    `SUM(A1:A6)` read different cells after the call. It returned an error
+    only for a row out of range.
+  - Now: it is `DeleteRows(row, 1)`. Formulas in all sheets, defined names,
+    tables, spill ranges and the frozen pane follow the cells. A reference to
+    a cell of the removed row becomes `#REF!`.
+  - New errors, with no change to the workbook: the row is the header row of
+    a table (and the table is not removed as a whole), or the row is the only
+    data row of a table.
+- **`Sheet.SetColumnWidth(col, 0)` now removes the custom width.**
+  - Before: the width 0 was stored and written to the file as a `<col>` with
+    `width="0"`, which is a hidden-looking column.
+  - Now: a width of zero or less removes the entry. The column has the
+    default width, `GetColumnWidth` returns 0 for it, and no `<col>` element
+    is written. To hide a column, a width of 0 is not a way any more.
+- **`Sheet.SetRowHeight(row, 0)` now removes the custom height.**
+  - Before: it made an empty row with height 0 if the row did not exist, so
+    `MaxRow` could grow from a call that set no height.
+  - Now: a height of zero or less removes the custom height, makes no row,
+    and removes a row that has no cells and is not hidden.
+
 ### API
 
+- **Insert and delete of rows and columns**: `Sheet.InsertRows`,
+  `Sheet.DeleteRows`, `Sheet.InsertCols` and `Sheet.DeleteCols`. Formulas in
+  all sheets, defined names, merged ranges, tables, spill ranges, row heights,
+  column widths and the frozen pane follow the cells, with the rules of Excel
+  (a range grows when rows are inserted in it, a reference to deleted cells
+  becomes `#REF!`; a structured reference to a deleted table column becomes
+  `#REF!` too). Each call returns a `*StructuralUndo` that restores the
+  state from before the edit. `StructuralUndo.Undo` returns an error, and
+  changes nothing, when the workbook changed after the edit; `File.ChangeMark`
+  and `File.RestoreChangeMark` are for a caller that keeps an undo history
+  and reverses later changes itself. All checks run before the first change,
+  so an error leaves the workbook unchanged. The passthrough XML of a sheet
+  (conditional formats, data validation, hyperlinks, drawings) is not
+  adjusted; `Sheet.PassthroughElementNames` lists the kinds that a sheet has.
+- **Cell snapshots**: `Sheet.SnapshotCell` and `Sheet.RestoreCell` read and
+  write the full stored state of one cell (value, formula, formula kind,
+  style) through `CellSnapshot`. They are the base for undo and for copy
+  operations.
+- **Freeze panes**: `Sheet.FreezePanes` and `Sheet.SetFreezePanes`. The
+  freeze is read from and written to `<pane state="frozen">` of the first
+  sheet view. When the freeze changes, the other sheet views, the selection
+  of the active pane and the other parts of the first view are kept.
+- **`Sheet.ColumnWidths`** returns all custom column widths.
 - **`File.BeginBatchWrite` / `File.EndBatchWrite`**: suspend per-write
   dependent invalidation around bulk data loads. Each `SetValue`/`SetFormula`
   otherwise walks the whole transitive dependent graph, which made loading a
@@ -24,8 +74,39 @@
   keeps valid style references. `CopySheet` / `CloneSheetFrom` carry this
   metadata to the new sheet.
 
+### Web editor
+
+- **`cmd/web`**: a web server for an in-browser XLSX editor. The library runs
+  in the browser as WebAssembly; the server only serves static files, and
+  workbook data does not leave the browser. The editor has undo and redo,
+  fill, copy and paste of formulas, function autocomplete with argument
+  hints, reference outlines and F4, column and row resize, insert and delete
+  of rows and columns, number and cell formats, freeze panes, sort, and find
+  and replace. The JavaScript API of the WebAssembly module is in
+  `cmd/web/README.md`. Build it with `make web`; `make web-smoke` runs the
+  contract test in Node.
+
 ### Formula engine
 
+- **Recalculation is linear in the number of formulas.** Each range read
+  scanned all cells of the sheet for its used range, so a recalculation was
+  quadratic: a sheet with 8,000 rows of nine numbers and one `SUM` per row
+  took 6.5 s and now takes 14 ms. The range results are the same.
+- **A reversed range reads the full range** (matches Excel): `SUM(A5:A1)` is
+  `SUM(A1:A5)`, and `C1:A3` is `A1:C3`. Before, only the first row or column
+  of the range was read.
+- **Absolute row ranges**: `$1:$3`, `1:$3`, `$1:3` and `Sheet1!$1:$3` now
+  parse and evaluate. Excel writes this form for print titles.
+- **Reference rewriting**: `formula.ScanRefs` and `formula.RewriteRefs` find
+  and change the references of a formula text and leave all other text byte
+  for byte the same. `formula.ShiftRefs` (copy and fill),
+  `formula.ApplyStructuralEdit` (insert and delete of rows and columns) and
+  `formula.CycleAbsolute` (the F4 cycle) use them. `formula.EditContext`
+  describes the caret position in a formula that a user is typing.
+- **Function documentation**: `formula.FuncDocs` returns a signature, a
+  summary and the argument list for each function; 171 functions have an
+  authored record.
+- `formula.Token` has an `End` offset.
 - **`FILTER` now propagates errors in the `include` argument as a single
   scalar** (matches Excel). Previously the error spilled across the value
   shape, producing an N-row `#VALUE!` grid (e.g. `A2:A41`) and ignoring
