@@ -1,0 +1,72 @@
+/* Styles of js/find.js: the find and replace panel. Owner: fe-b. */
+
+/* The panel floats above the top-right corner of the grid. It does not
+   block the grid. */
+#find-bar {
+  position: fixed;
+  top: 96px;
+  right: 24px;
+  z-index: 12;
+  width: min(340px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+/* The panel belongs to the editor screen. */
+body:not([data-state="editor"]) #find-bar { display: none; }
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#find-bar input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--sheet-bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  height: 28px;
+}
+#find-bar input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+#find-bar .btn {
+  height: 28px;
+  padding: 0 8px;
+}
+#find-bar .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.find-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+#find-count {
+  min-height: 1.3em;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+#find-count[data-kind="error"] { color: var(--error); }

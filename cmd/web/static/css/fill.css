@@ -1,0 +1,21 @@
+/* Styles of js/fill.js. Owner: fe-a. */
+
+#fill-handle {
+  position: absolute;
+  box-sizing: content-box;
+  background: var(--accent);
+  border: 1px solid var(--sheet-bg);
+  cursor: crosshair;
+  /* #overlay has pointer-events: none. */
+  pointer-events: auto;
+}
+
+#fill-range {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+}
+
+#grid[data-filling] {
+  cursor: crosshair;
+}

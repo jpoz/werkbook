@@ -7,6 +7,11 @@
 *.xlsx
 /wb
 /count_formula_tests
+/bin/
+
+# cmd/web build outputs (make web)
+/cmd/web/static/werkbook.wasm
+/cmd/web/static/wasm_exec.js
 
 # Test binary
 *.test

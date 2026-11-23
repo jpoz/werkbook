@@ -68,17 +68,48 @@ func (g sheetRangeGrid) ForEachCell(
 	if g.sheet == nil || fn == nil {
 		return
 	}
-	for rowNum, sheetRow := range g.sheet.rows {
-		if rowNum < fromRow || rowNum > toRow {
-			continue
+	visitRow := func(rowNum int, sheetRow *Row) {
+		visit := func(colNum int, cell *Cell) {
+			g.sheet.resolveCell(cell, colNum, rowNum)
+			fn(colNum, rowNum, valueToFormulaValue(cell.value), cellOccupiesSpillSlot(cell))
+		}
+		// A range that is narrower than the row is read by column number:
+		// a scan of all cells of the row for each range read is the cost
+		// that this avoids.
+		if toCol-fromCol < len(sheetRow.cells) {
+			for colNum := fromCol; colNum <= toCol; colNum++ {
+				if cell, ok := sheetRow.cells[colNum]; ok {
+					visit(colNum, cell)
+				}
+			}
+			return
 		}
 		for colNum, cell := range sheetRow.cells {
 			if colNum < fromCol || colNum > toCol {
 				continue
 			}
-			g.sheet.resolveCell(cell, colNum, rowNum)
-			fn(colNum, rowNum, valueToFormulaValue(cell.value), cellOccupiesSpillSlot(cell))
+			visit(colNum, cell)
 		}
+	}
+
+	// The same rule for rows: a range with fewer rows than the sheet is read
+	// by row number. The visit order was the random order of a map before
+	// and is not a part of the contract; fn writes each cell to its own
+	// position.
+	rows := g.sheet.rows
+	if toRow-fromRow < len(rows) {
+		for rowNum := fromRow; rowNum <= toRow; rowNum++ {
+			if sheetRow, ok := rows[rowNum]; ok {
+				visitRow(rowNum, sheetRow)
+			}
+		}
+		return
+	}
+	for rowNum, sheetRow := range rows {
+		if rowNum < fromRow || rowNum > toRow {
+			continue
+		}
+		visitRow(rowNum, sheetRow)
 	}
 }
 

@@ -224,6 +224,11 @@ type SheetData struct {
 	MergeCells    []MergeCellData
 	ExtraRels     []OpaqueRel
 	ExtraElements []RawElement
+	// Freeze is the frozen pane to write. Nil means that the caller does not
+	// model it: the preserved <sheetViews> element is written as it is. The
+	// reader does not set it; use FrozenPane(ExtraElements) to read the pane
+	// of a file.
+	Freeze *FreezePane
 }
 
 // RowData holds the data for a single row.

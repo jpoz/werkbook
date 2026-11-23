@@ -1,0 +1,7 @@
+/* Styles of js/sort.js. Owner: fe-b. */
+
+#sort-asc,
+#sort-desc {
+  font-size: 12px;
+  white-space: nowrap;
+}

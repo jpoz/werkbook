@@ -1,0 +1,46 @@
+/* Styles of js/format.js: the format group of the toolbar. Owner: fe-b. */
+
+#fmt-bold { font-weight: 700; }
+#fmt-italic { font-style: italic; }
+#fmt-underline { text-decoration: underline; }
+
+.fmt-select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 28px;
+  padding: 0 6px;
+  margin: 0 4px;
+}
+.fmt-select:disabled { opacity: 0.45; }
+
+.fmt-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fmt-color input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.fmt-color input[type="color"]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#fmt-fill-clear,
+#fmt-color-clear {
+  min-width: 20px;
+  padding: 0 4px;
+  margin-right: 4px;
+}

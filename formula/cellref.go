@@ -77,7 +77,13 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 		// '!' (e.g. "Sheet1!2" or "Sheet1!$2") is a row-only reference,
 		// the mirror of the column-only form ("Sheet1!F"). The parser's
 		// colon handler expands Col==0 endpoints into full-row ranges.
-		if (ref.Sheet != "" || ref.SheetEnd != "") && !ref.AbsCol {
+		//
+		// A '$' with no column letters marks the row as absolute ("$2",
+		// "Sheet1!$2"). This form is valid without a sheet qualifier,
+		// because the lexer cannot confuse it with a number.
+		absRow := ref.AbsCol
+		ref.AbsCol = false
+		if ref.Sheet != "" || ref.SheetEnd != "" || absRow {
 			rowStart := i
 			for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 				i++
@@ -94,6 +100,7 @@ func parseCellRefToken(raw string) (*CellRef, error) {
 			}
 			ref.Col = 0
 			ref.Row = row
+			ref.AbsRow = absRow
 			return ref, nil
 		}
 		return nil, fmt.Errorf("expected column letters in %q", raw)

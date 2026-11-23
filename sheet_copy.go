@@ -30,6 +30,7 @@ func (f *File) CloneSheetFrom(src *Sheet, dstName string) (*Sheet, error) {
 
 	dst := f.addSheet(dstName)
 	dst.visible = src.visible
+	dst.frozenRows, dst.frozenCols = src.frozenRows, src.frozenCols
 
 	for col, width := range src.colWidths {
 		dst.colWidths[col] = width

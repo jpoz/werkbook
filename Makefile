@@ -156,10 +156,31 @@ install: ## Install the wb CLI locally
 	go install ./cmd/wb
 	$(call print_success,wb installed to $$(go env GOPATH)/bin/wb)
 
+.PHONY: web
+web: ## Build the in-browser editor (static/werkbook.wasm, wasm_exec.js, bin/werkbook-web)
+	$(call print_stage,Building werkbook.wasm)
+	GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o cmd/web/static/werkbook.wasm ./cmd/web/wasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" cmd/web/static/wasm_exec.js
+	$(call print_stage,Building werkbook-web)
+	go build -o bin/werkbook-web ./cmd/web
+	$(call print_success,Built bin/werkbook-web)
+
+.PHONY: web-smoke
+web-smoke: web ## Build the in-browser editor and run the Node smoke test of the WASM contract
+	$(call print_stage,Running WASM smoke test)
+	node cmd/web/smoke/smoke.mjs cmd/web/static
+	$(call print_success,Smoke test passed)
+
+.PHONY: web-run
+web-run: web ## Build the in-browser editor and serve it on http://localhost:8080
+	$(call print_stage,Starting werkbook-web)
+	bin/werkbook-web
+
 .PHONY: clean
 clean: ## Remove generated artifacts
 	$(call print_stage,Cleaning)
 	rm -f coverage.out coverage.html
+	rm -f cmd/web/static/werkbook.wasm cmd/web/static/wasm_exec.js bin/werkbook-web
 
 .PHONY: interop
 interop: ## Fast parity rerun against ../testdata (use ONLY=fixture/id)

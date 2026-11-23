@@ -51,7 +51,8 @@ func (l *Lexer) Next() (Token, error) {
 	// previously emitted token and this one becomes a TokIntersect only when
 	// both sides are reference-like.
 	if l.pendInt && canPrecedeIntersect(l.prev, l.prevVal) && canFollowIntersect(tok.Type, tok.Value) {
-		intersectTok := Token{Type: TokIntersect, Value: " ", Pos: l.pendPos}
+		// The intersect token covers the whitespace before tok.
+		intersectTok := Token{Type: TokIntersect, Value: " ", Pos: l.pendPos, End: tok.Pos}
 		l.pendInt = false
 		l.pendPos = 0
 		l.buf = tok
@@ -69,6 +70,7 @@ func (l *Lexer) Next() (Token, error) {
 
 // nextRaw reads the next token from the input stream, detecting leading
 // whitespace and recording it as a potential intersection hint via pendInt.
+// It is the single place that sets Token.End.
 func (l *Lexer) nextRaw() (Token, error) {
 	if l.hasBuf {
 		t := l.buf
@@ -77,6 +79,16 @@ func (l *Lexer) nextRaw() (Token, error) {
 		return t, nil
 	}
 	l.skipWhitespaceTracking()
+	tok, err := l.lexToken()
+	if err != nil {
+		return tok, err
+	}
+	tok.End = l.pos
+	return tok, nil
+}
+
+// lexToken reads one token at the current position (after whitespace).
+func (l *Lexer) lexToken() (Token, error) {
 
 	if l.pos >= len(l.src) {
 		return Token{Type: TokEOF, Pos: l.pos}, nil
@@ -341,6 +353,18 @@ func (l *Lexer) lexIdentOrRef() (Token, error) {
 		l.pos++
 	}
 	alpha := string(l.src[alphaStart:l.pos])
+
+	// Absolute row-only reference: $1, as in the row ranges $1:$3, 1:$3 and
+	// $1:3 (print titles use this form). The parser accepts it only as an
+	// endpoint of a range.
+	if hasDollar && len(alpha) == 0 {
+		digitStart := l.pos
+		l.consumeDigits()
+		if l.pos > digitStart && (l.pos >= len(l.src) || !isIdentContinue(l.src[l.pos])) {
+			return Token{Type: TokCellRef, Value: string(l.src[start:l.pos]), Pos: start}, nil
+		}
+		return Token{}, fmt.Errorf("unexpected '$' at position %d", start)
+	}
 
 	// Check for pure-alpha sheet reference: Name!CellRef (e.g. Sheet!A1)
 	// Also check for 3D reference: Name:Name!CellRef (e.g. Sheet:Sheet5!A1)

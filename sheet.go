@@ -24,6 +24,8 @@ type Sheet struct {
 	extraElements []ooxml.RawElement
 	extraRels     []ooxml.OpaqueRel
 	spill         spillOverlay
+	// frozenRows and frozenCols are the frozen pane of the sheet view.
+	frozenRows, frozenCols int
 }
 
 func newSheet(name string, file *File) *Sheet {
@@ -50,6 +52,54 @@ func (s *Sheet) Name() string {
 // Visible reports whether the sheet is visible.
 func (s *Sheet) Visible() bool {
 	return s.visible
+}
+
+// FreezePanes returns the frozen pane of the sheet: rows rows at the top and
+// cols columns at the left stay in view when the sheet scrolls. Both are 0
+// for a sheet that is not frozen.
+func (s *Sheet) FreezePanes() (rows, cols int) {
+	return s.frozenRows, s.frozenCols
+}
+
+// SetFreezePanes freezes rows rows at the top and cols columns at the left.
+// SetFreezePanes(0, 0) removes the freeze.
+//
+// The freeze is saved as <pane state="frozen"> of the first sheet view. The
+// other parts of the sheet views of a file are kept as they are while the
+// freeze is the freeze of the file; when it is different, the first view is
+// written again with its attributes and the new pane.
+func (s *Sheet) SetFreezePanes(rows, cols int) error {
+	if rows < 0 || rows >= MaxRows {
+		return fmt.Errorf("%w: %d frozen rows out of range [0, %d]", ErrInvalidCellRef, rows, MaxRows-1)
+	}
+	if cols < 0 || cols >= MaxColumns {
+		return fmt.Errorf("%w: %d frozen columns out of range [0, %d]", ErrInvalidCellRef, cols, MaxColumns-1)
+	}
+	s.frozenRows, s.frozenCols = rows, cols
+	s.file.changes++
+	return nil
+}
+
+// PassthroughElementNames returns the names of the worksheet XML elements
+// that the library keeps as they are in the file and does not model, for
+// example "conditionalFormatting", "dataValidations" or "hyperlinks". The
+// list is sorted and has no duplicates.
+//
+// These elements are written back unchanged. An edit that moves cells
+// (InsertRows, DeleteCols, ...) does not adjust the cell addresses in them; a
+// caller can use the list to tell the user.
+func (s *Sheet) PassthroughElementNames() []string {
+	seen := make(map[string]bool, len(s.extraElements))
+	names := make([]string, 0, len(s.extraElements))
+	for _, el := range s.extraElements {
+		if el.Name == "" || seen[el.Name] {
+			continue
+		}
+		seen[el.Name] = true
+		names = append(names, el.Name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // SetValue sets the value of a cell by reference (e.g. "A1").
@@ -81,6 +131,7 @@ func (s *Sheet) SetValue(cell string, v any) error {
 	c.cachedGen = 0
 	c.rawCachedGen = 0
 	s.file.calcGen++
+	s.file.changes++
 	s.file.invalidateDependents(s.name, col, row)
 	return nil
 }
@@ -116,6 +167,7 @@ func (s *Sheet) SetFormula(cell string, f string) error {
 	c.rawCachedGen = 0
 	c.dirty = true
 	s.file.calcGen++
+	s.file.changes++
 	// Compile and register in dep graph.
 	node, parseErr := formula.Parse(src)
 	if parseErr == nil {
@@ -139,6 +191,7 @@ func (s *Sheet) SetStyle(cell string, style *Style) error {
 	r := s.ensureRow(row)
 	c := r.ensureCell(col)
 	c.style = style
+	s.file.changes++
 	return nil
 }
 
@@ -160,14 +213,33 @@ func (s *Sheet) GetStyle(cell string) (*Style, error) {
 	return c.style, nil
 }
 
-// SetColumnWidth sets the width of a column by name (e.g. "A").
+// SetColumnWidth sets the width of a column by name (e.g. "A"). A width of
+// zero or less removes the custom width, so the column has the default width
+// and no <col> element is written for it.
 func (s *Sheet) SetColumnWidth(col string, width float64) error {
 	num, err := ColumnNameToNumber(col)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidCellRef, err)
 	}
+	s.file.changes++
+	if width <= 0 {
+		delete(s.colWidths, num)
+		return nil
+	}
 	s.colWidths[num] = width
 	return nil
+}
+
+// ColumnWidths returns the custom column widths by 1-based column number.
+// The map is a copy; columns with the default width are not in it.
+func (s *Sheet) ColumnWidths() map[int]float64 {
+	out := make(map[int]float64, len(s.colWidths))
+	for col, w := range s.colWidths {
+		if w > 0 {
+			out[col] = w
+		}
+	}
+	return out
 }
 
 // GetColumnWidth returns the width of a column by name, or 0 if not set.
@@ -179,10 +251,25 @@ func (s *Sheet) GetColumnWidth(col string) (float64, error) {
 	return s.colWidths[num], nil
 }
 
-// SetRowHeight sets the height of a row by 1-based row number.
+// SetRowHeight sets the height of a row by 1-based row number. A height of
+// zero or less removes the custom height. A row that then has no cells is
+// removed, so that a height that was set and removed does not make the used
+// range of the sheet larger.
 func (s *Sheet) SetRowHeight(row int, height float64) error {
 	if row < 1 || row > MaxRows {
 		return fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, row, MaxRows)
+	}
+	s.file.changes++
+	if height <= 0 {
+		r, ok := s.rows[row]
+		if !ok {
+			return nil
+		}
+		r.height = 0
+		if len(r.cells) == 0 && !r.hidden {
+			delete(s.rows, row)
+		}
+		return nil
 	}
 	r := s.ensureRow(row)
 	r.height = height
@@ -201,30 +288,6 @@ func (s *Sheet) GetRowHeight(row int) (float64, error) {
 	return r.height, nil
 }
 
-// RemoveRow removes a row and shifts all following rows up by one.
-func (s *Sheet) RemoveRow(row int) error {
-	if row < 1 || row > MaxRows {
-		return fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, row, MaxRows)
-	}
-
-	newRows := make(map[int]*Row, len(s.rows))
-	for rn, r := range s.rows {
-		switch {
-		case rn < row:
-			newRows[rn] = r
-		case rn == row:
-			continue
-		default:
-			r.num = rn - 1
-			newRows[rn-1] = r
-		}
-	}
-	s.rows = newRows
-	s.adjustMergedRows(row)
-	s.file.rebuildFormulaState()
-	return nil
-}
-
 // SetRangeStyle applies the given style to every cell in the range (e.g. "A1:C5").
 // Cells that do not yet exist are created.
 func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
@@ -239,6 +302,7 @@ func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
 			cell.style = style
 		}
 	}
+	s.file.changes++
 	return nil
 }
 
@@ -262,6 +326,7 @@ func (s *Sheet) MergeCell(start, end string) error {
 		}
 	}
 	s.merges = append(s.merges, MergeRange{Start: startRef, End: endRef})
+	s.file.changes++
 	return nil
 }
 
@@ -470,6 +535,29 @@ func (s *Sheet) MaxCol() int {
 	return max
 }
 
+// rangeClampBounds returns the used-range bounds that clampMaterializedRange
+// needs for req. The results give the same clamp as MaxRow and MaxCol, but
+// they do not scan the sheet when the scan cannot change the clamp. MaxRow
+// visits each row and MaxCol visits each cell; a scan for each range read
+// made a recalculation quadratic in the size of the sheet.
+//
+//   - Rows: the clamp is min(req.toRow, MaxRow). When the sheet has a row at
+//     req.toRow, MaxRow is req.toRow or more and the clamp is req.toRow, so
+//     req.toRow stands in for MaxRow. Else the exact MaxRow is returned.
+//   - Columns: the clamp reads MaxCol only for a full-row range. For all
+//     other ranges maxCol is 0 and not read.
+func (s *Sheet) rangeClampBounds(req rangeMaterializationRequest) (maxRow, maxCol int) {
+	if _, ok := s.rows[req.toRow]; ok {
+		maxRow = req.toRow
+	} else {
+		maxRow = s.MaxRow()
+	}
+	if req.fromCol == 1 && req.toCol >= MaxColumns {
+		maxCol = s.MaxCol()
+	}
+	return maxRow, maxCol
+}
+
 // PrintTo writes a human-readable table of all cell values to w.
 func (s *Sheet) PrintTo(w io.Writer) {
 	maxCol := s.MaxCol()
@@ -533,6 +621,7 @@ func (s *Sheet) toSheetData(styleMap map[string]int, styles *[]ooxml.StyleData) 
 		RootAttrs:     cloneRawAttrs(s.rootAttrs),
 		ExtraElements: cloneRawElements(s.extraElements),
 		ExtraRels:     cloneOpaqueRels(s.extraRels),
+		Freeze:        &ooxml.FreezePane{Rows: s.frozenRows, Cols: s.frozenCols},
 	}
 	if !s.visible {
 		sd.State = "hidden"
@@ -768,49 +857,6 @@ func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow in
 		return anchorRef
 	}
 	return ""
-}
-
-func (s *Sheet) adjustMergedRows(deletedRow int) {
-	if len(s.merges) == 0 {
-		return
-	}
-
-	adjusted := s.merges[:0]
-	for _, mr := range s.merges {
-		col1, row1, col2, row2, err := RangeToCoordinates(mr.Start + ":" + mr.End)
-		if err != nil {
-			continue
-		}
-
-		switch {
-		case deletedRow < row1:
-			row1--
-			row2--
-		case deletedRow > row2:
-			// unchanged
-		case row1 == row2:
-			continue
-		default:
-			row2--
-			if deletedRow < row1 {
-				row1--
-			}
-		}
-
-		startRef, err := CoordinatesToCellName(col1, row1)
-		if err != nil {
-			continue
-		}
-		endRef, err := CoordinatesToCellName(col2, row2)
-		if err != nil {
-			continue
-		}
-		if startRef == endRef {
-			continue
-		}
-		adjusted = append(adjusted, MergeRange{Start: startRef, End: endRef})
-	}
-	s.merges = adjusted
 }
 
 // resolveCell evaluates the cell's formula if it is dirty or stale.
@@ -1097,8 +1143,7 @@ func (fr *fileResolver) GetRangeValues(addr formula.RangeAddr) [][]formula.Value
 		toCol:   addr.ToCol,
 		toRow:   addr.ToRow,
 	}
-	maxRow := s.MaxRow()
-	maxCol := s.MaxCol()
+	maxRow, maxCol := s.rangeClampBounds(req)
 	grid := sheetRangeGrid{
 		sheet:  s,
 		maxRow: maxRow,

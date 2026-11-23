@@ -32,6 +32,7 @@ type Token struct {
 	Type  TokenType
 	Value string // raw text of the token
 	Pos   int    // byte offset in the source formula
+	End   int    // byte offset after the token; Value is not always src[Pos:End] (a string token has no quotes in Value)
 }
 
 func (t Token) String() string {

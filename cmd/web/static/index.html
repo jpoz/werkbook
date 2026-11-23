@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Werkbook</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="css/ui.css">
+<link rel="stylesheet" href="css/history.css">
+<link rel="stylesheet" href="css/fill.css">
+<link rel="stylesheet" href="css/resize.css">
+<link rel="stylesheet" href="css/nav.css">
+<link rel="stylesheet" href="css/structure.css">
+<link rel="stylesheet" href="css/freeze.css">
+<link rel="stylesheet" href="css/fnhelp.css">
+<link rel="stylesheet" href="css/refcolor.css">
+<link rel="stylesheet" href="css/format.css">
+<link rel="stylesheet" href="css/sort.css">
+<link rel="stylesheet" href="css/find.css">
+</head>
+<body data-state="loading">
+
+<div id="loading" class="screen" role="status">
+  <div class="panel">
+    <h1 class="brand-title">Werkbook</h1>
+    <p class="muted">Loading the spreadsheet engine…</p>
+    <div class="progress" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div id="load-error" class="screen" role="alert" hidden>
+  <div class="panel">
+    <h1 class="brand-title">Werkbook</h1>
+    <p class="error-title">The spreadsheet engine did not load.</p>
+    <pre id="load-error-detail"></pre>
+    <p class="muted">Build the module with <code>make web</code>, then load the page again.</p>
+    <button id="retry-load" type="button" class="btn primary">Reload</button>
+  </div>
+</div>
+
+<main id="start-screen" class="screen" hidden>
+  <div id="drop-zone" class="panel" data-drop-zone>
+    <h1 class="brand-title">Werkbook</h1>
+    <p class="muted">Open an .xlsx file to edit it in the browser. The file does not leave this computer.</p>
+    <div class="drop-hint">Drop an .xlsx file here</div>
+    <div class="start-actions">
+      <button id="open-file" type="button" class="btn primary">Choose a file</button>
+      <button id="new-workbook" type="button" class="btn">New workbook</button>
+    </div>
+    <input id="file-input" class="visually-hidden" type="file" tabindex="-1" aria-label="XLSX file"
+      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <button id="back-to-editor" type="button" class="btn link" hidden>Back to the current workbook</button>
+    <p id="engine-version" class="muted small"></p>
+  </div>
+</main>
+
+<div id="editor" hidden>
+  <header id="toolbar">
+    <span class="brand">Werkbook</span>
+    <span id="file-name" title=""></span>
+    <span id="dirty-indicator" hidden>Unsaved changes</span>
+    <div id="tb-history" class="tb-group"></div>
+    <div id="tb-format" class="tb-group"></div>
+    <div id="tb-data" class="tb-group"></div>
+    <span class="spacer"></span>
+    <button id="open-another" type="button" class="btn">Open another file</button>
+    <button id="download" type="button" class="btn primary">Download</button>
+  </header>
+
+  <div id="formula-row">
+    <input id="name-box" type="text" spellcheck="false" autocomplete="off" aria-label="Cell address">
+    <span class="fx" aria-hidden="true">fx</span>
+    <input id="formula-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cell content">
+  </div>
+
+  <div id="grid" tabindex="0" role="grid" aria-label="Sheet">
+    <div id="grid-canvas">
+      <div id="col-headers"><div id="corner" data-select-all title="Select all"></div></div>
+      <!-- Frozen panes. They are sticky nodes with no height, so they must be
+           in the flow before #row-headers. #pane-corner is the last one: it
+           shows above the other two. -->
+      <div id="pane-top" hidden></div><div id="pane-left" hidden></div><div id="pane-corner" hidden></div>
+      <div id="row-headers"></div>
+      <div id="cells"></div>
+      <div id="overlay">
+        <div id="ref-layer"></div>
+        <div id="selection-range" hidden></div>
+        <div id="active-cell"></div>
+        <div id="point-range" hidden></div>
+        <div id="fill-range" hidden></div>
+        <div id="fill-handle" hidden></div>
+        <div id="resize-guide" hidden></div>
+        <input id="cell-editor" type="text" spellcheck="false" autocomplete="off" aria-label="Cell editor" hidden>
+      </div>
+    </div>
+  </div>
+
+  <footer id="bottom-bar">
+    <button id="add-sheet" type="button" class="btn icon" title="Add sheet" aria-label="Add sheet">+</button>
+    <div id="sheet-tabs" role="tablist" aria-label="Sheets"></div>
+  </footer>
+</div>
+
+<div id="status" role="status" aria-live="polite" hidden>
+  <span id="status-text"></span>
+  <button id="status-dismiss" type="button" aria-label="Dismiss message">×</button>
+</div>
+
+<div id="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message" hidden>
+  <div class="confirm-box">
+    <p id="confirm-message"></p>
+    <div class="confirm-actions">
+      <button id="confirm-cancel" type="button" class="btn">Cancel</button>
+      <button id="confirm-ok" type="button" class="btn danger">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="drop-overlay" hidden><div>Drop the .xlsx file to open it</div></div>
+
+<div id="fn-popup" role="listbox" hidden></div>
+<div id="fn-hint" hidden></div>
+<div id="context-menu" role="menu" hidden></div>
+<div id="find-bar" hidden></div>
+
+<script src="wasm_exec.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
