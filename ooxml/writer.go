@@ -18,10 +18,15 @@ const (
 	// <f>_xlfn.ACOT(1)</f> and <f>_xlfn.LET(_xlpm.x,5,_xlpm.x+1)</f>.
 	defaultFutureFunctionsCalcID = 181029
 
-	// futureFunctionsWorkbookExtXML is copied from an Excel-authored workbook.
-	// Omitting this bundle causes Excel to open the file with a repair prompt
-	// even when the individual sheet formulas are serialized correctly.
-	futureFunctionsWorkbookExtXML = `<ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><x15:workbookPr chartTrackingRefBase="1"/></ext><ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures"><xcalcf:calcFeatures><xcalcf:feature name="microsoft.com:RD"/><xcalcf:feature name="microsoft.com:Single"/><xcalcf:feature name="microsoft.com:FV"/><xcalcf:feature name="microsoft.com:CNMTM"/><xcalcf:feature name="microsoft.com:LET_WF"/><xcalcf:feature name="microsoft.com:LAMBDA_WF"/><xcalcf:feature name="microsoft.com:ARRAYTEXT_WF"/></xcalcf:calcFeatures></ext>`
+	// The two future-function workbook extensions are copied from an
+	// Excel-authored workbook. Omitting them causes Excel to open the file
+	// with a repair prompt even when the individual sheet formulas are
+	// serialized correctly.
+	futureFunctionsWorkbookPrExtURI = "{140A7094-0E35-4892-8432-C4D2E57EDEB5}"
+	futureFunctionsWorkbookPrExtXML = `<ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><x15:workbookPr chartTrackingRefBase="1"/></ext>`
+
+	futureFunctionsCalcFeaturesExtURI = "{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}"
+	futureFunctionsCalcFeaturesExtXML = `<ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures"><xcalcf:calcFeatures><xcalcf:feature name="microsoft.com:RD"/><xcalcf:feature name="microsoft.com:Single"/><xcalcf:feature name="microsoft.com:FV"/><xcalcf:feature name="microsoft.com:CNMTM"/><xcalcf:feature name="microsoft.com:LET_WF"/><xcalcf:feature name="microsoft.com:LAMBDA_WF"/><xcalcf:feature name="microsoft.com:ARRAYTEXT_WF"/></xcalcf:calcFeatures></ext>`
 
 	dynamicArrayMetadataXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray"><metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/></metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk></futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata></metadata>`
@@ -386,27 +391,39 @@ func writeWorkbookXML(zw *zip.Writer, data *WorkbookData, sheetRelIDs []string) 
 		}
 	}
 
+	needsFutureFunctions := workbookNeedsFutureFunctionsMetadata(data)
+	hasExtLst := false
 	for _, extra := range data.ExtraElements {
 		if extra.Name == "workbookPr" {
 			// Emitted above through workbookPrFragment.
 			continue
 		}
+		extraXML := extra.XML
+		if extra.Name == "extLst" {
+			hasExtLst = true
+			if needsFutureFunctions {
+				// Keep the extensions of the source workbook and add the
+				// future-function extensions that it does not have.
+				merged, err := addMissingExts(extraXML, futureFunctionsWorkbookExts)
+				if err != nil {
+					return fmt.Errorf("merge workbook extLst: %w", err)
+				}
+				extraXML = merged
+			}
+		}
 		fragments = append(fragments, xmlFragment{
 			OrderKey: extra.OrderKey,
 			Seq:      extra.Seq,
-			XML:      []byte(extra.XML),
+			XML:      []byte(extraXML),
 		})
 	}
 
-	// Known limitation: if the original file had an extLst with other
-	// extensions (e.g. chart tracking) but no future-function metadata,
-	// and the user programmatically adds a LET/LAMBDA formula, the
-	// future-function extensions won't be injected because we don't parse
-	// extLst content. The file will open with a repair prompt. To fix
-	// this properly, extLst would need to be partially parsed to detect
-	// whether specific extension URIs are present.
-	if workbookNeedsFutureFunctionsMetadata(data) && !hasExtraElementName(data.ExtraElements, "extLst") {
-		extFrag, err := encodeNamedXMLFragment("extLst", &xlsxExtLst{InnerXML: futureFunctionsWorkbookExtXML})
+	if needsFutureFunctions && !hasExtLst {
+		var inner strings.Builder
+		for _, ext := range futureFunctionsWorkbookExts {
+			inner.WriteString(ext.XML)
+		}
+		extFrag, err := encodeNamedXMLFragment("extLst", &xlsxExtLst{InnerXML: inner.String()})
 		if err != nil {
 			return fmt.Errorf("encode workbook extLst: %w", err)
 		}
