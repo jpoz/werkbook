@@ -225,6 +225,30 @@ func (s *Sheet) RemoveRow(row int) error {
 	return nil
 }
 
+// RemoveRowsFrom removes row `start` and every row after it. Rows above are
+// untouched, so no shifting is needed; merged ranges that extend into the
+// removed region are truncated or dropped. Formula state is rebuilt once,
+// which makes this the preferred way to clear a data region — calling
+// RemoveRow in a loop rebuilds every formula in the workbook per row.
+func (s *Sheet) RemoveRowsFrom(start int) error {
+	if start < 1 || start > MaxRows {
+		return fmt.Errorf("%w: row %d out of range [1, %d]", ErrInvalidCellRef, start, MaxRows)
+	}
+
+	removed := false
+	for rn := range s.rows {
+		if rn >= start {
+			delete(s.rows, rn)
+			removed = true
+		}
+	}
+	s.truncateMergedRows(start)
+	if removed {
+		s.file.rebuildFormulaState()
+	}
+	return nil
+}
+
 // SetRangeStyle applies the given style to every cell in the range (e.g. "A1:C5").
 // Cells that do not yet exist are created.
 func (s *Sheet) SetRangeStyle(rangeRef string, style *Style) error {
@@ -768,6 +792,41 @@ func (s *Sheet) dynamicArrayFormulaRef(anchorRef string, anchorCol, anchorRow in
 		return anchorRef
 	}
 	return ""
+}
+
+// truncateMergedRows drops merges that start at or below `start` and clips
+// merges that straddle it to end at start-1.
+func (s *Sheet) truncateMergedRows(start int) {
+	if len(s.merges) == 0 {
+		return
+	}
+
+	kept := s.merges[:0]
+	for _, mr := range s.merges {
+		col1, row1, col2, row2, err := RangeToCoordinates(mr.Start + ":" + mr.End)
+		if err != nil {
+			continue
+		}
+		if row1 >= start {
+			continue
+		}
+		if row2 >= start {
+			row2 = start - 1
+		}
+		startRef, err := CoordinatesToCellName(col1, row1)
+		if err != nil {
+			continue
+		}
+		endRef, err := CoordinatesToCellName(col2, row2)
+		if err != nil {
+			continue
+		}
+		if startRef == endRef {
+			continue
+		}
+		kept = append(kept, MergeRange{Start: startRef, End: endRef})
+	}
+	s.merges = kept
 }
 
 func (s *Sheet) adjustMergedRows(deletedRow int) {

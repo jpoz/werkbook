@@ -1,6 +1,7 @@
 package werkbook
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -102,5 +103,59 @@ func TestRemoveRowShiftsRowsAndMetadata(t *testing.T) {
 	}
 	if h != 25 {
 		t.Fatalf("row 2 height = %g, want 25", h)
+	}
+}
+
+func TestRemoveRowsFromDropsTailAndKeepsHead(t *testing.T) {
+	f := New()
+	s := f.Sheet("Sheet1")
+	for i, v := range []string{"hdr", "r2", "r3", "r4"} {
+		if err := s.SetValue(fmt.Sprintf("A%d", i+1), v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetFormula("B1", `COUNTA(A2:A100)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MergeCell("A1", "B1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MergeCell("C1", "C3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MergeCell("D3", "D4"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RemoveRowsFrom(2); err != nil {
+		t.Fatal(err)
+	}
+
+	if v, _ := s.GetValue("A1"); v.String != "hdr" {
+		t.Fatalf("A1 = %#v, want hdr", v)
+	}
+	for _, ref := range []string{"A2", "A3", "A4"} {
+		if v, _ := s.GetValue(ref); v.Type != TypeEmpty {
+			t.Fatalf("%s = %#v, want empty", ref, v)
+		}
+	}
+	if len(s.rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(s.rows))
+	}
+	f.Recalculate()
+	if v, _ := s.GetValue("B1"); v.Number != 0 {
+		t.Fatalf("B1 = %#v, want 0 after truncation", v)
+	}
+	merges := s.MergeCells()
+	if len(merges) != 1 || merges[0].Start != "A1" || merges[0].End != "B1" {
+		t.Fatalf("merges = %#v, want only A1:B1", merges)
+	}
+
+	// Truncating an already-short sheet is a no-op.
+	if err := s.RemoveRowsFrom(2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveRowsFrom(0); err == nil {
+		t.Fatal("expected error for row 0")
 	}
 }
